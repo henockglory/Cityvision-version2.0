@@ -1,0 +1,73 @@
+[
+  {
+    "id": "tpl-intrusion-zone",
+    "name": "Intrusion zone interdite",
+    "category": "security",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {"op": "in_zone", "field": "zone_id", "value": "restricted"},
+          {"op": "eq", "field": "class", "value": "person"}
+        ]
+      },
+      "actions": [{"type": "alert", "config": {"severity": "high", "channel": "ui"}}]
+    }
+  },
+  {
+    "id": "tpl-line-cross",
+    "name": "Franchissement de ligne",
+    "category": "spatial",
+    "severity": "medium",
+    "definition": {
+      "condition": {"op": "cross_line", "field": "line_id", "value": "entry-line"},
+      "actions": [{"type": "alert", "config": {"severity": "medium"}}, {"type": "record", "config": {"duration_sec": 30}}]
+    }
+  },
+  {
+    "id": "tpl-loitering",
+    "name": "Présence prolongée (loitering)",
+    "category": "time",
+    "severity": "medium",
+    "definition": {
+      "condition": {"op": "gt", "field": "duration_sec", "value": 120},
+      "actions": [{"type": "alert", "config": {"severity": "medium"}}]
+    }
+  },
+  {
+    "id": "tpl-abandoned-object",
+    "name": "Objet abandonné",
+    "category": "objects",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {"op": "eq", "field": "event", "value": "object_appeared"},
+          {"op": "gt", "field": "duration_sec", "value": 60}
+        ]
+      },
+      "actions": [{"type": "alert", "config": {"severity": "high"}}, {"type": "record", "config": {"duration_sec": 60}}]
+    }
+  },
+  {
+    "id": "tpl-theft-composite",
+    "name": "Vol suspect (composite)",
+    "category": "composite",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {"op": "eq", "field": "class", "value": "person"},
+          {"op": "in_zone", "field": "zone_id", "value": "retail"},
+          {"op": "eq", "field": "event", "value": "object_taken"},
+          {"op": "gt", "field": "speed", "value": 2.0}
+        ]
+      },
+      "window": {"start_hour": 0, "end_hour": 24},
+      "actions": [{"type": "alert", "config": {"severity": "critical"}}, {"type": "record", "config": {"duration_sec": 120}}]
+    }
+  }
+]

@@ -1,0 +1,181 @@
+{
+  "app": {
+    "name": "Citévision",
+    "tagline": "Next-generation intelligent surveillance"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "cameras": "Cameras",
+    "liveView": "Live View",
+    "videoWall": "Video Wall",
+    "map": "Map",
+    "zoneEditor": "Zone Editor",
+    "rules": "Rules",
+    "alerts": "Alerts",
+    "events": "Events",
+    "users": "Users",
+    "audit": "Audit",
+    "systemHealth": "System Health",
+    "settings": "Settings",
+    "logout": "Logout",
+    "collapse": "Collapse"
+  },
+  "login": {
+    "title": "Sign In",
+    "subtitle": "Access your surveillance platform",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign In",
+    "demo": "Demo accounts",
+    "error": "Invalid credentials"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "camerasOnline": "Cameras Online",
+    "activeAlerts": "Active Alerts",
+    "eventsToday": "Events Today",
+    "storageUsed": "Storage Used",
+    "recentAlerts": "Recent Alerts",
+    "systemStatus": "System Status",
+    "quickActions": "Quick Actions",
+    "viewAll": "View all"
+  },
+  "cameras": {
+    "title": "Camera Management",
+    "add": "Add Camera",
+    "wizard": {
+      "step1": "Network Discovery",
+      "step2": "Credentials",
+      "step3": "Preview",
+      "scan": "Scan Network",
+      "subnet": "Subnet",
+      "scanning": "Scanning...",
+      "selectDevice": "Select a device",
+      "username": "Username",
+      "password": "Password",
+      "testConnection": "Test Connection",
+      "preview": "Stream Preview",
+      "finish": "Complete Setup",
+      "back": "Back",
+      "next": "Next",
+      "connectionSuccess": "Connection successful"
+    },
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "recording": "Recording"
+    }
+  },
+  "users": {
+    "title": "Users",
+    "add": "Add",
+    "role": "Role",
+    "lastLogin": "Last Login"
+  },
+  "rules": {
+    "title": "Analytics Rules",
+    "add": "New Rule",
+    "conditions": "Conditions",
+    "actions": "Actions",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "acknowledge": "Acknowledge",
+    "severity": "Severity",
+    "all": "All",
+    "active": "Active",
+    "acknowledged": "Acknowledged"
+  },
+  "events": {
+    "title": "Event Timeline",
+    "filter": "Filter",
+    "timeline": "Timeline"
+  },
+  "liveView": {
+    "title": "Live View",
+    "selectCamera": "Select a camera",
+    "ptz": "PTZ Control",
+    "snapshot": "Snapshot"
+  },
+  "videoWall": {
+    "title": "Video Wall",
+    "layout": "Layout",
+    "grid1": "1 camera",
+    "grid4": "4 cameras",
+    "grid9": "9 cameras",
+    "grid16": "16 cameras"
+  },
+  "map": {
+    "title": "Site Map",
+    "cameras": "Cameras on map"
+  },
+  "zoneEditor": {
+    "title": "Zone Editor",
+    "addZone": "Add Zone",
+    "deleteZone": "Delete",
+    "save": "Save",
+    "tools": "Tools"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "notifications": "Notifications",
+    "storage": "Storage",
+    "language": "Language",
+    "theme": "Theme"
+  },
+  "audit": {
+    "title": "Audit Log",
+    "action": "Action",
+    "resource": "Resource",
+    "timestamp": "Timestamp"
+  },
+  "systemHealth": {
+    "title": "System Health",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "disk": "Disk",
+    "network": "Network",
+    "services": "Services"
+  },
+  "common": {
+    "search": "Search...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "noData": "No data",
+    "online": "Online",
+    "offline": "Offline",
+    "skipTour": "Skip tour"
+  },
+  "roles": {
+    "admin": "Administrator",
+    "operator": "Operator",
+    "viewer": "Viewer"
+  },
+  "onboarding": {
+    "next": "Next",
+    "prev": "Previous",
+    "done": "Done",
+    "sidebar": {
+      "title": "Navigation",
+      "description": "Access all features from the sidebar menu."
+    },
+    "search": {
+      "title": "Global Search",
+      "description": "Quickly find cameras, alerts, and events."
+    },
+    "theme": {
+      "title": "Theme",
+      "description": "Switch between dark and light mode."
+    },
+    "content": {
+      "title": "Main Area",
+      "description": "Your workspace for real-time surveillance."
+    }
+  }
+}

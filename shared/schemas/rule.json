@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://citevision.local/schemas/rule.json",
+  "title": "Rule",
+  "description": "Analytics rule definition for zones, lines, and behaviors",
+  "type": "object",
+  "required": ["rule_id", "camera_id", "rule_type", "enabled"],
+  "properties": {
+    "rule_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "camera_id": {
+      "type": "string"
+    },
+    "rule_type": {
+      "type": "string",
+      "enum": ["zone", "line", "loitering", "behavior", "correlation"]
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "name": {
+      "type": "string"
+    },
+    "zone": {
+      "type": "object",
+      "properties": {
+        "zone_id": { "type": "string" },
+        "polygon": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["x", "y"],
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            }
+          },
+          "minItems": 3
+        }
+      }
+    },
+    "line": {
+      "type": "object",
+      "properties": {
+        "line_id": { "type": "string" },
+        "start": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "end": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "direction_filter": {
+          "type": "string",
+          "enum": ["in", "out", "left", "right", "any"]
+        }
+      }
+    },
+    "loitering": {
+      "type": "object",
+      "properties": {
+        "threshold_seconds": { "type": "number", "minimum": 1 },
+        "zone_id": { "type": "string" }
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "properties": {
+        "heuristic": {
+          "type": "string",
+          "enum": ["running", "fallen", "crowd_density", "abandoned_object"]
+        },
+        "threshold": { "type": "number" }
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "properties": {
+        "source_camera_id": { "type": "string" },
+        "target_camera_id": { "type": "string" },
+        "max_time_delta_seconds": { "type": "number", "minimum": 0 },
+        "match_class": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

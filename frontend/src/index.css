@@ -1,0 +1,180 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --cv-deep: #050a12;
+    --cv-navy: #0a1628;
+    --cv-accent: #00d4ff;
+    --cv-surface: #0f1d32;
+    --cv-border: #1a2d4a;
+    --cv-text: #e8edf4;
+    --cv-muted: #6b7f99;
+  }
+
+  .light {
+    --cv-deep: #f0f4f8;
+    --cv-navy: #ffffff;
+    --cv-accent: #0099cc;
+    --cv-surface: #ffffff;
+    --cv-border: #d1dce8;
+    --cv-text: #0a1628;
+    --cv-muted: #5a6b7d;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply font-sans text-[var(--cv-text)] bg-cv-deep;
+    background-image: linear-gradient(180deg, var(--cv-deep) 0%, var(--cv-navy) 100%);
+    min-height: 100vh;
+  }
+
+  ::selection {
+    @apply bg-cv-accent/30 text-white;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-cv-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-cv-accent/40;
+  }
+}
+
+@layer components {
+  .cv-card {
+    @apply bg-cv-surface/80 backdrop-blur-sm border border-cv-border rounded-xl shadow-card;
+  }
+
+  .cv-card-hover {
+    @apply cv-card transition-all duration-300 hover:border-cv-accent/30 hover:shadow-glow;
+  }
+
+  .cv-btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+      transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cv-accent/50 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .cv-btn-primary {
+    @apply cv-btn bg-cv-accent text-cv-deep hover:bg-cv-accent-dim hover:shadow-glow;
+  }
+
+  .cv-btn-secondary {
+    @apply cv-btn bg-cv-surface border border-cv-border text-[var(--cv-text)] hover:border-cv-accent/40;
+  }
+
+  .cv-btn-ghost {
+    @apply cv-btn text-cv-muted hover:text-cv-accent hover:bg-cv-accent/5;
+  }
+
+  .cv-input {
+    @apply w-full px-4 py-2.5 bg-cv-deep/50 border border-cv-border rounded-lg text-[var(--cv-text)]
+      placeholder:text-cv-muted focus:outline-none focus:border-cv-accent/50 focus:ring-1 focus:ring-cv-accent/30 transition-colors;
+  }
+
+  .cv-label {
+    @apply block text-sm font-medium text-cv-muted mb-1.5;
+  }
+
+  .cv-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+
+  .cv-badge-online {
+    @apply cv-badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/30;
+  }
+
+  .cv-badge-offline {
+    @apply cv-badge bg-red-500/15 text-red-400 border border-red-500/30;
+  }
+
+  .cv-badge-recording {
+    @apply cv-badge bg-cv-accent/15 text-cv-accent border border-cv-accent/30;
+  }
+
+  .cv-page-title {
+    @apply font-display text-2xl font-semibold tracking-wide text-[var(--cv-text)];
+  }
+
+  .cv-stat-value {
+    @apply font-display text-3xl font-bold text-cv-accent;
+  }
+
+  .cv-grid-bg {
+    @apply bg-grid-pattern bg-grid;
+  }
+
+  .cv-video-placeholder {
+    @apply relative bg-cv-deep rounded-lg overflow-hidden aspect-video flex items-center justify-center;
+    background: linear-gradient(135deg, #050a12 0%, #0a1628 50%, #0f1d32 100%);
+  }
+
+  .cv-video-placeholder::after {
+    content: '';
+    @apply absolute inset-0 opacity-20;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 212, 255, 0.03) 2px,
+      rgba(0, 212, 255, 0.03) 4px
+    );
+    animation: scanLine 3s ease-in-out infinite;
+  }
+}
+
+/* driver.js custom theme */
+.cv-driver-popover {
+  background: #0f1d32 !important;
+  border: 1px solid #1a2d4a !important;
+  color: #e8edf4 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 0 40px rgba(0, 212, 255, 0.15) !important;
+}
+
+.cv-driver-popover .driver-popover-title {
+  font-family: 'Rajdhani', sans-serif !important;
+  font-size: 1.125rem !important;
+  color: #00d4ff !important;
+}
+
+.cv-driver-popover .driver-popover-description {
+  color: #6b7f99 !important;
+}
+
+.cv-driver-popover .driver-popover-progress-text {
+  color: #6b7f99 !important;
+}
+
+.cv-driver-popover button {
+  background: #00d4ff !important;
+  color: #050a12 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  text-shadow: none !important;
+  font-weight: 500 !important;
+}
+
+.cv-driver-popover .driver-popover-prev-btn {
+  background: transparent !important;
+  color: #6b7f99 !important;
+  border: 1px solid #1a2d4a !important;
+}
+
+.cv-driver-popover .driver-popover-close-btn {
+  color: #6b7f99 !important;
+}

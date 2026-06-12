@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://citevision.local/schemas/event.json",
+  "title": "Event",
+  "description": "Analytics event generated from detections and rules",
+  "type": "object",
+  "required": ["event_id", "camera_id", "event_type", "timestamp", "severity"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique event identifier"
+    },
+    "camera_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "zone_enter",
+        "zone_exit",
+        "line_cross",
+        "loitering",
+        "behavior_anomaly",
+        "correlation_match",
+        "face_detected",
+        "plate_detected"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "warning", "critical"]
+    },
+    "track_id": {
+      "type": "integer",
+      "minimum": -1
+    },
+    "zone_id": {
+      "type": "string"
+    },
+    "line_id": {
+      "type": "string"
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["in", "out", "left", "right", "unknown"]
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
