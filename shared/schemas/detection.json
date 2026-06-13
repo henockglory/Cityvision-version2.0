@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://citevision.local/schemas/detection.json",
+  "title": "Detection",
+  "description": "Object detection payload published to cv/detections/{camera_id}",
+  "type": "object",
+  "required": ["camera_id", "timestamp", "frame_id", "detections"],
+  "properties": {
+    "camera_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "frame_id": { "type": "integer", "minimum": 0 },
+    "resolution": {
+      "type": "object",
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["width", "height"]
+    },
+    "detections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["track_id", "class_id", "class_name", "confidence", "bbox"],
+        "properties": {
+          "track_id": { "type": "integer", "minimum": -1 },
+          "class_id": { "type": "integer", "minimum": 0 },
+          "class_name": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "bbox": {
+            "type": "object",
+            "required": ["x", "y", "width", "height"],
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "width": { "type": "number", "minimum": 0 },
+              "height": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

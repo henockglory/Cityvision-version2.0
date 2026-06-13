@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Go test (rules-engine)
+        working-directory: rules-engine
+        run: |
+          go mod tidy
+          go test ./...
+
+      - name: Pytest (ai-engine)
+        working-directory: ai-engine
+        run: |
+          pip install -e .
+          pip install pytest pytest-asyncio httpx
+          pytest
+
+      - name: npm build (web placeholder)
+        working-directory: web
+        run: |
+          npm install
+          npm run build

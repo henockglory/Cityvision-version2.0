@@ -1,0 +1,107 @@
+import { useTranslation } from 'react-i18next';
+import { MapPin, Camera, Map } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
+import LoadingState from '@/components/ui/LoadingState';
+import EmptyState from '@/components/EmptyState';
+import ErrorState from '@/components/ErrorState';
+import { useCameras } from '@/hooks/api/queries';
+import { useSound } from '@/hooks/useSound';
+
+export default function MapPage() {
+  const { t } = useTranslation();
+  const { playClick } = useSound();
+  const { data: cameras = [], isLoading, isError, refetch } = useCameras();
+
+  if (isLoading) return <LoadingState />;
+
+  if (isError) {
+    return (
+      <div>
+        <PageHeader title={t('map.title')} />
+        <ErrorState onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  if (cameras.length === 0) {
+    return (
+      <div>
+        <PageHeader title={t('map.title')} />
+        <EmptyState title={t('map.empty')} hint={t('map.emptyHint')} icon={Map} />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader title={t('map.title')} subtitle={t('map.cameras')} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-3 cv-card overflow-hidden relative aspect-[16/10] min-h-[400px]">
+          <div className="absolute inset-0 bg-cv-deep cv-grid-bg">
+            <svg className="absolute inset-0 w-full h-full opacity-20">
+              <defs>
+                <pattern id="mapGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#00D4FF" strokeWidth="0.5" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#mapGrid)" />
+            </svg>
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <rect x="10" y="10" width="80" height="80" fill="none" stroke="#1A2D4A" strokeWidth="0.3" rx="2" />
+            </svg>
+          </div>
+
+          {cameras.map((cam, i) => {
+            const x = 15 + ((i * 17) % 70);
+            const y = 20 + ((i * 23) % 60);
+            const isOnline = cam.status !== 'offline';
+            return (
+              <button
+                key={cam.id}
+                type="button"
+                onClick={() => playClick()}
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 group"
+                style={{ left: `${x}%`, top: `${y}%` }}
+              >
+                <div className={`relative p-2 rounded-full border-2 transition-all group-hover:scale-110 ${
+                  isOnline ? 'border-cv-accent bg-cv-accent/20 shadow-glow' : 'border-red-400/50 bg-red-400/10'
+                }`}>
+                  <Camera className={`w-4 h-4 ${isOnline ? 'text-cv-accent' : 'text-red-400'}`} />
+                  {isOnline && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
+                </div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-2 py-0.5 rounded bg-cv-surface border border-cv-border text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                  {cam.name}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="cv-card p-4">
+          <h3 className="font-display text-sm font-semibold mb-3 flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-cv-accent" />
+            {t('map.cameras')}
+          </h3>
+          <div className="space-y-2 max-h-[500px] overflow-y-auto">
+            {cameras.map((cam) => (
+              <div
+                key={cam.id}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-cv-accent/5 transition-colors cursor-pointer"
+                onClick={() => playClick()}
+              >
+                <div className={`w-2 h-2 rounded-full ${cam.status !== 'offline' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{cam.name}</p>
+                  <p className="text-xs text-cv-muted">{cam.location}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

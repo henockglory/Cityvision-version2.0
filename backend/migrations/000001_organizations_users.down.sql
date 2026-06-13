@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS system_config;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS organizations;

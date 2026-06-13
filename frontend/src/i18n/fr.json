@@ -1,0 +1,234 @@
+{
+  "app": {
+    "name": "Citévision",
+    "tagline": "Surveillance intelligente nouvelle génération"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "cameras": "Caméras",
+    "liveView": "Vue directe",
+    "videoWall": "Mur vidéo",
+    "map": "Carte",
+    "zoneEditor": "Éditeur de zones",
+    "rules": "Règles",
+    "alerts": "Alertes",
+    "events": "Événements",
+    "users": "Utilisateurs",
+    "audit": "Audit",
+    "systemHealth": "Santé système",
+    "settings": "Paramètres",
+    "logout": "Déconnexion",
+    "collapse": "Réduire"
+  },
+  "setup": {
+    "title": "Configuration initiale",
+    "subtitle": "Configurez votre organisation Citévision",
+    "step1": "Organisation",
+    "step2": "Administrateur",
+    "step3": "Confirmation",
+    "orgName": "Nom de l'organisation",
+    "adminEmail": "Email administrateur",
+    "adminPassword": "Mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "summaryOrg": "Organisation",
+    "summaryEmail": "Compte admin",
+    "next": "Suivant",
+    "back": "Retour",
+    "finish": "Terminer la configuration",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
+    "error": "Échec de la configuration",
+    "checking": "Vérification du système..."
+  },
+  "login": {
+    "title": "Connexion",
+    "subtitle": "Accédez à votre plateforme de surveillance",
+    "username": "Email",
+    "password": "Mot de passe",
+    "submit": "Se connecter",
+    "error": "Identifiants invalides"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "camerasOnline": "Caméras en ligne",
+    "activeAlerts": "Alertes actives",
+    "eventsToday": "Événements (24h)",
+    "rulesActive": "Règles actives",
+    "recentAlerts": "Alertes récentes",
+    "systemStatus": "État du système",
+    "quickActions": "Actions rapides",
+    "viewAll": "Voir tout",
+    "noAlerts": "Aucune alerte récente"
+  },
+  "cameras": {
+    "title": "Gestion des caméras",
+    "add": "Ajouter une caméra",
+    "empty": "Aucune caméra configurée",
+    "emptyHint": "Ajoutez votre première caméra via l'assistant d'installation",
+    "wizard": {
+      "step1": "Découverte réseau",
+      "step2": "Identifiants",
+      "step3": "Aperçu",
+      "scan": "Scanner le réseau",
+      "subnet": "Sous-réseau (CIDR)",
+      "scanning": "Analyse en cours...",
+      "selectDevice": "Sélectionner un appareil",
+      "username": "Nom d'utilisateur",
+      "password": "Mot de passe",
+      "cameraName": "Nom de la caméra",
+      "testConnection": "Tester la connexion",
+      "preview": "Aperçu du flux",
+      "finish": "Terminer l'installation",
+      "back": "Retour",
+      "next": "Suivant",
+      "connectionSuccess": "Connexion réussie",
+      "connectionFailed": "Connexion échouée",
+      "scanError": "Échec du scan réseau",
+      "createError": "Échec de la création de la caméra",
+      "noDevices": "Aucun appareil détecté"
+    },
+    "status": {
+      "online": "En ligne",
+      "offline": "Hors ligne",
+      "recording": "Enregistrement"
+    }
+  },
+  "users": {
+    "title": "Utilisateurs",
+    "add": "Ajouter",
+    "role": "Rôle",
+    "lastLogin": "Dernière connexion",
+    "empty": "Aucun utilisateur",
+    "emptyHint": "Les utilisateurs apparaîtront ici une fois créés"
+  },
+  "rules": {
+    "title": "Règles d'analyse",
+    "add": "Nouvelle règle",
+    "conditions": "Conditions",
+    "actions": "Actions",
+    "enabled": "Activée",
+    "disabled": "Désactivée",
+    "empty": "Aucune règle",
+    "emptyHint": "Créez des règles pour automatiser vos alertes"
+  },
+  "alerts": {
+    "title": "Alertes",
+    "acknowledge": "Acquitter",
+    "severity": "Sévérité",
+    "all": "Toutes",
+    "active": "Actives",
+    "acknowledged": "Acquittée",
+    "empty": "Aucune alerte",
+    "emptyHint": "Les alertes apparaîtront ici en temps réel"
+  },
+  "events": {
+    "title": "Chronologie des événements",
+    "filter": "Filtrer",
+    "timeline": "Timeline",
+    "empty": "Aucun événement",
+    "emptyHint": "Les événements de détection apparaîtront ici"
+  },
+  "liveView": {
+    "title": "Vue directe",
+    "selectCamera": "Sélectionner une caméra",
+    "ptz": "Contrôle PTZ",
+    "snapshot": "Capture",
+    "empty": "Aucune caméra disponible",
+    "emptyHint": "Configurez des caméras pour la vue directe"
+  },
+  "videoWall": {
+    "title": "Mur vidéo",
+    "layout": "Disposition",
+    "grid1": "1 caméra",
+    "grid4": "4 caméras",
+    "grid9": "9 caméras",
+    "grid16": "16 caméras",
+    "empty": "Aucune caméra",
+    "emptyHint": "Ajoutez des caméras pour le mur vidéo"
+  },
+  "map": {
+    "title": "Carte des sites",
+    "cameras": "Caméras sur la carte",
+    "empty": "Aucune caméra sur la carte",
+    "emptyHint": "Les caméras géolocalisées apparaîtront ici"
+  },
+  "zoneEditor": {
+    "title": "Éditeur de zones",
+    "addZone": "Ajouter une zone",
+    "deleteZone": "Supprimer",
+    "save": "Enregistrer",
+    "tools": "Outils",
+    "empty": "Aucune zone définie",
+    "emptyHint": "Dessinez des zones de détection sur le canevas"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "general": "Général",
+    "notifications": "Notifications",
+    "language": "Langue",
+    "theme": "Thème",
+    "sound": "Sons interface",
+    "soundOn": "Activés",
+    "soundOff": "Désactivés"
+  },
+  "audit": {
+    "title": "Journal d'audit",
+    "action": "Action",
+    "resource": "Ressource",
+    "timestamp": "Horodatage",
+    "empty": "Aucune entrée d'audit",
+    "emptyHint": "Les actions utilisateur seront enregistrées ici"
+  },
+  "systemHealth": {
+    "title": "Santé système",
+    "services": "Services",
+    "empty": "Aucune donnée de santé",
+    "emptyHint": "Les métriques système apparaîtront ici"
+  },
+  "emptyState": {
+    "defaultTitle": "Rien ici pour le moment",
+    "defaultHint": "Les données apparaîtront une fois disponibles"
+  },
+  "errorState": {
+    "title": "Erreur de chargement",
+    "hint": "Impossible de récupérer les données depuis l'API",
+    "retry": "Réessayer"
+  },
+  "common": {
+    "search": "Rechercher...",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "loading": "Chargement...",
+    "noData": "Aucune donnée",
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "skipTour": "Passer la visite"
+  },
+  "roles": {
+    "admin": "Administrateur",
+    "operator": "Opérateur",
+    "viewer": "Observateur"
+  },
+  "onboarding": {
+    "next": "Suivant",
+    "prev": "Précédent",
+    "done": "Terminer",
+    "sidebar": {
+      "title": "Navigation",
+      "description": "Accédez à toutes les fonctionnalités via le menu latéral."
+    },
+    "search": {
+      "title": "Recherche globale",
+      "description": "Trouvez rapidement caméras, alertes et événements."
+    },
+    "theme": {
+      "title": "Thème",
+      "description": "Basculez entre le mode sombre et clair."
+    },
+    "content": {
+      "title": "Zone principale",
+      "description": "Votre espace de travail pour la surveillance en temps réel."
+    }
+  }
+}

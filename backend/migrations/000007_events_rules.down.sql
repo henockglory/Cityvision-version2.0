@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS rules;
+DROP TABLE IF EXISTS events;
+DROP TYPE IF EXISTS event_severity;

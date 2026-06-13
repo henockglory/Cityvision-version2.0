@@ -1,0 +1,210 @@
+import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import {
+  Building2, UserPlus, CheckCircle, ChevronRight, ChevronLeft, Loader2,
+} from 'lucide-react';
+import EyeLogo from '@/components/EyeLogo';
+import { useInitializeSetup } from '@/hooks/api/queries';
+import { useAuthStore } from '@/stores/authStore';
+import { useSound } from '@/hooks/useSound';
+
+type Step = 1 | 2 | 3;
+
+export default function Setup() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { playClick, playSonar } = useSound();
+  const setSiteId = useAuthStore((s) => s.setSiteId);
+  const initMutation = useInitializeSetup();
+
+  const [step, setStep] = useState<Step>(1);
+  const [orgName, setOrgName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleFinish = async () => {
+    setError('');
+    playClick();
+    try {
+      const { data } = await initMutation.mutateAsync({
+        orgName: orgName.trim(),
+        adminEmail: adminEmail.trim(),
+        adminPassword,
+      });
+      if (data.org_id) {
+        localStorage.setItem('cv_org_id', data.org_id);
+      }
+      if (data.site_id) {
+        setSiteId(data.site_id);
+      }
+      playSonar();
+      navigate('/login');
+    } catch {
+      setError(t('setup.error'));
+    }
+  };
+
+  const handleNext = (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    playClick();
+
+    if (step === 2 && adminPassword !== confirmPassword) {
+      setError(t('setup.passwordMismatch'));
+      return;
+    }
+
+    if (step < 3) {
+      setStep((s) => (s + 1) as Step);
+    } else {
+      void handleFinish();
+    }
+  };
+
+  const steps = [
+    { n: 1, label: t('setup.step1'), icon: Building2 },
+    { n: 2, label: t('setup.step2'), icon: UserPlus },
+    { n: 3, label: t('setup.step3'), icon: CheckCircle },
+  ];
+
+  return (
+    <div className="min-h-screen flex items-center justify-center cv-grid-bg relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-cv-deep via-cv-navy to-cv-deep" />
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cv-accent/5 rounded-full blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cv-accent/5 rounded-full blur-3xl" />
+
+      <div className="relative z-10 w-full max-w-lg px-4 animate-fade-in">
+        <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <EyeLogo size={64} />
+          </div>
+          <h1 className="font-display text-3xl font-bold text-cv-accent tracking-wider">
+            {t('setup.title')}
+          </h1>
+          <p className="text-cv-muted mt-2">{t('setup.subtitle')}</p>
+        </div>
+
+        <div className="flex items-center justify-center gap-3 mb-6">
+          {steps.map((s, i) => (
+            <div key={s.n} className="flex items-center gap-2">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm ${
+                step === s.n ? 'border-cv-accent bg-cv-accent/10 text-cv-accent' :
+                step > s.n ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' :
+                'border-cv-border text-cv-muted'
+              }`}>
+                <s.icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{s.label}</span>
+              </div>
+              {i < 2 && <ChevronRight className="w-4 h-4 text-cv-muted" />}
+            </div>
+          ))}
+        </div>
+
+        <form onSubmit={handleNext} className="cv-card p-8 space-y-5">
+          {error && (
+            <div className="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          {step === 1 && (
+            <div>
+              <label className="cv-label" htmlFor="orgName">{t('setup.orgName')}</label>
+              <input
+                id="orgName"
+                type="text"
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                className="cv-input"
+                required
+                autoFocus
+              />
+            </div>
+          )}
+
+          {step === 2 && (
+            <>
+              <div>
+                <label className="cv-label" htmlFor="adminEmail">{t('setup.adminEmail')}</label>
+                <input
+                  id="adminEmail"
+                  type="email"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  className="cv-input"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="cv-label" htmlFor="adminPassword">{t('setup.adminPassword')}</label>
+                <input
+                  id="adminPassword"
+                  type="password"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  className="cv-input"
+                  required
+                  minLength={8}
+                />
+              </div>
+              <div>
+                <label className="cv-label" htmlFor="confirmPassword">{t('setup.confirmPassword')}</label>
+                <input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="cv-input"
+                  required
+                  minLength={8}
+                />
+              </div>
+            </>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-cv-deep/50 border border-cv-border">
+                <p className="text-xs text-cv-muted uppercase tracking-wider mb-1">{t('setup.summaryOrg')}</p>
+                <p className="font-medium">{orgName}</p>
+              </div>
+              <div className="p-4 rounded-lg bg-cv-deep/50 border border-cv-border">
+                <p className="text-xs text-cv-muted uppercase tracking-wider mb-1">{t('setup.summaryEmail')}</p>
+                <p className="font-medium">{adminEmail}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-between pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                playClick();
+                if (step > 1) setStep((s) => (s - 1) as Step);
+              }}
+              disabled={step === 1}
+              className="cv-btn-secondary"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              {t('setup.back')}
+            </button>
+            <button type="submit" disabled={initMutation.isPending} className="cv-btn-primary">
+              {initMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : step === 3 ? (
+                <CheckCircle className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+              {step === 3 ? t('setup.finish') : t('setup.next')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

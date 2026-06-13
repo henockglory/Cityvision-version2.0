@@ -1,0 +1,234 @@
+{
+  "app": {
+    "name": "Citévision",
+    "tagline": "Next-generation intelligent surveillance"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "cameras": "Cameras",
+    "liveView": "Live View",
+    "videoWall": "Video Wall",
+    "map": "Map",
+    "zoneEditor": "Zone Editor",
+    "rules": "Rules",
+    "alerts": "Alerts",
+    "events": "Events",
+    "users": "Users",
+    "audit": "Audit",
+    "systemHealth": "System Health",
+    "settings": "Settings",
+    "logout": "Logout",
+    "collapse": "Collapse"
+  },
+  "setup": {
+    "title": "Initial Setup",
+    "subtitle": "Configure your Citévision organization",
+    "step1": "Organization",
+    "step2": "Administrator",
+    "step3": "Confirmation",
+    "orgName": "Organization name",
+    "adminEmail": "Admin email",
+    "adminPassword": "Password",
+    "confirmPassword": "Confirm password",
+    "summaryOrg": "Organization",
+    "summaryEmail": "Admin account",
+    "next": "Next",
+    "back": "Back",
+    "finish": "Complete setup",
+    "passwordMismatch": "Passwords do not match",
+    "error": "Setup failed",
+    "checking": "Checking system status..."
+  },
+  "login": {
+    "title": "Sign In",
+    "subtitle": "Access your surveillance platform",
+    "username": "Email",
+    "password": "Password",
+    "submit": "Sign In",
+    "error": "Invalid credentials"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "camerasOnline": "Cameras Online",
+    "activeAlerts": "Active Alerts",
+    "eventsToday": "Events (24h)",
+    "rulesActive": "Active Rules",
+    "recentAlerts": "Recent Alerts",
+    "systemStatus": "System Status",
+    "quickActions": "Quick Actions",
+    "viewAll": "View all",
+    "noAlerts": "No recent alerts"
+  },
+  "cameras": {
+    "title": "Camera Management",
+    "add": "Add Camera",
+    "empty": "No cameras configured",
+    "emptyHint": "Add your first camera using the setup wizard",
+    "wizard": {
+      "step1": "Network Discovery",
+      "step2": "Credentials",
+      "step3": "Preview",
+      "scan": "Scan Network",
+      "subnet": "Subnet (CIDR)",
+      "scanning": "Scanning...",
+      "selectDevice": "Select a device",
+      "username": "Username",
+      "password": "Password",
+      "cameraName": "Camera name",
+      "testConnection": "Test Connection",
+      "preview": "Stream Preview",
+      "finish": "Complete Setup",
+      "back": "Back",
+      "next": "Next",
+      "connectionSuccess": "Connection successful",
+      "connectionFailed": "Connection failed",
+      "scanError": "Network scan failed",
+      "createError": "Failed to create camera",
+      "noDevices": "No devices found"
+    },
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "recording": "Recording"
+    }
+  },
+  "users": {
+    "title": "Users",
+    "add": "Add",
+    "role": "Role",
+    "lastLogin": "Last Login",
+    "empty": "No users",
+    "emptyHint": "Users will appear here once created"
+  },
+  "rules": {
+    "title": "Analytics Rules",
+    "add": "New Rule",
+    "conditions": "Conditions",
+    "actions": "Actions",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "empty": "No rules",
+    "emptyHint": "Create rules to automate your alerts"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "acknowledge": "Acknowledge",
+    "severity": "Severity",
+    "all": "All",
+    "active": "Active",
+    "acknowledged": "Acknowledged",
+    "empty": "No alerts",
+    "emptyHint": "Alerts will appear here in real time"
+  },
+  "events": {
+    "title": "Event Timeline",
+    "filter": "Filter",
+    "timeline": "Timeline",
+    "empty": "No events",
+    "emptyHint": "Detection events will appear here"
+  },
+  "liveView": {
+    "title": "Live View",
+    "selectCamera": "Select a camera",
+    "ptz": "PTZ Control",
+    "snapshot": "Snapshot",
+    "empty": "No cameras available",
+    "emptyHint": "Configure cameras for live view"
+  },
+  "videoWall": {
+    "title": "Video Wall",
+    "layout": "Layout",
+    "grid1": "1 camera",
+    "grid4": "4 cameras",
+    "grid9": "9 cameras",
+    "grid16": "16 cameras",
+    "empty": "No cameras",
+    "emptyHint": "Add cameras for the video wall"
+  },
+  "map": {
+    "title": "Site Map",
+    "cameras": "Cameras on map",
+    "empty": "No cameras on map",
+    "emptyHint": "Geolocated cameras will appear here"
+  },
+  "zoneEditor": {
+    "title": "Zone Editor",
+    "addZone": "Add Zone",
+    "deleteZone": "Delete",
+    "save": "Save",
+    "tools": "Tools",
+    "empty": "No zones defined",
+    "emptyHint": "Draw detection zones on the canvas"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "notifications": "Notifications",
+    "language": "Language",
+    "theme": "Theme",
+    "sound": "Interface sounds",
+    "soundOn": "Enabled",
+    "soundOff": "Disabled"
+  },
+  "audit": {
+    "title": "Audit Log",
+    "action": "Action",
+    "resource": "Resource",
+    "timestamp": "Timestamp",
+    "empty": "No audit entries",
+    "emptyHint": "User actions will be logged here"
+  },
+  "systemHealth": {
+    "title": "System Health",
+    "services": "Services",
+    "empty": "No health data",
+    "emptyHint": "System metrics will appear here"
+  },
+  "emptyState": {
+    "defaultTitle": "Nothing here yet",
+    "defaultHint": "Data will appear once available"
+  },
+  "errorState": {
+    "title": "Failed to load",
+    "hint": "Could not fetch data from the API",
+    "retry": "Retry"
+  },
+  "common": {
+    "search": "Search...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "noData": "No data",
+    "online": "Online",
+    "offline": "Offline",
+    "skipTour": "Skip tour"
+  },
+  "roles": {
+    "admin": "Administrator",
+    "operator": "Operator",
+    "viewer": "Viewer"
+  },
+  "onboarding": {
+    "next": "Next",
+    "prev": "Previous",
+    "done": "Done",
+    "sidebar": {
+      "title": "Navigation",
+      "description": "Access all features from the sidebar menu."
+    },
+    "search": {
+      "title": "Global Search",
+      "description": "Quickly find cameras, alerts, and events."
+    },
+    "theme": {
+      "title": "Theme",
+      "description": "Switch between dark and light mode."
+    },
+    "content": {
+      "title": "Main Area",
+      "description": "Your workspace for real-time surveillance."
+    }
+  }
+}
