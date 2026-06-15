@@ -73,5 +73,17 @@ ensure_kv() {
 ensure_kv MINIO_ENDPOINT "$MINIO_ENDPOINT_VAL"
 ensure_kv MINIO_ACCESS_KEY "$MINIO_ACCESS_VAL"
 ensure_kv MINIO_SECRET_KEY "$MINIO_SECRET_VAL"
-ensure_kv MINIO_BUCKET "$MINIO_BUCKET_VAL"
 ensure_kv PUBLIC_API_BASE "$PUBLIC_API_VAL"
+
+# Evidence bucket (distinct from recordings bucket in docker-compose init)
+CURRENT_BUCKET="$(grep '^MINIO_BUCKET=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' \r' || true)"
+if [[ -z "$CURRENT_BUCKET" || "$CURRENT_BUCKET" == "citevision-recordings" ]]; then
+  if grep -q '^MINIO_BUCKET=' "$ENV_FILE" 2>/dev/null; then
+    sed -i 's/^MINIO_BUCKET=.*/MINIO_BUCKET=citevision-evidence/' "$ENV_FILE"
+  else
+    echo "MINIO_BUCKET=citevision-evidence" >> "$ENV_FILE"
+  fi
+  echo "[OK] MINIO_BUCKET=citevision-evidence"
+else
+  echo "[OK] MINIO_BUCKET=$CURRENT_BUCKET"
+fi

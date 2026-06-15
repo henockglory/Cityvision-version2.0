@@ -26,7 +26,11 @@ type Config struct {
 
 func ConfigFromEnv() Config {
 	useSSL := strings.EqualFold(os.Getenv("MINIO_USE_SSL"), "true")
-	endpoint := os.Getenv("MINIO_ENDPOINT")
+	rawEndpoint := strings.TrimSpace(os.Getenv("MINIO_ENDPOINT"))
+	if strings.HasPrefix(strings.ToLower(rawEndpoint), "https://") {
+		useSSL = true
+	}
+	endpoint := normalizeMinIOEndpoint(rawEndpoint)
 	if endpoint == "" {
 		host := os.Getenv("MINIO_HOST")
 		if host == "" {
@@ -199,4 +203,18 @@ func getenv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// normalizeMinIOEndpoint strips scheme/path from MINIO_ENDPOINT for minio-go (host:port only).
+func normalizeMinIOEndpoint(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.Contains(raw, "://") {
+		if u, err := url.Parse(raw); err == nil && u.Host != "" {
+			return u.Host
+		}
+	}
+	return strings.TrimPrefix(strings.TrimPrefix(raw, "https://"), "http://")
 }
