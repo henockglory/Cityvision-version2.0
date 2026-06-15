@@ -4,6 +4,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import SetupGuard from '@/components/SetupGuard';
 import Setup from '@/pages/Setup';
 import Login from '@/pages/Login';
+import DemoCenter from '@/pages/DemoCenter';
 import Dashboard from '@/pages/Dashboard';
 import Cameras from '@/pages/Cameras';
 import Users from '@/pages/Users';
@@ -17,11 +18,13 @@ import ZoneEditor from '@/pages/ZoneEditor';
 import Settings from '@/pages/Settings';
 import Audit from '@/pages/Audit';
 import SystemHealth from '@/pages/SystemHealth';
+import { RouteErrorPage } from '@/components/ErrorBoundary';
 import { useAuthStore } from '@/stores/authStore';
 
 function AuthRedirect({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  if (isAuthenticated) return <Navigate to="/" replace />;
+  const token = useAuthStore((s) => s.token);
+  if (isAuthenticated && token) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -57,8 +60,10 @@ export const router = createBrowserRouter([
         </ProtectedRoute>
       </GuardedApp>
     ),
+    errorElement: <RouteErrorPage />,
     children: [
       { index: true, element: <Dashboard /> },
+      { path: 'demo', element: <DemoCenter /> },
       {
         path: 'cameras',
         element: (

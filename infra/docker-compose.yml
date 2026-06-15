@@ -62,15 +62,35 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/minio/health/live || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 15s
 
+  go2rtc:
+    image: alexxit/go2rtc:latest
+    container_name: citevision-v2-go2rtc
+    restart: unless-stopped
+    ports:
+      - "${GO2RTC_PORT:-1984}:1984"
+      - "${GO2RTC_RTSP_PORT:-8554}:8554"
+      - "${GO2RTC_WEBRTC_PORT:-8555}:8555"
+      - "${GO2RTC_WEBRTC_PORT:-8555}:8555/udp"
+    volumes:
+      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+      - ${VIDEOS_PATH:-./data/videos}:/videos:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:1984/api || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   minio-init:
     image: minio/mc:latest
     container_name: citevision-v2-minio-init
+    restart: "no"
     depends_on:
       minio:
         condition: service_started

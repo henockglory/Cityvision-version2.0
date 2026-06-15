@@ -9,10 +9,12 @@ import (
 
 // ConditionNode represents declarative ET/OU/NON (AND/OR/NOT) trees.
 type ConditionNode struct {
-	Op       string          `json:"op"`
-	Field    string          `json:"field,omitempty"`
-	Value    json.RawMessage `json:"value,omitempty"`
-	Children []ConditionNode `json:"children,omitempty"`
+	Op            string          `json:"op"`
+	Field         string          `json:"field,omitempty"`
+	Value         json.RawMessage `json:"value,omitempty"`
+	Children      []ConditionNode `json:"children,omitempty"`
+	WindowSeconds int             `json:"window_seconds,omitempty"`
+	KeyFields     []string        `json:"key_fields,omitempty"`
 }
 
 type Action struct {
@@ -52,11 +54,18 @@ func ValidateDefinition(raw json.RawMessage) error {
 	return nil
 }
 
-func Evaluate(def RuleDefinition, payload map[string]interface{}, now time.Time) (bool, []Action) {
+func Evaluate(def RuleDefinition, payload map[string]interface{}, now time.Time, store SequenceStore) (bool, []Action) {
 	if !def.Enabled {
 		return false, nil
 	}
+	payload = normalizePayload(payload)
 	if def.Window != nil && !inTimeWindow(*def.Window, now) {
+		return false, nil
+	}
+	if strings.EqualFold(def.Condition.Op, "SEQUENCE") {
+		if evalSequence(def.Condition, def, payload, now, store) {
+			return true, def.Actions
+		}
 		return false, nil
 	}
 	if evalCondition(def.Condition, payload) {
@@ -90,7 +99,7 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		}
 		return false
 	case "EQ":
-		v, ok := payload[node.Field]
+		v, ok := fieldValue(payload, node.Field)
 		if !ok {
 			return false
 		}
@@ -98,7 +107,11 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		_ = json.Unmarshal(node.Value, &expected)
 		return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", expected)
 	case "GT":
-		v, ok := toFloat(payload[node.Field])
+		raw, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		v, ok := toFloat(raw)
 		if !ok {
 			return false
 		}
@@ -106,7 +119,11 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		_ = json.Unmarshal(node.Value, &expected)
 		return v > expected
 	case "LT":
-		v, ok := toFloat(payload[node.Field])
+		raw, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		v, ok := toFloat(raw)
 		if !ok {
 			return false
 		}
@@ -114,7 +131,7 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		_ = json.Unmarshal(node.Value, &expected)
 		return v < expected
 	case "CONTAINS":
-		v, ok := payload[node.Field]
+		v, ok := fieldValue(payload, node.Field)
 		if !ok {
 			return false
 		}
@@ -122,16 +139,46 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		_ = json.Unmarshal(node.Value, &expected)
 		return strings.Contains(fmt.Sprintf("%v", v), expected)
 	case "IN_ZONE", "CROSS_LINE":
-		v, ok := payload[node.Field]
+		v, ok := fieldValue(payload, node.Field)
 		if !ok {
 			return false
 		}
 		var expected interface{}
 		_ = json.Unmarshal(node.Value, &expected)
 		return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", expected)
+	case "MATCHES_CLASS":
+		v, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		var expected string
+		_ = json.Unmarshal(node.Value, &expected)
+		return matchesClass(fmt.Sprintf("%v", v), expected)
 	default:
 		return false
 	}
+}
+
+func fieldValue(payload map[string]interface{}, field string) (interface{}, bool) {
+	if field == "" {
+		return nil, false
+	}
+	if !strings.Contains(field, ".") {
+		v, ok := payload[field]
+		return v, ok
+	}
+	var cur interface{} = payload
+	for _, part := range strings.Split(field, ".") {
+		m, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[part]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 func inTimeWindow(w TimeWindow, now time.Time) bool {
@@ -171,6 +218,7 @@ func toFloat(v interface{}) (float64, bool) {
 }
 
 func DedupKey(def RuleDefinition, payload map[string]interface{}) string {
+	payload = normalizePayload(payload)
 	fields := def.DedupKeyFields
 	if len(fields) == 0 {
 		fields = []string{"camera_id", "event_type", "track_id"}
@@ -182,4 +230,22 @@ func DedupKey(def RuleDefinition, payload map[string]interface{}) string {
 		}
 	}
 	return strings.Join(parts, "|")
+}
+
+func normalizePayload(payload map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(payload)+2)
+	for k, v := range payload {
+		out[k] = v
+	}
+	if _, ok := out["event"]; !ok {
+		if et, ok := out["event_type"].(string); ok {
+			out["event"] = et
+		}
+	}
+	if _, ok := out["event_type"]; !ok {
+		if ev, ok := out["event"].(string); ok {
+			out["event_type"] = ev
+		}
+	}
+	return out
 }

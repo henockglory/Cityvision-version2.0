@@ -1,0 +1,255 @@
+[
+  {
+    "id": "tpl-crowd-panic",
+    "name": "Panique de foule",
+    "description": "Dispersion rapide et soudaine d'un groupe",
+    "category": "crowd",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "crowd_panic"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        },
+        {
+          "type": "record",
+          "config": {
+            "duration_sec": 120
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-group-formation",
+    "name": "Attroupement suspect",
+    "description": "Formation rapide d'un groupe dense",
+    "category": "crowd",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "gt",
+            "field": "metadata.person_count",
+            "value": 5
+          },
+          {
+            "op": "lt",
+            "field": "duration_seconds",
+            "value": 60
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-fight",
+    "name": "Bagarre probable",
+    "description": "Mouvements violents multi-personnes",
+    "category": "incident",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "fight_detected"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        },
+        {
+          "type": "record",
+          "config": {
+            "duration_sec": 90
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-accident",
+    "name": "Accident routier probable",
+    "description": "Arrêt brutal + véhicules multiples + absence de mouvement",
+    "category": "composite",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "sudden_stop"
+          },
+          {
+            "op": "gt",
+            "field": "metadata.vehicle_count",
+            "value": 2
+          },
+          {
+            "op": "gt",
+            "field": "duration_seconds",
+            "value": 30
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        },
+        {
+          "type": "incident",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-vandalism",
+    "name": "Vandalisme suspect",
+    "description": "Groupe + activité rapide + dispersion",
+    "category": "composite",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "gt",
+            "field": "metadata.person_count",
+            "value": 2
+          },
+          {
+            "op": "contains",
+            "field": "metadata.behavior",
+            "value": "rapid_activity"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-face-watchlist",
+    "name": "Personne liste noire",
+    "description": "Visage correspondant à la watchlist",
+    "category": "identity",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "metadata.face_match",
+        "value": "watchlist"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        },
+        {
+          "type": "notify",
+          "config": {
+            "channel": "security"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-plate-unknown",
+    "name": "Plaque non enregistrée",
+    "description": "Véhicule avec plaque inconnue en zone restreinte",
+    "category": "identity",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "eq",
+            "field": "metadata.plate_known",
+            "value": false
+          },
+          {
+            "op": "in_zone",
+            "field": "zone_id",
+            "value": "restricted"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-industrial-intrusion",
+    "name": "Intrusion site industriel",
+    "description": "Présence non autorisée en zone machine",
+    "category": "industrial",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "in_zone",
+            "field": "zone_id",
+            "value": "machine-zone"
+          },
+          {
+            "op": "eq",
+            "field": "class_name",
+            "value": "person"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        }
+      ]
+    }
+  }
+]

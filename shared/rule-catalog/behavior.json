@@ -1,0 +1,280 @@
+[
+  {
+    "id": "tpl-running",
+    "name": "Personne en course",
+    "category": "behavior",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "running"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-crowd-gathering",
+    "name": "Rassemblement foule",
+    "category": "behavior",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "crowd_gathering"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-crowd-density",
+    "name": "Densité foule élevée",
+    "category": "behavior",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "scene_density_high"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-vehicle-count",
+    "name": "Nombre véhicules élevé",
+    "category": "behavior",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "vehicle_count_threshold"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-scene-occupancy",
+    "name": "Occupation scène",
+    "category": "behavior",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "gt",
+        "field": "person_count",
+        "value": 10
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-person-stopped",
+    "name": "Personne immobile prolongée",
+    "category": "behavior",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "person_stopped"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-vehicle-stopped",
+    "name": "Véhicule arrêté",
+    "category": "behavior",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "vehicle_stopped"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-wrong-way",
+    "name": "Sens interdit",
+    "category": "behavior",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "wrong_way"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-tailgating",
+    "name": "Tailgating",
+    "category": "behavior",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "tailgating"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-falling",
+    "name": "Chute détectée",
+    "category": "behavior",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "falling"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-fighting",
+    "name": "Bagarre détectée",
+    "category": "behavior",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "fighting"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-queue-forming",
+    "name": "Formation de file",
+    "category": "behavior",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "queue_forming"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-bottleneck",
+    "name": "Goulot d'étranglement",
+    "category": "behavior",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "gt",
+        "field": "density_per_m2",
+        "value": 0.005
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-flow-rate",
+    "name": "Débit piétons élevé",
+    "category": "behavior",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "gt",
+        "field": "person_count",
+        "value": 15
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,1027 @@
+{
+  "event_types": {
+    "zone_enter": {
+      "label_fr": "Entrée dans une zone",
+      "required_config": ["camera", "zone", "class_filter"],
+      "proof_fields": ["bbox", "confidence", "track_id", "zone_id"],
+      "models": ["yolo"]
+    },
+    "zone_exit": {
+      "label_fr": "Sortie de zone",
+      "required_config": ["camera", "zone"],
+      "proof_fields": ["track_id", "zone_id"],
+      "models": ["yolo"]
+    },
+    "line_cross": {
+      "label_fr": "Franchissement de ligne",
+      "required_config": ["camera", "line", "direction"],
+      "proof_fields": ["track_id", "line_id", "direction"],
+      "models": ["yolo"]
+    },
+    "loitering": {
+      "label_fr": "Flânerie prolongée",
+      "required_config": ["camera", "zone", "duration_seconds"],
+      "proof_fields": ["track_id", "zone_id", "duration_seconds"],
+      "models": ["yolo"]
+    },
+    "dwell_time_exceeded": {
+      "label_fr": "Temps de présence dépassé",
+      "required_config": ["camera", "zone", "duration_seconds"],
+      "proof_fields": ["track_id", "zone_id", "dwell_seconds"],
+      "models": ["yolo"]
+    },
+    "running": {
+      "label_fr": "Course détectée",
+      "required_config": ["camera"],
+      "proof_fields": ["bbox", "confidence", "track_id"],
+      "models": ["yolo"]
+    },
+    "object_abandoned": {
+      "label_fr": "Objet abandonné",
+      "required_config": ["camera", "zone", "duration_seconds", "class_filter"],
+      "proof_fields": ["bbox", "class_name", "duration_seconds"],
+      "models": ["yolo"]
+    },
+    "speeding": {
+      "label_fr": "Excès de vitesse",
+      "required_config": ["camera", "speed_kmh"],
+      "proof_fields": ["speed_kmh", "track_id"],
+      "models": ["yolo"]
+    },
+    "face_watchlist_match": {
+      "label_fr": "Visage reconnu (liste)",
+      "required_config": ["camera", "watchlist"],
+      "proof_fields": ["bbox", "face_label", "confidence"],
+      "models": ["yolo", "insightface"]
+    },
+    "plate_blocked": {
+      "label_fr": "Plaque bloquée",
+      "required_config": ["camera", "plate_list"],
+      "proof_fields": ["plate_number", "confidence"],
+      "models": ["yolo", "paddleocr"]
+    },
+    "vehicle_count_threshold": {
+      "label_fr": "Seuil de véhicules atteint",
+      "required_config": ["camera"],
+      "proof_fields": ["vehicle_count"],
+      "models": ["yolo"]
+    },
+    "crowd_count_threshold": {
+      "label_fr": "Seuil de personnes atteint",
+      "required_config": ["camera"],
+      "proof_fields": ["person_count"],
+      "models": ["yolo"]
+    },
+    "crowd_gathering": {
+      "label_fr": "Rassemblement",
+      "required_config": ["camera"],
+      "proof_fields": ["person_count"],
+      "models": ["yolo"]
+    },
+    "tailgating": {
+      "label_fr": "Passage groupé (tailgating)",
+      "required_config": ["camera", "line"],
+      "proof_fields": ["track_id"],
+      "models": ["yolo"]
+    },
+    "wrong_way": {
+      "label_fr": "Sens interdit",
+      "required_config": ["camera", "line", "direction"],
+      "proof_fields": ["track_id", "direction"],
+      "models": ["yolo"]
+    },
+    "person_stopped": {
+      "label_fr": "Personne immobile",
+      "required_config": ["camera", "duration_seconds"],
+      "proof_fields": ["track_id", "duration_seconds"],
+      "models": ["yolo"]
+    },
+    "vehicle_stopped": {
+      "label_fr": "Véhicule à l'arrêt",
+      "required_config": ["camera", "duration_seconds"],
+      "proof_fields": ["track_id", "duration_seconds"],
+      "models": ["yolo"]
+    },
+    "face_unknown": {
+      "label_fr": "Visage inconnu",
+      "required_config": ["camera"],
+      "proof_fields": ["bbox", "confidence"],
+      "models": ["insightface"]
+    },
+    "plate_unknown": {
+      "label_fr": "Plaque inconnue",
+      "required_config": ["camera"],
+      "proof_fields": ["plate_number"],
+      "models": ["paddleocr"]
+    },
+    "object_removed": {
+      "label_fr": "Objet retiré",
+      "required_config": ["camera", "zone"],
+      "proof_fields": ["bbox", "zone_id"],
+      "models": ["yolo"]
+    },
+    "video_blur": {
+      "label_fr": "Image floue",
+      "required_config": ["camera"],
+      "proof_fields": ["blur_score"],
+      "models": []
+    },
+    "video_darkness": {
+      "label_fr": "Image trop sombre",
+      "required_config": ["camera"],
+      "proof_fields": ["brightness"],
+      "models": []
+    },
+    "behavior_anomaly": {
+      "label_fr": "Comportement anormal",
+      "required_config": ["camera"],
+      "proof_fields": ["anomaly_score"],
+      "models": ["yolo"]
+    },
+    "person_vehicle_proximity": {
+      "label_fr": "Proximité personne-véhicule",
+      "required_config": ["camera"],
+      "proof_fields": ["distance_m"],
+      "models": ["yolo"]
+    },
+    "loitering_near_entrance": {
+      "label_fr": "Flânerie près d'une entrée",
+      "required_config": ["camera", "zone", "duration_seconds"],
+      "proof_fields": ["track_id", "zone_id"],
+      "models": ["yolo"]
+    },
+    "face_detected": {
+      "label_fr": "Visage détecté",
+      "required_config": ["camera"],
+      "proof_fields": ["bbox", "confidence"],
+      "models": ["insightface"]
+    },
+    "plate_allowed": {
+      "label_fr": "Plaque autorisée",
+      "required_config": ["camera", "plate_list"],
+      "proof_fields": ["plate_number", "confidence"],
+      "models": ["paddleocr"]
+    },
+    "plate_detected": {
+      "label_fr": "Plaque détectée",
+      "required_config": ["camera"],
+      "proof_fields": ["plate_number", "confidence"],
+      "models": ["paddleocr"]
+    },
+    "scene_density_high": {
+      "label_fr": "Densité de foule élevée",
+      "required_config": ["camera", "density_threshold"],
+      "proof_fields": ["person_count", "density_per_m2"],
+      "models": ["yolo"]
+    },
+    "speed_below_minimum": {
+      "label_fr": "Vitesse anormalement basse",
+      "required_config": ["camera", "speed_kmh"],
+      "proof_fields": ["speed_kmh", "track_id"],
+      "models": ["yolo"]
+    },
+    "multiple_persons_one_vehicle": {
+      "label_fr": "Plusieurs personnes — un véhicule",
+      "required_config": ["camera"],
+      "proof_fields": ["person_count", "vehicle_count"],
+      "models": ["yolo"]
+    },
+    "falling": {
+      "label_fr": "Chute détectée",
+      "required_config": ["camera"],
+      "proof_fields": ["bbox", "confidence", "track_id"],
+      "models": ["yolo"]
+    },
+    "fighting": {
+      "label_fr": "Bagarre détectée",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "overlap"],
+      "models": ["yolo"]
+    },
+    "queue_forming": {
+      "label_fr": "Formation de file",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "aligned_count"],
+      "models": ["yolo"]
+    },
+    "erratic_motion": {
+      "label_fr": "Mouvement erratique",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "direction_changes"],
+      "models": ["yolo"]
+    },
+    "wandering": {
+      "label_fr": "Errance prolongée",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "path_ratio"],
+      "models": ["yolo"]
+    },
+    "zone_presence": {
+      "label_fr": "Présence dans une zone",
+      "required_config": ["camera", "zone", "duration_seconds"],
+      "proof_fields": ["track_id", "zone_id", "duration_seconds"],
+      "models": ["yolo"]
+    },
+    "zone_absence": {
+      "label_fr": "Absence prolongée dans une zone",
+      "required_config": ["camera", "zone", "duration_seconds"],
+      "proof_fields": ["zone_id", "duration_seconds"],
+      "models": ["yolo"]
+    },
+    "object_appeared": {
+      "label_fr": "Apparition d'objet",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "class_name"],
+      "models": ["yolo"]
+    },
+    "object_disappeared": {
+      "label_fr": "Disparition d'objet",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "class_name"],
+      "models": ["yolo"]
+    },
+    "crouch_detected": {
+      "label_fr": "Position accroupie",
+      "required_config": ["camera"],
+      "proof_fields": ["bbox", "track_id"],
+      "models": ["yolo"]
+    },
+    "climb_detected": {
+      "label_fr": "Escalade détectée",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "vertical_delta"],
+      "models": ["yolo"]
+    },
+    "carry_detected": {
+      "label_fr": "Transport d'objet",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "object_class"],
+      "models": ["yolo"]
+    },
+    "correlation_match": {
+      "label_fr": "Corrélation multi-caméras",
+      "required_config": ["camera"],
+      "proof_fields": ["source_camera_id", "source_track_id", "time_delta_seconds"],
+      "models": ["yolo"]
+    },
+    "crowd_panic": {
+      "label_fr": "Panique de foule",
+      "required_config": ["camera"],
+      "proof_fields": ["person_count"],
+      "models": ["yolo"],
+      "unsupported_message_fr": "Détection de panique non implémentée dans l'IA locale."
+    },
+    "fight_detected": {
+      "label_fr": "Bagarre détectée",
+      "required_config": ["camera"],
+      "proof_fields": ["person_count"],
+      "models": ["yolo"],
+      "unsupported_message_fr": "Utilisez tpl-fighting (heuristique chevauchement) — fight_detected brut non émis."
+    },
+    "sudden_stop": {
+      "label_fr": "Arrêt brusque",
+      "required_config": ["camera"],
+      "proof_fields": ["track_id", "speed_kmh"],
+      "models": ["yolo"],
+      "unsupported_message_fr": "Événement sudden_stop non émis actuellement par le pipeline vidéo."
+    }
+  },
+  "templates": {
+    "tpl-intrusion-zone": {
+      "supported": true,
+      "capability_id": "zone_enter",
+      "human_description": "Surveille les entrées dans une zone interdite.",
+      "tutorial": "Dessinez d'abord la zone dans l'éditeur spatial, puis sélectionnez la caméra et la zone ci-dessous.",
+      "prerequisites": ["Zone dessinée", "Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true, "hint": "Caméra qui filme la zone."},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true, "hint": "Zone à surveiller."},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "person", "hint": "Type d'objet à détecter (personne, véhicule, animal…)"}
+        ]
+      }
+    },
+    "tpl-zone-exit": {
+      "supported": true,
+      "capability_id": "zone_exit",
+      "human_description": "Alerte quand quelqu'un quitte une zone.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "person", "hint": "Type d'objet à détecter"}
+        ]
+      }
+    },
+    "tpl-line-cross": {
+      "supported": true,
+      "capability_id": "line_cross",
+      "human_description": "Détecte le franchissement d'une ligne de comptage.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "direction", "type": "enum", "label": "Direction", "required": false, "options": ["both", "in", "out"], "default": "both"}
+        ]
+      }
+    },
+    "tpl-loitering": {
+      "supported": true,
+      "capability_id": "loitering",
+      "human_description": "Présence prolongée dans une zone au-delà d'un seuil.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "min": 10, "max": 86400, "default": 120},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "person", "hint": "Type d'objet à détecter"}
+        ]
+      }
+    },
+    "tpl-dwell-time": {
+      "supported": true,
+      "capability_id": "dwell_time_exceeded",
+      "human_description": "Dépassement du temps de présence autorisé dans une zone.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée max (s)", "required": true, "min": 30, "default": 300},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "person", "hint": "Type d'objet à détecter"}
+        ]
+      }
+    },
+    "tpl-dwell-exceeded": {
+      "supported": true,
+      "capability_id": "dwell_time_exceeded",
+      "human_description": "Dépassement du temps de présence autorisé dans une zone.",
+      "tutorial": "Définissez la zone et la durée maximale de présence autorisée.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true, "hint": "Caméra qui filme la zone."},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée max (s)", "required": true, "min": 30, "default": 300}
+        ]
+      }
+    },
+    "tpl-running": {
+      "supported": true,
+      "capability_id": "running",
+      "human_description": "Détecte une personne qui court dans le champ.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-object-abandoned": {
+      "supported": true,
+      "capability_id": "object_abandoned",
+      "human_description": "Objet laissé sans surveillance (sac, valise…).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 60},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": false, "default": "baggage", "hint": "Type d'objet (bagage par défaut)"}
+        ]
+      }
+    },
+    "tpl-abandoned-object": {
+      "supported": true,
+      "capability_id": "object_abandoned",
+      "human_description": "Objet laissé sans surveillance (sac, valise…).",
+      "tutorial": "Dessinez la zone à surveiller et indiquez combien de temps un objet peut rester sans être récupéré.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 60},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": false, "default": "baggage", "hint": "Type d'objet (bagage par défaut)"}
+        ]
+      }
+    },
+    "tpl-speeding": {
+      "supported": true,
+      "capability_id": "speeding",
+      "human_description": "Excès de vitesse par rapport à la limite configurée.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "speed_kmh", "type": "number", "label": "Limite (km/h)", "required": true, "min": 5, "max": 200, "default": 50}
+        ]
+      }
+    },
+    "tpl-face-watchlist": {
+      "supported": true,
+      "capability_id": "face_watchlist_match",
+      "human_description": "Alerte si un visage de la liste est reconnu.",
+      "prerequisites": ["Modèle InsightFace chargé", "Liste visages avec photos"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "watchlist_id", "type": "watchlist", "label": "Liste visages", "required": true}
+        ]
+      }
+    },
+    "tpl-watchlist-match": {
+      "supported": true,
+      "capability_id": "face_watchlist_match",
+      "human_description": "Alerte si un visage de la liste est reconnu.",
+      "tutorial": "Ajoutez des photos dans Paramètres → Identité avant d'activer cette règle.",
+      "prerequisites": ["Modèle InsightFace chargé", "Liste visages avec photos"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "watchlist_id", "type": "watchlist", "label": "Liste visages", "required": true}
+        ]
+      }
+    },
+    "tpl-plate-blocked": {
+      "supported": true,
+      "capability_id": "plate_blocked",
+      "human_description": "Plaque immatriculation sur liste noire.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "plate_list_id", "type": "plate_list", "label": "Liste plaques", "required": true}
+        ]
+      }
+    },
+    "tpl-blocked-plate": {
+      "supported": true,
+      "capability_id": "plate_blocked",
+      "human_description": "Plaque immatriculation sur liste noire.",
+      "tutorial": "Saisissez les plaques au format AB-123-CD dans Paramètres → Identité.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "plate_list_id", "type": "plate_list", "label": "Liste plaques", "required": true}
+        ]
+      }
+    },
+    "tpl-vehicle-count": {
+      "supported": true,
+      "capability_id": "vehicle_count_threshold",
+      "human_description": "Nombre de véhicules dans la scène dépasse le seuil.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-crowd-count": {
+      "supported": true,
+      "capability_id": "crowd_count_threshold",
+      "human_description": "Affluence — seuil de personnes atteint.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-crowd-gathering": {
+      "supported": true,
+      "capability_id": "crowd_gathering",
+      "human_description": "Rassemblement de personnes détecté.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-tailgating": {
+      "supported": true,
+      "capability_id": "tailgating",
+      "human_description": "Passage groupé détecté (tailgating).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "line_name", "type": "line", "label": "Ligne", "required": true}
+        ]
+      }
+    },
+    "tpl-wrong-way": {
+      "supported": true,
+      "capability_id": "wrong_way",
+      "human_description": "Véhicule ou personne circulant à contre-sens.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "direction", "type": "enum", "label": "Sens attendu", "required": true, "options": ["in", "out"], "default": "in"}
+        ]
+      }
+    },
+    "tpl-person-stopped": {
+      "supported": true,
+      "capability_id": "person_stopped",
+      "human_description": "Personne immobile trop longtemps.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 60}
+        ]
+      }
+    },
+    "tpl-vehicle-stopped": {
+      "supported": true,
+      "capability_id": "vehicle_stopped",
+      "human_description": "Véhicule à l'arrêt prolongé.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 120}
+        ]
+      }
+    },
+    "tpl-loitering-entrance": {
+      "supported": true,
+      "capability_id": "loitering_near_entrance",
+      "human_description": "Présence prolongée près d'une entrée.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone entrée", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 90}
+        ]
+      }
+    },
+    "tpl-proximity-alert": {
+      "supported": true,
+      "capability_id": "person_vehicle_proximity",
+      "human_description": "Proximité dangereuse personne-véhicule.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-video-blur": {
+      "supported": true,
+      "capability_id": "video_blur",
+      "human_description": "Qualité vidéo dégradée (flou).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-video-darkness": {
+      "supported": true,
+      "capability_id": "video_darkness",
+      "human_description": "Image trop sombre pour une analyse fiable.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-zone-enter": {
+      "supported": true,
+      "capability_id": "zone_enter",
+      "human_description": "Alerte dès qu'une personne ou un véhicule entre dans une zone définie.",
+      "tutorial": "Dessinez la zone dans l'éditeur spatial, puis sélectionnez la caméra et la zone ci-dessous.",
+      "prerequisites": ["Zone dessinée", "Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true, "hint": "Caméra qui filme la zone."},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true, "hint": "Zone à surveiller."},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "person", "hint": "Type d'objet à détecter (personne, véhicule, animal…)"}
+        ]
+      }
+    },
+    "tpl-line-cross-bidir": {
+      "supported": true,
+      "capability_id": "line_cross",
+      "human_description": "Compte les franchissements dans les deux sens sur une ligne de comptage.",
+      "tutorial": "Tracez une ligne de franchissement sur la caméra, puis activez la règle sans filtre de direction.",
+      "prerequisites": ["Ligne dessinée", "Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "direction", "type": "enum", "label": "Direction", "required": false, "options": ["both", "in", "out"], "default": "both"}
+        ]
+      }
+    },
+    "tpl-object-removed": {
+      "supported": true,
+      "capability_id": "object_removed",
+      "human_description": "Détecte le retrait d'un objet précédemment présent dans une zone.",
+      "tutorial": "Définissez la zone surveillée ; l'alerte se déclenche quand un objet disparaît de la zone.",
+      "prerequisites": ["Zone dessinée", "Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true}
+        ]
+      }
+    },
+    "tpl-multi-person-vehicle": {
+      "supported": true,
+      "capability_id": "multiple_persons_one_vehicle",
+      "human_description": "Plusieurs personnes détectées à proximité immédiate d'un même véhicule.",
+      "tutorial": "Activez sur les caméras de parking ou de voie ; aucune zone requise.",
+      "prerequisites": ["Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-unknown-face": {
+      "supported": true,
+      "capability_id": "face_unknown",
+      "human_description": "Signale un visage non reconnu dans la scène.",
+      "tutorial": "Assurez-vous qu'InsightFace est chargé ; les visages de la liste de surveillance sont ignorés.",
+      "prerequisites": ["Modèle InsightFace chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-face-detected": {
+      "supported": true,
+      "capability_id": "face_detected",
+      "human_description": "Détecte toute présence de visage dans le champ caméra.",
+      "tutorial": "Utile pour journaliser les passages sans liste de surveillance.",
+      "prerequisites": ["Modèle InsightFace chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-unknown-plate": {
+      "supported": true,
+      "capability_id": "plate_unknown",
+      "human_description": "Plaque lue mais absente des listes autorisées ou bloquées.",
+      "tutorial": "Configurez d'abord vos listes de plaques dans Paramètres → Identité.",
+      "prerequisites": ["Modèle PaddleOCR chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-plate-whitelist": {
+      "supported": true,
+      "capability_id": "plate_allowed",
+      "human_description": "Alerte quand une plaque de la liste blanche est reconnue.",
+      "tutorial": "Créez une liste « plaques autorisées » dans Paramètres → Identité.",
+      "prerequisites": ["Modèle PaddleOCR chargé", "Liste plaques autorisées"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "plate_list_id", "type": "plate_list", "label": "Liste plaques autorisées", "required": true}
+        ]
+      }
+    },
+    "tpl-plate-detected": {
+      "supported": true,
+      "capability_id": "plate_detected",
+      "human_description": "Journalise toute plaque immatriculation lue dans le champ.",
+      "tutorial": "Aucune liste requise — chaque lecture est enregistrée.",
+      "prerequisites": ["Modèle PaddleOCR chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-plate-repeat": {
+      "supported": true,
+      "capability_id": "plate_detected",
+      "human_description": "Signale les passages répétés d'une même plaque sur la caméra.",
+      "tutorial": "Utile pour détecter les allers-retours suspects sans liste noire.",
+      "prerequisites": ["Modèle PaddleOCR chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-slow-vehicle": {
+      "supported": true,
+      "capability_id": "speed_below_minimum",
+      "human_description": "Véhicule circulant en dessous du seuil de vitesse minimum.",
+      "tutorial": "Calibrez la caméra (points monde) pour une estimation fiable en km/h.",
+      "prerequisites": ["Modèle YOLO actif", "Calibration caméra"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "speed_kmh", "type": "number", "label": "Vitesse min (km/h)", "required": true, "min": 1, "max": 80, "default": 10}
+        ]
+      }
+    },
+    "tpl-crowd-density": {
+      "supported": true,
+      "capability_id": "scene_density_high",
+      "human_description": "Densité de personnes par m² dépassant le seuil configuré.",
+      "tutorial": "Ajustez le seuil de densité selon la surface visible de la caméra.",
+      "prerequisites": ["Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "density_threshold", "type": "number", "label": "Seuil densité (pers/m²)", "required": true, "min": 0.0001, "max": 1, "default": 0.003}
+        ]
+      }
+    },
+    "tpl-scene-occupancy": {
+      "supported": true,
+      "capability_id": "crowd_count_threshold",
+      "human_description": "Nombre total de personnes dans la scène dépassant le seuil.",
+      "tutorial": "Définissez le nombre maximal de personnes toléré dans le champ caméra.",
+      "prerequisites": ["Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "crowd_threshold", "type": "number", "label": "Seuil personnes", "required": true, "min": 1, "max": 500, "default": 10}
+        ]
+      }
+    },
+    "tpl-bottleneck": {
+      "supported": true,
+      "capability_id": "scene_density_high",
+      "human_description": "Goulot d'étranglement — densité locale élevée dans une zone étroite.",
+      "tutorial": "Baissez le seuil de densité pour les couloirs et entrées étroites.",
+      "prerequisites": ["Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "density_threshold", "type": "number", "label": "Seuil densité (pers/m²)", "required": true, "min": 0.0001, "max": 1, "default": 0.005}
+        ]
+      }
+    },
+    "tpl-zone-occupancy": {
+      "supported": true,
+      "capability_id": "crowd_count_threshold",
+      "human_description": "Trop de personnes présentes simultanément dans une zone définie.",
+      "tutorial": "Dessinez la zone puis fixez le nombre maximal de personnes autorisées.",
+      "prerequisites": ["Zone dessinée", "Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "crowd_threshold", "type": "number", "label": "Seuil personnes", "required": true, "min": 1, "max": 200, "default": 5}
+        ]
+      }
+    },
+    "tpl-immobility": {
+      "supported": true,
+      "capability_id": "person_stopped",
+      "human_description": "Personne ou objet immobile au-delà d'une durée configurée.",
+      "tutorial": "Indiquez la durée maximale d'immobilité avant alerte.",
+      "prerequisites": ["Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "min": 10, "max": 86400, "default": 90}
+        ]
+      }
+    },
+    "tpl-face-count": {
+      "supported": true,
+      "capability_id": "face_detected",
+      "human_description": "Nombre de visages simultanés dépassant le seuil configuré.",
+      "tutorial": "Utile pour limiter l'occupation d'un espace fermé.",
+      "prerequisites": ["Modèle InsightFace chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "face_count", "type": "number", "label": "Seuil visages", "required": true, "min": 1, "max": 100, "default": 3}
+        ]
+      }
+    },
+    "tpl-face-repeat": {
+      "supported": true,
+      "capability_id": "face_detected",
+      "human_description": "Même visage détecté plusieurs fois sur une période courte.",
+      "tutorial": "Combine avec une liste vide pour journaliser les réapparitions.",
+      "prerequisites": ["Modèle InsightFace chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Fenêtre (s)", "required": true, "min": 30, "max": 3600, "default": 300}
+        ]
+      }
+    },
+    "tpl-speed-threshold": {
+      "supported": true,
+      "capability_id": "speeding",
+      "human_description": "Vitesse dépassant le seuil configuré (km/h).",
+      "tutorial": "Calibrez la caméra pour convertir les pixels en km/h.",
+      "prerequisites": ["Modèle YOLO actif", "Calibration caméra"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "speed_kmh", "type": "number", "label": "Seuil (km/h)", "required": true, "min": 5, "max": 200, "default": 50}
+        ]
+      }
+    },
+    "tpl-running-person": {
+      "supported": true,
+      "capability_id": "running",
+      "human_description": "Personne en course rapide dépassant le seuil de vitesse.",
+      "tutorial": "Ajustez le seuil selon la distance caméra-sujet.",
+      "prerequisites": ["Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "speed_kmh", "type": "number", "label": "Seuil course (km/h)", "required": true, "min": 5, "max": 40, "default": 15}
+        ]
+      }
+    },
+    "tpl-flow-rate": {
+      "supported": true,
+      "capability_id": "crowd_count_threshold",
+      "human_description": "Débit piéton élevé — affluence dépassant le seuil de passage.",
+      "tutorial": "Placez la caméra en plongée sur un couloir ou une entrée.",
+      "prerequisites": ["Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "crowd_threshold", "type": "number", "label": "Seuil passages", "required": true, "min": 1, "max": 500, "default": 15}
+        ]
+      }
+    },
+    "tpl-falling": {
+      "supported": true,
+      "capability_id": "falling",
+      "human_description": "Détecte une chute ou posture couchée (heuristique bbox).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-fighting": {
+      "supported": true,
+      "capability_id": "fighting",
+      "human_description": "Détecte une bagarre par chevauchement de silhouettes.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-queue-forming": {
+      "supported": true,
+      "capability_id": "queue_forming",
+      "human_description": "Formation de file d'attente (alignement spatial).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-erratic-motion": {
+      "supported": true,
+      "capability_id": "erratic_motion",
+      "human_description": "Mouvement erratique avec changements de direction répétés.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-wandering": {
+      "supported": true,
+      "capability_id": "wandering",
+      "human_description": "Errance prolongée (ratio trajet/déplacement élevé).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-zone-presence": {
+      "supported": true,
+      "capability_id": "zone_presence",
+      "human_description": "Présence soutenue d'une cible dans une zone.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 5},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "person", "hint": "Type d'objet à détecter"}
+        ]
+      }
+    },
+    "tpl-zone-absence": {
+      "supported": true,
+      "capability_id": "zone_absence",
+      "human_description": "Absence prolongée dans une zone sensible.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 30},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "person", "hint": "Type d'objet attendu dans la zone"}
+        ]
+      }
+    },
+    "tpl-object-appeared": {
+      "supported": true,
+      "capability_id": "object_appeared",
+      "human_description": "Apparition d'un nouvel objet dans la scène.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-object-disappeared": {
+      "supported": true,
+      "capability_id": "object_disappeared",
+      "human_description": "Disparition d'un objet précédemment visible.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-crouch-detected": {
+      "supported": true,
+      "capability_id": "crouch_detected",
+      "human_description": "Position accroupie détectée (ratio bbox).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-climb-detected": {
+      "supported": true,
+      "capability_id": "climb_detected",
+      "human_description": "Escalade détectée (mouvement vertical rapide).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-carry-object": {
+      "supported": true,
+      "capability_id": "carry_detected",
+      "human_description": "Personne transportant un objet à proximité.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-theft-composite": {
+      "supported": false,
+      "capability_id": "zone_enter",
+      "human_description": "Séquence entrée zone + présence prolongée (vol suspect).",
+      "unsupported_message_fr": "Règle composite SEQUENCE : zone_enter puis loitering via le rules-engine.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée suspecte (s)", "required": true, "default": 30}
+        ]
+      }
+    },
+    "tpl-accident": {
+      "supported": false,
+      "capability_id": "sudden_stop",
+      "human_description": "Accident probable : arrêt brutal + plusieurs véhicules immobiles.",
+      "unsupported_message_fr": "Composite routier : sudden_stop et comptage véhicules non émis ensemble par l'IA locale."
+    },
+    "tpl-vandalism": {
+      "supported": false,
+      "capability_id": "crowd_gathering",
+      "human_description": "Vandalisme suspect : groupe + activité rapide.",
+      "unsupported_message_fr": "Métadonnée rapid_activity non produite par l'IA locale."
+    },
+    "tpl-identity-correlation": {
+      "supported": true,
+      "capability_id": "correlation_match",
+      "human_description": "Même personne détectée sur deux caméras dans une fenêtre temporelle.",
+      "tutorial": "Configurez des zones de sortie/entrée sur au moins deux caméras.",
+      "prerequisites": ["Deux caméras minimum", "Zones spatiales configurées"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra d'arrivée", "required": true},
+          {"key": "source_camera_id", "type": "camera", "label": "Caméra de départ", "required": false}
+        ]
+      }
+    },
+    "tpl-crowd-panic": {
+      "supported": false,
+      "capability_id": "crowd_panic",
+      "human_description": "Dispersion rapide et soudaine d'un groupe.",
+      "unsupported_message_fr": "Panique de foule non détectée par l'IA locale actuelle."
+    },
+    "tpl-fight": {
+      "supported": false,
+      "capability_id": "fight_detected",
+      "human_description": "Mouvements violents multi-personnes.",
+      "unsupported_message_fr": "Événement fight_detected non émis — utilisez tpl-fighting (heuristique)."
+    }
+  }
+}

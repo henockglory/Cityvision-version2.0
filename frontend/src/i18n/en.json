@@ -5,6 +5,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "demo": "Kinshasa Demo",
     "cameras": "Cameras",
     "liveView": "Live View",
     "videoWall": "Video Wall",
@@ -18,7 +19,15 @@
     "systemHealth": "System Health",
     "settings": "Settings",
     "logout": "Logout",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "groups": {
+      "overview": "Overview",
+      "video": "Video",
+      "security": "Security",
+      "admin": "Administration",
+      "account": "Account",
+      "demo": "Demo"
+    }
   },
   "setup": {
     "title": "Initial Setup",
@@ -45,7 +54,10 @@
     "username": "Email",
     "password": "Password",
     "submit": "Sign In",
-    "error": "Invalid credentials"
+    "error": "Invalid credentials",
+    "errorBackend": "Cannot reach server — run bash scripts/start-linux.sh (WSL)",
+    "copyright": "© 2026 HOLOGRAM.CD — All rights reserved",
+    "support": "If you experience connection issues, contact technical support:"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -125,7 +137,31 @@
     "filter": "Filter",
     "timeline": "Timeline",
     "empty": "No events",
-    "emptyHint": "Detection events will appear here"
+    "emptyHint": "Detection events will appear here",
+    "allTypes": "All types",
+    "allCameras": "All cameras",
+    "showAll": "Show all (debug)",
+    "selectHint": "Select an event to view evidence"
+  },
+  "evidence": {
+    "title": "Evidence",
+    "none": "No structured evidence for this item.",
+    "complete": "Complete evidence",
+    "partial": "Partial ({{have}}/{{total}})",
+    "clipLabel": "{{sec}}s clip",
+    "scene": "Scene view",
+    "subject": "Detected subject",
+    "bboxOnly": "bbox only",
+    "confidence": "Confidence:",
+    "plate": "Plate",
+    "face": "Face",
+    "eventType": "Event",
+    "class": "Class",
+    "speed": "Speed",
+    "zone": "Zone",
+    "track": "Track",
+    "openLive": "Open live",
+    "download": "Download"
   },
   "liveView": {
     "title": "Live View",

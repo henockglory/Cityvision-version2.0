@@ -1,4 +1,4 @@
-# Clarifications — 35 Questions with Defaults
+# Clarifications — 40 Questions with Defaults
 
 Defaults apply until explicitly overridden in `.env` or architecture decisions.
 
@@ -18,7 +18,7 @@ Defaults apply until explicitly overridden in `.env` or architecture decisions.
 | 12 | Rules logical operators? | ET (AND), OU (OR), NON (NOT) |
 | 13 | Rules engine language? | Go 1.22 |
 | 14 | Rule dedup TTL? | 60 seconds |
-| 15 | Rule catalog vs DB? | Catalog JSON templates only; DB seed in later phase |
+| 15 | Rule catalog vs DB? | Catalog JSON templates; instances in PostgreSQL |
 | 16 | Temporal windows? | Hour range + optional day list on rule |
 | 17 | PostgreSQL version? | 17 |
 | 18 | Redis version? | 7 |
@@ -34,14 +34,20 @@ Defaults apply until explicitly overridden in `.env` or architecture decisions.
 | 28 | Rules engine HTTP port? | 8010 |
 | 29 | Python version? | 3.12+ |
 | 30 | CI matrix? | Ubuntu; go test + pytest + npm build |
-| 31 | E2E framework? | Playwright placeholder in `tests/e2e/` |
-| 32 | Frontend in Phase 1? | No — web/ is npm build stub only |
-| 33 | Backend API in Phase 1? | No — deferred to Phase 2 |
+| 31 | E2E framework? | Playwright in `tests/e2e/` |
+| 32 | Dev on Windows without WSL? | Yes — Docker Desktop + `start-windows.ps1` |
+| 33 | go2rtc port? | 1984 |
 | 34 | Secrets in repo? | Never — `.env` gitignored; `.env.example` placeholders only |
-| 35 | ONVIF/go2rtc integration timing? | Vendor README now; wiring in Phase 2+ |
+| 35 | Camera probe multi-vendor? | Hikvision, Dahua, generic paths auto-tested |
+| 36 | WebSocket alerts? | `/api/v1/ws/alerts` with JWT query param |
+| 37 | Alert pipeline? | rules-engine MQTT `cv/alerts/{org_id}` → backend → WS |
+| 38 | First boot data? | Empty DB; wizard creates org + super-admin only |
+| 39 | Hologram UI background? | Canvas léger, non bloquant |
+| 40 | Git remote canonical? | `henockglory/Cityvision-v2` tag `v2.0.1-validated` |
 
 ## Notes
 
 - **Q3** is non-negotiable for production trust: stub modules must not synthesize detections.
 - **Q12** French operator names align with operator UI locale; English aliases AND/OR/NOT accepted in evaluator.
-- **Q15** distinguishes catalog templates from runtime rule instances stored in PostgreSQL later.
+- **Q15** distinguishes catalog templates from runtime rule instances stored in PostgreSQL.
+- **Q32** WSL optional on Windows when Docker Desktop runs native containers.

@@ -9,6 +9,9 @@ done
 echo "Creating bucket: ${MINIO_BUCKET}"
 mc mb --ignore-existing "local/${MINIO_BUCKET}"
 
+echo "Creating evidence bucket: citevision-evidence"
+mc mb --ignore-existing "local/citevision-evidence"
+
 echo "Setting bucket policy to download-only for recordings"
 mc anonymous set download "local/${MINIO_BUCKET}/public" 2>/dev/null || true
 

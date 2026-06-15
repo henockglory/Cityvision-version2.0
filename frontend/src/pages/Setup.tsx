@@ -5,9 +5,12 @@ import {
   Building2, UserPlus, CheckCircle, ChevronRight, ChevronLeft, Loader2,
 } from 'lucide-react';
 import EyeLogo from '@/components/EyeLogo';
+import PremiumNetworkBackground from '@/components/PremiumNetworkBackground';
 import { useInitializeSetup } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
+import { isPasswordStrongEnough } from '@/utils/setup';
+import { isAxiosError } from 'axios';
 
 type Step = 1 | 2 | 3;
 
@@ -42,8 +45,17 @@ export default function Setup() {
       }
       playSonar();
       navigate('/login');
-    } catch {
-      setError(t('setup.error'));
+    } catch (err) {
+      if (isAxiosError(err)) {
+        if (!err.response) {
+          setError(t('setup.errorBackend', 'Impossible de joindre le serveur. Lancez scripts/start-windows.ps1'));
+        } else {
+          const msg = (err.response.data as { error?: string })?.error;
+          setError(msg || t('setup.error'));
+        }
+      } else {
+        setError(t('setup.error'));
+      }
     }
   };
 
@@ -52,9 +64,15 @@ export default function Setup() {
     setError('');
     playClick();
 
-    if (step === 2 && adminPassword !== confirmPassword) {
-      setError(t('setup.passwordMismatch'));
-      return;
+    if (step === 2) {
+      if (adminPassword !== confirmPassword) {
+        setError(t('setup.passwordMismatch'));
+        return;
+      }
+      if (!isPasswordStrongEnough(adminPassword)) {
+        setError(t('setup.passwordWeak', 'Mot de passe: 12 caracteres minimum, majuscule, minuscule et chiffre'));
+        return;
+      }
     }
 
     if (step < 3) {
@@ -71,12 +89,11 @@ export default function Setup() {
   ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center cv-grid-bg relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-cv-deep via-cv-navy to-cv-deep" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cv-accent/5 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cv-accent/5 rounded-full blur-3xl" />
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-[var(--cv-deep)]">
+      <PremiumNetworkBackground />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 pointer-events-none" />
 
-      <div className="relative z-10 w-full max-w-lg px-4 animate-fade-in">
+      <div className="relative z-10 w-full max-w-lg mx-auto px-4 animate-fade-in">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <EyeLogo size={64} />
@@ -148,7 +165,7 @@ export default function Setup() {
                   onChange={(e) => setAdminPassword(e.target.value)}
                   className="cv-input"
                   required
-                  minLength={8}
+                  minLength={12}
                 />
               </div>
               <div>

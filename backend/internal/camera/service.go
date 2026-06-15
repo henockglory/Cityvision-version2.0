@@ -211,15 +211,22 @@ func (s *Service) BuildRTSP(ctx context.Context, orgID, id uuid.UUID) (string, e
 	var port, channel int
 	var username, rtspPath *string
 	var enc []byte
+	var metadata json.RawMessage
 	err := s.pool.QueryRow(ctx, `
-		SELECT vendor, host::text, port, channel, username, password_encrypted, rtsp_path, stream_profile
+		SELECT vendor, host::text, port, channel, username, password_encrypted, rtsp_path, stream_profile, metadata
 		FROM cameras WHERE id = $1 AND org_id = $2`, id, orgID,
-	).Scan(&vendor, &host, &port, &channel, &username, &enc, &rtspPath, &profile)
+	).Scan(&vendor, &host, &port, &channel, &username, &enc, &rtspPath, &profile, &metadata)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", ErrNotFound
 		}
 		return "", err
+	}
+
+	var meta map[string]interface{}
+	_ = json.Unmarshal(metadata, &meta)
+	if url, ok := meta["rtsp_url"].(string); ok && url != "" {
+		return url, nil
 	}
 
 	user, pass := "", ""
@@ -235,6 +242,9 @@ func (s *Service) BuildRTSP(ctx context.Context, orgID, id uuid.UUID) (string, e
 	path := ""
 	if rtspPath != nil {
 		path = *rtspPath
+		if len(path) > 4 && path[:4] == "rtsp" {
+			return path, nil
+		}
 	}
 	return BuildRTSPURL(vendor, host, port, channel, user, pass, path, profile), nil
 }

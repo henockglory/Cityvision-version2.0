@@ -40,6 +40,7 @@ func (s *Service) Status(ctx context.Context) (models.SetupStatus, error) {
 }
 
 func (s *Service) Complete(ctx context.Context, req models.SetupCompleteRequest) (*models.SetupCompleteResponse, error) {
+	req = normalizeRequest(req)
 	if err := validateRequest(req); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidSetup, err)
 	}
@@ -111,6 +112,15 @@ func (s *Service) Complete(ctx context.Context, req models.SetupCompleteRequest)
 		return nil, fmt.Errorf("create membership: %w", err)
 	}
 
+	var siteID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		INSERT INTO sites (org_id, name, slug, timezone) VALUES ($1, $2, $3, 'UTC') RETURNING id`,
+		orgID, "Site principal", "principal",
+	).Scan(&siteID)
+	if err != nil {
+		return nil, fmt.Errorf("create default site: %w", err)
+	}
+
 	_, err = tx.Exec(ctx, `
 		UPDATE system_config SET value = '{"initialized": true}', updated_at = NOW() WHERE key = 'initialized'`)
 	if err != nil {
@@ -121,7 +131,7 @@ func (s *Service) Complete(ctx context.Context, req models.SetupCompleteRequest)
 		return nil, err
 	}
 
-	return &models.SetupCompleteResponse{OrgID: orgID, UserID: userID}, nil
+	return &models.SetupCompleteResponse{OrgID: orgID, UserID: userID, SiteID: siteID}, nil
 }
 
 type querier interface {
@@ -149,11 +159,39 @@ func (s *Service) isInitializedQuery(ctx context.Context, q querier) (bool, erro
 		strings.Contains(string(value), `"initialized":true`), nil
 }
 
-func validateRequest(req models.SetupCompleteRequest) error {
+func normalizeRequest(req models.SetupCompleteRequest) models.SetupCompleteRequest {
 	req.OrgName = strings.TrimSpace(req.OrgName)
 	req.OrgSlug = strings.ToLower(strings.TrimSpace(req.OrgSlug))
 	req.AdminEmail = strings.TrimSpace(req.AdminEmail)
+	if req.OrgSlug == "" {
+		req.OrgSlug = deriveOrgSlug(req.OrgName)
+	}
+	return req
+}
 
+func deriveOrgSlug(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "org"
+	}
+	return out
+}
+
+func validateRequest(req models.SetupCompleteRequest) error {
 	if req.OrgName == "" {
 		return errors.New("org_name is required")
 	}

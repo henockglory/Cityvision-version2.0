@@ -1,54 +1,77 @@
-# Citévision v2 — Guide de reprise rapide
+# RESUME — Reprise agent IA
 
-**Chemin cible WSL :** `/home/gheno/citevision-v2`  
-**Chemin actuel (fallback) :** `C:\Users\gheno\citevision-v2`  
-**Version :** 2.0.0-production
+**Projet :** Citévision v2.0  
+**Chemin :** `C:\Users\gheno\citevision-v2`  
+**Remote :** https://github.com/henockglory/Cityvision-v2
 
-## Différence critique vs v1
+## État actuel (2026-06-13)
 
-| v1 (abandonné) | v2 (actuel) |
-|----------------|-------------|
-| `mock.ts` + 16 caméras fictives | **Zéro mock** — EmptyState |
-| `seed.go` silencieux | **Wizard `/setup`** uniquement |
-| `demoLogin` | Auth API réelle |
-| Ports 8080/5173 | Ports **8081/5174** |
+- Stack complète scaffoldée, zéro mock validé
+- **Méthode principale : WSL Ubuntu 24.04 + Docker Engine natif** (`start-linux.sh`)
+- Alternative Windows : Docker Desktop + `start-windows.ps1`
+- go2rtc intégré (port 1984), probe caméra multi-vendor, preview WebRTC
+- 31 templates règles JSON, pipeline MQTT alertes → backend → WebSocket
+- HologramBackground + sons robotiques + onboarding skippable
 
-## État actuel
-
-- Phases 0–7 : code livré, tests unitaires PASS
-- Phase 8 : rapport tests ; E2E/charge nécessitent Docker+WSL
-- Phase 9 : commit local ; push Git en attente
-
-## Démarrage rapide
+## Démarrer en 1 commande (WSL)
 
 ```bash
-cp .env.example .env
-docker compose -f infra/docker-compose.yml up -d
-cd backend && go run ./cmd/api
-cd frontend && npm run dev
+cd ~/citevision-v2
+bash scripts/start-linux.sh
 ```
 
-→ http://localhost:5174/setup (si DB vierge)
+Première installation :
 
-## Fichiers clés
+```bash
+bash scripts/sync-to-wsl.sh   # depuis WSL
+bash scripts/setup-wsl.sh
+bash scripts/start-linux.sh
+```
+
+Diagnostic :
+
+```bash
+bash scripts/doctor-linux.sh
+```
+
+## Alternative Windows
+
+```powershell
+powershell -File scripts\start-windows.ps1
+powershell -File scripts\doctor-windows.ps1
+```
+
+## Tests validés offline
+
+```powershell
+powershell -File scripts\validate.ps1
+powershell -File scripts\validate-full.ps1 -SkipLiveStack
+```
+
+Résultats : voir `docs/test-report.md`
+
+## Prochaines étapes si interruption
+
+1. Vérifier WSL : `wsl -d Ubuntu-24.04 -- bash scripts/doctor-linux.sh`
+2. Démarrer stack : `bash scripts/start-linux.sh` (dans `~/citevision-v2`)
+3. Ouvrir http://localhost:5174/setup si DB vierge
+4. Configurer caméra test dans `.env` (CAMERA_TEST_*)
+5. Exécuter `validate-full.ps1` sans `-SkipLiveStack` (Windows) ou tests manuels
+6. Playwright : `cd tests/e2e && npm i && npx playwright test`
+
+## Fichiers clés modifiés récemment
 
 | Fichier | Rôle |
 |---------|------|
-| `docs/CLARIFICATIONS.md` | 35 décisions produit |
-| `docs/PROGRESS.md` | Avancement phases |
-| `backend/internal/setup/service.go` | Wizard première install |
-| `frontend/src/components/SetupGuard.tsx` | Redirection setup |
-| `frontend/src/components/EmptyState.tsx` | Listes vides |
+| `scripts/start-linux.sh` | Orchestration WSL/Linux (principal) |
+| `scripts/start-windows.ps1` | Orchestration Windows (Docker Desktop) |
+| `backend/internal/camera/wizard.go` | Probe RTSP |
+| `backend/internal/ws/hub.go` | Alertes temps réel |
+| `shared/rule-catalog/*.json` | 26 templates |
+| `frontend/src/components/HologramBackground.tsx` | UX premium |
 
-## Blocages connus
+## Secrets
 
-1. **WSL** : virtualisation désactivée (`HCS_E_HYPERV_NOT_INSTALLED`)
-2. **Docker Desktop** : doit être démarré pour infra
-3. **Caméra test** : credentials dans `.env` local uniquement
-
-## Prochaine action agent
-
-1. Activer WSL
-2. `docker compose up` + parcours setup E2E
-3. Test caméra 192.168.1.108
-4. Push `henockglory/Cityvision-v2` tag `v2.0.0-production`
+- Jamais committer `.env`
+- Régénérer PAT GitHub si exposé
+- Credentials caméra uniquement dans `.env` local

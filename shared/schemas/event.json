@@ -9,11 +9,7 @@
     "event_id": { "type": "string", "format": "uuid" },
     "camera_id": { "type": "string" },
     "event_type": {
-      "type": "string",
-      "enum": [
-        "zone_enter", "zone_exit", "line_cross", "loitering",
-        "behavior_anomaly", "correlation_match", "face_detected", "plate_detected"
-      ]
+      "type": "string"
     },
     "timestamp": { "type": "string", "format": "date-time" },
     "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
@@ -22,7 +18,16 @@
     "line_id": { "type": "string" },
     "direction": { "type": "string", "enum": ["in", "out", "left", "right", "unknown"] },
     "duration_seconds": { "type": "number", "minimum": 0 },
-    "metadata": { "type": "object", "additionalProperties": true }
+    "metadata": { "type": "object", "additionalProperties": true },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "package": { "$ref": "evidence.json" },
+        "pending": { "type": "boolean" }
+      }
+    },
+    "class_name": { "type": "string" },
+    "confidence": { "type": "number" }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

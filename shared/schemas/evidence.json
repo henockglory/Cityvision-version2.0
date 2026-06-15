@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://citevision.local/schemas/evidence.json",
+  "title": "EvidencePackage",
+  "description": "Media evidence bundle: short clip + scene/subject images",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "clip": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "asset_id": { "type": "string" },
+        "duration_sec": { "type": "number", "minimum": 0 },
+        "mime": { "type": "string", "default": "video/mp4" }
+      }
+    },
+    "images": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["role", "url"],
+        "properties": {
+          "role": { "type": "string", "enum": ["scene", "subject", "plate", "face"] },
+          "url": { "type": "string" },
+          "asset_id": { "type": "string" },
+          "label": { "type": "string" },
+          "mime": { "type": "string", "default": "image/jpeg" },
+          "bbox": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "width": { "type": "number" },
+              "height": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

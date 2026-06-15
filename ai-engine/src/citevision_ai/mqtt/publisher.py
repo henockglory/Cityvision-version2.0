@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -29,15 +30,26 @@ class MqttPublisher:
             self._client.username_pw_set(username, password)
         self._connected = False
 
-    def connect(self) -> None:
-        try:
-            self._client.connect(self.broker, self.port, keepalive=60)
-            self._client.loop_start()
-            self._connected = True
-            logger.info("MQTT connected to %s:%d", self.broker, self.port)
-        except Exception:
-            logger.warning("MQTT connection failed; publishing disabled")
-            self._connected = False
+    def connect(self, retries: int = 15, delay_sec: float = 2.0) -> None:
+        for attempt in range(1, retries + 1):
+            try:
+                self._client.connect(self.broker, self.port, keepalive=60)
+                self._client.loop_start()
+                self._connected = True
+                logger.info("MQTT connected to %s:%d", self.broker, self.port)
+                return
+            except Exception as exc:
+                if attempt < retries:
+                    logger.info(
+                        "MQTT connect attempt %d/%d failed (%s); retrying…",
+                        attempt,
+                        retries,
+                        exc,
+                    )
+                    time.sleep(delay_sec)
+                else:
+                    logger.warning("MQTT connection failed; publishing disabled")
+                    self._connected = False
 
     def disconnect(self) -> None:
         if self._connected:

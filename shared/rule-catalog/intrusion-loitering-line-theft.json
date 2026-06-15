@@ -4,6 +4,12 @@
     "name": "Intrusion zone interdite",
     "category": "security",
     "severity": "high",
+    "configSchema": {
+      "fields": [
+        { "key": "camera_id", "type": "camera", "required": true, "label": "Caméra" },
+        { "key": "zone_name", "type": "zone", "required": true, "label": "Zone interdite", "hint": "Zone dessinée dans l'éditeur" }
+      ]
+    },
     "definition": {
       "condition": {
         "op": "ET",
@@ -20,6 +26,13 @@
     "name": "Présence prolongée (loitering)",
     "category": "time",
     "severity": "medium",
+    "configSchema": {
+      "fields": [
+        { "key": "camera_id", "type": "camera", "required": true, "label": "Caméra" },
+        { "key": "duration_seconds", "type": "number", "required": true, "label": "Durée (secondes)", "min": 10, "default": 120 },
+        { "key": "window", "type": "schedule", "required": false, "label": "Plage horaire" }
+      ]
+    },
     "definition": {
       "condition": { "op": "gt", "field": "duration_seconds", "value": 120 },
       "actions": [{ "type": "alert", "config": { "severity": "medium" } }],
@@ -31,6 +44,12 @@
     "name": "Franchissement de ligne",
     "category": "spatial",
     "severity": "medium",
+    "configSchema": {
+      "fields": [
+        { "key": "camera_id", "type": "camera", "required": true, "label": "Caméra" },
+        { "key": "line_name", "type": "line", "required": true, "label": "Ligne de comptage" }
+      ]
+    },
     "definition": {
       "condition": { "op": "cross_line", "field": "line_id", "value": "entry-line" },
       "actions": [
@@ -46,24 +65,19 @@
     "severity": "critical",
     "definition": {
       "condition": {
-        "op": "ET",
+        "op": "SEQUENCE",
+        "window_seconds": 300,
+        "key_fields": ["camera_id", "track_id"],
         "children": [
           { "op": "eq", "field": "event_type", "value": "zone_enter" },
-          { "op": "eq", "field": "class_name", "value": "person" },
-          {
-            "op": "OU",
-            "children": [
-              { "op": "gt", "field": "duration_seconds", "value": 30 },
-              { "op": "contains", "field": "metadata.behavior", "value": "concealment" }
-            ]
-          }
+          { "op": "eq", "field": "event_type", "value": "loitering" }
         ]
       },
       "actions": [
         { "type": "alert", "config": { "severity": "critical" } },
         { "type": "record", "config": { "duration_sec": 60 } }
       ],
-      "dedup_key_fields": ["camera_id", "track_id", "event_type"]
+      "dedup_key_fields": ["camera_id", "track_id"]
     }
   },
   {

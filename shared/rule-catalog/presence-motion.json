@@ -1,0 +1,100 @@
+[
+  {
+    "id": "tpl-object-appeared",
+    "name": "Apparition d'objet",
+    "description": "Détecte l'apparition d'un nouvel objet dans la scène",
+    "category": "presence",
+    "severity": "low",
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "object_appeared" },
+      "actions": [{ "type": "alert", "config": { "severity": "low" } }]
+    }
+  },
+  {
+    "id": "tpl-object-disappeared",
+    "name": "Disparition d'objet",
+    "description": "Détecte la disparition d'un objet précédemment visible",
+    "category": "presence",
+    "severity": "medium",
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "object_disappeared" },
+      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
+    }
+  },
+  {
+    "id": "tpl-zone-presence",
+    "name": "Présence dans une zone",
+    "description": "Objet présent dans une zone définie",
+    "category": "presence",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          { "op": "eq", "field": "event_type", "value": "zone_presence" },
+          { "op": "eq", "field": "zone_id", "value": "__ZONE__" },
+          { "op": "matches_class", "field": "class_name", "value": "person" }
+        ]
+      },
+      "actions": [{ "type": "alert", "config": { "severity": "low" } }]
+    }
+  },
+  {
+    "id": "tpl-zone-absence",
+    "name": "Absence prolongée dans une zone",
+    "description": "Absence attendue non respectée dans une zone sensible",
+    "category": "presence",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          { "op": "eq", "field": "event_type", "value": "zone_absence" },
+          { "op": "eq", "field": "zone_id", "value": "__ZONE__" },
+          { "op": "matches_class", "field": "class_name", "value": "person" },
+          { "op": "gt", "field": "duration_seconds", "value": 300 }
+        ]
+      },
+      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
+    }
+  },
+  {
+    "id": "tpl-immobility",
+    "name": "Immobilité prolongée",
+    "description": "Objet ou personne immobile trop longtemps",
+    "category": "presence",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          { "op": "eq", "field": "event_type", "value": "stationary" },
+          { "op": "gt", "field": "duration_seconds", "value": 90 }
+        ]
+      },
+      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
+    }
+  },
+  {
+    "id": "tpl-erratic-motion",
+    "name": "Mouvement erratique",
+    "description": "Changements de direction brusques répétés",
+    "category": "presence",
+    "severity": "high",
+    "definition": {
+      "condition": { "op": "contains", "field": "metadata.behavior", "value": "erratic" },
+      "actions": [{ "type": "alert", "config": { "severity": "high" } }]
+    }
+  },
+  {
+    "id": "tpl-wandering",
+    "name": "Errance prolongée",
+    "description": "Trajet non linéaire prolongé dans une zone",
+    "category": "presence",
+    "severity": "medium",
+    "definition": {
+      "condition": { "op": "contains", "field": "metadata.behavior", "value": "wandering" },
+      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
+    }
+  }
+]

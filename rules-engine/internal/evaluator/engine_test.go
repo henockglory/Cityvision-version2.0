@@ -24,7 +24,7 @@ func TestEvaluateETCondition(t *testing.T) {
 		"camera_id":   "cam-1",
 		"track_id":    1,
 	}
-	ok, actions := Evaluate(def, payload, time.Now())
+	ok, actions := Evaluate(def, payload, time.Now(), nil)
 	if !ok || len(actions) != 1 {
 		t.Fatalf("expected match, got ok=%v actions=%d", ok, len(actions))
 	}
@@ -43,7 +43,7 @@ func TestEvaluateOUCondition(t *testing.T) {
 		Actions: []Action{{Type: "alert"}},
 	}
 	payload := map[string]interface{}{"duration_seconds": 150.0}
-	ok, _ := Evaluate(def, payload, time.Now())
+	ok, _ := Evaluate(def, payload, time.Now(), nil)
 	if !ok {
 		t.Fatal("expected OU match on duration")
 	}
@@ -61,7 +61,7 @@ func TestEvaluateNONCondition(t *testing.T) {
 		Actions: []Action{{Type: "alert"}},
 	}
 	payload := map[string]interface{}{"class_name": "person"}
-	ok, _ := Evaluate(def, payload, time.Now())
+	ok, _ := Evaluate(def, payload, time.Now(), nil)
 	if !ok {
 		t.Fatal("expected NON match")
 	}
@@ -78,7 +78,7 @@ func TestTimeWindowBlocks(t *testing.T) {
 	}
 	payload := map[string]interface{}{"event_type": "zone_enter"}
 	noon := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
-	ok, _ := Evaluate(def, payload, noon)
+	ok, _ := Evaluate(def, payload, noon, nil)
 	if ok {
 		t.Fatal("expected time window to block evaluation at noon")
 	}
@@ -90,5 +90,57 @@ func TestDedupKey(t *testing.T) {
 	key := DedupKey(def, payload)
 	if key != "cam-1|42" {
 		t.Fatalf("unexpected dedup key: %s", key)
+	}
+}
+
+func TestMatchesClassVehicleGroup(t *testing.T) {
+	def := RuleDefinition{
+		Enabled: true,
+		Condition: ConditionNode{
+			Op: "matches_class",
+			Field: "class_name",
+			Value: json.RawMessage(`"vehicle"`),
+		},
+		Actions: []Action{{Type: "alert"}},
+	}
+	ok, _ := Evaluate(def, map[string]interface{}{"class_name": "car"}, time.Now(), nil)
+	if !ok {
+		t.Fatal("expected vehicle group to match car")
+	}
+	ok, _ = Evaluate(def, map[string]interface{}{"class_name": "person"}, time.Now(), nil)
+	if ok {
+		t.Fatal("expected vehicle group to reject person")
+	}
+}
+
+func TestMatchesClassAny(t *testing.T) {
+	def := RuleDefinition{
+		Enabled: true,
+		Condition: ConditionNode{
+			Op: "matches_class",
+			Field: "class_name",
+			Value: json.RawMessage(`"any"`),
+		},
+		Actions: []Action{{Type: "alert"}},
+	}
+	ok, _ := Evaluate(def, map[string]interface{}{"class_name": "backpack"}, time.Now(), nil)
+	if !ok {
+		t.Fatal("expected any to match backpack")
+	}
+}
+
+func TestMatchesClassExactCoco(t *testing.T) {
+	def := RuleDefinition{
+		Enabled: true,
+		Condition: ConditionNode{
+			Op: "matches_class",
+			Field: "class_name",
+			Value: json.RawMessage(`"suitcase"`),
+		},
+		Actions: []Action{{Type: "alert"}},
+	}
+	ok, _ := Evaluate(def, map[string]interface{}{"class_name": "suitcase"}, time.Now(), nil)
+	if !ok {
+		t.Fatal("expected exact COCO match")
 	}
 }

@@ -24,6 +24,12 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Go test (backend)
+        working-directory: backend
+        run: |
+          go mod tidy
+          go test ./...
+
       - name: Go test (rules-engine)
         working-directory: rules-engine
         run: |
@@ -37,8 +43,8 @@ jobs:
           pip install pytest pytest-asyncio httpx
           pytest
 
-      - name: npm build (web placeholder)
-        working-directory: web
+      - name: npm build (frontend)
+        working-directory: frontend
         run: |
           npm install
           npm run build

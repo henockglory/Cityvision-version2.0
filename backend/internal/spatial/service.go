@@ -113,6 +113,28 @@ func (s *Service) ListLines(ctx context.Context, orgID uuid.UUID, siteID *uuid.U
 	return list, rows.Err()
 }
 
+func (s *Service) DeleteZone(ctx context.Context, orgID, id uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM zones WHERE id = $1 AND org_id = $2`, id, orgID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Service) DeleteLine(ctx context.Context, orgID, id uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM lines WHERE id = $1 AND org_id = $2`, id, orgID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Service) GetZone(ctx context.Context, orgID, id uuid.UUID) (*models.Zone, error) {
 	var z models.Zone
 	err := s.pool.QueryRow(ctx, `

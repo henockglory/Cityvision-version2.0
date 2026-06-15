@@ -7,6 +7,7 @@ export interface User {
   role: UserRole;
   avatar?: string;
   lastLogin?: string;
+  isActive?: boolean;
 }
 
 export interface Camera {
@@ -15,8 +16,11 @@ export interface Camera {
   ip: string;
   status: 'online' | 'offline' | 'recording';
   location: string;
+  siteId?: string;
   model?: string;
   streamUrl?: string;
+  streamKey?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DiscoveredDevice {
@@ -28,25 +32,49 @@ export interface DiscoveredDevice {
   model?: string;
 }
 
+export type { EvidenceBBox, EvidenceClip, EvidenceImage, EvidencePackage, EvidenceSnapshot } from '@/lib/evidence';
+
 export interface Alert {
   id: string;
   type: 'intrusion' | 'motion' | 'line_cross' | 'zone_entry' | 'system';
   severity: 'low' | 'medium' | 'high' | 'critical';
+  status?: string;
   cameraId: string;
   cameraName: string;
+  ruleId?: string;
+  ruleName?: string;
   message: string;
   timestamp: string;
   acknowledged: boolean;
+  archivedAt?: string;
+  archiveComment?: string;
+  evidenceSnapshot?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AlertFilters {
+  status?: string;
+  severity?: string;
+  ruleId?: string;
+  cameraId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
 }
 
 export interface Event {
   id: string;
   type: string;
+  typeLabel?: string;
   cameraId: string;
   cameraName: string;
+  ruleName?: string;
+  confidence?: number;
   description: string;
   timestamp: string;
   thumbnail?: string;
+  evidenceSnapshot?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
 }
 
 export interface Rule {
@@ -56,6 +84,26 @@ export interface Rule {
   cameraIds: string[];
   conditions: RuleCondition[];
   actions: RuleAction[];
+  category?: string;
+  severity?: string;
+  description?: string;
+  definition?: Record<string, unknown>;
+}
+
+export interface RuleCatalogTemplate {
+  id: string;
+  name: string;
+  category: string;
+  severity: string;
+  description?: string;
+  definition: Record<string, unknown>;
+  configSchema?: RuleConfigSchema;
+  supported?: boolean;
+  capability_id?: string;
+  human_description?: string;
+  tutorial?: string;
+  prerequisites?: string[];
+  unsupported_message_fr?: string;
 }
 
 export interface RuleCondition {
@@ -110,6 +158,41 @@ export interface NavItem {
   labelKey: string;
   icon: string;
   roles: UserRole[];
+}
+
+export interface NavGroup {
+  id: string;
+  labelKey: string;
+  badge?: 'demo';
+  items: NavItem[];
+}
+
+export type ConfigFieldType =
+  | 'camera'
+  | 'zone'
+  | 'line'
+  | 'number'
+  | 'schedule'
+  | 'watchlist'
+  | 'plate_list'
+  | 'threshold'
+  | 'enum'
+  | 'class_filter';
+
+export interface ConfigSchemaField {
+  key: string;
+  type: ConfigFieldType;
+  label?: string;
+  required?: boolean;
+  min?: number;
+  max?: number;
+  default?: number | string;
+  hint?: string;
+  options?: Array<{ value: string; label: string } | string>;
+}
+
+export interface RuleConfigSchema {
+  fields: ConfigSchemaField[];
 }
 
 export interface Zone {

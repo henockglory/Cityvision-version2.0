@@ -6,13 +6,14 @@ from typing import Any
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from citevision_ai.anpr.paddleocr_module import PaddleOcrModule
 from citevision_ai.budget.resource_budget import ResourceBudgetManager
 from citevision_ai.config import settings
 from citevision_ai.detection.yolo_onnx import YoloOnnxDetector
-from citevision_ai.face.insightface_module import InsightFaceModule
+from citevision_ai.identity.face import FaceIdentityEngine
+from citevision_ai.identity.plate import PlateIdentityEngine
+from citevision_ai.ingest.rtsp_worker import WorkerManager
 from citevision_ai.mqtt.publisher import MqttPublisher
 from citevision_ai.pipeline import PipelineService
 
@@ -20,38 +21,52 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 pipeline: PipelineService | None = None
-face_module: InsightFaceModule | None = None
-ocr_module: PaddleOcrModule | None = None
+worker_manager: WorkerManager | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global pipeline, face_module, ocr_module
+    global pipeline, worker_manager
     detector = YoloOnnxDetector(
-        settings.yolo_model_path,
+        str(settings.resolved_yolo_path()),
         conf_threshold=settings.yolo_confidence,
         iou_threshold=settings.yolo_iou,
+        device=settings.yolo_device,
     )
     detector.load()
+
+    face_engine = FaceIdentityEngine()
+    face_engine.load()
+    plate_engine = PlateIdentityEngine()
+    plate_engine.load()
+
     budget = ResourceBudgetManager(max_cameras=settings.max_cameras)
     mqtt = MqttPublisher(
-        broker=settings.mqtt_broker,
-        port=settings.mqtt_port,
+        broker=settings.resolved_mqtt_host(),
+        port=settings.resolved_mqtt_port(),
         username=settings.mqtt_user or None,
         password=settings.mqtt_password or None,
     )
     mqtt.connect()
-    pipeline = PipelineService(detector, budget, mqtt)
+    pipeline = PipelineService(detector, budget, mqtt, face_engine, plate_engine)
 
-    face_module = InsightFaceModule(settings.insightface_model_path)
-    face_module.load()
-    ocr_module = PaddleOcrModule(settings.paddleocr_model_dir)
-    ocr_module.load()
+    def process_fn(camera_id: str, frame: np.ndarray, fps: float) -> None:
+        if pipeline is None:
+            return
+        if camera_id not in pipeline._trackers:
+            config = worker_manager.get_config(camera_id) if worker_manager else {}
+            pipeline.register_camera(camera_id, config)
+        pipeline.process_frame(camera_id, frame, fps)
 
-    logger.info("AI Engine started on port %d", settings.ai_engine_port)
+    worker_manager = WorkerManager(process_fn)
+    logger.info("AI Engine started on port %d with RTSP worker manager", settings.ai_engine_port)
     yield
+    if worker_manager:
+        for cam_id in list(worker_manager._workers.keys()):
+            worker_manager.stop_camera(cam_id)
     mqtt.disconnect()
     pipeline = None
+    worker_manager = None
 
 
 app = FastAPI(
@@ -63,6 +78,18 @@ app = FastAPI(
 
 class CameraRegister(BaseModel):
     camera_id: str
+
+
+class CameraStartRequest(BaseModel):
+    rtsp_url: str | None = None
+    video_file: str | None = None
+    ai_fps: float = Field(default=8.0, ge=1.0, le=30.0)
+    org_id: str | None = None
+    spatial_rules: dict[str, Any] = Field(default_factory=dict)
+    calibration: dict[str, Any] = Field(default_factory=dict)
+    watchlist: list[dict[str, Any]] = Field(default_factory=list)
+    plates: list[dict[str, Any]] = Field(default_factory=list)
+    analytics_thresholds: dict[str, Any] = Field(default_factory=dict)
 
 
 class RulePayload(BaseModel):
@@ -78,10 +105,28 @@ class ProcessRequest(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     loaded = pipeline.detector.is_loaded if pipeline else False
+    provider = pipeline.detector.active_provider if pipeline else "none"
     return {
         "status": "ok",
         "service": "citevision-ai-engine",
         "yolo_loaded": str(loaded).lower(),
+        "yolo_provider": provider,
+        "yolo_cuda": str(pipeline.detector.uses_cuda if pipeline else False).lower(),
+    }
+
+
+@app.get("/health/gpu")
+def health_gpu() -> dict[str, str | float | bool]:
+    if pipeline is None or not pipeline.detector.is_loaded:
+        raise HTTPException(status_code=503, detail="YOLO not loaded")
+    fps = pipeline.detector.benchmark_fps(30)
+    cuda = bool(pipeline.detector.uses_cuda)
+    return {
+        "provider": pipeline.detector.active_provider,
+        "cuda": cuda,
+        "benchmark_fps": round(fps, 1),
+        "min_fps": settings.yolo_min_fps,
+        "pass": fps >= settings.yolo_min_fps or not cuda,
     }
 
 
@@ -96,6 +141,50 @@ def get_budget() -> dict[str, Any]:
         "height": profile.height,
         "target_fps": profile.target_fps,
     }
+
+
+@app.get("/cameras")
+def list_cameras() -> dict[str, Any]:
+    if worker_manager is None:
+        raise HTTPException(status_code=503, detail="Worker manager not ready")
+    return {"cameras": worker_manager.list_status()}
+
+
+@app.post("/cameras/{camera_id}/start")
+def start_camera(camera_id: str, body: CameraStartRequest) -> dict[str, Any]:
+    if pipeline is None or worker_manager is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    spatial = {**body.spatial_rules}
+    if body.calibration:
+        spatial["calibration"] = body.calibration
+    pipeline.register_camera(camera_id, spatial)
+    if body.org_id:
+        pipeline.set_org_id(camera_id, body.org_id)
+    if body.watchlist:
+        pipeline.set_watchlist(body.watchlist)
+    if body.plates:
+        pipeline.set_plates(body.plates)
+    if body.analytics_thresholds:
+        pipeline.apply_runtime_config(camera_id, body.analytics_thresholds)
+    if not body.rtsp_url and not body.video_file:
+        raise HTTPException(status_code=400, detail="rtsp_url or video_file required")
+    status = worker_manager.start_camera(
+        camera_id,
+        rtsp_url=body.rtsp_url,
+        spatial_config=spatial,
+        video_file=body.video_file,
+        ai_fps=body.ai_fps,
+    )
+    return {"status": "started", **status}
+
+
+@app.post("/cameras/{camera_id}/stop")
+def stop_camera(camera_id: str) -> dict[str, str]:
+    if worker_manager is None or pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    worker_manager.stop_camera(camera_id)
+    pipeline.unregister_camera(camera_id)
+    return {"status": "stopped", "camera_id": camera_id}
 
 
 @app.post("/cameras")
@@ -113,6 +202,8 @@ def register_camera(body: CameraRegister) -> dict[str, str]:
 def unregister_camera(camera_id: str) -> dict[str, str]:
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline not ready")
+    if worker_manager:
+        worker_manager.stop_camera(camera_id)
     pipeline.unregister_camera(camera_id)
     return {"status": "unregistered", "camera_id": camera_id}
 
@@ -134,19 +225,3 @@ def process_test(body: ProcessRequest) -> dict[str, Any]:
     frame = np.zeros((body.height, body.width, 3), dtype=np.uint8)
     result = pipeline.process_frame(body.camera_id, frame)
     return result.to_mqtt_payload()
-
-
-@app.post("/face/detect")
-def detect_faces(body: ProcessRequest) -> dict[str, Any]:
-    if face_module is None:
-        raise HTTPException(status_code=503, detail="Face module not ready")
-    frame = np.zeros((body.height, body.width, 3), dtype=np.uint8)
-    return {"faces": face_module.detect_faces(frame), "enabled": face_module.is_enabled}
-
-
-@app.post("/anpr/recognize")
-def recognize_plates(body: ProcessRequest) -> dict[str, Any]:
-    if ocr_module is None:
-        raise HTTPException(status_code=503, detail="OCR module not ready")
-    frame = np.zeros((body.height, body.width, 3), dtype=np.uint8)
-    return {"plates": ocr_module.recognize_plates(frame), "enabled": ocr_module.is_enabled}

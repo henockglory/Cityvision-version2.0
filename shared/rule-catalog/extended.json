@@ -1,0 +1,192 @@
+[
+  {
+    "id": "tpl-crouch-detected",
+    "name": "Position accroupie",
+    "category": "behavior",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "crouch_detected"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-climb-detected",
+    "name": "Escalade détectée",
+    "category": "behavior",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "climb_detected"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-carry-object",
+    "name": "Transport d'objet",
+    "category": "behavior",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "carry_detected"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-intrusion-after-hours",
+    "name": "Intrusion hors horaires",
+    "category": "security",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "zone_enter"
+          },
+          {
+            "op": "eq",
+            "field": "class",
+            "value": "person"
+          }
+        ]
+      },
+      "window": {
+        "start_hour": 22,
+        "end_hour": 6
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-vehicle-wrong-direction",
+    "name": "Véhicule sens interdit",
+    "category": "traffic",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "wrong_way"
+          },
+          {
+            "op": "eq",
+            "field": "class",
+            "value": "car"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-pedestrian-zone",
+    "name": "Piéton en zone véhicules",
+    "category": "traffic",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {
+            "op": "eq",
+            "field": "class",
+            "value": "person"
+          },
+          {
+            "op": "in_zone",
+            "field": "zone_id",
+            "value": "vehicle-lane"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-face-repeat",
+    "name": "Visage récurrent",
+    "category": "identity",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "gt",
+        "field": "face_count",
+        "value": 1
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-plate-repeat",
+    "name": "Plaque récurrente",
+    "category": "identity",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "plate_detected"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  }
+]

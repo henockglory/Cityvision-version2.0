@@ -1,0 +1,71 @@
+[
+  {
+    "id": "tpl-zone-enter",
+    "name": "Entrée dans une zone",
+    "description": "Franchissement d'entrée de zone virtuelle",
+    "category": "spatial",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          { "op": "eq", "field": "event_type", "value": "zone_enter" },
+          { "op": "eq", "field": "zone_id", "value": "__ZONE__" },
+          { "op": "matches_class", "field": "class_name", "value": "person" }
+        ]
+      },
+      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
+    }
+  },
+  {
+    "id": "tpl-zone-exit",
+    "name": "Sortie d'une zone",
+    "description": "Sortie d'une zone surveillée",
+    "category": "spatial",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          { "op": "eq", "field": "event_type", "value": "zone_exit" },
+          { "op": "eq", "field": "zone_id", "value": "__ZONE__" },
+          { "op": "matches_class", "field": "class_name", "value": "person" }
+        ]
+      },
+      "actions": [{ "type": "alert", "config": { "severity": "low" } }]
+    }
+  },
+  {
+    "id": "tpl-wrong-direction",
+    "name": "Sens interdit",
+    "description": "Franchissement de ligne dans le mauvais sens",
+    "category": "spatial",
+    "severity": "high",
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "wrong_direction" },
+      "actions": [{ "type": "alert", "config": { "severity": "high" } }, { "type": "record", "config": { "duration_sec": 30 } }]
+    }
+  },
+  {
+    "id": "tpl-perimeter-breach",
+    "name": "Intrusion périmétrique",
+    "description": "Franchissement du périmètre externe",
+    "category": "spatial",
+    "severity": "critical",
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "perimeter_breach" },
+      "actions": [{ "type": "alert", "config": { "severity": "critical" } }, { "type": "record", "config": { "duration_sec": 60 } }]
+    }
+  },
+  {
+    "id": "tpl-unauthorized-exit",
+    "name": "Sortie non autorisée",
+    "description": "Sortie par un point non autorisé",
+    "category": "spatial",
+    "severity": "high",
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "unauthorized_exit" },
+      "actions": [{ "type": "alert", "config": { "severity": "high" } }]
+    }
+  }
+]

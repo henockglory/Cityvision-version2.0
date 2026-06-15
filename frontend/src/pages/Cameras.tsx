@@ -1,36 +1,50 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Plus, Wifi, KeyRound, MonitorPlay, ChevronRight, ChevronLeft,
-  Check, Loader2, MoreVertical, Camera as CameraIcon,
+  Check, Loader2, MoreVertical, Camera as CameraIcon, MapPin, Radio, PenTool,
 } from 'lucide-react';
+import { camerasApi } from '@/api/client';
 import PageHeader from '@/components/ui/PageHeader';
 import VideoPlaceholder from '@/components/ui/VideoPlaceholder';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
+import DropdownPortal from '@/components/ui/DropdownPortal';
 import {
   useCameras,
   useCreateCamera,
   useDiscoverCameras,
   useTestCameraStream,
+  useProbeCamera,
+  useCameraPreview,
 } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
+import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 import type { Camera, DiscoveredDevice } from '@/types';
 
-type WizardStep = 1 | 2 | 3;
+type WizardStep = 1 | 2 | 3 | 4;
 
 export default function Cameras() {
   const { t } = useTranslation();
-  const { playClick, playSonar } = useSound();
+  const { playClick } = useSound();
+  const startTour = useAutoPageTour('cameras');
   const siteId = useAuthStore((s) => s.siteId) ?? localStorage.getItem('cv_site_id');
+  const orgId = useAuthStore((s) => s.orgId);
   const { data: cameras = [], isLoading, isError, refetch } = useCameras();
   const discoverMutation = useDiscoverCameras();
   const createMutation = useCreateCamera();
   const testMutation = useTestCameraStream();
+  const probeMutation = useProbeCamera();
+  const previewMutation = useCameraPreview();
 
   const [showWizard, setShowWizard] = useState(false);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const menuAnchorRef = useRef<HTMLElement | null>(null);
+  menuAnchorRef.current = menuAnchorEl;
   const [step, setStep] = useState<WizardStep>(1);
   const [subnet, setSubnet] = useState('192.168.1.0/24');
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
@@ -39,10 +53,12 @@ export default function Cameras() {
   const [cameraName, setCameraName] = useState('');
   const [createdCameraId, setCreatedCameraId] = useState<string | null>(null);
   const [testOk, setTestOk] = useState(false);
+  const [detectedVendor, setDetectedVendor] = useState('generic');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [wizardError, setWizardError] = useState('');
 
   const handleScan = async () => {
-    playSonar();
+    playClick();
     setWizardError('');
     setDevices([]);
     setSelectedDevice(null);
@@ -62,9 +78,19 @@ export default function Cameras() {
     playClick();
     setWizardError('');
     setTestOk(false);
+    setPreviewUrl(null);
     if (!siteId || !selectedDevice) return;
 
     try {
+      const probe = await probeMutation.mutateAsync({
+        host: selectedDevice.ip,
+        username: credentials.username,
+        password: credentials.password,
+        port: selectedDevice.rtsp_port ?? 554,
+      });
+      const vendor = probe.data.best?.vendor ?? 'generic';
+      setDetectedVendor(vendor);
+
       const name = cameraName.trim() || `Camera ${selectedDevice.ip}`;
       const { data } = await createMutation.mutateAsync({
         site_id: siteId,
@@ -73,7 +99,7 @@ export default function Cameras() {
         username: credentials.username,
         password: credentials.password,
         port: selectedDevice.rtsp_port ?? 554,
-        vendor: 'generic',
+        vendor,
       });
       const cam = data as Camera;
       setCreatedCameraId(cam.id);
@@ -82,7 +108,13 @@ export default function Cameras() {
       const testResult = await testMutation.mutateAsync(cam.id);
       if (testResult.data.reachable) {
         setTestOk(true);
-        playSonar();
+        playClick();
+        try {
+          const preview = await previewMutation.mutateAsync(cam.id);
+          setPreviewUrl(preview.data.preview_webrtc);
+        } catch {
+          /* go2rtc optional */
+        }
       } else {
         setWizardError(t('cameras.wizard.connectionFailed'));
       }
@@ -100,6 +132,8 @@ export default function Cameras() {
     setCameraName('');
     setCreatedCameraId(null);
     setTestOk(false);
+    setDetectedVendor('generic');
+    setPreviewUrl(null);
     setWizardError('');
   };
 
@@ -117,7 +151,7 @@ export default function Cameras() {
   if (isError) {
     return (
       <div>
-        <PageHeader title={t('cameras.title')} />
+        <PageHeader title={t('cameras.title')} onHelpTour={startTour} />
         <ErrorState onRetry={() => void refetch()} />
       </div>
     );
@@ -127,6 +161,7 @@ export default function Cameras() {
     <div>
       <PageHeader
         title={t('cameras.title')}
+        onHelpTour={startTour}
         actions={
           <button
             type="button"
@@ -146,6 +181,7 @@ export default function Cameras() {
               { n: 1, label: t('cameras.wizard.step1'), icon: Wifi },
               { n: 2, label: t('cameras.wizard.step2'), icon: KeyRound },
               { n: 3, label: t('cameras.wizard.step3'), icon: MonitorPlay },
+              { n: 4, label: t('cameras.wizard.step4', 'Aperçu'), icon: Check },
             ].map((s, i) => (
               <div key={s.n} className="flex items-center gap-2">
                 <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${
@@ -156,7 +192,7 @@ export default function Cameras() {
                   {step > s.n ? <Check className="w-4 h-4" /> : <s.icon className="w-4 h-4" />}
                   <span className="text-sm font-medium hidden sm:inline">{s.label}</span>
                 </div>
-                {i < 2 && <ChevronRight className="w-4 h-4 text-cv-muted" />}
+                {i < 3 && <ChevronRight className="w-4 h-4 text-cv-muted" />}
               </div>
             ))}
           </div>
@@ -246,17 +282,44 @@ export default function Cameras() {
                 {t('cameras.wizard.testConnection')}
               </button>
               {testOk && (
-                <div className="flex items-center justify-center gap-2 text-emerald-400 text-sm">
-                  <Check className="w-4 h-4" /> {t('cameras.wizard.connectionSuccess')}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-2 text-emerald-400 text-sm">
+                    <Check className="w-4 h-4" /> {t('cameras.wizard.connectionSuccess')}
+                  </div>
+                  <p className="text-xs text-center text-cv-muted">
+                    {t('cameras.wizard.detectedVendor', 'Profil détecté')}: <span className="font-mono text-cv-accent">{detectedVendor}</span>
+                  </p>
                 </div>
               )}
             </div>
           )}
 
           {step === 3 && (
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-2xl mx-auto text-center space-y-4">
+              <p className="text-sm text-cv-muted">{t('cameras.wizard.validating')}</p>
+              {testOk ? (
+                <div className="flex items-center justify-center gap-2 text-emerald-400">
+                  <Check className="w-5 h-5" /> {cameraName}
+                </div>
+              ) : (
+                <Loader2 className="w-6 h-6 animate-spin mx-auto text-cv-accent" />
+              )}
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="max-w-3xl mx-auto">
               <p className="text-sm text-cv-muted text-center mb-4">{t('cameras.wizard.preview')}</p>
-              <VideoPlaceholder label={selectedDevice?.ip ?? cameraName} live={testOk} />
+              {previewUrl ? (
+                <iframe
+                  title="camera-preview"
+                  src={previewUrl}
+                  className="w-full aspect-video rounded-xl border border-cv-border bg-black/40"
+                  allow="autoplay; fullscreen"
+                />
+              ) : (
+                <VideoPlaceholder label={selectedDevice?.ip ?? cameraName} live={testOk} />
+              )}
             </div>
           )}
 
@@ -274,16 +337,23 @@ export default function Cameras() {
               disabled={
                 (step === 1 && !selectedDevice) ||
                 (step === 2 && !testOk) ||
-                (step === 3 && !createdCameraId)
+                (step === 3 && !createdCameraId) ||
+                (step === 4 && !createdCameraId)
               }
               onClick={() => {
                 playClick();
-                if (step < 3) setStep((s) => (s + 1) as WizardStep);
-                else { playSonar(); resetWizard(); void refetch(); }
+                if (step < 4) {
+                  if (step === 2 && !testOk) return;
+                  setStep((s) => (s + 1) as WizardStep);
+                } else {
+                  playClick();
+                  resetWizard();
+                  void refetch();
+                }
               }}
               className="cv-btn-primary"
             >
-              {step === 3 ? t('cameras.wizard.finish') : t('cameras.wizard.next')}
+              {step === 4 ? t('cameras.wizard.finish') : t('cameras.wizard.next')}
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -303,9 +373,9 @@ export default function Cameras() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div id="cameras-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {cameras.map((cam) => (
-            <div key={cam.id} className="cv-card-hover overflow-hidden">
+            <div key={cam.id} className="cv-card-hover overflow-visible">
               <VideoPlaceholder label={cam.name} live={cam.status !== 'offline'} className="rounded-none rounded-t-xl" />
               <div className="p-4">
                 <div className="flex items-start justify-between">
@@ -313,9 +383,49 @@ export default function Cameras() {
                     <h3 className="font-medium">{cam.name}</h3>
                     <p className="text-xs text-cv-muted font-mono mt-0.5">{cam.ip}</p>
                   </div>
-                  <button type="button" className="text-cv-muted hover:text-cv-accent p-1">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="text-cv-muted hover:text-cv-accent p-1"
+                      onClick={(e) => {
+                        if (menuOpen === cam.id) {
+                          setMenuOpen(null);
+                          setMenuAnchorEl(null);
+                        } else {
+                          setMenuOpen(cam.id);
+                          setMenuAnchorEl(e.currentTarget);
+                        }
+                      }}
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    <DropdownPortal
+                      anchorRef={menuAnchorRef}
+                      open={menuOpen === cam.id}
+                      onClose={() => { setMenuOpen(null); setMenuAnchorEl(null); }}
+                    >
+                      <Link to={`/live?camera=${cam.id}`} className="block px-3 py-2 text-xs hover:bg-cv-accent/5" onClick={() => setMenuOpen(null)}>
+                        <MonitorPlay className="w-3.5 h-3.5 inline mr-2" />Live
+                      </Link>
+                      <Link to="/map" className="block px-3 py-2 text-xs hover:bg-cv-accent/5" onClick={() => setMenuOpen(null)}>
+                        <MapPin className="w-3.5 h-3.5 inline mr-2" />Carte
+                      </Link>
+                      <Link to={`/zones?camera=${cam.id}`} className="block px-3 py-2 text-xs hover:bg-cv-accent/5" onClick={() => setMenuOpen(null)}>
+                        <PenTool className="w-3.5 h-3.5 inline mr-2" />Zones
+                      </Link>
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-cv-accent/5"
+                        onClick={() => {
+                          if (!orgId) return;
+                          void camerasApi.testStream(orgId, cam.id);
+                          setMenuOpen(null);
+                        }}
+                      >
+                        <Radio className="w-3.5 h-3.5 inline mr-2" />Tester flux
+                      </button>
+                    </DropdownPortal>
+                  </div>
                 </div>
                 <div className="flex items-center justify-between mt-3">
                   <span className="text-xs text-cv-muted">{cam.location}</span>

@@ -62,6 +62,7 @@ class CorrelationEngine:
                         "timestamp": now.isoformat(),
                         "severity": "info",
                         "track_id": track_id,
+                        "class_name": class_name,
                         "metadata": {
                             "source_camera_id": source_camera_id,
                             "source_track_id": exit_evt["track_id"],
@@ -70,4 +71,30 @@ class CorrelationEngine:
                         },
                     }
                 )
+        return matches
+
+    def correlate_entry(
+        self,
+        camera_id: str,
+        track_id: int,
+        class_name: str,
+        timestamp: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Match a zone entry against recent exits on other cameras."""
+        seen_sources: set[str] = set()
+        matches: list[dict[str, Any]] = []
+        for exit_evt in self._recent_exits:
+            source = exit_evt["camera_id"]
+            if source == camera_id or source in seen_sources:
+                continue
+            seen_sources.add(source)
+            matches.extend(
+                self.find_matches(
+                    camera_id,
+                    track_id,
+                    class_name,
+                    source_camera_id=source,
+                    timestamp=timestamp,
+                )
+            )
         return matches

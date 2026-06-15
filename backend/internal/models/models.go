@@ -136,15 +136,16 @@ type Line struct {
 }
 
 type Event struct {
-	ID         uuid.UUID       `json:"id"`
-	OrgID      uuid.UUID       `json:"org_id"`
-	SiteID     *uuid.UUID      `json:"site_id,omitempty"`
-	CameraID   *uuid.UUID      `json:"camera_id,omitempty"`
-	EventType  string          `json:"event_type"`
-	Severity   string          `json:"severity"`
-	Payload    json.RawMessage `json:"payload"`
-	OccurredAt time.Time       `json:"occurred_at"`
-	IngestedAt time.Time       `json:"ingested_at"`
+	ID               uuid.UUID       `json:"id"`
+	OrgID            uuid.UUID       `json:"org_id"`
+	SiteID           *uuid.UUID      `json:"site_id,omitempty"`
+	CameraID         *uuid.UUID      `json:"camera_id,omitempty"`
+	EventType        string          `json:"event_type"`
+	Severity         string          `json:"severity"`
+	Payload          json.RawMessage `json:"payload"`
+	EvidenceSnapshot json.RawMessage `json:"evidence_snapshot,omitempty"`
+	OccurredAt       time.Time       `json:"occurred_at"`
+	IngestedAt       time.Time       `json:"ingested_at"`
 }
 
 type Rule struct {
@@ -220,4 +221,5 @@ type SetupCompleteRequest struct {
 type SetupCompleteResponse struct {
 	OrgID  uuid.UUID `json:"org_id"`
 	UserID uuid.UUID `json:"user_id"`
+	SiteID uuid.UUID `json:"site_id"`
 }

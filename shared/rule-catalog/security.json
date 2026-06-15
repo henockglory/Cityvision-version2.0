@@ -1,0 +1,170 @@
+[
+  {
+    "id": "tpl-abandoned-object",
+    "redirect_to": "tpl-abandoned-object"
+  },
+  {
+    "id": "tpl-object-removed",
+    "name": "Objet retiré",
+    "category": "objects",
+    "severity": "info",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "object_removed"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-object-appeared",
+    "redirect_to": "tpl-object-appeared"
+  },
+  {
+    "id": "tpl-proximity-alert",
+    "name": "Proximité personne-véhicule",
+    "category": "security",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "person_vehicle_proximity"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-multi-person-vehicle",
+    "name": "Plusieurs personnes, un véhicule",
+    "category": "security",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "multiple_persons_one_vehicle"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-loitering-entrance",
+    "name": "Flânerie près entrée",
+    "category": "security",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "loitering_near_entrance"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-theft-composite",
+    "redirect_to": "tpl-theft-composite"
+  },
+  {
+    "id": "tpl-video-blur",
+    "name": "Vidéo floue",
+    "category": "quality",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "video_blur"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-video-darkness",
+    "name": "Vidéo sombre",
+    "category": "quality",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "video_darkness"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-behavior-anomaly",
+    "name": "Anomalie comportementale",
+    "category": "behavior",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "behavior_anomaly"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-crowd-count",
+    "name": "Seuil foule atteint",
+    "category": "behavior",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "crowd_count_threshold"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  }
+]

@@ -77,7 +77,7 @@ func (s *Service) Login(ctx context.Context, email, password, totpCode string) (
 	var u models.User
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, email, password_hash, full_name, is_active, totp_enabled, totp_secret, created_at, updated_at
-		FROM users WHERE email = $1`, email,
+		FROM users WHERE LOWER(email) = LOWER($1)`, email,
 	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.FullName, &u.IsActive, &u.TOTPEnabled, &u.TOTPSecret, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, nil, ErrInvalidCredentials
@@ -127,6 +127,17 @@ func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*models.Us
 		return nil, ErrInvalidCredentials
 	}
 	return &u, nil
+}
+
+func (s *Service) PrimaryOrgID(ctx context.Context, userID uuid.UUID) *uuid.UUID {
+	var orgID uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		SELECT org_id FROM org_memberships WHERE user_id = $1 ORDER BY created_at LIMIT 1`, userID,
+	).Scan(&orgID)
+	if err != nil {
+		return nil
+	}
+	return &orgID
 }
 
 func (s *Service) issueTokens(ctx context.Context, u models.User, orgID *uuid.UUID, role models.Role) (*TokenPair, error) {
@@ -322,4 +333,51 @@ func (s *Service) DisableTOTP(ctx context.Context, userID uuid.UUID, code string
 	}
 	_, err = s.pool.Exec(ctx, `UPDATE users SET totp_enabled = FALSE, totp_secret = NULL WHERE id = $1`, userID)
 	return err
+}
+
+type UpdateProfileRequest struct {
+	FullName *string
+	Email    *string
+	Password *string
+	Locale   *string
+}
+
+func (s *Service) UpdateProfile(ctx context.Context, userID uuid.UUID, req UpdateProfileRequest) (*models.User, error) {
+	if req.FullName == nil && req.Email == nil && req.Password == nil && req.Locale == nil {
+		return s.GetUserByID(ctx, userID)
+	}
+	q := `UPDATE users SET updated_at = NOW()`
+	args := []interface{}{}
+	n := 1
+	if req.FullName != nil {
+		q += `, full_name = $` + fmt.Sprintf("%d", n)
+		args = append(args, *req.FullName)
+		n++
+	}
+	if req.Email != nil {
+		q += `, email = $` + fmt.Sprintf("%d", n)
+		args = append(args, *req.Email)
+		n++
+	}
+	if req.Locale != nil {
+		q += `, locale = $` + fmt.Sprintf("%d", n)
+		args = append(args, *req.Locale)
+		n++
+	}
+	if req.Password != nil && *req.Password != "" {
+		hash, err := HashPassword(*req.Password)
+		if err != nil {
+			return nil, err
+		}
+		q += `, password_hash = $` + fmt.Sprintf("%d", n)
+		args = append(args, hash)
+		n++
+	}
+	q += ` WHERE id = $` + fmt.Sprintf("%d", n)
+	args = append(args, userID)
+	_, err := s.pool.Exec(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetUserByID(ctx, userID)
 }

@@ -1,0 +1,94 @@
+[
+  {
+    "id": "tpl-speeding",
+    "redirect_to": "tpl-speeding"
+  },
+  {
+    "id": "tpl-slow-vehicle",
+    "name": "Véhicule trop lent",
+    "category": "traffic",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "speed_below_minimum"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-speed-threshold",
+    "name": "Vitesse > seuil",
+    "category": "traffic",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "gt",
+        "field": "speed_kmh",
+        "value": 50
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-wrong-lane",
+    "name": "Mauvaise voie",
+    "category": "traffic",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "wrong_way"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-stopped-traffic",
+    "name": "Véhicule arrêté sur voie",
+    "category": "traffic",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "vehicle_stopped"
+          },
+          {
+            "op": "eq",
+            "field": "class",
+            "value": "car"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  }
+]

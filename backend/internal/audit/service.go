@@ -92,6 +92,54 @@ func (s *Service) computeHash(prevHash string, req LogRequest, payload []byte, t
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+type AuditListEntry struct {
+	models.AuditEntry
+	UserEmail string `json:"user_email,omitempty"`
+	UserName  string `json:"user_name,omitempty"`
+}
+
+func (s *Service) ListEnriched(ctx context.Context, orgID uuid.UUID, limit, offset int, actionFilter string) ([]AuditListEntry, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	q := `
+		SELECT a.id, a.org_id, a.user_id, a.action, a.resource_type, a.resource_id,
+			a.ip_address::text, a.user_agent, a.payload, a.prev_hash, a.entry_hash, a.created_at,
+			COALESCE(u.email, ''), COALESCE(u.full_name, '')
+		FROM audit_logs a
+		LEFT JOIN users u ON u.id = a.user_id
+		WHERE a.org_id = $1`
+	args := []interface{}{orgID}
+	n := 2
+	if actionFilter != "" {
+		q += fmt.Sprintf(` AND UPPER(a.action) = UPPER($%d)`, n)
+		args = append(args, actionFilter)
+		n++
+	}
+	q += fmt.Sprintf(` ORDER BY a.id DESC LIMIT $%d OFFSET $%d`, n, n+1)
+	args = append(args, limit, offset)
+
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []AuditListEntry
+	for rows.Next() {
+		var e AuditListEntry
+		if err := rows.Scan(
+			&e.ID, &e.OrgID, &e.UserID, &e.Action, &e.ResourceType, &e.ResourceID,
+			&e.IPAddress, &e.UserAgent, &e.Payload, &e.PrevHash, &e.EntryHash, &e.CreatedAt,
+			&e.UserEmail, &e.UserName,
+		); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 func (s *Service) VerifyChain(ctx context.Context, limit int) (bool, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, org_id, user_id, action, resource_type, resource_id, payload, prev_hash, entry_hash, created_at

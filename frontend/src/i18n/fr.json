@@ -5,6 +5,7 @@
   },
   "nav": {
     "dashboard": "Tableau de bord",
+    "demo": "Démo Kinshasa",
     "cameras": "Caméras",
     "liveView": "Vue directe",
     "videoWall": "Mur vidéo",
@@ -18,7 +19,15 @@
     "systemHealth": "Santé système",
     "settings": "Paramètres",
     "logout": "Déconnexion",
-    "collapse": "Réduire"
+    "collapse": "Réduire",
+    "groups": {
+      "overview": "Vue d'ensemble",
+      "video": "Vidéo",
+      "security": "Sécurité",
+      "admin": "Administration",
+      "account": "Compte",
+      "demo": "Démo"
+    }
   },
   "setup": {
     "title": "Configuration initiale",
@@ -45,7 +54,10 @@
     "username": "Email",
     "password": "Mot de passe",
     "submit": "Se connecter",
-    "error": "Identifiants invalides"
+    "error": "Identifiants invalides",
+    "errorBackend": "Serveur injoignable — lancez bash scripts/start-linux.sh (WSL)",
+    "copyright": "© 2026 HOLOGRAM.CD — Tous droits réservés",
+    "support": "En cas de problème de connexion, contactez le service de support technique :"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -103,12 +115,64 @@
   "rules": {
     "title": "Règles d'analyse",
     "add": "Nouvelle règle",
+    "newRule": "Nouvelle règle",
     "conditions": "Conditions",
     "actions": "Actions",
     "enabled": "Activée",
     "disabled": "Désactivée",
+    "disable": "Désactiver",
     "empty": "Aucune règle",
-    "emptyHint": "Créez des règles pour automatiser vos alertes"
+    "emptyHint": "Parcourez le catalogue pour activer votre première règle",
+    "catalog": "Catalogue de règles",
+    "catalogSubtitle": "Catalogue + règles configurées",
+    "activeTitle": "Règles configurées",
+    "activeSubtitle": "Gérez, modifiez et dupliquez vos règles actives",
+    "activeEmpty": "Aucune règle ne correspond à ce filtre",
+    "pickTemplate": "Choisir un modèle de règle",
+    "duplicate": "Dupliquer",
+    "copySuffix": "copie",
+    "deletedToast": "Règle « {{name}} » supprimée",
+    "disableError": "Échec de la désactivation — vérifiez vos droits.",
+    "confirmDeleteTitle": "Supprimer cette règle ?",
+    "confirmDeleteMessage": "« {{name}} » sera supprimée. Vous pourrez annuler pendant 10 secondes.",
+    "confirmDisableTitle": "Désactiver cette règle ?",
+    "confirmDisableMessage": "« {{name}} » ne générera plus d'alertes.",
+    "filter": {
+      "all": "Toutes",
+      "enabled": "Actives",
+      "disabled": "Désactivées"
+    },
+    "severity": {
+      "low": "Faible",
+      "medium": "Moyenne",
+      "high": "Élevée",
+      "critical": "Critique"
+    },
+    "studio": {
+      "createTitle": "Configurer la règle",
+      "editTitle": "Modifier la règle",
+      "step": "Étape {{step}} / {{total}}",
+      "ruleName": "Nom de la règle",
+      "conditionsTitle": "Arbre de conditions",
+      "conditionsHint": "Ajoutez ou retirez des conditions avant le déclenchement de l'alerte.",
+      "actionsTitle": "Actions au déclenchement",
+      "alertSeverity": "Sévérité de l'alerte",
+      "notifyEmail": "E-mail destinataire",
+      "previewTitle": "Aperçu du flux",
+      "previewSummary": "Alerte si {{details}}",
+      "previewClass": "objet : {{cls}}",
+      "previewZone": "zone : {{zone}}",
+      "previewDuration": "durée : {{seconds}} s",
+      "classFilterChoose": "— Choisir l'objet surveillé —",
+      "classFilterGroups": "Catégories",
+      "classFilterCoco": "Classes COCO (précis)",
+      "saveError": "Échec — vérifiez vos droits et la configuration.",
+      "addCondition": "Condition",
+      "addGroup": "Groupe ET/OU",
+      "valuePlaceholder": "Valeur",
+      "opAnd": "ET (toutes)",
+      "opOr": "OU (au moins une)"
+    }
   },
   "alerts": {
     "title": "Alertes",
@@ -125,7 +189,31 @@
     "filter": "Filtrer",
     "timeline": "Timeline",
     "empty": "Aucun événement",
-    "emptyHint": "Les événements de détection apparaîtront ici"
+    "emptyHint": "Les événements de détection apparaîtront ici",
+    "allTypes": "Tous les types",
+    "allCameras": "Toutes les caméras",
+    "showAll": "Tout afficher (debug)",
+    "selectHint": "Sélectionnez un événement pour voir les preuves"
+  },
+  "evidence": {
+    "title": "Preuves",
+    "none": "Aucune preuve structurée pour cet élément.",
+    "complete": "Preuve complète",
+    "partial": "Partielle ({{have}}/{{total}})",
+    "clipLabel": "Clip {{sec}}s",
+    "scene": "Vue scène",
+    "subject": "Cible détectée",
+    "bboxOnly": "bbox seule",
+    "confidence": "Confiance :",
+    "plate": "Plaque",
+    "face": "Visage",
+    "eventType": "Événement",
+    "class": "Classe",
+    "speed": "Vitesse",
+    "zone": "Zone",
+    "track": "Piste",
+    "openLive": "Ouvrir live",
+    "download": "Télécharger"
   },
   "liveView": {
     "title": "Vue directe",
@@ -168,7 +256,12 @@
     "theme": "Thème",
     "sound": "Sons interface",
     "soundOn": "Activés",
-    "soundOff": "Désactivés"
+    "soundOff": "Désactivés",
+    "toursTitle": "Tutoriels guidés",
+    "toursAutoStart": "Lancer automatiquement à l'arrivée sur une page",
+    "toursAutoOn": "Activé",
+    "toursAutoOff": "Désactivé",
+    "resetAllTours": "Réinitialiser tous les tutoriels"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -229,6 +322,91 @@
     "content": {
       "title": "Zone principale",
       "description": "Votre espace de travail pour la surveillance en temps réel."
+    }
+  },
+  "tours": {
+    "labels": {
+      "global": "Visite générale",
+      "dashboard": "Tableau de bord",
+      "map": "Carte SIG",
+      "rules": "Règles d'analyse",
+      "alerts": "Alertes & preuves",
+      "videoWall": "Mur vidéo",
+      "liveView": "Vue directe",
+      "cameras": "Caméras",
+      "zones": "Éditeur de zones",
+      "events": "Événements",
+      "users": "Utilisateurs",
+      "audit": "Audit",
+      "health": "Santé système",
+      "settings": "Paramètres",
+      "demo": "Démo"
+    },
+    "dashboard": {
+      "stats": "Indicateurs clés",
+      "statsDesc": "Caméras, alertes, événements et règles — survolez pour des explications.",
+      "alerts": "Alertes récentes",
+      "alertsDesc": "Dernières alertes avec lien vers le détail et les preuves.",
+      "live": "Flux temps réel",
+      "liveDesc": "Événements IA détectés en direct sur vos caméras."
+    },
+    "map": {
+      "modes": "Modes carte",
+      "modesDesc": "Carte réelle OSM, plan schématique ou globe 3D.",
+      "canvas": "Placement SIG",
+      "canvasDesc": "Survolez une caméra pour l'aperçu live ; cliquez pour la fiche."
+    },
+    "rules": {
+      "catalog": "Catalogue",
+      "catalogDesc": "Recherchez et activez des règles par catégorie.",
+      "active": "Règles configurées",
+      "activeDesc": "Modifiez, dupliquez ou désactivez vos règles ici."
+    },
+    "alerts": {
+      "filters": "Filtres",
+      "filtersDesc": "Filtrez par période, caméra, règle et sévérité."
+    },
+    "videoWall": {
+      "layout": "Disposition",
+      "layoutDesc": "Choisissez 1, 4, 9 ou 16 caméras sur le mur.",
+      "grid": "Grille vidéo",
+      "gridDesc": "Chaque quadrant remplit l'espace sans chevauchement."
+    },
+    "liveView": {
+      "player": "Flux principal",
+      "playerDesc": "Sélectionnez une caméra et contrôlez le PTZ."
+    },
+    "cameras": {
+      "list": "Liste caméras",
+      "listDesc": "Ajoutez et testez vos caméras ici."
+    },
+    "zones": {
+      "canvas": "Canevas zones",
+      "canvasDesc": "Dessinez zones et lignes de détection."
+    },
+    "events": {
+      "timeline": "Chronologie",
+      "timelineDesc": "Historique des événements de détection."
+    },
+    "users": {
+      "table": "Utilisateurs",
+      "tableDesc": "Gérez les comptes et rôles."
+    },
+    "audit": {
+      "log": "Journal",
+      "logDesc": "Actions enregistrées pour conformité."
+    },
+    "health": {
+      "services": "Services",
+      "servicesDesc": "État des microservices Citévision."
+    },
+    "settings": {
+      "tabs": "Paramètres",
+      "tabsDesc": "Thème, sons, tutoriels et intégrations."
+    },
+    "demo": {
+      "banner": "Mode démo",
+      "bannerDesc": "Scénario Kinshasa et données de démonstration."
     }
   }
 }

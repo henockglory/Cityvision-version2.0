@@ -20,7 +20,7 @@ import {
   ensureArray,
 } from '@/api/mappers';
 import { useAuthStore } from '@/stores/authStore';
-import type { DashboardSummary, SystemHealthMetric } from '@/types';
+import type { AlertFilters, DashboardSummary, SystemHealthMetric } from '@/types';
 
 const STALE = 30_000;
 
@@ -110,26 +110,54 @@ export function useTestCameraStream() {
   });
 }
 
-export function useAlerts() {
+export function useProbeCamera() {
   const orgId = useOrgId();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof camerasApi.probe>[1]) => {
+      if (!orgId) throw new Error('No organization');
+      return camerasApi.probe(orgId, body);
+    },
+  });
+}
+
+export function useCameraPreview() {
+  const orgId = useOrgId();
+  return useMutation({
+    mutationFn: (cameraId: string) => {
+      if (!orgId) throw new Error('No organization');
+      return camerasApi.preview(orgId, cameraId);
+    },
+  });
+}
+
+export function useAlerts(filters: AlertFilters | string = 'open') {
+  const orgId = useOrgId();
+  const resolved: AlertFilters = typeof filters === 'string'
+    ? (filters === 'all' ? {} : { status: filters })
+    : filters;
+  const key = JSON.stringify(resolved);
   return useQuery({
-    queryKey: queryKeys.alerts,
+    queryKey: [...queryKeys.alerts, key] as const,
     queryFn: async () => {
       if (!orgId) throw new Error('No organization');
-      const { data } = await alertsApi.list(orgId);
+      const { data } = await alertsApi.list(orgId, resolved);
       return ensureArray(data).map((a) => mapAlert(a as Parameters<typeof mapAlert>[0]));
     },
     enabled: !!orgId,
   });
 }
 
-export function useEvents() {
+export function useEvents(filters?: { eventType?: string; cameraId?: string; ruleLinked?: boolean; showAll?: boolean }) {
   const orgId = useOrgId();
   return useQuery({
-    queryKey: queryKeys.events,
+    queryKey: [...queryKeys.events, filters?.eventType ?? '', filters?.cameraId ?? '', filters?.ruleLinked ?? '', filters?.showAll ?? ''] as const,
     queryFn: async () => {
       if (!orgId) throw new Error('No organization');
-      const { data } = await eventsApi.list(orgId);
+      const { data } = await eventsApi.list(orgId, {
+        event_type: filters?.eventType,
+        camera_id: filters?.cameraId,
+        rule_linked: filters?.showAll ? undefined : true,
+      });
       return ensureArray(data).map((e) => mapEvent(e as Parameters<typeof mapEvent>[0]));
     },
     enabled: !!orgId,
@@ -149,6 +177,47 @@ export function useRules() {
   });
 }
 
+export function useRuleCatalog() {
+  const orgId = useOrgId();
+  return useQuery({
+    queryKey: [...queryKeys.rules, 'catalog'] as const,
+    queryFn: async () => {
+      if (!orgId) throw new Error('No organization');
+      const { data } = await rulesApi.catalog(orgId);
+      return ensureArray(data);
+    },
+    enabled: !!orgId,
+  });
+}
+
+export function useArchiveAlert() {
+  const orgId = useOrgId();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      alertId,
+      comment,
+      evidenceSnapshot,
+    }: {
+      alertId: string;
+      comment?: string;
+      evidenceSnapshot?: Record<string, unknown>;
+    }) => {
+      if (!orgId) throw new Error('No organization');
+      return alertsApi.archive(orgId, alertId, {
+        comment,
+        evidence_snapshot: evidenceSnapshot,
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.alerts });
+    },
+  });
+}
+
+/** @deprecated use useArchiveAlert */
+export const useAcknowledgeAlert = useArchiveAlert;
+
 export function useUsers() {
   const orgId = useOrgId();
   return useQuery({
@@ -162,16 +231,74 @@ export function useUsers() {
   });
 }
 
-export function useAudit() {
+export function useAudit(actionFilter?: string) {
   const orgId = useOrgId();
   return useQuery({
-    queryKey: queryKeys.audit,
+    queryKey: [...queryKeys.audit, actionFilter ?? ''] as const,
     queryFn: async () => {
       if (!orgId) throw new Error('No organization');
-      const { data } = await auditApi.list(orgId);
+      const { data } = await auditApi.list(orgId, actionFilter ? { action: actionFilter } : undefined);
       return ensureArray(data).map((a) => mapAudit(a as Parameters<typeof mapAudit>[0]));
     },
     enabled: !!orgId,
+  });
+}
+
+export function useVerifyAuditChain() {
+  const orgId = useOrgId();
+  return useMutation({
+    mutationFn: () => {
+      if (!orgId) throw new Error('No organization');
+      return auditApi.verify(orgId);
+    },
+  });
+}
+
+export function useCreateUser() {
+  const orgId = useOrgId();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { email: string; full_name: string; password: string; role: string }) => {
+      if (!orgId) throw new Error('No organization');
+      return usersApi.create(orgId, body);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.users }),
+  });
+}
+
+export function useUpdateUser() {
+  const orgId = useOrgId();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      userId,
+      body,
+    }: {
+      userId: string;
+      body: { role?: string; is_active?: boolean };
+    }) => {
+      if (!orgId) throw new Error('No organization');
+      return usersApi.update(orgId, userId, body);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.users }),
+  });
+}
+
+export function useUpdateCameraMap() {
+  const orgId = useOrgId();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      cameraId,
+      metadata,
+    }: {
+      cameraId: string;
+      metadata: Record<string, unknown>;
+    }) => {
+      if (!orgId) throw new Error('No organization');
+      return camerasApi.update(orgId, cameraId, { metadata });
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.cameras }),
   });
 }
 
@@ -193,12 +320,41 @@ export function useHealth() {
     queryKey: queryKeys.health,
     queryFn: async (): Promise<SystemHealthMetric[]> => {
       const { data } = await healthApi.ready();
-      const checks = data.checks ?? {};
-      return Object.entries(checks).map(([name, check]) => ({
-        name,
-        status: check.status === 'ok' ? 'healthy' as const : check.status === 'degraded' ? 'warning' as const : 'critical' as const,
-        value: check.status,
-      }));
+      if (data.checks && Object.keys(data.checks).length > 0) {
+        return Object.entries(data.checks).map(([name, check]) => ({
+          name,
+          status:
+            check.status === 'ok'
+              ? ('healthy' as const)
+              : check.status === 'degraded'
+                ? ('warning' as const)
+                : ('critical' as const),
+          value: check.status,
+        }));
+      }
+      const metrics: SystemHealthMetric[] = [];
+      if (data.status) {
+        metrics.push({
+          name: 'API',
+          status: data.status === 'ok' ? 'healthy' : 'warning',
+          value: data.status,
+        });
+      }
+      if (data.database) {
+        metrics.push({
+          name: 'PostgreSQL',
+          status: data.database === 'ok' ? 'healthy' : 'critical',
+          value: data.database,
+        });
+      }
+      if (data.redis) {
+        metrics.push({
+          name: 'Redis',
+          status: data.redis === 'ok' ? 'healthy' : 'critical',
+          value: data.redis,
+        });
+      }
+      return metrics;
     },
     staleTime: STALE,
     refetchInterval: 60_000,

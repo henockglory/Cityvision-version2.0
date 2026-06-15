@@ -5,6 +5,7 @@ import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
 import { useHealth } from '@/hooks/api/queries';
+import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 import type { SystemHealthMetric } from '@/types';
 
 const metricIcons: Record<string, typeof Cpu> = {
@@ -58,6 +59,7 @@ function HealthBar({ metric }: { metric: SystemHealthMetric }) {
 
 export default function SystemHealth() {
   const { t } = useTranslation();
+  const startTour = useAutoPageTour('health');
   const { data: health = [], isLoading, isError, refetch } = useHealth();
 
   if (isLoading) return <LoadingState />;
@@ -65,7 +67,7 @@ export default function SystemHealth() {
   if (isError) {
     return (
       <div>
-        <PageHeader title={t('systemHealth.title')} />
+        <PageHeader title={t('systemHealth.title')} onHelpTour={startTour} />
         <ErrorState onRetry={() => void refetch()} />
       </div>
     );
@@ -74,7 +76,7 @@ export default function SystemHealth() {
   if (health.length === 0) {
     return (
       <div>
-        <PageHeader title={t('systemHealth.title')} />
+        <PageHeader title={t('systemHealth.title')} onHelpTour={startTour} />
         <EmptyState title={t('systemHealth.empty')} hint={t('systemHealth.emptyHint')} icon={Activity} />
       </div>
     );
@@ -82,11 +84,11 @@ export default function SystemHealth() {
 
   return (
     <div>
-      <PageHeader title={t('systemHealth.title')} />
+      <PageHeader title={t('systemHealth.title')} onHelpTour={startTour} />
       <h2 className="font-display text-sm font-semibold text-cv-muted uppercase tracking-wider mb-3">
         {t('systemHealth.services')}
       </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div id="health-services" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {health.map((metric) => (
           <HealthBar key={metric.name} metric={metric} />
         ))}

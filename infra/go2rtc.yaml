@@ -1,0 +1,20 @@
+api:
+  listen: ":1984"
+  origin: "*"
+
+rtsp:
+  listen: ":8554"
+
+# WebRTC : forcer localhost:8555 (Docker sinon annonce 172.x → écran noir Chrome Windows)
+webrtc:
+  listen: ":8555"
+  candidates:
+    - localhost:8555
+    - 127.0.0.1:8555
+    - stun:8555
+  filters:
+    candidates: []
+
+streams:
+  benedicte:
+    - "ffmpeg:/videos/benedicte_stream.mp4#video=copy#loop"

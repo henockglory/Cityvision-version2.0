@@ -17,7 +17,9 @@ Check "ai-engine" "ai-engine/pyproject.toml"
 Check "no mock.ts" "frontend/src/components/EmptyState.tsx"
 if (Test-Path "frontend/src/data/mock.ts") { Write-Host "[FAIL] mock.ts exists"; $Fail++ } else { Write-Host "[PASS] no mock.ts" }
 
-if (Select-String -Path "frontend/src" -Pattern "demoLogin|withMockFallback" -Quiet) {
+$mockHits = Get-ChildItem -Path "frontend/src" -Recurse -Include "*.ts","*.tsx" -File -ErrorAction SilentlyContinue |
+    Select-String -Pattern "demoLogin|withMockFallback"
+if ($mockHits) {
     Write-Host "[FAIL] mock patterns found in frontend"
     $Fail++
 } else {

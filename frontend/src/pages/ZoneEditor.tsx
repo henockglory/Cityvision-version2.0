@@ -1,169 +1,921 @@
-import { useState } from 'react';
-import { Stage, Layer, Line, Circle, Rect } from 'react-konva';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+import { Stage, Layer, Line, Circle } from 'react-konva';
+
 import type { KonvaEventObject } from 'konva/lib/Node';
+
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Save, Square, Pentagon, PenTool } from 'lucide-react';
+
+import { Plus, Save, Pentagon, PenTool, Trash2, Video, Minus } from 'lucide-react';
+
 import PageHeader from '@/components/ui/PageHeader';
+
 import EmptyState from '@/components/EmptyState';
+
+import LoadingState from '@/components/ui/LoadingState';
+
+import { useCameras } from '@/hooks/api/queries';
+
+import { useAutoPageTour } from '@/hooks/useAutoPageTour';
+
 import { useSound } from '@/hooks/useSound';
+
+import { useAuthStore } from '@/stores/authStore';
+
+import { zonesApi, type BackendZone, type BackendLine } from '@/api/client';
+
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+
+import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
+
+import { go2rtcStreamSrc } from '@/config/streams';
+
 import type { Zone } from '@/types';
 
+
+
 const STAGE_WIDTH = 800;
+
 const STAGE_HEIGHT = 450;
 
+
+
+type EditMode = 'zone' | 'line';
+
+
+
+interface DraftLine {
+
+  id: string;
+
+  name: string;
+
+  start: [number, number];
+
+  end: [number, number];
+
+  cameraId: string;
+
+}
+
+
+
+interface SavedLine {
+
+  id: string;
+
+  name: string;
+
+  points: number[];
+
+  cameraId: string;
+
+}
+
+
+
+function polygonToPoints(polygon: { x: number; y: number }[]): number[] {
+
+  return polygon.flatMap((p) => [p.x * STAGE_WIDTH, p.y * STAGE_HEIGHT]);
+
+}
+
+
+
+function backendToZone(z: BackendZone): Zone {
+
+  return {
+
+    id: z.id,
+
+    name: z.name,
+
+    points: polygonToPoints(z.polygon ?? []),
+
+    color: z.color ?? '#00D4FF',
+
+    cameraId: z.camera_id ?? '',
+
+  };
+
+}
+
+
+
+function backendToLine(l: BackendLine): SavedLine {
+
+  const sx = (l.start_point?.x ?? 0) * STAGE_WIDTH;
+
+  const sy = (l.start_point?.y ?? 0) * STAGE_HEIGHT;
+
+  const ex = (l.end_point?.x ?? 0) * STAGE_WIDTH;
+
+  const ey = (l.end_point?.y ?? 0) * STAGE_HEIGHT;
+
+  return {
+
+    id: l.id,
+
+    name: l.name,
+
+    points: [sx, sy, ex, ey],
+
+    cameraId: l.camera_id ?? '',
+
+  };
+
+}
+
+
+
 export default function ZoneEditor() {
+
   const { t } = useTranslation();
-  const { playClick } = useSound();
-  const [zones, setZones] = useState<Zone[]>([]);
-  const [selectedZone, setSelectedZone] = useState<string | null>(null);
-  const [tool, setTool] = useState<'select' | 'rect' | 'polygon'>('select');
+
+  const { playClick, playSonar } = useSound();
+
+  const startTour = useAutoPageTour('zones');
+
+  const orgId = useAuthStore((s) => s.orgId);
+
+  const authSiteId = useAuthStore((s) => s.siteId);
+
+  const { data: cameras = [], isLoading } = useCameras();
+
+  const [editMode, setEditMode] = useState<EditMode>('zone');
+
+  const [savedZones, setSavedZones] = useState<Zone[]>([]);
+
+  const [draftZones, setDraftZones] = useState<Zone[]>([]);
+
+  const [savedLines, setSavedLines] = useState<SavedLine[]>([]);
+
+  const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
+
+  const [lineDraftStart, setLineDraftStart] = useState<[number, number] | null>(null);
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   const [drawing, setDrawing] = useState<number[]>([]);
 
+  const [saving, setSaving] = useState(false);
+
+  const [loadingSpatial, setLoadingSpatial] = useState(false);
+
+  const [message, setMessage] = useState('');
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'zone' | 'line'; id: string; name: string } | null>(null);
+
+
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const selectedCamera = cameras.find((c) => c.id === searchParams.get('camera'))
+    ?? cameras.find(
+      (c) => c.name.toLowerCase().includes('virtual') || c.name.toLowerCase().includes('benedicte'),
+    ) ?? cameras[0];
+
+  const siteId = authSiteId ?? selectedCamera?.siteId;
+
+  const streamSrc = go2rtcStreamSrc(selectedCamera);
+
+
+
+  const loadSpatial = useCallback(async () => {
+
+    if (!orgId || !selectedCamera) return;
+
+    setLoadingSpatial(true);
+
+    try {
+
+      const [zRes, lRes] = await Promise.all([
+
+        zonesApi.list(orgId, selectedCamera.id),
+
+        zonesApi.listLines(orgId, selectedCamera.id),
+
+      ]);
+
+      const zList = (Array.isArray(zRes.data) ? zRes.data : []) as BackendZone[];
+
+      const lList = (Array.isArray(lRes.data) ? lRes.data : []) as BackendLine[];
+
+      setSavedZones(zList.map(backendToZone));
+
+      setSavedLines(lList.map(backendToLine));
+
+    } catch {
+
+      setMessage(t('zoneEditor.loadFailed', 'Impossible de charger les zones.'));
+
+    } finally {
+
+      setLoadingSpatial(false);
+
+    }
+
+  }, [orgId, selectedCamera, t]);
+
+
+
+  useEffect(() => {
+
+    void loadSpatial();
+
+  }, [loadSpatial]);
+
+
+
+  const allZones = [...savedZones, ...draftZones];
+
+  const allLines = [...savedLines, ...draftLines.map((d) => ({
+
+    id: d.id,
+
+    name: d.name,
+
+    points: [...d.start, ...d.end],
+
+    cameraId: d.cameraId,
+
+  }))];
+
+
+
   const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
-    if (tool !== 'polygon') return;
+
     const stage = e.target.getStage();
+
     if (!stage) return;
+
     const pos = stage.getPointerPosition();
+
     if (!pos) return;
+
     playClick();
+
+
+
+    if (editMode === 'line') {
+
+      if (!lineDraftStart) {
+
+        setLineDraftStart([pos.x, pos.y]);
+
+        return;
+
+      }
+
+      const id = `draft-line-${Date.now()}`;
+
+      setDraftLines((prev) => [
+
+        ...prev,
+
+        {
+
+          id,
+
+          name: `Ligne ${savedLines.length + prev.length + 1}`,
+
+          start: lineDraftStart,
+
+          end: [pos.x, pos.y],
+
+          cameraId: selectedCamera?.id ?? '',
+
+        },
+
+      ]);
+
+      setLineDraftStart(null);
+
+      setSelectedId(id);
+
+      return;
+
+    }
+
+
+
     setDrawing((prev) => [...prev, pos.x, pos.y]);
+
   };
 
-  const addRectZone = () => {
-    playClick();
-    const id = `z${Date.now()}`;
-    setZones((prev) => [
-      ...prev,
-      { id, name: `Zone ${prev.length + 1}`, points: [50, 50, 200, 50, 200, 150, 50, 150], color: '#00D4FF', cameraId: '' },
-    ]);
-    setSelectedZone(id);
-  };
 
-  const deleteZone = () => {
-    if (!selectedZone) return;
-    playClick();
-    setZones((prev) => prev.filter((z) => z.id !== selectedZone));
-    setSelectedZone(null);
-  };
 
   const finishPolygon = () => {
+
     if (drawing.length < 6) return;
+
     playClick();
-    const id = `z${Date.now()}`;
-    setZones((prev) => [
+
+    const id = `draft-${Date.now()}`;
+
+    setDraftZones((prev) => [
+
       ...prev,
-      { id, name: `Zone ${prev.length + 1}`, points: drawing, color: '#00D4FF', cameraId: '' },
+
+      {
+
+        id,
+
+        name: `Zone ${savedZones.length + prev.length + 1}`,
+
+        points: drawing,
+
+        color: '#00D4FF',
+
+        cameraId: selectedCamera?.id ?? '',
+
+      },
+
     ]);
+
     setDrawing([]);
-    setSelectedZone(id);
-    setTool('select');
+
+    setSelectedId(id);
+
   };
 
+
+
+  const saveAll = async () => {
+
+    if (!orgId || !siteId || !selectedCamera) {
+
+      setMessage(t('zoneEditor.noSite', 'Site introuvable — reconnectez-vous.'));
+
+      return;
+
+    }
+
+    if (editMode === 'zone' && draftZones.length === 0) {
+
+      setMessage(t('zoneEditor.saveError', 'Dessinez au moins une zone (3 clics, puis « Fermer polygone »).'));
+
+      return;
+
+    }
+
+    if (editMode === 'line' && draftLines.length === 0) {
+
+      setMessage('Dessinez au moins une ligne (2 clics : début et fin).');
+
+      return;
+
+    }
+
+    setSaving(true);
+
+    setMessage('');
+
+    try {
+
+      if (editMode === 'zone') {
+
+        for (const zone of draftZones) {
+
+          const polygon = [];
+
+          for (let i = 0; i < zone.points.length; i += 2) {
+
+            polygon.push({
+
+              x: zone.points[i] / STAGE_WIDTH,
+
+              y: zone.points[i + 1] / STAGE_HEIGHT,
+
+            });
+
+          }
+
+          await zonesApi.create(orgId, {
+
+            site_id: siteId,
+
+            camera_id: selectedCamera.id,
+
+            name: zone.name,
+
+            polygon,
+
+            color: zone.color,
+
+          });
+
+        }
+
+        setDraftZones([]);
+
+      } else {
+
+        for (const line of draftLines) {
+
+          await zonesApi.createLine(orgId, {
+
+            site_id: siteId,
+
+            camera_id: selectedCamera.id,
+
+            name: line.name,
+
+            start_point: { x: line.start[0] / STAGE_WIDTH, y: line.start[1] / STAGE_HEIGHT },
+
+            end_point: { x: line.end[0] / STAGE_WIDTH, y: line.end[1] / STAGE_HEIGHT },
+
+            direction: 'both',
+
+          });
+
+        }
+
+        setDraftLines([]);
+
+      }
+
+      playSonar();
+
+      setMessage(t('zoneEditor.saved', 'Enregistré — rechargement…'));
+
+      await loadSpatial();
+
+    } catch {
+
+      setMessage(t('zoneEditor.saveFailed', 'Échec enregistrement — vérifiez la connexion.'));
+
+    } finally {
+
+      setSaving(false);
+
+    }
+
+  };
+
+
+
+  const switchMode = (mode: EditMode) => {
+
+    playClick();
+
+    setEditMode(mode);
+
+    setDrawing([]);
+
+    setLineDraftStart(null);
+
+    setSelectedId(null);
+
+  };
+
+
+
+  if (isLoading) return <LoadingState />;
+
+
+
+  if (!selectedCamera) {
+
+    return (
+
+      <div>
+
+        <PageHeader title={t('zoneEditor.title')} onHelpTour={startTour} />
+
+        <EmptyState
+
+          title={t('zoneEditor.noCamera')}
+
+          hint={t('zoneEditor.noCameraHint', 'Lancez bash scripts/setup-demo-kinshasa.sh')}
+
+          icon={Video}
+
+        />
+
+      </div>
+
+    );
+
+  }
+
+
+
   return (
+
     <div>
+
       <PageHeader
+
         title={t('zoneEditor.title')}
+
+        subtitle={selectedCamera?.name}
+
+        onHelpTour={startTour}
+
         actions={
-          <div className="flex gap-2">
-            <button type="button" onClick={addRectZone} className="cv-btn-secondary text-xs">
-              <Plus className="w-3 h-3" />
-              {t('zoneEditor.addZone')}
-            </button>
-            <button type="button" onClick={deleteZone} disabled={!selectedZone} className="cv-btn-secondary text-xs">
-              <Trash2 className="w-3 h-3" />
-              {t('zoneEditor.deleteZone')}
-            </button>
-            <button type="button" onClick={() => playClick()} className="cv-btn-primary text-xs">
-              <Save className="w-3 h-3" />
-              {t('zoneEditor.save')}
-            </button>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-cv-muted shrink-0">Caméra</label>
+            <select
+              className="cv-input text-sm max-w-[220px]"
+              value={selectedCamera?.id ?? ''}
+              onChange={(e) => {
+                playClick();
+                setSearchParams({ camera: e.target.value });
+              }}
+            >
+              {cameras.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
           </div>
         }
+
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 cv-card p-4 overflow-hidden">
-          <div className="flex gap-2 mb-4">
-            <span className="text-xs text-cv-muted uppercase tracking-wider">{t('zoneEditor.tools')}</span>
-            {[
-              { id: 'select' as const, icon: Square },
-              { id: 'rect' as const, icon: Square },
-              { id: 'polygon' as const, icon: Pentagon },
-            ].map((btn) => (
-              <button
-                key={btn.id}
-                type="button"
-                onClick={() => { playClick(); setTool(btn.id); }}
-                className={`cv-btn-ghost p-2 ${tool === btn.id ? 'text-cv-accent bg-cv-accent/10' : ''}`}
-              >
-                <btn.icon className="w-4 h-4" />
-              </button>
-            ))}
-            {tool === 'polygon' && drawing.length >= 6 && (
-              <button type="button" onClick={finishPolygon} className="cv-btn-secondary text-xs ml-auto">
-                Finish polygon
+      <div className="flex gap-2 flex-wrap mb-4">
+            <button
+              type="button"
+              onClick={() => switchMode('zone')}
+              className={`cv-btn-secondary text-xs ${editMode === 'zone' ? 'border-cv-accent' : ''}`}
+            >
+              <Pentagon className="w-3 h-3" />
+              Zones
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode('line')}
+              className={`cv-btn-secondary text-xs ${editMode === 'line' ? 'border-cv-accent' : ''}`}
+            >
+              <Minus className="w-3 h-3" />
+              Lignes
+            </button>
+            {editMode === 'zone' && (
+              <button type="button" onClick={finishPolygon} disabled={drawing.length < 6} className="cv-btn-secondary text-xs">
+                <Pentagon className="w-3 h-3" />
+                {t('zoneEditor.finishPolygon', 'Fermer polygone')}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => void saveAll()}
+              disabled={saving || (editMode === 'zone' ? draftZones.length === 0 : draftLines.length === 0)}
+              className="cv-btn-primary text-xs"
+            >
+              <Save className="w-3 h-3" />
+              {saving ? '…' : t('zoneEditor.save')}
+            </button>
+      </div>
+
+
+
+      {message && <p className="text-sm text-center mb-4 text-cv-accent">{message}</p>}
+
+
+
+      <p className="text-sm text-cv-muted mb-4 max-w-2xl">
+
+        {editMode === 'zone'
+
+          ? t('zoneEditor.instructions', 'Cliquez sur la vidéo pour placer les points. Minimum 3 points, puis « Fermer polygone » et Enregistrer.')
+
+          : 'Mode ligne : cliquez le point de départ puis le point d’arrivée. Enregistrez pour activer les règles de franchissement.'}
+
+      </p>
+
+
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+        <div className="lg:col-span-3 cv-card p-4 overflow-hidden">
+
+          <div id="zone-canvas" className="relative rounded-lg overflow-hidden border border-cv-border mx-auto" style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}>
+
+            <Go2RtcPlayer src={streamSrc} bare className="absolute inset-0 w-full h-full pointer-events-none" />
+
+            <Stage
+
+              width={STAGE_WIDTH}
+
+              height={STAGE_HEIGHT}
+
+              onClick={handleStageClick}
+
+              className="absolute inset-0 z-10"
+
+              style={{ background: 'transparent' }}
+
+            >
+
+              <Layer>
+
+                {editMode === 'zone' && allZones.map((zone) => (
+
+                  <Line
+
+                    key={zone.id}
+
+                    points={zone.points}
+
+                    closed
+
+                    stroke={zone.color}
+
+                    strokeWidth={2}
+
+                    fill={`${zone.color}33`}
+
+                  />
+
+                ))}
+
+                {editMode === 'line' && allLines.map((line) => (
+
+                  <Line
+
+                    key={line.id}
+
+                    points={line.points}
+
+                    stroke="#FF6B35"
+
+                    strokeWidth={3}
+
+                    dash={[8, 4]}
+
+                  />
+
+                ))}
+
+                {editMode === 'line' && lineDraftStart && (
+
+                  <Circle x={lineDraftStart[0]} y={lineDraftStart[1]} radius={6} fill="#FF6B35" shadowBlur={10} />
+
+                )}
+
+                {editMode === 'zone' && drawing.length > 0 && (
+
+                  <>
+
+                    <Line points={drawing} stroke="#00FFFF" strokeWidth={2} dash={[6, 4]} />
+
+                    {drawing.reduce<number[][]>((acc, _, i) => {
+
+                      if (i % 2 === 0) acc.push([drawing[i], drawing[i + 1]]);
+
+                      return acc;
+
+                    }, []).map(([x, y], i) => (
+
+                      <Circle key={i} x={x} y={y} radius={5} fill="#00FFFF" shadowBlur={8} />
+
+                    ))}
+
+                  </>
+
+                )}
+
+              </Layer>
+
+            </Stage>
+
           </div>
 
-          <div className="rounded-lg overflow-hidden border border-cv-border bg-cv-deep">
-            <Stage
-              width={STAGE_WIDTH}
-              height={STAGE_HEIGHT}
-              onClick={handleStageClick}
-              className="mx-auto"
-            >
-              <Layer>
-                <Rect x={0} y={0} width={STAGE_WIDTH} height={STAGE_HEIGHT} fill="#050A12" />
-                {zones.map((zone) => (
-                  <Line
-                    key={zone.id}
-                    points={zone.points}
-                    closed
-                    stroke={zone.id === selectedZone ? '#00D4FF' : zone.color}
-                    strokeWidth={zone.id === selectedZone ? 2 : 1}
-                    fill={`${zone.color}22`}
-                    onClick={() => { playClick(); setSelectedZone(zone.id); }}
-                  />
-                ))}
-                {drawing.length > 0 && (
-                  <>
-                    <Line points={drawing} stroke="#00D4FF" strokeWidth={1} />
-                    {drawing.reduce<number[][]>((acc, _, i) => {
-                      if (i % 2 === 0) acc.push([drawing[i], drawing[i + 1]]);
-                      return acc;
-                    }, []).map(([x, y], i) => (
-                      <Circle key={i} x={x} y={y} radius={4} fill="#00D4FF" />
-                    ))}
-                  </>
-                )}
-              </Layer>
-            </Stage>
-          </div>
         </div>
+
+
 
         <div className="cv-card p-4">
-          {zones.length === 0 ? (
-            <EmptyState title={t('zoneEditor.empty')} hint={t('zoneEditor.emptyHint')} icon={PenTool} />
+
+          <div className="flex items-center justify-between mb-3">
+
+            <h3 className="font-display text-sm font-semibold">
+
+              {editMode === 'zone' ? t('zoneEditor.list', 'Zones') : 'Lignes'}
+
+            </h3>
+
+            {loadingSpatial && <span className="text-xs text-cv-muted">…</span>}
+
+          </div>
+
+          {editMode === 'zone' ? (
+
+            allZones.length === 0 && drawing.length === 0 ? (
+
+              <EmptyState title={t('zoneEditor.empty')} hint={t('zoneEditor.emptyHint')} icon={PenTool} />
+
+            ) : (
+
+              <SpatialList
+
+                items={allZones.map((z) => ({
+
+                  id: z.id,
+
+                  name: z.name,
+
+                  detail: `${z.points.length / 2} points${z.id.startsWith('draft-') ? ' · brouillon' : ' · enregistrée'}`,
+
+                  isDraft: z.id.startsWith('draft-'),
+
+                }))}
+
+                selectedId={selectedId}
+
+                onSelect={setSelectedId}
+
+                onDelete={(id, isDraft) => {
+                  playClick();
+                  if (isDraft) {
+                    setDraftZones((p) => p.filter((z) => z.id !== id));
+                  } else if (orgId) {
+                    const z = savedZones.find((x) => x.id === id);
+                    setDeleteConfirm({ type: 'zone', id, name: z?.name ?? id });
+                  }
+                }}
+
+              />
+
+            )
+
+          ) : allLines.length === 0 && !lineDraftStart ? (
+
+            <EmptyState title="Aucune ligne" hint="2 clics sur la vidéo pour tracer une ligne" icon={Minus} />
+
           ) : (
-            <div className="space-y-2">
-              {zones.map((zone) => (
-                <button
-                  key={zone.id}
-                  type="button"
-                  onClick={() => { playClick(); setSelectedZone(zone.id); }}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                    selectedZone === zone.id ? 'border-cv-accent bg-cv-accent/10' : 'border-cv-border hover:border-cv-accent/30'
-                  }`}
-                >
-                  <p className="font-medium text-sm">{zone.name}</p>
-                  <p className="text-xs text-cv-muted">{zone.points.length / 2} points</p>
-                </button>
-              ))}
-            </div>
+
+            <SpatialList
+
+              items={allLines.map((l) => ({
+
+                id: l.id,
+
+                name: l.name,
+
+                detail: l.id.startsWith('draft-line-') ? 'brouillon' : 'enregistrée',
+
+                isDraft: l.id.startsWith('draft-line-'),
+
+              }))}
+
+              selectedId={selectedId}
+
+              onSelect={setSelectedId}
+
+              onDelete={(id, isDraft) => {
+                playClick();
+                if (isDraft) {
+                  setDraftLines((p) => p.filter((l) => l.id !== id));
+                } else if (orgId) {
+                  const l = savedLines.find((x) => x.id === id);
+                  setDeleteConfirm({ type: 'line', id, name: l?.name ?? id });
+                }
+              }}
+
+            />
+
           )}
+
+          <button
+
+            type="button"
+
+            className="cv-btn-secondary w-full mt-3 text-xs"
+
+            onClick={() => {
+
+              playClick();
+
+              setSelectedId(null);
+
+              setDrawing([]);
+
+              setLineDraftStart(null);
+
+            }}
+
+          >
+
+            <Plus className="w-3 h-3" />
+
+            {editMode === 'zone' ? t('zoneEditor.newZone', 'Nouvelle zone') : 'Nouvelle ligne'}
+
+          </button>
+
         </div>
+
       </div>
+
+      <ConfirmDialog
+        open={deleteConfirm != null}
+        title={deleteConfirm?.type === 'zone' ? 'Supprimer cette zone ?' : 'Supprimer cette ligne ?'}
+        message={`« ${deleteConfirm?.name ?? ''} » sera supprimée définitivement.`}
+        confirmLabel="Supprimer"
+        danger
+        onConfirm={() => {
+          if (!orgId || !deleteConfirm) return;
+          const run = deleteConfirm.type === 'zone'
+            ? zonesApi.delete(orgId, deleteConfirm.id)
+            : zonesApi.deleteLine(orgId, deleteConfirm.id);
+          void run.then(() => loadSpatial()).finally(() => setDeleteConfirm(null));
+        }}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 }
+
+
+
+function SpatialList({
+
+  items,
+
+  selectedId,
+
+  onSelect,
+
+  onDelete,
+
+}: {
+
+  items: { id: string; name: string; detail: string; isDraft: boolean }[];
+
+  selectedId: string | null;
+
+  onSelect: (id: string | null) => void;
+
+  onDelete: (id: string, isDraft: boolean) => void;
+
+}) {
+
+  return (
+
+    <div className="space-y-2 max-h-80 overflow-y-auto">
+
+      {items.map((item) => (
+
+        <div
+
+          key={item.id}
+
+          className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+
+            selectedId === item.id ? 'border-cv-accent bg-cv-accent/5' : 'border-cv-border'
+
+          }`}
+
+          onClick={() => onSelect(item.id === selectedId ? null : item.id)}
+
+        >
+
+          <div className="flex items-center justify-between gap-2">
+
+            <div>
+
+              <p className="font-medium text-sm">{item.name}</p>
+
+              <p className="text-xs text-cv-muted">{item.detail}</p>
+
+            </div>
+
+            {item.isDraft ? (
+              <button
+                type="button"
+                className="cv-btn-ghost p-1.5 text-red-400"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(item.id, true);
+                }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="cv-btn-ghost p-1.5 text-red-400"
+                title="Supprimer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(item.id, false);
+                }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+          </div>
+
+        </div>
+
+      ))}
+
+    </div>
+
+  );
+
+}
+
+

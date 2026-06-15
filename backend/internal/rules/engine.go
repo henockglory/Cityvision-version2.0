@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -122,6 +123,68 @@ func (s *Service) ListActive(ctx context.Context, orgID uuid.UUID, siteID *uuid.
 	return list, rows.Err()
 }
 
+func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, isEnabled *bool, priority *int, name *string, desc *string, def json.RawMessage) (*models.Rule, error) {
+	if isEnabled == nil && priority == nil && name == nil && desc == nil && def == nil {
+		return s.Get(ctx, orgID, id)
+	}
+	if def != nil {
+		if err := ValidateDefinition(def); err != nil {
+			return nil, err
+		}
+	}
+	q := `UPDATE rules SET updated_at = NOW()`
+	args := []interface{}{}
+	n := 1
+	if isEnabled != nil {
+		q += `, is_enabled = $` + fmt.Sprintf("%d", n)
+		args = append(args, *isEnabled)
+		n++
+	}
+	if priority != nil {
+		q += `, priority = $` + fmt.Sprintf("%d", n)
+		args = append(args, *priority)
+		n++
+	}
+	if name != nil {
+		q += `, name = $` + fmt.Sprintf("%d", n)
+		args = append(args, *name)
+		n++
+	}
+	if desc != nil {
+		q += `, description = $` + fmt.Sprintf("%d", n)
+		args = append(args, *desc)
+		n++
+	}
+	if def != nil {
+		q += `, definition = $` + fmt.Sprintf("%d", n)
+		args = append(args, def)
+		n++
+	}
+	q += ` WHERE id = $` + fmt.Sprintf("%d", n) + ` AND org_id = $` + fmt.Sprintf("%d", n+1)
+	args = append(args, id, orgID)
+
+	var r models.Rule
+	err := s.pool.QueryRow(ctx, q+`
+		RETURNING id, org_id, site_id, name, description, definition, is_enabled, priority, created_at, updated_at`,
+		args...,
+	).Scan(&r.ID, &r.OrgID, &r.SiteID, &r.Name, &r.Description, &r.Definition, &r.IsEnabled, &r.Priority, &r.CreatedAt, &r.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return &r, err
+}
+
+func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM rules WHERE id = $1 AND org_id = $2`, id, orgID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Service) Get(ctx context.Context, orgID, id uuid.UUID) (*models.Rule, error) {
 	var r models.Rule
 	err := s.pool.QueryRow(ctx, `
@@ -173,36 +236,121 @@ func Evaluate(def RuleDefinition, eventPayload map[string]interface{}, now time.
 }
 
 func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
-	switch node.Op {
-	case "AND":
+	switch strings.ToUpper(node.Op) {
+	case "ET", "AND":
 		for _, c := range node.Children {
 			if !evalCondition(c, payload) {
 				return false
 			}
 		}
 		return len(node.Children) > 0
-	case "OR":
+	case "OU", "OR":
 		for _, c := range node.Children {
 			if evalCondition(c, payload) {
 				return true
 			}
 		}
 		return false
-	case "NOT":
+	case "NON", "NOT":
 		if len(node.Children) == 1 {
 			return !evalCondition(node.Children[0], payload)
 		}
 		return false
-	case "eq":
-		v, ok := payload[node.Field]
+	case "EQ":
+		v, ok := fieldValue(payload, node.Field)
 		if !ok {
 			return false
 		}
 		var expected interface{}
 		_ = json.Unmarshal(node.Value, &expected)
 		return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", expected)
+	case "GT":
+		raw, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		v, ok := toFloat(raw)
+		if !ok {
+			return false
+		}
+		var expected float64
+		_ = json.Unmarshal(node.Value, &expected)
+		return v > expected
+	case "LT":
+		raw, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		v, ok := toFloat(raw)
+		if !ok {
+			return false
+		}
+		var expected float64
+		_ = json.Unmarshal(node.Value, &expected)
+		return v < expected
+	case "CONTAINS":
+		v, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		var expected string
+		_ = json.Unmarshal(node.Value, &expected)
+		return strings.Contains(fmt.Sprintf("%v", v), expected)
+	case "IN_ZONE", "CROSS_LINE":
+		v, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		var expected interface{}
+		_ = json.Unmarshal(node.Value, &expected)
+		return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", expected)
+	case "MATCHES_CLASS":
+		v, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		var expected string
+		_ = json.Unmarshal(node.Value, &expected)
+		return matchesClass(fmt.Sprintf("%v", v), expected)
 	default:
 		return false
+	}
+}
+
+func fieldValue(payload map[string]interface{}, field string) (interface{}, bool) {
+	if field == "" {
+		return nil, false
+	}
+	if !strings.Contains(field, ".") {
+		v, ok := payload[field]
+		return v, ok
+	}
+	var cur interface{} = payload
+	for _, part := range strings.Split(field, ".") {
+		m, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[part]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
+}
+
+func toFloat(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	default:
+		return 0, false
 	}
 }
 

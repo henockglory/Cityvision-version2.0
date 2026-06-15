@@ -1,17 +1,19 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"strings"
+	"sync"
 	"time"
 
+	"github.com/citevision/citevision-v2/rules-engine/internal/actions"
 	"github.com/citevision/citevision-v2/rules-engine/internal/dedup"
 	"github.com/citevision/citevision-v2/rules-engine/internal/evaluator"
 	mqttsub "github.com/citevision/citevision-v2/rules-engine/internal/mqtt"
+	mqttpub "github.com/citevision/citevision-v2/rules-engine/internal/mqttpub"
+	"github.com/citevision/citevision-v2/rules-engine/internal/syncrules"
 )
 
 func main() {
@@ -21,13 +23,34 @@ func main() {
 	mqttPort := getenv("MQTT_PORT", "1884")
 	dedupTTL := 60
 
-	rules := loadRulesFromEnv()
+	var rulesMu sync.RWMutex
+	activeRules := loadRulesFromEnv()
+
+	orgID := os.Getenv("DEFAULT_ORG_ID")
+	backendURL := syncrules.Env("BACKEND_API_URL", "http://localhost:8081")
+	apiKey := os.Getenv("INTERNAL_API_KEY")
+	syncInterval := 30 * time.Second
+
+	syncrules.PollActiveRules(orgID, backendURL, apiKey, syncInterval, func(rules []evaluator.RuleDefinition) {
+		rulesMu.Lock()
+		activeRules = rules
+		rulesMu.Unlock()
+	})
+
 	cache := dedup.NewCache(time.Duration(dedupTTL) * time.Second)
+	seqStore := evaluator.NewSequenceStoreFromEnv()
+	broker := fmt.Sprintf("tcp://%s:%s", mqttHost, mqttPort)
+	publisher := mqttpub.New(broker)
+	executor := actions.New(publisher, backendURL, apiKey)
+	defaultOrg := orgID
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		rulesMu.RLock()
+		n := len(activeRules)
+		rulesMu.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","service":"citevision-rules-engine"}`))
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"status":"ok","service":"citevision-rules-engine","active_rules":%d}`, n)))
 	})
 
 	go func() {
@@ -38,16 +61,19 @@ func main() {
 		}
 	}()
 
-	broker := fmt.Sprintf("tcp://%s:%s", mqttHost, mqttPort)
 	sub := mqttsub.New(broker, 0, func(topic string, payload map[string]interface{}) {
 		now := time.Now()
+		rulesMu.RLock()
+		rules := activeRules
+		rulesMu.RUnlock()
+
 		for _, rule := range rules {
 			if rule.CameraID != "" {
 				if cam, ok := payload["camera_id"].(string); ok && cam != rule.CameraID {
 					continue
 				}
 			}
-			ok, actions := evaluator.Evaluate(rule, payload, now)
+			ok, ruleActions := evaluator.Evaluate(rule, payload, now, seqStore)
 			if !ok {
 				continue
 			}
@@ -55,7 +81,20 @@ func main() {
 			if cache.IsDuplicate(key, now) {
 				continue
 			}
-			log.Printf("rule %s matched on %s actions=%d", rule.RuleID, topic, len(actions))
+			log.Printf("rule %s matched on %s actions=%d", rule.RuleID, topic, len(ruleActions))
+
+			alertOrg := defaultOrg
+			if o, ok := payload["org_id"].(string); ok && o != "" {
+				alertOrg = o
+			}
+			if alertOrg != "" {
+				publisher.PublishMatchedEvent(alertOrg, rule.RuleID, payload)
+				actionsToRun := ruleActions
+				if len(actionsToRun) == 0 {
+					actionsToRun = []evaluator.Action{{Type: "alert", Config: []byte(`{"severity":"medium"}`)}}
+				}
+				executor.Run(alertOrg, rule, payload, actionsToRun)
+			}
 		}
 	})
 
@@ -80,39 +119,5 @@ func getenv(key, fallback string) string {
 }
 
 func loadRulesFromEnv() []evaluator.RuleDefinition {
-	path := os.Getenv("RULES_CATALOG_PATH")
-	if path == "" {
-		path = "../shared/rule-catalog/intrusion-loitering-line-theft.json"
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		log.Printf("no rules catalog at %s: %v", path, err)
-		return nil
-	}
-	var templates []struct {
-		ID         string          `json:"id"`
-		Name       string          `json:"name"`
-		Definition json.RawMessage `json:"definition"`
-	}
-	if err := json.Unmarshal(data, &templates); err != nil {
-		log.Printf("invalid rules catalog: %v", err)
-		return nil
-	}
-	rules := make([]evaluator.RuleDefinition, 0, len(templates))
-	for _, tpl := range templates {
-		var def evaluator.RuleDefinition
-		if err := json.Unmarshal(tpl.Definition, &def); err != nil {
-			continue
-		}
-		def.RuleID = tpl.ID
-		def.Name = tpl.Name
-		def.Enabled = true
-		rules = append(rules, def)
-	}
-	log.Printf("Loaded %d rules from catalog", len(rules))
-	return rules
-}
-
-func init() {
-	_ = strings.TrimSpace
+	return nil
 }

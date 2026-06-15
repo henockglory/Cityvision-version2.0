@@ -1,0 +1,187 @@
+[
+  {
+    "id": "tpl-watchlist-match",
+    "name": "Visage liste de surveillance",
+    "category": "identity",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "face_watchlist_match"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        },
+        {
+          "type": "record",
+          "config": {
+            "duration_sec": 60
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-unknown-face",
+    "name": "Visage inconnu",
+    "category": "identity",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "face_unknown"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-face-detected",
+    "name": "Visage détecté",
+    "category": "identity",
+    "severity": "info",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "face_detected"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "low"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-face-count",
+    "name": "Comptage visages",
+    "category": "identity",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "gt",
+        "field": "face_count",
+        "value": 3
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-blocked-plate",
+    "name": "Plaque bloquée",
+    "category": "identity",
+    "severity": "critical",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "plate_blocked"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-unknown-plate",
+    "name": "Plaque inconnue",
+    "category": "identity",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "plate_unknown"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-plate-whitelist",
+    "name": "Plaque autorisée",
+    "category": "identity",
+    "severity": "info",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "plate_allowed"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "low"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-plate-detected",
+    "name": "Plaque détectée",
+    "category": "identity",
+    "severity": "info",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "plate_detected"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-identity-correlation",
+    "name": "Corrélation identité",
+    "category": "identity",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "correlation_match"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  }
+]

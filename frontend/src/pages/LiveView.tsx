@@ -1,22 +1,41 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  ZoomIn, ZoomOut, Camera, Maximize2, MonitorPlay,
+  ZoomIn, ZoomOut, Camera, Maximize2, MonitorPlay, Activity,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import VideoPlaceholder from '@/components/ui/VideoPlaceholder';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
+import LiveEventStream from '@/components/dashboard/LiveEventStream';
 import { useCameras } from '@/hooks/api/queries';
 import { useSound } from '@/hooks/useSound';
+import { AI_ENGINE_HEALTH } from '@/config/streams';
+import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
+import { go2rtcStreamSrc } from '@/config/streams';
+import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 
 export default function LiveView() {
   const { t } = useTranslation();
   const { playClick } = useSound();
+  const startTour = useAutoPageTour('liveView');
   const { data: cameras = [], isLoading, isError, refetch } = useCameras();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<{ ok: boolean; yolo: boolean } | null>(null);
+
+  useEffect(() => {
+    const poll = () => {
+      fetch(AI_ENGINE_HEALTH)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setAiStatus({ ok: d?.status === 'ok', yolo: d?.yolo_loaded === 'true' }))
+        .catch(() => setAiStatus({ ok: false, yolo: false }));
+    };
+    poll();
+    const id = setInterval(poll, 10000);
+    return () => clearInterval(id);
+  }, []);
 
   if (isLoading) return <LoadingState />;
 
@@ -40,15 +59,21 @@ export default function LiveView() {
 
   const activeId = selectedId ?? cameras[0]?.id ?? '';
   const selected = cameras.find((c) => c.id === activeId) ?? cameras[0];
+  const streamSrc = go2rtcStreamSrc(selected);
+  const hasStream = !!selected?.streamKey || !!selected?.streamUrl || selected?.metadata?.virtual;
 
   return (
     <div>
-      <PageHeader title={t('liveView.title')} />
+      <PageHeader title={t('liveView.title')} onHelpTour={startTour} />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3">
-          <div className="cv-card overflow-hidden">
-            <VideoPlaceholder label={selected.name} live={selected.status !== 'offline'} className="aspect-video rounded-none" />
+        <div id="live-view-player" className="lg:col-span-3">
+          <div className="cv-card overflow-hidden border-cv-electric/25">
+            {hasStream ? (
+              <Go2RtcPlayer className="aspect-video w-full" src={streamSrc} label={selected.name} />
+            ) : (
+              <VideoPlaceholder label={selected.name} live={selected.status !== 'offline'} className="aspect-video rounded-none" />
+            )}
             <div className="p-3 flex items-center justify-between border-t border-cv-border">
               <div>
                 <p className="font-medium">{selected.name}</p>
@@ -86,6 +111,29 @@ export default function LiveView() {
               ))}
             </div>
           </div>
+
+          <div className="cv-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="w-4 h-4 text-cv-accent" />
+              <h3 className="font-display text-sm font-semibold">{t('liveView.aiStatus', 'Analyse IA')}</h3>
+            </div>
+            <div className="space-y-2 text-xs font-mono">
+              <div className="flex justify-between">
+                <span className="text-cv-muted">Moteur IA</span>
+                <span className={aiStatus?.ok ? 'text-emerald-400' : 'text-amber-400'}>
+                  {aiStatus === null ? '…' : aiStatus.ok ? 'Actif' : 'Hors ligne'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-cv-muted">YOLO détection</span>
+                <span className={aiStatus?.yolo ? 'text-emerald-400' : 'text-red-400'}>
+                  {aiStatus === null ? '…' : aiStatus.yolo ? 'Chargé' : 'Modèle manquant'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <LiveEventStream />
 
           <div className="cv-card p-4">
             <h3 className="font-display text-sm font-semibold mb-3">{t('liveView.ptz')}</h3>

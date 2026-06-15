@@ -1,64 +1,70 @@
 # Progress — Citévision v2
 
-**Dernière mise à jour :** 2026-06-12
+**Dernière mise à jour :** 2026-06-13
 
-## Phase 0 — Clarifications
-- [x] `docs/CLARIFICATIONS.md` (35 questions + défauts)
-- [x] `PROGRESS.md`, `OPEN_QUESTIONS.md`, `RESUME.md`
-- [x] `scripts/check-wsl.sh` (WSL indisponible — virtualisation à activer)
+## Phase 0 — Clarifications & WSL
+- [x] `docs/CLARIFICATIONS.md` (40 questions + défauts)
+- [x] Scripts Windows (`doctor-windows.ps1`, `start-windows.ps1`)
+- [x] Scripts Linux/WSL (`start-linux.sh`, `doctor-linux.sh`, `sync-to-wsl.sh`)
+- [x] `docs/WSL-MIGRATION.md` — méthode principale dev local
 
 ## Phase 1 — Fondations
-- [x] Monorepo structure
-- [x] Docker Compose (ports isolés)
+- [x] Monorepo, Docker Compose (+ go2rtc :1984)
 - [x] Schéma PG + `system_config.initialized`
-- [x] CI GitHub Actions
-- [x] `.env.example`, `.gitignore` strict
+- [x] `.env.example` complet (JWT, audit, camera key, go2rtc)
 
 ## Phase 2 — Vidéo & caméras
 - [x] Video engine C++ (FFmpeg dual pipeline)
-- [x] API caméra discovery + wizard
-- [x] vendor/README (go2rtc, ByteTrack, ONVIF)
-- [ ] Test live 192.168.1.108 (nécessite Docker + réseau)
+- [x] Probe multi-vendor (Hikvision/Dahua/generic)
+- [x] go2rtc preview API `/cameras/{id}/preview`
+- [ ] Test live 192.168.1.108 (nécessite Docker + réseau caméra)
 
 ## Phase 3 — IA
-- [x] YOLO ONNX + ByteTrack
-- [x] ResourceBudgetManager
+- [x] YOLO ONNX + ByteTrack + ResourceBudgetManager
 - [x] InsightFace/PaddleOCR optionnels (vide si absent)
-- [x] MQTT publisher
-- [ ] TensorRT optimisation (optionnel GPU)
+- [x] `scripts/download-models.ps1`
 
 ## Phase 4 — Événements & comportement
-- [x] Event generator (zone, line, loitering)
-- [x] Behavior heuristics, state, correlation
-- [x] API zones/lignes backend
+- [x] Event generator, behavior, state, correlation
 
 ## Phase 5 — Règles
-- [x] rules-engine Go (ET/OU/NON, dedup)
-- [x] Catalogue templates JSON (inactifs)
-- [x] Rule Builder UI
-- [ ] Mode canary UI complet
+- [x] rules-engine + catalogue 26 templates (5 fichiers JSON)
+- [x] MQTT publish alertes sur match
+- [x] API `/rules/catalog`
 
 ## Phase 6 — Backend
-- [x] Setup wizard API (zéro seed auto)
-- [x] Auth JWT + Redis + RBAC 7 rôles
-- [x] Audit HMAC + Prometheus
+- [x] Setup wizard, JWT, RBAC, audit
+- [x] WebSocket `/ws/alerts` + subscriber MQTT backend
 
 ## Phase 7 — Frontend
-- [x] Zéro mock — EmptyState / ErrorState
-- [x] Wizard `/setup`
-- [x] Design premium cyberpunk
-- [x] i18n fr/en
+- [x] Zéro mock, wizard setup, wizard caméra 4 étapes
+- [x] HologramBackground, useAlertWebSocket
+- [x] Checklist visuelle 50 points (`docs/visual-checklist.md`)
 
 ## Phase 8 — Tests
 - [x] Unitaires Go/Python PASS
-- [x] `docs/test-report.md`
-- [ ] E2E Playwright (structure prête)
-- [ ] Charge 12 flux (nécessite WSL/GPU)
+- [x] `validate-full.ps1`, `bench-api.ps1`
+- [x] Playwright smoke `tests/e2e/`
+- [ ] E2E live + charge 12 flux (stack Docker requise)
 
 ## Phase 9 — Livraison
-- [x] Documentation INSTALL/OPERATIONS/ARCHITECTURE
-- [ ] Push Git `Cityvision-v2` tag `v2.0.0-production`
+- [x] INSTALL.md WSL-first
+- [x] WSL-MIGRATION.md
+- [x] test-report.md mis à jour
+- [ ] Tag `v2.0.1-validated` (commit/push sur demande)
 
-## Principe validé
+## Reprise rapide (WSL)
 
-**Première utilisation = DB vide → wizard → dashboard vide.** Aucune caméra/règle/utilisateur pré-créé.
+```bash
+cd ~/citevision-v2
+bash scripts/start-linux.sh
+```
+
+Alternative Windows :
+
+```powershell
+cd C:\Users\gheno\citevision-v2
+powershell -File scripts\start-windows.ps1
+```
+
+Première visite : http://localhost:5174/setup

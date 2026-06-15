@@ -1,0 +1,157 @@
+[
+  {
+    "id": "tpl-speeding",
+    "name": "Excès de vitesse véhicule",
+    "description": "Véhicule dépassant le seuil de vitesse configuré",
+    "category": "speed",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "eq",
+            "field": "class_name",
+            "value": "car"
+          },
+          {
+            "op": "gt",
+            "field": "speed_kmh",
+            "value": 50
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-sudden-stop",
+    "name": "Arrêt brusque",
+    "description": "Décélération brutale détectée",
+    "category": "speed",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "sudden_stop"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-running-person",
+    "name": "Course / fuite",
+    "description": "Personne en course rapide",
+    "category": "speed",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "eq",
+            "field": "class_name",
+            "value": "person"
+          },
+          {
+            "op": "gt",
+            "field": "speed_kmh",
+            "value": 15
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-traffic-jam",
+    "name": "Embouteillage",
+    "description": "Densité élevée et vitesse faible prolongée",
+    "category": "traffic",
+    "severity": "warning",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "gt",
+            "field": "metadata.vehicle_count",
+            "value": 8
+          },
+          {
+            "op": "lt",
+            "field": "metadata.avg_speed_kmh",
+            "value": 10
+          },
+          {
+            "op": "gt",
+            "field": "duration_seconds",
+            "value": 120
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "notify",
+          "config": {
+            "channel": "ops"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-illegal-parking",
+    "name": "Stationnement illégal",
+    "description": "Véhicule stationnaire en zone interdite",
+    "category": "traffic",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "in_zone",
+            "field": "zone_id",
+            "value": "no-parking"
+          },
+          {
+            "op": "gt",
+            "field": "duration_seconds",
+            "value": 180
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    }
+  }
+]

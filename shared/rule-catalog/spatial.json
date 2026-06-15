@@ -1,0 +1,155 @@
+[
+  {
+    "id": "tpl-intrusion-zone",
+    "name": "Intrusion zone interdite",
+    "category": "security",
+    "severity": "high",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "zone_enter"
+          },
+          {
+            "op": "eq",
+            "field": "zone_id",
+            "value": "__ZONE__"
+          },
+          {
+            "op": "matches_class",
+            "field": "class_name",
+            "value": "person"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-zone-exit",
+    "name": "Sortie de zone",
+    "category": "spatial",
+    "severity": "low",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "zone_exit"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "low"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-zone-occupancy",
+    "name": "Occupation zone élevée",
+    "category": "spatial",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "gt",
+        "field": "person_count",
+        "value": 5
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-multi-zone",
+    "name": "Présence multi-zones",
+    "category": "spatial",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "AND",
+        "children": [
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "zone_enter"
+          },
+          {
+            "op": "in_zone",
+            "field": "zone_id",
+            "value": "entrance"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-line-cross",
+    "redirect_to": "tpl-line-cross"
+  },
+  {
+    "id": "tpl-line-cross-bidir",
+    "name": "Franchissement bidirectionnel",
+    "category": "spatial",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "line_cross"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tpl-loitering",
+    "redirect_to": "tpl-loitering"
+  },
+  {
+    "id": "tpl-dwell-exceeded",
+    "name": "Dépassement temps de présence",
+    "category": "time",
+    "severity": "medium",
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "dwell_time_exceeded"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    }
+  }
+]

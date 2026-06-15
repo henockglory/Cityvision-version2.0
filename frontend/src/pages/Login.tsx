@@ -1,8 +1,11 @@
+import { isAxiosError } from 'axios';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
+import ThemeToggle from '@/components/ThemeToggle';
 import EyeLogo from '@/components/EyeLogo';
+import PremiumNetworkBackground from '@/components/PremiumNetworkBackground';
 import { useAuthStore, apiLogin } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
 
@@ -25,23 +28,34 @@ export default function Login() {
 
     try {
       const result = await apiLogin(email.trim(), password);
-      login(result.user, result.token, result.orgId);
+      login(result.user, result.token, result.orgId, result.siteId);
       playSonar();
-      navigate('/');
-    } catch {
-      setError(t('login.error'));
+      navigate('/demo');
+    } catch (err) {
+      if (isAxiosError(err)) {
+        if (!err.response) {
+          setError(t('login.errorBackend', 'Impossible de joindre le serveur. Lancez scripts/start-linux.sh'));
+        } else if (err.response.status === 401) {
+          setError(t('login.error'));
+        } else {
+          setError(t('login.error'));
+        }
+      } else {
+        setError(t('login.error'));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center cv-grid-bg relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-cv-deep via-cv-navy to-cv-deep" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cv-accent/5 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cv-accent/5 rounded-full blur-3xl" />
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-cv-deep">
+      <PremiumNetworkBackground />
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
 
-      <div className="relative z-10 w-full max-w-md px-4 animate-fade-in">
+      <div className="relative z-10 w-full max-w-md mx-auto px-4 animate-fade-in">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <EyeLogo size={64} />
@@ -101,6 +115,14 @@ export default function Login() {
             <LogIn className="w-4 h-4" />
             {t('login.submit')}
           </button>
+
+          <div className="text-xs text-center text-cv-muted border-t border-cv-border pt-4 space-y-1">
+            <p>{t('login.copyright')}</p>
+            <p>
+              {t('login.support')}{' '}
+              <a href="mailto:info@hologram.cd" className="text-cv-accent hover:underline">info@hologram.cd</a>
+            </p>
+          </div>
         </form>
       </div>
     </div>

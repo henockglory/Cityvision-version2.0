@@ -18,16 +18,25 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/auth"
 	"github.com/citevision/citevision-v2/backend/internal/camera"
 	"github.com/citevision/citevision-v2/backend/internal/config"
+	"github.com/citevision/citevision-v2/backend/internal/dashboard"
 	"github.com/citevision/citevision-v2/backend/internal/db"
 	"github.com/citevision/citevision-v2/backend/internal/events"
+	"github.com/citevision/citevision-v2/backend/internal/evidence"
 	"github.com/citevision/citevision-v2/backend/internal/handler"
 	"github.com/citevision/citevision-v2/backend/internal/health"
+	"github.com/citevision/citevision-v2/backend/internal/identity"
+	"github.com/citevision/citevision-v2/backend/internal/ingest"
 	"github.com/citevision/citevision-v2/backend/internal/middleware"
+	mqttsub "github.com/citevision/citevision-v2/backend/internal/mqtt"
+	"github.com/citevision/citevision-v2/backend/internal/org"
 	"github.com/citevision/citevision-v2/backend/internal/rbac"
+	"github.com/citevision/citevision-v2/backend/internal/record"
 	redisstore "github.com/citevision/citevision-v2/backend/internal/redis"
 	"github.com/citevision/citevision-v2/backend/internal/rules"
 	"github.com/citevision/citevision-v2/backend/internal/setup"
 	"github.com/citevision/citevision-v2/backend/internal/spatial"
+	"github.com/citevision/citevision-v2/backend/internal/users"
+	"github.com/citevision/citevision-v2/backend/internal/ws"
 )
 
 func main() {
@@ -74,18 +83,71 @@ func main() {
 		os.Exit(1)
 	}
 
-	api := &handler.API{
-		Setup:   setupSvc,
-		Auth:    authSvc,
-		Audit:   auditSvc,
-		Cameras: camera.NewService(pool, cipher),
-		Spatial: spatial.NewService(pool),
-		Events:  events.NewService(pool),
-		Rules:   rules.NewService(pool),
-		Alerts:  alerts.NewService(pool),
+	alertsSvc := alerts.NewService(pool)
+	checker := health.NewChecker(pool, redisClient)
+	alertHub := ws.NewHub(log)
+	broadcaster := &mqttsub.Broadcaster{Hub: alertHub, Alerts: alertsSvc}
+
+	mqttBroker := os.Getenv("MQTT_BROKER")
+	if mqttBroker == "" {
+		host := os.Getenv("MQTT_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		port := os.Getenv("MQTT_PORT")
+		if port == "" {
+			port = "1884"
+		}
+		mqttBroker = "tcp://" + host + ":" + port
+	}
+	mqttSub := mqttsub.New(mqttBroker, broadcaster.HandleMQTTAlert, log)
+	mqttCtx, mqttCancel := context.WithCancel(context.Background())
+	defer mqttCancel()
+	mqttSub.Start(mqttCtx)
+
+	eventsSvc := events.NewService(pool)
+	eventIngestor := mqttsub.NewEventIngestor(pool, eventsSvc, mqttBroker, log)
+	eventIngestor.Start(mqttCtx)
+
+	spatialSvc := spatial.NewService(pool)
+	cameraSvc := camera.NewService(pool, cipher)
+	evidenceSvc, err := evidence.NewService(evidence.ConfigFromEnv())
+	if err != nil {
+		log.Warn("evidence service init failed", "error", err)
+	}
+	aiClient := ingest.NewAIClient(cfg)
+	orch := ingest.NewOrchestrator(pool, aiClient, spatialSvc, cameraSvc, log)
+	go orch.Run(mqttCtx)
+
+	catalogPath := os.Getenv("RULE_CATALOG_PATH")
+	if catalogPath == "" {
+		catalogPath = "../shared/rule-catalog"
+	}
+	sharedPath := os.Getenv("SHARED_PATH")
+	if sharedPath == "" {
+		sharedPath = "../shared"
 	}
 
-	checker := health.NewChecker(pool, redisClient)
+	api := &handler.API{
+		Setup:       setupSvc,
+		Auth:        authSvc,
+		Audit:       auditSvc,
+		Cameras:     cameraSvc,
+		Spatial:     spatialSvc,
+		Events:      eventsSvc,
+		Rules:       rules.NewService(pool),
+		Identity:    identity.NewService(pool),
+		Users:       users.NewService(pool),
+		Alerts:      alertsSvc,
+		Dashboard:   dashboard.NewService(pool),
+		Orgs:        org.NewService(pool),
+		Hub:         alertHub,
+		CatalogPath: catalogPath,
+		SharedPath:  sharedPath,
+		Record:      record.NewService(pool, cameraSvc),
+		Evidence:    evidenceSvc,
+	}
+
 	r := chi.NewRouter()
 	r.Use(chimw.RealIP)
 	r.Use(chimw.RequestID)
@@ -101,51 +163,99 @@ func main() {
 		r.Get("/setup/status", api.SetupStatus)
 		r.Post("/setup/complete", api.SetupComplete)
 
+		r.Route("/internal/orgs/{orgID}", func(r chi.Router) {
+			r.Use(middleware.RequireInternalKey)
+			r.Get("/rules/active", api.InternalListActiveRules)
+			r.Post("/notify/email", api.InternalNotifyEmail)
+			r.Post("/record/clip", api.InternalRecordClip)
+			r.Post("/evidence/upload", api.InternalEvidenceUpload)
+			r.Post("/incidents", api.InternalCreateIncident)
+			r.Post("/alerts/archive", api.InternalArchiveAlert)
+			r.Post("/alerts/archive-stale", api.InternalArchiveStaleAlerts)
+			r.Post("/rules/counter", api.InternalIncrementRuleCounter)
+			r.Post("/webhook", api.InternalWebhook)
+		})
+
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireInitialized(setupSvc))
 
 			r.Post("/auth/login", api.Login)
 			r.Post("/auth/refresh", api.Refresh)
+			r.Get("/ws/alerts", api.WsAlerts)
 
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Auth(authSvc))
 
 				r.Get("/auth/me", api.Me)
+				r.Patch("/auth/me", api.UpdateMe)
 				r.Post("/auth/logout", api.Logout)
+				r.Post("/auth/totp/setup", api.StartTOTP)
+				r.Post("/auth/totp/confirm", api.ConfirmTOTPSetup)
 
 				r.Route("/orgs/{orgID}", func(r chi.Router) {
 					r.Use(middleware.RequireOrgAccess(authSvc))
 
+					r.Get("/", api.GetOrganization)
+					r.Patch("/", api.UpdateOrganization)
+					r.Post("/integrations/smtp/test", api.TestSMTP)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/reset", api.ResetDemo)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/purge-alerts", api.PurgeAlertsDemo)
+
 					r.With(middleware.RequirePermission(rbacSvc, "audit:read")).Get("/audit", api.ListAuditLog)
+					r.With(middleware.RequirePermission(rbacSvc, "audit:read")).Get("/audit/verify", api.VerifyAuditChain)
+
+					r.Route("/users", func(r chi.Router) {
+						r.With(middleware.RequirePermission(rbacSvc, "users:read")).Get("/", api.ListUsers)
+						r.With(middleware.RequirePermission(rbacSvc, "users:write")).Post("/", api.CreateUser)
+						r.With(middleware.RequirePermission(rbacSvc, "users:write")).Patch("/{userID}", api.UpdateUser)
+					})
+
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/dashboard/summary", api.DashboardSummary)
 
 					r.Route("/cameras", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/", api.ListCameras)
 						r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Post("/", api.CreateCamera)
 						r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/discover", api.DiscoverCameras)
+						r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Post("/probe", api.ProbeCamera)
 						r.Route("/{cameraID}", func(r chi.Router) {
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/", api.GetCamera)
+							r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Patch("/", api.UpdateCamera)
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/rtsp", api.BuildRTSP)
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Post("/stream/test", api.TestCameraStream)
+							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/preview", api.CameraPreview)
 						})
 					})
 
 					r.Route("/zones", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "zones:read")).Get("/", api.ListZones)
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Post("/", api.CreateZone)
+						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Delete("/{zoneID}", api.DeleteZone)
 					})
 
 					r.Route("/lines", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "zones:read")).Get("/", api.ListLines)
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Post("/", api.CreateLine)
+						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Delete("/{lineID}", api.DeleteLine)
+					})
+
+					r.Route("/surveillance-lists", func(r chi.Router) {
+						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/", api.ListSurveillanceLists)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/", api.CreateSurveillanceList)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/{listID}/entries", api.AddSurveillanceListEntry)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Delete("/{listID}", api.DeleteSurveillanceList)
 					})
 
 					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Post("/events/ingest", api.IngestEvent)
 					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Get("/events", api.ListEvents)
+					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Get("/evidence/asset", api.ServeEvidenceAsset)
 
 					r.Route("/rules", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/", api.ListRules)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/catalog", api.ListRuleCatalog)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/", api.CreateRule)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/active", api.ListActiveRules)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Patch("/{ruleID}", api.UpdateRule)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Delete("/{ruleID}", api.DeleteRule)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:simulate")).Post("/validate", api.ValidateRule)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:simulate")).Post("/evaluate", api.EvaluateRule)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:simulate")).Post("/{ruleID}/evaluate", api.EvaluateRule)
@@ -154,6 +264,8 @@ func main() {
 					r.Route("/alerts", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:read")).Get("/", api.ListAlerts)
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Post("/", api.CreateAlert)
+						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Patch("/{alertID}/acknowledge", api.AcknowledgeAlert)
+						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Patch("/{alertID}/archive", api.ArchiveAlert)
 					})
 
 					r.Route("/incidents", func(r chi.Router) {

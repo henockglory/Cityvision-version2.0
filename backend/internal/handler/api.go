@@ -3,8 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -14,23 +16,39 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/audit"
 	"github.com/citevision/citevision-v2/backend/internal/auth"
 	"github.com/citevision/citevision-v2/backend/internal/camera"
+	"github.com/citevision/citevision-v2/backend/internal/dashboard"
 	"github.com/citevision/citevision-v2/backend/internal/events"
+	"github.com/citevision/citevision-v2/backend/internal/evidence"
+	"github.com/citevision/citevision-v2/backend/internal/identity"
 	"github.com/citevision/citevision-v2/backend/internal/middleware"
 	"github.com/citevision/citevision-v2/backend/internal/models"
+	"github.com/citevision/citevision-v2/backend/internal/org"
+	"github.com/citevision/citevision-v2/backend/internal/record"
 	"github.com/citevision/citevision-v2/backend/internal/rules"
 	"github.com/citevision/citevision-v2/backend/internal/setup"
 	"github.com/citevision/citevision-v2/backend/internal/spatial"
+	"github.com/citevision/citevision-v2/backend/internal/users"
+	"github.com/citevision/citevision-v2/backend/internal/ws"
 )
 
 type API struct {
-	Setup *setup.Service
-	Auth  *auth.Service
-	Audit *audit.Service
-	Cameras *camera.Service
-	Spatial *spatial.Service
-	Events  *events.Service
-	Rules   *rules.Service
-	Alerts  *alerts.Service
+	Setup       *setup.Service
+	Auth        *auth.Service
+	Audit       *audit.Service
+	Cameras     *camera.Service
+	Spatial     *spatial.Service
+	Events      *events.Service
+	Rules       *rules.Service
+	Identity    *identity.Service
+	Users       *users.Service
+	Alerts      *alerts.Service
+	Dashboard   *dashboard.Service
+	Orgs        *org.Service
+	Hub         *ws.Hub
+	CatalogPath string
+	SharedPath  string
+	Record      *record.Service
+	Evidence    *evidence.Service
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -100,7 +118,8 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
-		UserID: &user.ID, Action: "login", ResourceType: "user", ResourceID: strPtr(user.ID.String()),
+		UserID: &user.ID, OrgID: a.Auth.PrimaryOrgID(r.Context(), user.ID),
+		Action: "login", ResourceType: "user", ResourceID: strPtr(user.ID.String()),
 		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -154,6 +173,18 @@ func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 		sessionID = claims.SessionID
 	}
 	_ = a.Auth.Logout(r.Context(), req.RefreshToken, sessionID)
+	if claims != nil {
+		orgID := middleware.GetOrgID(r.Context())
+		var orgPtr *uuid.UUID
+		if orgID != uuid.Nil {
+			orgPtr = &orgID
+		}
+		_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
+			UserID: &claims.UserID, OrgID: orgPtr,
+			Action: "logout", ResourceType: "user", ResourceID: strPtr(claims.UserID.String()),
+			IPAddress: parseIP(r), UserAgent: r.UserAgent(),
+		})
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -194,6 +225,30 @@ func (a *API) CreateCamera(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, cam)
 }
 
+func (a *API) UpdateCamera(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "cameraID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req camera.UpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	cam, err := a.Cameras.Update(r.Context(), orgID, id, req)
+	if errors.Is(err, camera.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, cam)
+}
+
 func (a *API) GetCamera(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "cameraID"))
@@ -221,6 +276,94 @@ func (a *API) DiscoverCameras(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, devices)
+}
+
+func (a *API) ProbeCamera(w http.ResponseWriter, r *http.Request) {
+	var req camera.ProbeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := camera.ValidateProbe(req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result := camera.ProbeCredentials(r.Context(), req, 4*time.Second)
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *API) CameraPreview(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "cameraID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	rtspURL, err := a.Cameras.BuildRTSP(r.Context(), orgID, id)
+	if errors.Is(err, camera.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "rtsp build failed")
+		return
+	}
+	client := camera.NewGo2RTCClient()
+	streamName := "cam-" + id.String()
+	reg, err := client.RegisterStream(r.Context(), streamName, rtspURL)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, reg)
+}
+
+func (a *API) ListRuleCatalog(w http.ResponseWriter, r *http.Request) {
+	path := a.CatalogPath
+	if path == "" {
+		path = os.Getenv("RULE_CATALOG_PATH")
+	}
+	if path == "" {
+		path = "../shared/rule-catalog"
+	}
+	templates, err := rules.LoadCatalog(path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "catalog load failed")
+		return
+	}
+	shared := a.SharedPath
+	if shared == "" {
+		shared = os.Getenv("SHARED_PATH")
+	}
+	if shared == "" {
+		shared = "../shared"
+	}
+	reg, _ := rules.LoadCapabilities(shared)
+	enriched := rules.EnrichCatalog(templates, reg)
+	writeJSON(w, http.StatusOK, enriched)
+}
+
+func (a *API) WsAlerts(w http.ResponseWriter, r *http.Request) {
+	if a.Hub == nil {
+		writeError(w, http.StatusServiceUnavailable, "websocket unavailable")
+		return
+	}
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		token = r.Header.Get("Authorization")
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+	}
+	if token == "" {
+		writeError(w, http.StatusUnauthorized, "token required")
+		return
+	}
+	if _, err := a.Auth.ParseAccessToken(token); err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid token")
+		return
+	}
+	a.Hub.ServeHTTP(w, r)
 }
 
 func (a *API) BuildRTSP(w http.ResponseWriter, r *http.Request) {
@@ -259,18 +402,77 @@ func (a *API) IngestEvent(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) ListEvents(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
-	list, err := a.Events.List(r.Context(), orgID, 50)
+	ruleLinked := r.URL.Query().Get("rule_linked") == "true"
+	list, err := a.Events.ListEnriched(r.Context(), orgID, 100, r.URL.Query().Get("event_type"), r.URL.Query().Get("camera_id"), ruleLinked)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list failed")
 		return
 	}
+	shared := a.SharedPath
+	if shared == "" {
+		shared = "../shared"
+	}
+	labels := loadEventLabels(shared)
+	for i := range list {
+		if lbl, ok := labels[list[i].EventType]; ok {
+			list[i].LabelFR = lbl
+		}
+	}
 	writeJSON(w, http.StatusOK, list)
+}
+
+func loadEventLabels(sharedDir string) map[string]string {
+	path := sharedDir + "/event-labels.fr.json"
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return map[string]string{}
+	}
+	var labels map[string]string
+	_ = json.Unmarshal(data, &labels)
+	return labels
 }
 
 func (a *API) ListZones(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
 	list, _ := a.Spatial.ListZones(r.Context(), orgID, nil)
+	cameraFilter := r.URL.Query().Get("camera_id")
+	if cameraFilter != "" {
+		camID, err := uuid.Parse(cameraFilter)
+		if err == nil {
+			filtered := make([]models.Zone, 0)
+			for _, z := range list {
+				if z.CameraID != nil && *z.CameraID == camID {
+					filtered = append(filtered, z)
+				}
+			}
+			list = filtered
+		}
+	}
 	writeJSON(w, http.StatusOK, list)
+}
+
+func (a *API) DeleteZone(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "zoneID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := a.Spatial.DeleteZone(r.Context(), orgID, id); errors.Is(err, spatial.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	claims := middleware.GetClaims(r.Context())
+	rid := id.String()
+	_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
+		OrgID: &orgID, UserID: &claims.UserID, Action: "zone.delete",
+		ResourceType: "zone", ResourceID: &rid,
+		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func (a *API) CreateZone(w http.ResponseWriter, r *http.Request) {
@@ -292,6 +494,19 @@ func (a *API) CreateZone(w http.ResponseWriter, r *http.Request) {
 func (a *API) ListLines(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
 	list, _ := a.Spatial.ListLines(r.Context(), orgID, nil)
+	cameraFilter := r.URL.Query().Get("camera_id")
+	if cameraFilter != "" {
+		camID, err := uuid.Parse(cameraFilter)
+		if err == nil {
+			filtered := make([]models.Line, 0)
+			for _, l := range list {
+				if l.CameraID != nil && *l.CameraID == camID {
+					filtered = append(filtered, l)
+				}
+			}
+			list = filtered
+		}
+	}
 	writeJSON(w, http.StatusOK, list)
 }
 
@@ -309,6 +524,30 @@ func (a *API) CreateLine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, l)
+}
+
+func (a *API) DeleteLine(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "lineID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := a.Spatial.DeleteLine(r.Context(), orgID, id); errors.Is(err, spatial.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	claims := middleware.GetClaims(r.Context())
+	rid := id.String()
+	_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
+		OrgID: &orgID, UserID: &claims.UserID, Action: "line.delete",
+		ResourceType: "line", ResourceID: &rid,
+		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func (a *API) ListRules(w http.ResponseWriter, r *http.Request) {
@@ -352,7 +591,95 @@ func (a *API) CreateRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	claims := middleware.GetClaims(r.Context())
+	rid := rule.ID.String()
+	_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
+		OrgID: &orgID, UserID: &claims.UserID, Action: "rule.create",
+		ResourceType: "rule", ResourceID: &rid,
+		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
+	})
 	writeJSON(w, http.StatusCreated, rule)
+}
+
+func (a *API) UpdateRule(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	ruleID, err := uuid.Parse(chi.URLParam(r, "ruleID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		IsEnabled   *bool           `json:"is_enabled"`
+		Priority    *int            `json:"priority"`
+		Name        *string         `json:"name"`
+		Description *string         `json:"description"`
+		Definition  json.RawMessage `json:"definition"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	rule, err := a.Rules.Update(r.Context(), orgID, ruleID, req.IsEnabled, req.Priority, req.Name, req.Description, req.Definition)
+	if errors.Is(err, rules.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	claims := middleware.GetClaims(r.Context())
+	rid := rule.ID.String()
+	action := "rule.update"
+	if req.IsEnabled != nil && !*req.IsEnabled {
+		action = "rule.disable"
+	} else if req.IsEnabled != nil && *req.IsEnabled {
+		action = "rule.enable"
+	}
+	_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
+		OrgID: &orgID, UserID: &claims.UserID, Action: action,
+		ResourceType: "rule", ResourceID: &rid,
+		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
+	})
+	writeJSON(w, http.StatusOK, rule)
+}
+
+func (a *API) DeleteRule(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	ruleID, err := uuid.Parse(chi.URLParam(r, "ruleID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := a.Rules.Delete(r.Context(), orgID, ruleID); errors.Is(err, rules.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	claims := middleware.GetClaims(r.Context())
+	rid := ruleID.String()
+	_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
+		OrgID: &orgID, UserID: &claims.UserID, Action: "rule.delete",
+		ResourceType: "rule", ResourceID: &rid,
+		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (a *API) InternalListActiveRules(w http.ResponseWriter, r *http.Request) {
+	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid org id")
+		return
+	}
+	list, err := a.Rules.ListActive(r.Context(), orgID, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }
 
 func (a *API) ValidateRule(w http.ResponseWriter, r *http.Request) {
@@ -403,9 +730,7 @@ func (a *API) EvaluateRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) ListAlerts(w http.ResponseWriter, r *http.Request) {
-	orgID := middleware.GetOrgID(r.Context())
-	list, _ := a.Alerts.ListAlerts(r.Context(), orgID, r.URL.Query().Get("status"))
-	writeJSON(w, http.StatusOK, list)
+	a.ListAlertsEnriched(w, r)
 }
 
 func (a *API) CreateAlert(w http.ResponseWriter, r *http.Request) {
@@ -418,7 +743,49 @@ func (a *API) CreateAlert(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "create failed")
 		return
 	}
+	if a.Hub != nil {
+		a.Hub.Broadcast(map[string]interface{}{"type": "alert", "alert": a2})
+	}
 	writeJSON(w, http.StatusCreated, a2)
+}
+
+func (a *API) AcknowledgeAlert(w http.ResponseWriter, r *http.Request) {
+	a.ArchiveAlert(w, r)
+}
+
+func (a *API) ArchiveAlert(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "alertID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Comment          string          `json:"comment"`
+		EvidenceSnapshot json.RawMessage `json:"evidence_snapshot"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	claims := middleware.GetClaims(r.Context())
+	a2, err := a.Alerts.ArchiveAlert(r.Context(), orgID, id, alerts.ArchiveRequest{
+		Comment:          req.Comment,
+		EvidenceSnapshot: req.EvidenceSnapshot,
+		ArchivedBy:       &claims.UserID,
+	})
+	if errors.Is(err, alerts.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "archive failed")
+		return
+	}
+	rid := id.String()
+	_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
+		OrgID: &orgID, UserID: &claims.UserID, Action: "alert.archive",
+		ResourceType: "alert", ResourceID: &rid,
+		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
+	})
+	writeJSON(w, http.StatusOK, a2)
 }
 
 func (a *API) ListIncidents(w http.ResponseWriter, r *http.Request) {
@@ -442,12 +809,189 @@ func (a *API) CreateIncident(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) ListAuditLog(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
-	entries, err := a.Audit.List(r.Context(), orgID, 50, 0)
+	limit, offset := 100, 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		fmt.Sscanf(o, "%d", &offset)
+	}
+	entries, err := a.Audit.ListEnriched(r.Context(), orgID, limit, offset, r.URL.Query().Get("action"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
+}
+
+func (a *API) VerifyAuditChain(w http.ResponseWriter, r *http.Request) {
+	ok, err := a.Audit.VerifyChain(r.Context(), 500)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "verify failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"valid": ok})
+}
+
+func (a *API) DashboardSummary(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	summary, err := a.Dashboard.Summary(r.Context(), orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "summary failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
+}
+
+func (a *API) ListSurveillanceLists(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	listType := r.URL.Query().Get("list_type")
+	list, err := a.Identity.List(r.Context(), orgID, listType)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (a *API) CreateSurveillanceList(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	var req identity.CreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if req.Name == "" || req.ListType == "" {
+		writeError(w, http.StatusBadRequest, "name and list_type required")
+		return
+	}
+	l, err := a.Identity.Create(r.Context(), orgID, req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "create failed")
+		return
+	}
+	writeJSON(w, http.StatusCreated, l)
+}
+
+func (a *API) DeleteSurveillanceList(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "listID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := a.Identity.Delete(r.Context(), orgID, id); errors.Is(err, identity.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (a *API) AddSurveillanceListEntry(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	listID, err := uuid.Parse(chi.URLParam(r, "listID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if req["identifier"] == nil && req["plate"] == nil {
+		writeError(w, http.StatusBadRequest, "identifier required")
+		return
+	}
+	if req["identifier"] == nil {
+		req["identifier"] = req["plate"]
+	}
+	l, err := a.Identity.AppendEntry(r.Context(), orgID, listID, req)
+	if errors.Is(err, identity.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "append failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, l)
+}
+
+func (a *API) ListUsers(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	list, err := a.Users.List(r.Context(), orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (a *API) CreateUser(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	var req struct {
+		Email    string `json:"email"`
+		FullName string `json:"full_name"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	member, err := a.Users.Create(r.Context(), orgID, users.CreateMemberRequest{
+		Email: req.Email, FullName: req.FullName, Password: req.Password,
+		Role: users.FrontendRoleToBackend(req.Role),
+	})
+	if errors.Is(err, users.ErrAlreadyMember) {
+		writeError(w, http.StatusConflict, "user already in organization")
+		return
+	}
+	if errors.Is(err, users.ErrInvalidRole) {
+		writeError(w, http.StatusBadRequest, "invalid role")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, member)
+}
+
+func (a *API) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Role     *string `json:"role"`
+		IsActive *bool   `json:"is_active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	update := users.UpdateMemberRequest{IsActive: req.IsActive}
+	if req.Role != nil {
+		r := users.FrontendRoleToBackend(*req.Role)
+		update.Role = &r
+	}
+	member, err := a.Users.Update(r.Context(), orgID, userID, update)
+	if errors.Is(err, users.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, member)
 }
 
 func strPtr(s string) *string { return &s }

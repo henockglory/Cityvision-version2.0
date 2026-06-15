@@ -29,6 +29,9 @@ type Config struct {
 
 	CameraCredentialKey string
 	MinIOBucket         string
+
+	AIEngineHost string
+	AIEnginePort int
 }
 
 func Load() (*Config, error) {
@@ -47,6 +50,9 @@ func Load() (*Config, error) {
 		RedisPassword: getEnv("REDIS_PASSWORD", ""),
 
 		MinIOBucket: getEnv("MINIO_BUCKET", "citevision-evidence"),
+
+		AIEngineHost: getEnv("AI_ENGINE_HOST", "localhost"),
+		AIEnginePort: getEnvInt("AI_ENGINE_PORT", 8001),
 	}
 
 	cfg.PostgresURL = resolvePostgresURL()
