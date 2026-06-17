@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,6 +16,11 @@ import (
 	mqttpub "github.com/citevision/citevision-v2/rules-engine/internal/mqttpub"
 	"github.com/citevision/citevision-v2/rules-engine/internal/syncrules"
 )
+
+type ruleMatch struct {
+	rule    evaluator.RuleDefinition
+	actions []evaluator.Action
+}
 
 func main() {
 	host := getenv("RULES_ENGINE_HOST", "0.0.0.0")
@@ -61,15 +67,25 @@ func main() {
 		}
 	}()
 
-	sub := mqttsub.New(broker, 0, func(topic string, payload map[string]interface{}) {
+	handleEvent := func(topic string, payload map[string]interface{}) {
 		now := time.Now()
 		rulesMu.RLock()
-		rules := activeRules
+		rules := append([]evaluator.RuleDefinition(nil), activeRules...)
 		rulesMu.RUnlock()
 
+		sort.Slice(rules, func(i, j int) bool {
+			return rules[i].Priority > rules[j].Priority
+		})
+
+		var matches []ruleMatch
 		for _, rule := range rules {
 			if rule.CameraID != "" {
 				if cam, ok := payload["camera_id"].(string); ok && cam != rule.CameraID {
+					continue
+				}
+			}
+			if triggerID, ok := payload["trigger_rule_id"].(string); ok && triggerID != "" {
+				if rule.RuleID != triggerID {
 					continue
 				}
 			}
@@ -81,30 +97,58 @@ func main() {
 			if cache.IsDuplicate(key, now) {
 				continue
 			}
-			log.Printf("rule %s matched on %s actions=%d", rule.RuleID, topic, len(ruleActions))
+			matches = append(matches, ruleMatch{rule: rule, actions: ruleActions})
+		}
+
+		if len(matches) == 0 {
+			return
+		}
+
+		maxPriority := matches[0].rule.Priority
+		suppressFloor := 0
+		for _, m := range matches {
+			if m.rule.Priority > maxPriority {
+				maxPriority = m.rule.Priority
+			}
+		}
+		for _, m := range matches {
+			if m.rule.SuppressLower && m.rule.Priority == maxPriority {
+				suppressFloor = maxPriority
+				break
+			}
+		}
+
+		for _, m := range matches {
+			if suppressFloor > 0 && m.rule.Priority < suppressFloor {
+				continue
+			}
+			log.Printf("rule %s matched on %s actions=%d", m.rule.RuleID, topic, len(m.actions))
 
 			alertOrg := defaultOrg
 			if o, ok := payload["org_id"].(string); ok && o != "" {
 				alertOrg = o
 			}
-			if alertOrg != "" {
-				publisher.PublishMatchedEvent(alertOrg, rule.RuleID, payload)
-				actionsToRun := ruleActions
-				if len(actionsToRun) == 0 {
-					actionsToRun = []evaluator.Action{{Type: "alert", Config: []byte(`{"severity":"medium"}`)}}
-				}
-				executor.Run(alertOrg, rule, payload, actionsToRun)
+			if alertOrg == "" {
+				continue
 			}
+			publisher.PublishMatchedEvent(alertOrg, m.rule.RuleID, payload)
+			actionsToRun := m.actions
+			if len(actionsToRun) == 0 {
+				actionsToRun = []evaluator.Action{{Type: "alert", Config: []byte(`{"severity":"medium"}`)}}
+			}
+			executor.Run(alertOrg, m.rule, payload, actionsToRun)
 		}
-	})
+	}
+
+	sub := mqttsub.New(broker, 0, handleEvent)
 
 	if err := sub.Connect(); err != nil {
 		log.Printf("MQTT connect failed (will retry in background): %v", err)
 	} else {
-		if err := sub.Subscribe("cv/events/#", "cv/detections/#"); err != nil {
+		if err := sub.Subscribe("cv/events/#", "cv/detections/#", "cv/rules/trigger/#"); err != nil {
 			log.Printf("MQTT subscribe failed: %v", err)
 		} else {
-			log.Printf("Subscribed to cv/events/# and cv/detections/# on %s", broker)
+			log.Printf("Subscribed to cv/events/#, cv/detections/#, cv/rules/trigger/# on %s", broker)
 		}
 	}
 

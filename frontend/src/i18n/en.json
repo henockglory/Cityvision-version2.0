@@ -115,12 +115,67 @@
   "rules": {
     "title": "Analytics Rules",
     "add": "New Rule",
+    "newRule": "New rule",
     "conditions": "Conditions",
     "actions": "Actions",
     "enabled": "Enabled",
     "disabled": "Disabled",
+    "disable": "Disable",
+    "enable": "Enable",
     "empty": "No rules",
-    "emptyHint": "Create rules to automate your alerts"
+    "emptyHint": "Browse the catalog to activate your first rule",
+    "catalog": "Rule catalog",
+    "catalogSubtitle": "Catalog + configured rules",
+    "activeTitle": "Configured rules",
+    "activeSubtitle": "Manage, edit and duplicate your active rules",
+    "activeEmpty": "No rules match this filter",
+    "scope": {
+      "national": "National",
+      "enterprise": "Enterprise",
+      "domestic": "Domestic",
+      "all": "All",
+      "mix": "Mixed"
+    },
+    "guide": {
+      "bannerTitle": "Pick a rule that fits your context",
+      "national": "Large-scale monitoring: crowds, traffic, public sites.",
+      "enterprise": "Private sites: entrances, sensitive zones, vehicles.",
+      "domestic": "Home or residence: intrusion, presence, access.",
+      "all": "Browse by scale or configure your active rules below.",
+      "wizardTitle": "How it works"
+    },
+    "catalogTab": {
+      "available": "Available ({{count}})",
+      "extended": "Coming soon ({{count}})",
+      "search": "Search rules…",
+      "emptyFilter": "No rules match."
+    },
+    "catalogCard": {
+      "configure": "Configure",
+      "reactivate": "Re-enable",
+      "configured": "Configured",
+      "soonBadge": "Soon",
+      "showGuide": "Show illustrated role",
+      "hideGuide": "Hide illustration",
+      "disabling": "Disabling « {{name}} »…"
+    },
+    "catalogCategory": {
+      "security": "Security & intrusion",
+      "spatial": "Spatial & zones",
+      "traffic": "Traffic & speed",
+      "identity": "Identity & plates",
+      "behavior": "Behavior",
+      "composite": "Composite",
+      "crowd": "Crowd & density",
+      "time": "Time & schedules",
+      "objects": "Objects & detection",
+      "presence": "Presence & occupancy",
+      "quality": "Video quality",
+      "speed": "Speed",
+      "road-enforcement": "Road enforcement",
+      "incident": "Incidents",
+      "industrial": "Industrial"
+    }
   },
   "alerts": {
     "title": "Alerts",
@@ -161,7 +216,12 @@
     "zone": "Zone",
     "track": "Track",
     "openLive": "Open live",
-    "download": "Download"
+    "download": "Télécharger",
+    "loadFailed": "Unable to load this media",
+    "loadingMedia": "Loading evidence…",
+    "metadataOnly": "Metadata present, media still loading",
+    "automationsTitle": "Automatisations liées",
+    "automationsHint": "Canaux configurés sur la règle source au moment de l'alerte."
   },
   "liveView": {
     "title": "Live View",
@@ -239,7 +299,9 @@
     "noData": "No data",
     "online": "Online",
     "offline": "Offline",
-    "skipTour": "Skip tour"
+    "skipTour": "Skip tour",
+    "back": "Back",
+    "next": "Next"
   },
   "roles": {
     "admin": "Administrator",

@@ -135,6 +135,10 @@ func RequireOrgAccess(authSvc *auth.Service) func(http.Handler) http.Handler {
 }
 
 func RequirePermission(rbacSvc *rbac.Service, permission string) func(http.Handler) http.Handler {
+	return RequireAnyPermission(rbacSvc, permission)
+}
+
+func RequireAnyPermission(rbacSvc *rbac.Service, permissions ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			role := GetOrgRole(r.Context())
@@ -144,12 +148,14 @@ func RequirePermission(rbacSvc *rbac.Service, permission string) func(http.Handl
 					role = claims.Role
 				}
 			}
-			ok, err := rbacSvc.HasPermission(r.Context(), role, permission)
-			if err != nil || !ok {
-				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
-				return
+			for _, permission := range permissions {
+				ok, err := rbacSvc.HasPermission(r.Context(), role, permission)
+				if err == nil && ok {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
-			next.ServeHTTP(w, r)
+			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		})
 	}
 }

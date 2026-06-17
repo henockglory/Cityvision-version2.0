@@ -20,17 +20,21 @@ class RTSPWorker:
         rtsp_url: str,
         process_fn: Callable[[str, np.ndarray, float], Any],
         reconnect_delay: float = 5.0,
+        target_fps: float = 8.0,
     ) -> None:
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
         self.process_fn = process_fn
         self.reconnect_delay = reconnect_delay
+        self.target_fps = max(1.0, target_fps)
+        self._min_interval = 1.0 / self.target_fps
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._running = False
         self._frames_processed = 0
         self._last_error: str | None = None
         self._fps = 25.0
+        self._last_process_ts = 0.0
 
     @property
     def is_running(self) -> bool:
@@ -88,6 +92,11 @@ class RTSPWorker:
                     time.sleep(self.reconnect_delay)
                     continue
 
+                now = time.monotonic()
+                if now - self._last_process_ts < self._min_interval:
+                    continue
+                self._last_process_ts = now
+
                 self.process_fn(self.camera_id, frame, self._fps)
                 self._frames_processed += 1
             except Exception as exc:
@@ -134,7 +143,7 @@ class WorkerManager:
             else:
                 if not rtsp_url:
                     raise ValueError("rtsp_url or video_file required")
-                worker = RTSPWorker(camera_id, rtsp_url, self._process_fn)
+                worker = RTSPWorker(camera_id, rtsp_url, self._process_fn, target_fps=ai_fps)
             self._workers[camera_id] = worker
             self._configs[camera_id] = spatial_config or {}
             worker.start()

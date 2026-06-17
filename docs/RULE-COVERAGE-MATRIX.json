@@ -1,0 +1,2248 @@
+{
+  "summary": {
+    "generated_at": "2026-06-17T02:46:34.356583+00:00",
+    "catalog_unique_templates": 87,
+    "catalog_card_occurrences": 96,
+    "ai_capabilities_templates": 79,
+    "capabilities_supported_true": 71,
+    "ui_disponibles": 68,
+    "ui_bientot": 19,
+    "status_implémenté": 51,
+    "status_partiel": 22,
+    "status_absent": 11,
+    "status_stub": 3,
+    "status_nom_incoherent": 0,
+    "e2e_covered": 6,
+    "e2e_missing": 81,
+    "orphan_capability_templates": [
+      "tpl-dwell-time",
+      "tpl-object-abandoned",
+      "tpl-plate-blocked"
+    ]
+  },
+  "rows": [
+    {
+      "template_id": "tpl-abandoned-object",
+      "name": "Objet abandonné",
+      "category": "objects",
+      "catalog_files": [
+        "intrusion-loitering-line-theft.json",
+        "security.json"
+      ],
+      "expected_event_type": "object_appeared",
+      "all_event_types": [
+        "object_appeared"
+      ],
+      "capability_id": "object_abandoned",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "object_appeared",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-accident",
+      "name": "Accident routier probable",
+      "category": "composite",
+      "catalog_files": [
+        "crowd-incidents-identity.json"
+      ],
+      "expected_event_type": "sudden_stop",
+      "all_event_types": [
+        "sudden_stop"
+      ],
+      "capability_id": "sudden_stop",
+      "in_ai_capabilities": true,
+      "capabilities_supported": false,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": true,
+      "ai_canonical_event": "sudden_stop",
+      "implementation_status": "partiel",
+      "implementation_notes": "Composite routier : sudden_stop et comptage véhicules non émis ensemble par l'IA locale.",
+      "unsupported_message_fr": "Composite routier : sudden_stop et comptage véhicules non émis ensemble par l'IA locale.",
+      "coming_soon_catalog": false,
+      "e2e_tested": true,
+      "e2e_script": "verify-e2e-spatial-semantic.sh",
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-accident-composite",
+      "name": "Accident (arrêt brutal)",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": "sudden_stop",
+      "all_event_types": [
+        "sudden_stop",
+        "vehicle_stopped"
+      ],
+      "capability_id": "sudden_stop",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "sudden_stop",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si calibration caméra configurée",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": true,
+      "e2e_script": "verify-e2e-spatial-semantic.sh",
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-behavior-anomaly",
+      "name": "Anomalie comportementale",
+      "category": "behavior",
+      "catalog_files": [
+        "security.json"
+      ],
+      "expected_event_type": "behavior_anomaly",
+      "all_event_types": [
+        "behavior_anomaly"
+      ],
+      "capability_id": "behavior_anomaly",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "behavior_anomaly",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-blocked-plate",
+      "name": "Plaque bloquée",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": "plate_blocked",
+      "all_event_types": [
+        "plate_blocked"
+      ],
+      "capability_id": "plate_blocked",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "plate_blocked",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si PaddleOCR installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-bottleneck",
+      "name": "Goulot d'étranglement",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "scene_density_high",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-carry-object",
+      "name": "Transport d'objet",
+      "category": "behavior",
+      "catalog_files": [
+        "extended.json"
+      ],
+      "expected_event_type": "carry_detected",
+      "all_event_types": [
+        "carry_detected"
+      ],
+      "capability_id": "carry_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "carry_detected",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-climb-detected",
+      "name": "Escalade détectée",
+      "category": "behavior",
+      "catalog_files": [
+        "extended.json"
+      ],
+      "expected_event_type": "climb_detected",
+      "all_event_types": [
+        "climb_detected"
+      ],
+      "capability_id": "climb_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "climb_detected",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-congestion",
+      "name": "Embouteillage",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": "vehicle_count_threshold",
+      "all_event_types": [
+        "vehicle_count_threshold"
+      ],
+      "capability_id": "vehicle_count_threshold",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "vehicle_count_threshold",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-crouch-detected",
+      "name": "Position accroupie",
+      "category": "behavior",
+      "catalog_files": [
+        "extended.json"
+      ],
+      "expected_event_type": "crouch_detected",
+      "all_event_types": [
+        "crouch_detected"
+      ],
+      "capability_id": "crouch_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "crouch_detected",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-crowd-count",
+      "name": "Seuil foule atteint",
+      "category": "behavior",
+      "catalog_files": [
+        "security.json"
+      ],
+      "expected_event_type": "crowd_count_threshold",
+      "all_event_types": [
+        "crowd_count_threshold"
+      ],
+      "capability_id": "crowd_count_threshold",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "crowd_count_threshold",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-crowd-density",
+      "name": "Densité foule élevée",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json",
+        "intrusion-loitering-line-theft.json"
+      ],
+      "expected_event_type": "scene_density_high",
+      "all_event_types": [
+        "scene_density_high"
+      ],
+      "capability_id": "scene_density_high",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "scene_density_high",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-crowd-gathering",
+      "name": "Rassemblement foule",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "crowd_gathering",
+      "all_event_types": [
+        "crowd_gathering"
+      ],
+      "capability_id": "crowd_gathering",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "crowd_gathering",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-crowd-panic",
+      "name": "Panique de foule",
+      "category": "crowd",
+      "catalog_files": [
+        "crowd-incidents-identity.json"
+      ],
+      "expected_event_type": "crowd_panic",
+      "all_event_types": [
+        "crowd_panic"
+      ],
+      "capability_id": "crowd_panic",
+      "in_ai_capabilities": true,
+      "capabilities_supported": false,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": "crowd_panic",
+      "implementation_status": "partiel",
+      "implementation_notes": "Panique de foule non détectée par l'IA locale actuelle.",
+      "unsupported_message_fr": "Panique de foule non détectée par l'IA locale actuelle.",
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-dwell-exceeded",
+      "name": "Dépassement temps de présence",
+      "category": "time",
+      "catalog_files": [
+        "spatial.json"
+      ],
+      "expected_event_type": "dwell_time_exceeded",
+      "all_event_types": [
+        "dwell_time_exceeded"
+      ],
+      "capability_id": "dwell_time_exceeded",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "dwell_time_exceeded",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-erratic-motion",
+      "name": "Mouvement erratique",
+      "category": "presence",
+      "catalog_files": [
+        "presence-motion.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "erratic_motion",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-face-count",
+      "name": "Comptage visages",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "face_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-face-detected",
+      "name": "Visage détecté",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": "face_detected",
+      "all_event_types": [
+        "face_detected"
+      ],
+      "capability_id": "face_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "face_detected",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si InsightFace installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-face-repeat",
+      "name": "Visage récurrent",
+      "category": "identity",
+      "catalog_files": [
+        "extended.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "face_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-face-watchlist",
+      "name": "Personne liste noire",
+      "category": "identity",
+      "catalog_files": [
+        "crowd-incidents-identity.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "face_watchlist_match",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-falling",
+      "name": "Chute détectée",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "falling",
+      "all_event_types": [
+        "falling"
+      ],
+      "capability_id": "falling",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "falling",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-fight",
+      "name": "Bagarre probable",
+      "category": "incident",
+      "catalog_files": [
+        "crowd-incidents-identity.json"
+      ],
+      "expected_event_type": "fight_detected",
+      "all_event_types": [
+        "fight_detected"
+      ],
+      "capability_id": "fight_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": false,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": "fight_detected",
+      "implementation_status": "partiel",
+      "implementation_notes": "Événement fight_detected non émis — utilisez tpl-fighting (heuristique).",
+      "unsupported_message_fr": "Événement fight_detected non émis — utilisez tpl-fighting (heuristique).",
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-fighting",
+      "name": "Bagarre détectée",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "fighting",
+      "all_event_types": [
+        "fighting"
+      ],
+      "capability_id": "fighting",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "fighting",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-flow-rate",
+      "name": "Débit piétons élevé",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "crowd_count_threshold",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-group-formation",
+      "name": "Attroupement suspect",
+      "category": "crowd",
+      "catalog_files": [
+        "crowd-incidents-identity.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-identity-correlation",
+      "name": "Corrélation identité",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": "correlation_match",
+      "all_event_types": [
+        "correlation_match"
+      ],
+      "capability_id": "correlation_match",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "correlation_match",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-illegal-parking",
+      "name": "Stationnement illégal",
+      "category": "traffic",
+      "catalog_files": [
+        "speed-traffic.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-immobility",
+      "name": "Immobilité prolongée",
+      "category": "presence",
+      "catalog_files": [
+        "presence-motion.json"
+      ],
+      "expected_event_type": "stationary",
+      "all_event_types": [
+        "stationary"
+      ],
+      "capability_id": "person_stopped",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": "stationary",
+      "implementation_status": "partiel",
+      "implementation_notes": "métadonnée behavior, pas event_type",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-industrial-intrusion",
+      "name": "Intrusion site industriel",
+      "category": "industrial",
+      "catalog_files": [
+        "crowd-incidents-identity.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-intrusion",
+      "name": "Intrusion zone interdite",
+      "category": "security",
+      "catalog_files": [
+        "intrusion-loitering-line-theft.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "zone_enter",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-intrusion-after-hours",
+      "name": "Intrusion hors horaires",
+      "category": "security",
+      "catalog_files": [
+        "extended.json"
+      ],
+      "expected_event_type": "zone_enter",
+      "all_event_types": [
+        "zone_enter"
+      ],
+      "capability_id": "zone_enter",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": true,
+      "ai_canonical_event": "zone_enter",
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-intrusion-zone",
+      "name": "Intrusion zone interdite",
+      "category": "security",
+      "catalog_files": [
+        "spatial.json"
+      ],
+      "expected_event_type": "zone_enter",
+      "all_event_types": [
+        "zone_enter"
+      ],
+      "capability_id": "zone_enter",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "zone_enter",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-line-cross",
+      "name": "Franchissement de ligne",
+      "category": "spatial",
+      "catalog_files": [
+        "intrusion-loitering-line-theft.json",
+        "spatial.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "line_cross",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-line-cross-bidir",
+      "name": "Franchissement bidirectionnel",
+      "category": "spatial",
+      "catalog_files": [
+        "spatial.json"
+      ],
+      "expected_event_type": "line_cross",
+      "all_event_types": [
+        "line_cross"
+      ],
+      "capability_id": "line_cross",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "line_cross",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-line-cross-forbidden",
+      "name": "Franchissement ligne continue",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": "line_cross",
+      "all_event_types": [
+        "line_cross"
+      ],
+      "capability_id": "line_cross",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "line_cross",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-loitering",
+      "name": "Présence prolongée (loitering)",
+      "category": "time",
+      "catalog_files": [
+        "intrusion-loitering-line-theft.json",
+        "spatial.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "loitering",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-loitering-entrance",
+      "name": "Flânerie près entrée",
+      "category": "security",
+      "catalog_files": [
+        "security.json"
+      ],
+      "expected_event_type": "loitering_near_entrance",
+      "all_event_types": [
+        "loitering_near_entrance"
+      ],
+      "capability_id": "loitering_near_entrance",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "loitering_near_entrance",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-multi-person-vehicle",
+      "name": "Plusieurs personnes, un véhicule",
+      "category": "security",
+      "catalog_files": [
+        "security.json"
+      ],
+      "expected_event_type": "multiple_persons_one_vehicle",
+      "all_event_types": [
+        "multiple_persons_one_vehicle"
+      ],
+      "capability_id": "multiple_persons_one_vehicle",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "multiple_persons_one_vehicle",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-multi-zone",
+      "name": "Présence multi-zones",
+      "category": "spatial",
+      "catalog_files": [
+        "spatial.json"
+      ],
+      "expected_event_type": "zone_enter",
+      "all_event_types": [
+        "zone_enter"
+      ],
+      "capability_id": "zone_enter",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": true,
+      "ai_canonical_event": "zone_enter",
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-object-appeared",
+      "name": "Apparition d'objet",
+      "category": "presence",
+      "catalog_files": [
+        "presence-motion.json",
+        "security.json"
+      ],
+      "expected_event_type": "object_appeared",
+      "all_event_types": [
+        "object_appeared"
+      ],
+      "capability_id": "object_appeared",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "object_appeared",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-object-disappeared",
+      "name": "Disparition d'objet",
+      "category": "presence",
+      "catalog_files": [
+        "presence-motion.json"
+      ],
+      "expected_event_type": "object_disappeared",
+      "all_event_types": [
+        "object_disappeared"
+      ],
+      "capability_id": "object_disappeared",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "object_disappeared",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-object-removed",
+      "name": "Objet retiré",
+      "category": "objects",
+      "catalog_files": [
+        "security.json"
+      ],
+      "expected_event_type": "object_removed",
+      "all_event_types": [
+        "object_removed"
+      ],
+      "capability_id": "object_removed",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "object_removed",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-pedestrian-zone",
+      "name": "Piéton en zone véhicules",
+      "category": "traffic",
+      "catalog_files": [
+        "extended.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-perimeter-breach",
+      "name": "Intrusion périmétrique",
+      "category": "spatial",
+      "catalog_files": [
+        "spatial-crossing.json"
+      ],
+      "expected_event_type": "perimeter_breach",
+      "all_event_types": [
+        "perimeter_breach"
+      ],
+      "capability_id": "perimeter_breach",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "perimeter_breach",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": true,
+      "e2e_script": "verify-e2e-spatial-semantic.sh",
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-person-stopped",
+      "name": "Personne immobile prolongée",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "person_stopped",
+      "all_event_types": [
+        "person_stopped"
+      ],
+      "capability_id": "person_stopped",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "person_stopped",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-phone-driving",
+      "name": "Téléphone au volant",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "phone_driving",
+      "in_ai_capabilities": true,
+      "capabilities_supported": false,
+      "has_config_schema": true,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "stub",
+      "implementation_notes": "Stub catalogue — pas de simulation (CLARIFICATIONS.md)",
+      "unsupported_message_fr": "Modèle téléphone au volant non intégré — stub catalogue, pas de simulation.",
+      "coming_soon_catalog": true,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-plate-detected",
+      "name": "Plaque détectée",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": "plate_detected",
+      "all_event_types": [
+        "plate_detected"
+      ],
+      "capability_id": "plate_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "plate_detected",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si PaddleOCR installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-plate-pipeline",
+      "name": "Plaque détectée (OCR)",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": "plate_detected",
+      "all_event_types": [
+        "plate_detected"
+      ],
+      "capability_id": "plate_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "plate_detected",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si PaddleOCR installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-plate-repeat",
+      "name": "Plaque récurrente",
+      "category": "identity",
+      "catalog_files": [
+        "extended.json"
+      ],
+      "expected_event_type": "plate_detected",
+      "all_event_types": [
+        "plate_detected"
+      ],
+      "capability_id": "plate_detected",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "plate_detected",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si PaddleOCR installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-plate-unknown",
+      "name": "Plaque non enregistrée",
+      "category": "identity",
+      "catalog_files": [
+        "crowd-incidents-identity.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "plate_unknown",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-plate-whitelist",
+      "name": "Plaque autorisée",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": "plate_allowed",
+      "all_event_types": [
+        "plate_allowed"
+      ],
+      "capability_id": "plate_allowed",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "plate_allowed",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si PaddleOCR installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-proximity-alert",
+      "name": "Proximité personne-véhicule",
+      "category": "security",
+      "catalog_files": [
+        "security.json"
+      ],
+      "expected_event_type": "person_vehicle_proximity",
+      "all_event_types": [
+        "person_vehicle_proximity"
+      ],
+      "capability_id": "person_vehicle_proximity",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "person_vehicle_proximity",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-queue-forming",
+      "name": "Formation de file",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "queue_forming",
+      "all_event_types": [
+        "queue_forming"
+      ],
+      "capability_id": "queue_forming",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "queue_forming",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-red-light",
+      "name": "Feu rouge",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "red_light_violation",
+      "in_ai_capabilities": true,
+      "capabilities_supported": false,
+      "has_config_schema": true,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "stub",
+      "implementation_notes": "Stub catalogue — pas de simulation (CLARIFICATIONS.md)",
+      "unsupported_message_fr": "Modèle feu rouge non intégré — aucune simulation.",
+      "coming_soon_catalog": true,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-running",
+      "name": "Personne en course",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "running",
+      "all_event_types": [
+        "running"
+      ],
+      "capability_id": "running",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "running",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-running-person",
+      "name": "Course / fuite",
+      "category": "speed",
+      "catalog_files": [
+        "speed-traffic.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "running",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-scene-occupancy",
+      "name": "Occupation scène",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "crowd_count_threshold",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-seatbelt",
+      "name": "Ceinture de sécurité",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "seatbelt_violation",
+      "in_ai_capabilities": true,
+      "capabilities_supported": false,
+      "has_config_schema": true,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "stub",
+      "implementation_notes": "Stub catalogue — pas de simulation (CLARIFICATIONS.md)",
+      "unsupported_message_fr": "Modèle ceinture non intégré — stub catalogue, pas de simulation.",
+      "coming_soon_catalog": true,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-slow-vehicle",
+      "name": "Véhicule trop lent",
+      "category": "traffic",
+      "catalog_files": [
+        "traffic.json"
+      ],
+      "expected_event_type": "speed_below_minimum",
+      "all_event_types": [
+        "speed_below_minimum"
+      ],
+      "capability_id": "speed_below_minimum",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "speed_below_minimum",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si calibration caméra configurée",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-speed-threshold",
+      "name": "Vitesse > seuil",
+      "category": "traffic",
+      "catalog_files": [
+        "traffic.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "speeding",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-speeding",
+      "name": "Excès de vitesse véhicule",
+      "category": "speed",
+      "catalog_files": [
+        "speed-traffic.json",
+        "traffic.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "speeding",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-speeding-premium",
+      "name": "Excès de vitesse",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": "speeding",
+      "all_event_types": [
+        "speeding"
+      ],
+      "capability_id": "speeding",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "speeding",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si calibration caméra configurée",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-stopped-traffic",
+      "name": "Véhicule arrêté sur voie",
+      "category": "traffic",
+      "catalog_files": [
+        "traffic.json"
+      ],
+      "expected_event_type": "vehicle_stopped",
+      "all_event_types": [
+        "vehicle_stopped"
+      ],
+      "capability_id": "vehicle_stopped",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": true,
+      "ai_canonical_event": "vehicle_stopped",
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-sudden-stop",
+      "name": "Arrêt brusque",
+      "category": "speed",
+      "catalog_files": [
+        "speed-traffic.json"
+      ],
+      "expected_event_type": "sudden_stop",
+      "all_event_types": [
+        "sudden_stop"
+      ],
+      "capability_id": "sudden_stop",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": true,
+      "ai_canonical_event": "sudden_stop",
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": true,
+      "e2e_script": "verify-e2e-spatial-semantic.sh",
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-tailgating",
+      "name": "Tailgating",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "tailgating",
+      "all_event_types": [
+        "tailgating"
+      ],
+      "capability_id": "tailgating",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "tailgating",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-theft-composite",
+      "name": "Vol suspect (composite)",
+      "category": "composite",
+      "catalog_files": [
+        "intrusion-loitering-line-theft.json",
+        "security.json"
+      ],
+      "expected_event_type": "zone_enter",
+      "all_event_types": [
+        "zone_enter",
+        "loitering"
+      ],
+      "capability_id": "zone_enter",
+      "in_ai_capabilities": true,
+      "capabilities_supported": false,
+      "has_config_schema": true,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": true,
+      "ai_canonical_event": "zone_enter",
+      "implementation_status": "partiel",
+      "implementation_notes": "Règle composite SEQUENCE : zone_enter puis loitering via le rules-engine.",
+      "unsupported_message_fr": "Règle composite SEQUENCE : zone_enter puis loitering via le rules-engine.",
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-traffic-jam",
+      "name": "Embouteillage",
+      "category": "traffic",
+      "catalog_files": [
+        "speed-traffic.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-traffic-pipeline",
+      "name": "Pipeline voiture → plaque + vitesse",
+      "category": "road-enforcement",
+      "catalog_files": [
+        "road-enforcement.json"
+      ],
+      "expected_event_type": "vehicle_corridor",
+      "all_event_types": [
+        "vehicle_corridor"
+      ],
+      "capability_id": "vehicle_corridor",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "vehicle_corridor",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si PaddleOCR installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-unauthorized-exit",
+      "name": "Sortie non autorisée",
+      "category": "spatial",
+      "catalog_files": [
+        "spatial-crossing.json"
+      ],
+      "expected_event_type": "unauthorized_exit",
+      "all_event_types": [
+        "unauthorized_exit"
+      ],
+      "capability_id": "unauthorized_exit",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "unauthorized_exit",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": true,
+      "e2e_script": "verify-e2e-spatial-semantic.sh",
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-unknown-face",
+      "name": "Visage inconnu",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": "face_unknown",
+      "all_event_types": [
+        "face_unknown"
+      ],
+      "capability_id": "face_unknown",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "face_unknown",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si InsightFace installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-unknown-plate",
+      "name": "Plaque inconnue",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": "plate_unknown",
+      "all_event_types": [
+        "plate_unknown"
+      ],
+      "capability_id": "plate_unknown",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "plate_unknown",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si PaddleOCR installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-vandalism",
+      "name": "Vandalisme suspect",
+      "category": "composite",
+      "catalog_files": [
+        "crowd-incidents-identity.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "crowd_gathering",
+      "in_ai_capabilities": true,
+      "capabilities_supported": false,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "Métadonnée rapid_activity non produite par l'IA locale.",
+      "unsupported_message_fr": "Métadonnée rapid_activity non produite par l'IA locale.",
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-vehicle-count",
+      "name": "Nombre véhicules élevé",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "vehicle_count_threshold",
+      "all_event_types": [
+        "vehicle_count_threshold"
+      ],
+      "capability_id": "vehicle_count_threshold",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "vehicle_count_threshold",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-vehicle-stopped",
+      "name": "Véhicule arrêté",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json"
+      ],
+      "expected_event_type": "vehicle_stopped",
+      "all_event_types": [
+        "vehicle_stopped"
+      ],
+      "capability_id": "vehicle_stopped",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "vehicle_stopped",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-vehicle-wrong-direction",
+      "name": "Véhicule sens interdit",
+      "category": "traffic",
+      "catalog_files": [
+        "extended.json"
+      ],
+      "expected_event_type": "wrong_way",
+      "all_event_types": [
+        "wrong_way"
+      ],
+      "capability_id": "wrong_way",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": true,
+      "ai_canonical_event": "wrong_way",
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-video-blur",
+      "name": "Vidéo floue",
+      "category": "quality",
+      "catalog_files": [
+        "security.json"
+      ],
+      "expected_event_type": "video_blur",
+      "all_event_types": [
+        "video_blur"
+      ],
+      "capability_id": "video_blur",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "video_blur",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-video-darkness",
+      "name": "Vidéo sombre",
+      "category": "quality",
+      "catalog_files": [
+        "security.json"
+      ],
+      "expected_event_type": "video_darkness",
+      "all_event_types": [
+        "video_darkness"
+      ],
+      "capability_id": "video_darkness",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "video_darkness",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-wandering",
+      "name": "Errance prolongée",
+      "category": "presence",
+      "catalog_files": [
+        "presence-motion.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "wandering",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-watchlist-match",
+      "name": "Visage liste de surveillance",
+      "category": "identity",
+      "catalog_files": [
+        "identity.json"
+      ],
+      "expected_event_type": "face_watchlist_match",
+      "all_event_types": [
+        "face_watchlist_match"
+      ],
+      "capability_id": "face_watchlist_match",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "face_watchlist_match",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si InsightFace installé",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-wrong-direction",
+      "name": "Sens interdit",
+      "category": "spatial",
+      "catalog_files": [
+        "spatial-crossing.json"
+      ],
+      "expected_event_type": "wrong_way",
+      "all_event_types": [
+        "wrong_way"
+      ],
+      "capability_id": "wrong_way",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "wrong_way",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-wrong-lane",
+      "name": "Mauvaise voie",
+      "category": "traffic",
+      "catalog_files": [
+        "traffic.json"
+      ],
+      "expected_event_type": "wrong_way",
+      "all_event_types": [
+        "wrong_way"
+      ],
+      "capability_id": "wrong_way",
+      "in_ai_capabilities": false,
+      "capabilities_supported": null,
+      "has_config_schema": false,
+      "ui_tab": "Bientôt",
+      "ai_emits_event": true,
+      "ai_canonical_event": "wrong_way",
+      "implementation_status": "absent",
+      "implementation_notes": "Pas de fiche dans ai-capabilities.json",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-wrong-way",
+      "name": "Sens interdit",
+      "category": "behavior",
+      "catalog_files": [
+        "behavior.json",
+        "road-enforcement.json"
+      ],
+      "expected_event_type": "wrong_way",
+      "all_event_types": [
+        "wrong_way"
+      ],
+      "capability_id": "wrong_way",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "wrong_way",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-zone-absence",
+      "name": "Absence prolongée dans une zone",
+      "category": "presence",
+      "catalog_files": [
+        "presence-motion.json"
+      ],
+      "expected_event_type": "zone_absence",
+      "all_event_types": [
+        "zone_absence"
+      ],
+      "capability_id": "zone_absence",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "zone_absence",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-zone-enter",
+      "name": "Entrée dans une zone",
+      "category": "spatial",
+      "catalog_files": [
+        "spatial-crossing.json"
+      ],
+      "expected_event_type": "zone_enter",
+      "all_event_types": [
+        "zone_enter"
+      ],
+      "capability_id": "zone_enter",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "zone_enter",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-zone-exit",
+      "name": "Sortie d'une zone",
+      "category": "spatial",
+      "catalog_files": [
+        "spatial-crossing.json",
+        "spatial.json"
+      ],
+      "expected_event_type": "zone_exit",
+      "all_event_types": [
+        "zone_exit"
+      ],
+      "capability_id": "zone_exit",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "zone_exit",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": true
+    },
+    {
+      "template_id": "tpl-zone-occupancy",
+      "name": "Occupation zone élevée",
+      "category": "spatial",
+      "catalog_files": [
+        "spatial.json"
+      ],
+      "expected_event_type": null,
+      "all_event_types": [],
+      "capability_id": "crowd_count_threshold",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": false,
+      "ai_canonical_event": null,
+      "implementation_status": "partiel",
+      "implementation_notes": "event_type non extrait de la définition",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": false,
+      "e2e_script": null,
+      "is_duplicate_catalog_entry": false
+    },
+    {
+      "template_id": "tpl-zone-presence",
+      "name": "Présence dans une zone",
+      "category": "presence",
+      "catalog_files": [
+        "presence-motion.json"
+      ],
+      "expected_event_type": "zone_presence",
+      "all_event_types": [
+        "zone_presence"
+      ],
+      "capability_id": "zone_presence",
+      "in_ai_capabilities": true,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "zone_presence",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
+      "e2e_tested": true,
+      "e2e_script": "verify-e2e-zone-alert.sh",
+      "is_duplicate_catalog_entry": false
+    }
+  ]
+}

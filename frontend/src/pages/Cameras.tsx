@@ -88,7 +88,8 @@ export default function Cameras() {
         password: credentials.password,
         port: selectedDevice.rtsp_port ?? 554,
       });
-      const vendor = probe.data.best?.vendor ?? 'generic';
+      const best = probe.data.best;
+      const vendor = best?.vendor ?? 'generic';
       setDetectedVendor(vendor);
 
       const name = cameraName.trim() || `Camera ${selectedDevice.ip}`;
@@ -100,6 +101,8 @@ export default function Cameras() {
         password: credentials.password,
         port: selectedDevice.rtsp_port ?? 554,
         vendor,
+        rtsp_path: best?.rtsp_path,
+        stream_profile: best?.profile ?? 'main',
       });
       const cam = data as Camera;
       setCreatedCameraId(cam.id);

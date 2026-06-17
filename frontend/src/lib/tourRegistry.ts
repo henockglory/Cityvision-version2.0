@@ -35,16 +35,30 @@ export const TOUR_LABELS: Record<TourId, string> = {
   demo: 'tours.labels.demo',
 };
 
+const TOUR_GUIDE_SRC: Partial<Record<TourId, string>> = {
+  rules: '/guides/rules-banner.svg',
+  alerts: '/guides/alerts.svg',
+  liveView: '/guides/live.svg',
+  zones: '/guides/spatial.svg',
+};
+
 function step(
   element: string,
   titleKey: string,
   descKey: string,
   side: 'top' | 'bottom' | 'left' | 'right' = 'bottom',
   t: (k: string) => string,
+  tourId?: TourId,
 ): DriveStep {
+  const text = t(descKey);
+  const guide = tourId ? TOUR_GUIDE_SRC[tourId] : undefined;
+  const description = guide
+    ? `<img src="${guide}" alt="" style="width:100%;max-height:96px;object-fit:contain;margin-bottom:8px;border-radius:8px" /><span>${text}</span>`
+    : text;
+
   return {
     element,
-    popover: { title: t(titleKey), description: t(descKey), side },
+    popover: { title: t(titleKey), description, side },
   };
 }
 
@@ -63,22 +77,22 @@ export function getTourSteps(tourId: TourId, t: (k: string) => string): DriveSte
       ];
     case 'rules':
       return [
-        step('#rules-catalog', 'tours.rules.catalog', 'tours.rules.catalogDesc', 'top', t),
-        step('#rules-active-panel', 'tours.rules.active', 'tours.rules.activeDesc', 'top', t),
+        step('#rules-catalog', 'tours.rules.catalog', 'tours.rules.catalogDesc', 'top', t, 'rules'),
+        step('#rules-active-panel', 'tours.rules.active', 'tours.rules.activeDesc', 'top', t, 'rules'),
       ];
     case 'alerts':
-      return [step('#alerts-filters', 'tours.alerts.filters', 'tours.alerts.filtersDesc', 'bottom', t)];
+      return [step('#alerts-filters', 'tours.alerts.filters', 'tours.alerts.filtersDesc', 'bottom', t, 'alerts')];
     case 'videoWall':
       return [
         step('#video-wall-layout', 'tours.videoWall.layout', 'tours.videoWall.layoutDesc', 'bottom', t),
         step('#video-wall-grid', 'tours.videoWall.grid', 'tours.videoWall.gridDesc', 'top', t),
       ];
     case 'liveView':
-      return [step('#live-view-player', 'tours.liveView.player', 'tours.liveView.playerDesc', 'bottom', t)];
+      return [step('#live-view-player', 'tours.liveView.player', 'tours.liveView.playerDesc', 'bottom', t, 'liveView')];
     case 'cameras':
       return [step('#cameras-list', 'tours.cameras.list', 'tours.cameras.listDesc', 'right', t)];
     case 'zones':
-      return [step('#zone-canvas', 'tours.zones.canvas', 'tours.zones.canvasDesc', 'bottom', t)];
+      return [step('#zone-canvas', 'tours.zones.canvas', 'tours.zones.canvasDesc', 'bottom', t, 'zones')];
     case 'events':
       return [step('#events-timeline', 'tours.events.timeline', 'tours.events.timelineDesc', 'bottom', t)];
     case 'users':

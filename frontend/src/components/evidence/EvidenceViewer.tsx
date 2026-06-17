@@ -1,14 +1,18 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Download, Film, Radio } from 'lucide-react';
+import { Download, Film, Radio, RefreshCw, AlertCircle } from 'lucide-react';
 import {
-  evidenceCompleteness,
+  evidenceMediaSlots,
+  evidenceQuality,
   evidenceThumbnailUrl,
   parseEvidenceSnapshot,
   type EvidenceSnapshot,
 } from '@/lib/evidence';
+import { getAuthCredentials } from '@/lib/authSession';
+import { useEvidenceMediaUrl } from '@/hooks/useEvidenceMediaUrl';
 import EvidenceLightbox, { EvidenceImageTile, useLightbox } from './EvidenceLightbox';
+import { EvidenceVideo } from './EvidenceMedia';
 
 function formatValue(val: unknown): string {
   if (val == null) return '';
@@ -18,19 +22,56 @@ function formatValue(val: unknown): string {
 interface EvidenceViewerProps {
   evidence: EvidenceSnapshot | Record<string, unknown> | undefined;
   cameraId?: string;
+  ruleId?: string;
   compact?: boolean;
 }
 
-export default function EvidenceViewer({ evidence: raw, cameraId, compact = false }: EvidenceViewerProps) {
+export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compact = false }: EvidenceViewerProps) {
   const { t } = useTranslation();
   const { lightbox, openLightbox, closeLightbox } = useLightbox();
+  const { orgId } = getAuthCredentials();
   const ev = useMemo(() => parseEvidenceSnapshot(raw), [raw]);
   const pkg = ev.package;
-  const completeness = evidenceCompleteness(ev);
+  const mediaSlots = useMemo(() => evidenceMediaSlots(ev, orgId), [ev, orgId]);
+  const { clip: clipUrl, scene: sceneUrl, subject: subjectUrl } = mediaSlots.urls;
 
   const scene = pkg?.images?.find((i) => i.role === 'scene');
   const subject = pkg?.images?.find((i) => i.role === 'subject');
-  const clipUrl = pkg?.clip?.url;
+
+  const [clipRetry, setClipRetry] = useState(0);
+  const clipMedia = useEvidenceMediaUrl(clipUrl, { mimeFallback: 'video/mp4', retryKey: clipRetry });
+  const sceneMedia = useEvidenceMediaUrl(sceneUrl, { mimeFallback: 'image/jpeg' });
+  const subjectMedia = useEvidenceMediaUrl(subjectUrl, { mimeFallback: 'image/jpeg' });
+  const [clipDuration, setClipDuration] = useState(0);
+
+  useEffect(() => {
+    setClipDuration(0);
+  }, [clipUrl, clipRetry]);
+
+  const quality = useMemo(
+    () => evidenceQuality(ev, orgId, {
+      clip: { loading: clipMedia.loading, error: Boolean(clipMedia.error), blobUrl: clipMedia.blobUrl, duration: clipDuration },
+      scene: { loading: sceneMedia.loading, error: Boolean(sceneMedia.error), blobUrl: sceneMedia.blobUrl },
+      subject: { loading: subjectMedia.loading, error: Boolean(subjectMedia.error), blobUrl: subjectMedia.blobUrl },
+    }),
+    [ev, orgId, clipMedia, sceneMedia, subjectMedia, clipDuration],
+  );
+
+  const badgeClass = quality.state === 'complete'
+    ? 'bg-metric-rules/20 text-metric-rules'
+    : quality.state === 'loading'
+      ? 'bg-cv-accent/15 text-cv-accent'
+      : quality.state === 'metadata_only'
+        ? 'bg-cv-muted/20 text-cv-muted'
+        : 'bg-metric-alerts/15 text-metric-alerts';
+
+  const badgeLabel = {
+    complete: t('evidence.complete'),
+    loading: t('evidence.loadingMedia'),
+    partial: t('evidence.partial', { have: quality.loaded, total: quality.expected || mediaSlots.total }),
+    failed: t('evidence.loadFailed'),
+    metadata_only: t('evidence.metadataOnly'),
+  }[quality.state];
 
   const metaFields = [
     { label: t('evidence.plate'), value: formatValue(ev.plate_number) },
@@ -42,13 +83,16 @@ export default function EvidenceViewer({ evidence: raw, cameraId, compact = fals
     { label: t('evidence.track'), value: formatValue(ev.track_id) },
   ].filter((f) => f.value !== '');
 
-  const hasMedia = Boolean(clipUrl || scene?.url || subject?.url);
-  const thumb = evidenceThumbnailUrl(ev);
+  const hasMediaUrls = Boolean(clipUrl || sceneUrl || subjectUrl);
+  const thumbApiUrl = evidenceThumbnailUrl(ev, orgId);
+  const thumbMedia = useEvidenceMediaUrl(thumbApiUrl);
+  const displayClipSec = clipDuration > 0 ? Math.round(clipDuration) : (pkg?.clip?.duration_sec ?? 6);
+  const showBboxOverlay = false;
 
-  if (!hasMedia && !ev.bbox && ev.confidence == null && metaFields.length === 0) {
-    return (
-      <p className="text-xs text-cv-muted py-2">{t('evidence.none')}</p>
-    );
+  const retryClip = useCallback(() => setClipRetry((n) => n + 1), []);
+
+  if (!hasMediaUrls && !ev.bbox && ev.confidence == null && metaFields.length === 0) {
+    return <p className="text-xs text-cv-muted py-2">{t('evidence.none')}</p>;
   }
 
   return (
@@ -58,63 +102,57 @@ export default function EvidenceViewer({ evidence: raw, cameraId, compact = fals
           <Film className="w-4 h-4 text-cv-accent" />
           {t('evidence.title')}
         </p>
-        <span
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-            completeness.complete ? 'bg-metric-rules/20 text-metric-rules' : 'bg-metric-alerts/15 text-metric-alerts'
-          }`}
-        >
-          {completeness.complete ? t('evidence.complete') : t('evidence.partial', { have: completeness.have, total: completeness.total })}
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
+          {badgeLabel}
         </span>
       </div>
 
       {clipUrl && (
-        <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-cv-border/60">
-          <video
-            src={clipUrl}
-            controls
-            playsInline
-            preload="metadata"
-            className="w-full h-full object-contain"
-          />
-          <span className="absolute top-2 left-2 text-[10px] bg-black/60 text-white px-2 py-0.5 rounded">
-            {t('evidence.clipLabel', { sec: pkg?.clip?.duration_sec ?? 6 })}
-          </span>
-        </div>
+        <EvidenceVideo
+          apiUrl={clipUrl}
+          durationSec={displayClipSec}
+          onDuration={setClipDuration}
+        />
       )}
 
-      {(scene?.url || subject?.url) && (
+      {(sceneUrl || subjectUrl) && (
         <div className="grid grid-cols-2 gap-2">
-          {scene?.url && (
+          {sceneUrl && (
             <EvidenceImageTile
-              src={scene.url}
-              label={scene.label ?? t('evidence.scene')}
-              onOpen={() => openLightbox(scene.url!, scene.label ?? t('evidence.scene'))}
+              apiUrl={sceneUrl}
+              label={scene?.label ?? t('evidence.scene')}
+              onOpen={() => openLightbox(sceneUrl, scene?.label ?? t('evidence.scene'))}
             />
           )}
-          {subject?.url && (
+          {subjectUrl && (
             <EvidenceImageTile
-              src={subject.url}
-              label={subject.label ?? t('evidence.subject')}
-              bbox={subject.bbox ?? ev.bbox}
-              onOpen={() => openLightbox(subject.url!, subject.label ?? t('evidence.subject'), subject.bbox ?? ev.bbox)}
+              apiUrl={subjectUrl}
+              label={subject?.label ?? t('evidence.subject')}
+              bbox={showBboxOverlay ? (subject?.bbox ?? ev.bbox) : undefined}
+              onOpen={() => openLightbox(subjectUrl, subject?.label ?? t('evidence.subject'))}
             />
           )}
         </div>
       )}
 
-      {!hasMedia && ev.bbox && (
-        <div className="relative w-full max-w-xs aspect-video bg-black/40 rounded-lg border border-cv-border/50 overflow-hidden">
-          <div
-            className="absolute border-2 border-cv-accent/80 bg-cv-accent/10"
-            style={{
-              left: `${Math.min(100, Math.max(0, (ev.bbox.x ?? 0) * 100))}%`,
-              top: `${Math.min(100, Math.max(0, (ev.bbox.y ?? 0) * 100))}%`,
-              width: `${Math.min(100, Math.max(2, (ev.bbox.width ?? 0.1) * 100))}%`,
-              height: `${Math.min(100, Math.max(2, (ev.bbox.height ?? 0.1) * 100))}%`,
-            }}
-          />
-          <span className="absolute bottom-1 right-1 text-[10px] text-cv-muted">{t('evidence.bboxOnly')}</span>
+      {quality.state === 'failed' && hasMediaUrls && (
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-metric-alerts/30 bg-metric-alerts/10 text-xs text-cv-muted">
+          <AlertCircle className="w-4 h-4 text-metric-alerts shrink-0" />
+          <span className="flex-1">{t('evidence.loadFailed')}</span>
+          {clipUrl && (
+            <button type="button" className="cv-btn-secondary text-xs py-1 px-2" onClick={retryClip}>
+              <RefreshCw className="w-3 h-3 inline mr-1" />
+              {t('common.retry', { defaultValue: 'Réessayer' })}
+            </button>
+          )}
         </div>
+      )}
+
+      {quality.state === 'metadata_only' && ev.bbox && (
+        <p className="text-xs text-cv-muted flex items-center gap-1">
+          <AlertCircle className="w-3.5 h-3.5" />
+          {t('evidence.metadataOnly')}
+        </p>
       )}
 
       {ev.confidence != null && (
@@ -137,14 +175,23 @@ export default function EvidenceViewer({ evidence: raw, cameraId, compact = fals
       )}
 
       <div className="flex flex-wrap gap-2 pt-1">
+        {ruleId && (
+          <Link
+            to="/rules"
+            state={{ editRuleId: ruleId, editStep: 3 }}
+            className="cv-btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1"
+          >
+            Personnaliser les preuves de cette règle
+          </Link>
+        )}
         {cameraId && (
           <Link to={`/live?camera=${cameraId}`} className="cv-btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
             <Radio className="w-3 h-3" />
             {t('evidence.openLive')}
           </Link>
         )}
-        {thumb && (
-          <a href={thumb} download target="_blank" rel="noreferrer" className="cv-btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
+        {thumbMedia.blobUrl && (
+          <a href={thumbMedia.blobUrl} download="evidence-scene.jpg" className="cv-btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
             <Download className="w-3 h-3" />
             {t('evidence.download')}
           </a>
@@ -152,7 +199,7 @@ export default function EvidenceViewer({ evidence: raw, cameraId, compact = fals
       </div>
 
       {lightbox && (
-        <EvidenceLightbox src={lightbox.src} alt={lightbox.alt} bbox={lightbox.bbox} onClose={closeLightbox} />
+        <EvidenceLightbox apiUrl={lightbox.apiUrl} alt={lightbox.alt} bbox={lightbox.bbox} onClose={closeLightbox} />
       )}
     </div>
   );

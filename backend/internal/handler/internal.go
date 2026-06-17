@@ -185,6 +185,42 @@ func (a *API) InternalIncrementRuleCounter(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (a *API) InternalEvidenceRequest(w http.ResponseWriter, r *http.Request) {
+	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid org id")
+		return
+	}
+	if a.AI == nil {
+		writeError(w, http.StatusServiceUnavailable, "ai client unavailable")
+		return
+	}
+	var req struct {
+		CameraID string                 `json:"camera_id"`
+		Event    map[string]interface{} `json:"event"`
+		Evidence map[string]interface{} `json:"evidence"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if req.CameraID == "" {
+		writeError(w, http.StatusBadRequest, "camera_id required")
+		return
+	}
+	payload := map[string]interface{}{
+		"org_id":   orgID.String(),
+		"event":    req.Event,
+		"evidence": req.Evidence,
+	}
+	out, err := a.AI.RequestEvidenceCapture(r.Context(), req.CameraID, payload)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (a *API) InternalWebhook(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		URL     string                 `json:"url"`

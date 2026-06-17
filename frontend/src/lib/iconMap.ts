@@ -11,6 +11,14 @@ export const CATEGORY_ICONS: Record<string, string> = {
   behavior: `${BASE}/behavior.svg`,
   composite: `${BASE}/composite.svg`,
   crowd: `${BASE}/crowd.svg`,
+  objects: `${BASE}/object.svg`,
+  object: `${BASE}/object.svg`,
+  presence: `${BASE}/presence.svg`,
+  quality: `${BASE}/quality.svg`,
+  speed: `${BASE}/speed.svg`,
+  'road-enforcement': `${BASE}/road-enforcement.svg`,
+  incident: `${BASE}/incident.svg`,
+  industrial: `${BASE}/industrial.svg`,
 };
 
 export function iconForCategory(category?: string): string {

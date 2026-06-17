@@ -59,6 +59,61 @@ def _crosses_line(
     return False
 
 
+def _zone_semantic_kind(zone: dict) -> str:
+    """Infer zone semantic role from explicit kind or id/name heuristics."""
+    kind = str(zone.get("zone_kind") or zone.get("kind") or "").strip().lower()
+    if kind in ("perimeter", "perimetre", "perimetric"):
+        return "perimeter"
+    if kind in ("controlled_exit", "exit", "sortie", "unauthorized_exit"):
+        return "controlled_exit"
+    blob = f"{zone.get('zone_id', '')} {zone.get('name', '')}".lower()
+    if any(k in blob for k in ("perimeter", "perimetre", "perimetric")):
+        return "perimeter"
+    if any(k in blob for k in ("exit", "sortie", "unauthorized")):
+        return "controlled_exit"
+    return ""
+
+
+def _semantic_zone_events(
+    camera_id: str,
+    track_id: int,
+    zone: dict,
+    ts: str,
+    class_name: str,
+    entering: bool,
+) -> list[dict]:
+    """Emit specialized spatial events alongside zone_enter/zone_exit."""
+    kind = _zone_semantic_kind(zone)
+    zone_id = zone["zone_id"]
+    if kind == "perimeter" and entering:
+        return [
+            EventGenerator._make_event(
+                camera_id,
+                "perimeter_breach",
+                ts,
+                track_id,
+                zone_id=zone_id,
+                class_name=class_name,
+                severity="critical",
+                metadata={"zone_kind": "perimeter", "class_name": class_name},
+            )
+        ]
+    if kind == "controlled_exit" and not entering:
+        return [
+            EventGenerator._make_event(
+                camera_id,
+                "unauthorized_exit",
+                ts,
+                track_id,
+                zone_id=zone_id,
+                class_name=class_name,
+                severity="warning",
+                metadata={"zone_kind": "controlled_exit", "class_name": class_name},
+            )
+        ]
+    return []
+
+
 class EventGenerator:
     """Generates zone, line, loitering, presence, and behavior events from tracked detections."""
 
@@ -192,12 +247,18 @@ class EventGenerator:
                     camera_id, "zone_enter", ts, track_id, zone_id=zone_id, class_name=class_name
                 )
             )
+            events.extend(
+                _semantic_zone_events(camera_id, track_id, zone, ts, class_name, entering=True)
+            )
         elif not inside and zone_id in prev_zones:
             prev_zones.discard(zone_id)
             events.append(
                 self._make_event(
                     camera_id, "zone_exit", ts, track_id, zone_id=zone_id, class_name=class_name
                 )
+            )
+            events.extend(
+                _semantic_zone_events(camera_id, track_id, zone, ts, class_name, entering=False)
             )
         return events
 

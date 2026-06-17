@@ -41,10 +41,10 @@ function shapeSvg(shape, color, cx, cy, r) {
 }
 
 function makeIcon(id) {
-  const h = hash(id);
+  const h = hash(id) >>> 0;
   const shape = SHAPES[h % SHAPES.length];
-  const color = PALETTE[(h >> 3) % PALETTE.length];
-  const accent = PALETTE[(h >> 7) % PALETTE.length];
+  const color = PALETTE[(h >>> 3) % PALETTE.length];
+  const accent = PALETTE[(h >>> 7) % PALETTE.length];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="12" fill="#0c1424" opacity="0.6"/>

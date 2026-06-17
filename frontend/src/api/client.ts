@@ -157,6 +157,10 @@ export const camerasApi = {
       password: string;
       vendor?: string;
       port?: number;
+      rtsp_path?: string;
+      stream_profile?: string;
+      channel?: number;
+      metadata?: Record<string, unknown>;
     }
   ) => api.post<Camera>(`/orgs/${orgId}/cameras`, body),
   discover: (orgId: string, cidr: string) =>
@@ -164,7 +168,10 @@ export const camerasApi = {
   probe: (
     orgId: string,
     body: { host: string; username: string; password: string; port?: number; vendor?: string }
-  ) => api.post<{ best?: { vendor: string; profile: string; ok: boolean }; candidates: unknown[] }>(
+  ) => api.post<{
+    best?: { vendor: string; profile: string; rtsp_path?: string; ok: boolean; latency_ms?: number };
+    candidates: unknown[];
+  }>(
     `/orgs/${orgId}/cameras/probe`,
     body
   ),
@@ -248,12 +255,46 @@ export const alertsApi = {
     if (filters?.from) params.from = filters.from;
     if (filters?.to) params.to = filters.to;
     if (filters?.limit) params.limit = filters.limit;
+    if (filters?.includeIncomplete) params.include_incomplete = 'true';
     return api.get<import('@/types').Alert[]>(`/orgs/${orgId}/alerts`, {
       params: Object.keys(params).length ? params : undefined,
     });
   },
   archive: (orgId: string, alertId: string, body: { comment?: string; evidence_snapshot?: Record<string, unknown> }) =>
     api.patch<import('@/types').Alert>(`/orgs/${orgId}/alerts/${alertId}/archive`, body),
+  forward: (
+    orgId: string,
+    alertId: string,
+    body: { email?: string; webhook_url?: string; webhook_preset?: string },
+  ) => api.post<{ status: string }>(`/orgs/${orgId}/alerts/${alertId}/forward`, body),
+};
+
+export interface RoutingRule {
+  id: string;
+  org_id: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  match: Record<string, unknown>;
+  channels: Record<string, unknown>;
+}
+
+export const routingApi = {
+  list: (orgId: string) => api.get<RoutingRule[]>(`/orgs/${orgId}/routing-rules`),
+  create: (
+    orgId: string,
+    body: { name: string; priority?: number; match: Record<string, unknown>; channels: Record<string, unknown> },
+  ) => api.post<RoutingRule>(`/orgs/${orgId}/routing-rules`, body),
+  update: (
+    orgId: string,
+    ruleId: string,
+    body: Partial<{ name: string; enabled: boolean; priority: number; match: Record<string, unknown>; channels: Record<string, unknown> }>,
+  ) => api.patch<RoutingRule>(`/orgs/${orgId}/routing-rules/${ruleId}`, body),
+  delete: (orgId: string, ruleId: string) => api.delete(`/orgs/${orgId}/routing-rules/${ruleId}`),
+  test: (
+    orgId: string,
+    body: { plate_number?: string; face_label?: string; event_type?: string; severity?: string },
+  ) => api.post<{ matched: RoutingRule[]; count: number }>(`/orgs/${orgId}/routing-rules/test`, body),
 };
 
 export const usersApi = {
@@ -280,7 +321,7 @@ export interface BackendMember {
 export const eventsApi = {
   list: (
     orgId: string,
-    params?: { event_type?: string; camera_id?: string; rule_linked?: boolean },
+    params?: { event_type?: string; camera_id?: string; rule_linked?: boolean; include_incomplete?: boolean },
   ) => api.get<Event[]>(`/orgs/${orgId}/events`, { params }),
 };
 
@@ -328,6 +369,7 @@ export interface BackendZone {
   polygon: { x: number; y: number }[];
   color?: string;
   camera_id?: string;
+  zone_kind?: string;
 }
 
 export const healthApi = {

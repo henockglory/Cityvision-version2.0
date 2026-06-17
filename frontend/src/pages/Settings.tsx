@@ -1,12 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Shield, Bell, UserSearch, User, Building2, Lock, Mail, Sparkles, Palette,
+  Shield, Bell, UserSearch, User, Building2, Lock, Mail, Sparkles, Palette, Film, Route,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import ThemeToggle from '@/components/ThemeToggle';
 import MuteToggle from '@/components/MuteToggle';
 import SurveillanceListsPanel from '@/components/settings/SurveillanceListsPanel';
+import EvidenceDefaultsPanel from '@/components/settings/EvidenceDefaultsPanel';
+import AlertRoutingPanel from '@/components/settings/AlertRoutingPanel';
 import InfoTip from '@/components/ui/InfoTip';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { authApi, orgApi, type OrganizationSettings } from '@/api/client';
@@ -16,7 +19,7 @@ import { useSound } from '@/hooks/useSound';
 import { useAutoPageTour, useRunTour } from '@/hooks/useAutoPageTour';
 import { TOUR_LABELS, type TourId } from '@/lib/tourRegistry';
 
-type Tab = 'general' | 'profile' | 'org' | 'security' | 'notifications' | 'integrations' | 'identity' | 'demo';
+type Tab = 'general' | 'profile' | 'org' | 'security' | 'notifications' | 'integrations' | 'identity' | 'evidence' | 'routing' | 'demo';
 
 const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: 'general', label: 'Général', icon: Palette },
@@ -25,6 +28,8 @@ const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: 'security', label: 'Sécurité', icon: Lock },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'integrations', label: 'Intégrations', icon: Mail },
+  { id: 'evidence', label: 'Preuves & capture', icon: Film },
+  { id: 'routing', label: 'Routage alertes', icon: Route },
   { id: 'identity', label: 'Identité', icon: UserSearch },
   { id: 'demo', label: 'Démo', icon: Sparkles },
 ];
@@ -58,6 +63,12 @@ export default function Settings() {
   const [totpSecret, setTotpSecret] = useState('');
   const [msg, setMsg] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    const st = location.state as { tab?: Tab } | null;
+    if (st?.tab) setTab(st.tab);
+  }, [location.state]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -85,6 +96,7 @@ export default function Settings() {
       timezone: org.timezone,
       smtp_config: org.smtp_config,
       security_prefs: org.security_prefs,
+      notification_prefs: org.notification_prefs,
     });
     setOrg(r.data);
     setMsg('Organisation enregistrée.');
@@ -221,6 +233,25 @@ export default function Settings() {
             <Section title="Organisation" icon={Building2}>
               <Field label="Nom" value={org.name} onChange={(v) => setOrg({ ...org, name: v })} />
               <Field label="Fuseau horaire" value={org.timezone} onChange={(v) => setOrg({ ...org, timezone: v })} />
+              <div>
+                <label className="cv-label">Profil de déploiement</label>
+                <p className="text-[11px] text-cv-muted mb-1">Utilisé pour personnaliser le catalogue des règles.</p>
+                <select
+                  className="cv-input"
+                  value={String((org.notification_prefs as Record<string, unknown> | undefined)?.deployment_profile ?? 'enterprise')}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setOrg({
+                      ...org,
+                      notification_prefs: { ...(org.notification_prefs ?? {}), deployment_profile: v },
+                    });
+                  }}
+                >
+                  <option value="national">Nationale</option>
+                  <option value="enterprise">Entreprise</option>
+                  <option value="domestic">Domestique</option>
+                </select>
+              </div>
               <button type="button" onClick={() => void saveOrg()} className="cv-btn-primary">Enregistrer</button>
             </Section>
           )}
@@ -280,11 +311,42 @@ export default function Settings() {
               <Field label="Utilisateur" value={org.smtp_config?.user ?? ''} onChange={(v) => setOrg({ ...org, smtp_config: { ...org.smtp_config, user: v } })} />
               <Field label="Mot de passe" value={org.smtp_config?.password ?? ''} onChange={(v) => setOrg({ ...org, smtp_config: { ...org.smtp_config, password: v } })} type="password" />
               <Field label="Expéditeur" value={org.smtp_config?.from_address ?? ''} onChange={(v) => setOrg({ ...org, smtp_config: { ...org.smtp_config, from_address: v } })} />
+              <div className="border-t border-cv-border pt-4 mt-2">
+                <p className="text-sm font-medium mb-2">Notifications par défaut (org)</p>
+                <Field
+                  label="E-mail alertes par défaut"
+                  value={String((org.notification_prefs as Record<string, string>)?.default_email ?? '')}
+                  onChange={(v) => setOrg({
+                    ...org,
+                    notification_prefs: { ...org.notification_prefs, default_email: v },
+                  })}
+                />
+                <Field
+                  label="Webhook par défaut"
+                  value={String((org.notification_prefs as Record<string, string>)?.default_webhook_url ?? '')}
+                  onChange={(v) => setOrg({
+                    ...org,
+                    notification_prefs: { ...org.notification_prefs, default_webhook_url: v },
+                  })}
+                />
+              </div>
               <div className="flex gap-2 flex-wrap items-end">
                 <Field label="Email test" value={smtpTo} onChange={setSmtpTo} type="email" />
                 <button type="button" onClick={() => void testSmtp()} className="cv-btn-secondary">Tester</button>
                 <button type="button" onClick={() => void saveOrg()} className="cv-btn-primary">Enregistrer SMTP</button>
               </div>
+            </Section>
+          )}
+
+          {tab === 'evidence' && (
+            <Section title="Preuves & capture" icon={Film}>
+              <EvidenceDefaultsPanel />
+            </Section>
+          )}
+
+          {tab === 'routing' && (
+            <Section title="Routage des alertes" icon={Route}>
+              <AlertRoutingPanel />
             </Section>
           )}
 

@@ -19,11 +19,13 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/dashboard"
 	"github.com/citevision/citevision-v2/backend/internal/events"
 	"github.com/citevision/citevision-v2/backend/internal/evidence"
+	"github.com/citevision/citevision-v2/backend/internal/ingest"
 	"github.com/citevision/citevision-v2/backend/internal/identity"
 	"github.com/citevision/citevision-v2/backend/internal/middleware"
 	"github.com/citevision/citevision-v2/backend/internal/models"
 	"github.com/citevision/citevision-v2/backend/internal/org"
 	"github.com/citevision/citevision-v2/backend/internal/record"
+	"github.com/citevision/citevision-v2/backend/internal/routing"
 	"github.com/citevision/citevision-v2/backend/internal/rules"
 	"github.com/citevision/citevision-v2/backend/internal/setup"
 	"github.com/citevision/citevision-v2/backend/internal/spatial"
@@ -49,6 +51,8 @@ type API struct {
 	SharedPath  string
 	Record      *record.Service
 	Evidence    *evidence.Service
+	AI          *ingest.AIClient
+	Routing     *routing.Service
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -403,7 +407,8 @@ func (a *API) IngestEvent(w http.ResponseWriter, r *http.Request) {
 func (a *API) ListEvents(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
 	ruleLinked := r.URL.Query().Get("rule_linked") == "true"
-	list, err := a.Events.ListEnriched(r.Context(), orgID, 100, r.URL.Query().Get("event_type"), r.URL.Query().Get("camera_id"), ruleLinked)
+	includeIncomplete := r.URL.Query().Get("include_incomplete") == "true"
+	list, err := a.Events.ListEnriched(r.Context(), orgID, 100, r.URL.Query().Get("event_type"), r.URL.Query().Get("camera_id"), ruleLinked, includeIncomplete)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list failed")
 		return
@@ -586,7 +591,7 @@ func (a *API) CreateRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	rule, err := a.Rules.Create(r.Context(), orgID, req.SiteID, req.Name, req.Description, req.Definition, req.Priority)
+	rule, err := a.Rules.Create(r.Context(), orgID, req.SiteID, req.Name, req.Description, rules.StampUserOrigin(req.Definition), req.Priority)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -619,7 +624,11 @@ func (a *API) UpdateRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	rule, err := a.Rules.Update(r.Context(), orgID, ruleID, req.IsEnabled, req.Priority, req.Name, req.Description, req.Definition)
+	def := req.Definition
+	if len(def) > 0 {
+		def = rules.StampUserOrigin(def)
+	}
+	rule, err := a.Rules.Update(r.Context(), orgID, ruleID, req.IsEnabled, req.Priority, req.Name, req.Description, def)
 	if errors.Is(err, rules.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not found")
 		return

@@ -20,6 +20,9 @@ type TemplateCapability struct {
 	Supported            bool              `json:"supported"`
 	CapabilityID         string            `json:"capability_id,omitempty"`
 	HumanDescription     string            `json:"human_description,omitempty"`
+	RoleSummaryFR       string            `json:"role_summary_fr,omitempty"`
+	Illustration        string            `json:"illustration,omitempty"`
+	DeploymentScopes    []string          `json:"deployment_scopes,omitempty"`
 	Tutorial             string            `json:"tutorial,omitempty"`
 	Prerequisites        []string          `json:"prerequisites,omitempty"`
 	UnsupportedMessageFR string            `json:"unsupported_message_fr,omitempty"`
@@ -36,6 +39,9 @@ type EnrichedCatalogTemplate struct {
 	Supported            bool     `json:"supported"`
 	CapabilityID         string   `json:"capability_id,omitempty"`
 	HumanDescription     string   `json:"human_description,omitempty"`
+	RoleSummaryFR       string   `json:"role_summary_fr,omitempty"`
+	Illustration        string   `json:"illustration,omitempty"`
+	DeploymentScopes    []string `json:"deployment_scopes,omitempty"`
 	Tutorial             string   `json:"tutorial,omitempty"`
 	Prerequisites        []string `json:"prerequisites,omitempty"`
 	UnsupportedMessageFR string   `json:"unsupported_message_fr,omitempty"`
@@ -109,6 +115,20 @@ func templateHasConfigFields(raw json.RawMessage) bool {
 	return len(schema.Fields) > 0
 }
 
+// scopesForCategory maps catalog categories to deployment scopes for filter tabs.
+func scopesForCategory(category string) []string {
+	switch category {
+	case "crowd", "traffic", "speed", "road-enforcement", "incident":
+		return []string{"national"}
+	case "presence":
+		return []string{"domestic"}
+	case "security", "spatial", "objects", "identity", "behavior", "composite", "time", "industrial", "quality":
+		return []string{"enterprise"}
+	default:
+		return []string{"enterprise"}
+	}
+}
+
 func EnrichCatalog(templates []CatalogTemplate, reg *CapabilitiesRegistry) []EnrichedCatalogTemplate {
 	if reg == nil {
 		reg = defaultRegistry()
@@ -119,6 +139,9 @@ func EnrichCatalog(templates []CatalogTemplate, reg *CapabilitiesRegistry) []Enr
 		if tc, ok := reg.Templates[t.ID]; ok {
 			e.CapabilityID = tc.CapabilityID
 			e.HumanDescription = tc.HumanDescription
+			e.RoleSummaryFR = tc.RoleSummaryFR
+			e.Illustration = tc.Illustration
+			e.DeploymentScopes = tc.DeploymentScopes
 			e.Tutorial = tc.Tutorial
 			e.Prerequisites = tc.Prerequisites
 			if len(tc.ConfigSchema) > 0 {
@@ -138,6 +161,15 @@ func EnrichCatalog(templates []CatalogTemplate, reg *CapabilitiesRegistry) []Enr
 				}
 			}
 		}
+
+		// Infer scope from category unless explicitly set in ai-capabilities.json.
+		if len(e.DeploymentScopes) == 0 {
+			e.DeploymentScopes = scopesForCategory(t.Category)
+		}
+		if e.RoleSummaryFR == "" {
+			e.RoleSummaryFR = e.HumanDescription
+		}
+
 		if !e.Supported && e.UnsupportedMessageFR == "" {
 			if meta, ok := reg.EventTypes[e.CapabilityID]; ok && meta.UnsupportedMessageFR != "" {
 				e.UnsupportedMessageFR = meta.UnsupportedMessageFR

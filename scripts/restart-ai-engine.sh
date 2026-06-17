@@ -12,5 +12,10 @@ free_port 8001
 sleep 1
 UVICORN="$ROOT/ai-engine/.venv/bin/uvicorn"
 start_bg ai-engine "$ROOT/ai-engine" "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} $UVICORN citevision_ai.main:app --host 0.0.0.0 --port 8001" "$ROOT/logs" "$ROOT/.env"
-sleep 8
-curl -sf http://localhost:8001/health | python3 -m json.tool
+if wait_http_ok "http://localhost:8001/health" 90; then
+  curl -sf http://localhost:8001/health | python3 -m json.tool
+else
+  echo "[FAIL] AI engine health — tail logs/ai-engine.log" >&2
+  tail -20 "$ROOT/logs/ai-engine.log" >&2
+  exit 1
+fi

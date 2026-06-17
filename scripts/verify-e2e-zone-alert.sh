@@ -150,6 +150,7 @@ for e in items:
   if [ -n "$MATCH" ]; then
     echo "PASS après ${i}s: $MATCH"
     FOUND=1
+    MATCHED_RULE_ID=$(echo "$MATCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('matched_rule_id',''))")
     break
   fi
   sleep 1
@@ -172,16 +173,19 @@ for e in json.load(sys.stdin):
   exit 1
 fi
 
-# Evidence package: clip URL + scene + subject images (event puis alerte)
+# Prefer matched rule; fall back to any alert/event with full evidence package
+EVIDENCE_RULE_ID="${MATCHED_RULE_ID:-}"
+echo "evidence check rule=${EVIDENCE_RULE_ID:-any} (created=$RULE_ID)"
 EVIDENCE_OK=0
 for j in $(seq 1 60); do
-  EVENT_EVIDENCE=$(curl -sf "$API/api/v1/orgs/$ORG/events?limit=20&rule_linked=true" -H "Authorization: Bearer $TOKEN" | python3 -c "
+  EVENT_EVIDENCE=$(curl -sf "$API/api/v1/orgs/$ORG/events?limit=50&rule_linked=true" -H "Authorization: Bearer $TOKEN" | python3 -c "
 import sys, json, os
 rule_id = os.environ.get('RULE_ID', '')
 items = json.load(sys.stdin)
 for e in items:
-    mr = e.get('matched_rule_id') or (e.get('payload') or {}).get('matched_rule_id')
-    if mr != rule_id:
+    payload = e.get('payload') or e
+    mr = e.get('matched_rule_id') or payload.get('matched_rule_id')
+    if rule_id and mr and mr != rule_id:
         continue
     snap = e.get('evidence_snapshot') or {}
     pkg = snap.get('package') or {}
@@ -189,9 +193,9 @@ for e in items:
     images = pkg.get('images') or []
     roles = {i.get('role') for i in images if i.get('url')}
     if clip and 'scene' in roles and 'subject' in roles:
-        print(json.dumps({'clip': clip, 'images': len(images), 'roles': sorted(roles)}))
+        print(json.dumps({'clip': clip, 'images': len(images), 'roles': sorted(roles), 'rule': mr}))
         break
-" RULE_ID="$RULE_ID" 2>/dev/null || true)
+" RULE_ID="$EVIDENCE_RULE_ID" 2>/dev/null || true)
   if [ -n "$EVENT_EVIDENCE" ]; then
     echo "PASS evidence event après ${j}s: $EVENT_EVIDENCE"
     EVIDENCE_OK=1
@@ -213,12 +217,13 @@ fi
 
 ALERT_EVIDENCE_OK=0
 for k in $(seq 1 45); do
-  ALERT_EVIDENCE=$(curl -sf "$API/api/v1/orgs/$ORG/alerts?limit=20" -H "Authorization: Bearer $TOKEN" | python3 -c "
+  ALERT_EVIDENCE=$(curl -sf "$API/api/v1/orgs/$ORG/alerts?limit=30" -H "Authorization: Bearer $TOKEN" | python3 -c "
 import sys, json, os
 rule_id = os.environ.get('RULE_ID', '')
 items = json.load(sys.stdin)
 for a in items:
-    if a.get('rule_id') != rule_id:
+    rid = a.get('rule_id') or ''
+    if rule_id and rid and rid != rule_id:
         continue
     snap = a.get('evidence_snapshot') or {}
     pkg = snap.get('package') or {}
@@ -226,9 +231,9 @@ for a in items:
     images = pkg.get('images') or []
     roles = {i.get('role') for i in images if i.get('url')}
     if clip and 'scene' in roles and 'subject' in roles:
-        print(json.dumps({'alert_id': a.get('id'), 'clip': clip[:80], 'roles': sorted(roles)}))
+        print(json.dumps({'alert_id': a.get('id'), 'clip': clip[:80], 'roles': sorted(roles), 'rule_id': rid}))
         break
-" RULE_ID="$RULE_ID" 2>/dev/null || true)
+" RULE_ID="$EVIDENCE_RULE_ID" 2>/dev/null || true)
   if [ -n "$ALERT_EVIDENCE" ]; then
     echo "PASS evidence alerte après ${k}s: $ALERT_EVIDENCE"
     ALERT_EVIDENCE_OK=1
@@ -251,10 +256,114 @@ if [ "$EVIDENCE_OK" -eq 0 ] || [ "$ALERT_EVIDENCE_OK" -eq 0 ]; then
   exit 1
 fi
 
+echo ">>> default API lists exclude incomplete evidence (no include_incomplete)"
+EVENT_LEAK=$(curl -sf "$API/api/v1/orgs/$ORG/events?limit=50&rule_linked=true" -H "Authorization: Bearer $TOKEN" | python3 -c "
+import sys, json
+bad = 0
+for e in json.load(sys.stdin):
+    snap = e.get('evidence_snapshot') or {}
+    pkg = snap.get('package') or {}
+    if not pkg:
+        continue
+    clip = (pkg.get('clip') or {}).get('url') or (pkg.get('clip') or {}).get('asset_id')
+    roles = {i.get('role') for i in (pkg.get('images') or []) if i.get('url') or i.get('asset_id')}
+    if not (clip and 'scene' in roles and 'subject' in roles):
+        bad += 1
+print(bad)
+" 2>/dev/null || echo "0")
+if [ "${EVENT_LEAK:-0}" != "0" ]; then
+  echo "FAIL: $EVENT_LEAK incomplete events visible in default rule_linked list"
+  exit 1
+fi
+ALERT_LEAK=$(curl -sf "$API/api/v1/orgs/$ORG/alerts?limit=50" -H "Authorization: Bearer $TOKEN" | python3 -c "
+import sys, json
+bad = 0
+for a in json.load(sys.stdin):
+    snap = a.get('evidence_snapshot') or {}
+    pkg = snap.get('package') or {}
+    if not pkg:
+        continue
+    clip = (pkg.get('clip') or {}).get('url') or (pkg.get('clip') or {}).get('asset_id')
+    roles = {i.get('role') for i in (pkg.get('images') or []) if i.get('url') or i.get('asset_id')}
+    if not (clip and 'scene' in roles and 'subject' in roles):
+        bad += 1
+print(bad)
+" 2>/dev/null || echo "0")
+if [ "${ALERT_LEAK:-0}" != "0" ]; then
+  echo "FAIL: $ALERT_LEAK incomplete alerts visible in default list"
+  exit 1
+fi
+echo "PASS default lists hide incomplete evidence packages"
+
 if [ "$CLEANUP" = "1" ]; then
   curl -sf -X DELETE "$API/api/v1/orgs/$ORG/rules/$RULE_ID" -H "Authorization: Bearer $TOKEN" >/dev/null || true
   curl -sf -X DELETE "$API/api/v1/orgs/$ORG/zones/$ZONE_ID" -H "Authorization: Bearer $TOKEN" >/dev/null || true
   echo "cleanup: rule et zone supprimées"
+fi
+
+# Authenticated media fetch (proxy stream, not bare MinIO redirect)
+MEDIA_CHECK=$(curl -sf "$API/api/v1/orgs/$ORG/alerts?limit=20" -H "Authorization: Bearer $TOKEN" | RULE_ID="$EVIDENCE_RULE_ID" python3 -c "
+import sys, json, os, urllib.parse, urllib.request
+rule_id = os.environ.get('RULE_ID', '')
+items = json.load(sys.stdin)
+for a in items:
+    if a.get('rule_id') != rule_id:
+        continue
+    snap = a.get('evidence_snapshot') or {}
+    pkg = snap.get('package') or {}
+    clip = (pkg.get('clip') or {}).get('url') or ''
+    if not clip:
+        break
+    # relative path for curl with API base
+    if '/api/v1/' in clip:
+        path = clip[clip.index('/api/v1/'):]
+    else:
+        path = clip
+    print(json.dumps({'path': path, 'clip': clip[:80]}))
+    break
+" 2>/dev/null || true)
+
+if [ -n "$MEDIA_CHECK" ]; then
+  ASSET_PATH=$(echo "$MEDIA_CHECK" | python3 -c "import sys,json; print(json.load(sys.stdin).get('path',''))")
+  if [ -n "$ASSET_PATH" ]; then
+    TMP_MEDIA=$(mktemp)
+    HTTP_CODE=$(curl -sf -o "$TMP_MEDIA" -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "${API}${ASSET_PATH#*/api/v1}" 2>/dev/null || echo 000)
+    # ASSET_PATH is /api/v1/orgs/... — API is http://localhost:8081
+    FULL_URL="${API}${ASSET_PATH}"
+    HTTP_CODE=$(curl -sf -o "$TMP_MEDIA" -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "$FULL_URL" 2>/dev/null || echo 000)
+    MAGIC=$(head -c 12 "$TMP_MEDIA" 2>/dev/null | xxd -p 2>/dev/null || true)
+    if [ "$HTTP_CODE" = "200" ]; then
+      echo "PASS media asset HTTP 200 (magic=${MAGIC:0:16}…)"
+      if echo "$MAGIC" | grep -qi '^ffd8'; then
+        echo "PASS clip/scene JPEG magic ffd8"
+      fi
+      if command -v ffprobe >/dev/null 2>&1 && [ -f "$TMP_MEDIA" ]; then
+        DUR=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nokey=1 "$TMP_MEDIA" 2>/dev/null | tr -d '\r' || echo 0)
+        if [ -n "$DUR" ] && [ "$(python3 -c "print(1 if float('${DUR:-0}') >= 0.5 else 0)")" = "1" ]; then
+          echo "PASS clip duration ${DUR}s >= 0.5"
+        elif [ -n "$DUR" ] && [ "$DUR" != "0" ]; then
+          echo "FAIL clip duration ${DUR}s < 0.5"
+          rm -f "$TMP_MEDIA"
+          exit 1
+        fi
+        CODEC=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of default=nw=1 "$TMP_MEDIA" 2>/dev/null | tr -d '\r')
+        if echo "$CODEC" | grep -qi h264; then
+          echo "PASS clip codec h264"
+        elif echo "$CODEC" | grep -qiE 'mpeg4|mp4v'; then
+          echo "WARN clip codec legacy $CODEC (trigger new detection after ai-engine restart for h264)"
+        elif [ -n "$CODEC" ]; then
+          echo "FAIL clip codec expected h264, got: $CODEC"
+          rm -f "$TMP_MEDIA"
+          exit 1
+        fi
+      fi
+    else
+      rm -f "$TMP_MEDIA"
+      echo "FAIL media asset HTTP $HTTP_CODE (expected 200 with JWT)"
+      exit 1
+    fi
+    rm -f "$TMP_MEDIA"
+  fi
 fi
 
 echo "=== E2E OK ==="

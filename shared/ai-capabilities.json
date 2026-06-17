@@ -280,10 +280,33 @@
     },
     "sudden_stop": {
       "label_fr": "Arrêt brusque",
+      "required_config": ["camera", "calibration"],
+      "proof_fields": ["track_id", "speed_kmh", "prior_speed_kmh"],
+      "models": ["yolo", "calibration"]
+    },
+    "vehicle_corridor": {
+      "label_fr": "Corridor véhicule (plaque + vitesse)",
+      "required_config": ["camera", "zone", "class_filter"],
+      "proof_fields": ["track_id", "plate_number", "speed_kmh"],
+      "models": ["yolo", "paddleocr", "calibration"]
+    },
+    "perimeter_breach": {
+      "label_fr": "Intrusion périmétrique",
+      "required_config": ["camera", "zone"],
+      "proof_fields": ["track_id", "zone_id"],
+      "models": ["yolo"]
+    },
+    "unauthorized_exit": {
+      "label_fr": "Sortie non autorisée",
+      "required_config": ["camera", "zone"],
+      "proof_fields": ["track_id", "zone_id"],
+      "models": ["yolo"]
+    },
+    "behavior_anomaly": {
+      "label_fr": "Comportement anormal",
       "required_config": ["camera"],
-      "proof_fields": ["track_id", "speed_kmh"],
-      "models": ["yolo"],
-      "unsupported_message_fr": "Événement sudden_stop non émis actuellement par le pipeline vidéo."
+      "proof_fields": ["track_id", "behavior"],
+      "models": ["yolo"]
     }
   },
   "templates": {
@@ -321,6 +344,7 @@
         "fields": [
           {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
           {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true},
           {"key": "direction", "type": "enum", "label": "Direction", "required": false, "options": ["both", "in", "out"], "default": "both"}
         ]
       }
@@ -601,6 +625,7 @@
         "fields": [
           {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
           {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true},
           {"key": "direction", "type": "enum", "label": "Direction", "required": false, "options": ["both", "in", "out"], "default": "both"}
         ]
       }
@@ -1022,6 +1047,313 @@
       "capability_id": "fight_detected",
       "human_description": "Mouvements violents multi-personnes.",
       "unsupported_message_fr": "Événement fight_detected non émis — utilisez tpl-fighting (heuristique)."
+    },
+    "tpl-wrong-direction": {
+      "supported": true,
+      "capability_id": "wrong_way",
+      "human_description": "Franchissement de ligne dans le mauvais sens (alias tpl-wrong-way).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "direction", "type": "enum", "label": "Sens attendu", "required": true, "options": ["in", "out"], "default": "in"}
+        ]
+      }
+    },
+    "tpl-perimeter-breach": {
+      "supported": true,
+      "capability_id": "perimeter_breach",
+      "human_description": "Franchissement du périmètre externe.",
+      "tutorial": "Dessinez une zone avec rôle « périmètre » ou un nom contenant perimeter — l'IA émet perimeter_breach à l'entrée.",
+      "prerequisites": ["Zone périmètre (zone_kind=perimeter)", "Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone périmètre", "required": true}
+        ]
+      }
+    },
+    "tpl-unauthorized-exit": {
+      "supported": true,
+      "capability_id": "unauthorized_exit",
+      "human_description": "Sortie par un point non autorisé.",
+      "tutorial": "Zone de sortie contrôlée (zone_kind=controlled_exit) — l'IA émet unauthorized_exit à la sortie.",
+      "prerequisites": ["Zone sortie (zone_kind=controlled_exit)", "Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone sortie", "required": true}
+        ]
+      }
+    },
+    "tpl-traffic-pipeline": {
+      "supported": true,
+      "capability_id": "vehicle_corridor",
+      "human_description": "Pipeline voiture → OCR plaque + estimation vitesse dans une zone.",
+      "tutorial": "Dessinez une zone sur la voie, filtrez sur « voiture », calibrez la vitesse, activez PaddleOCR.",
+      "prerequisites": ["Modèle YOLO actif", "Modèle PaddleOCR chargé", "Calibration caméra", "Zone dessinée"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone voie", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Classe véhicule", "required": true, "default": "car"},
+          {"key": "speed_kmh", "type": "number", "label": "Seuil vitesse (km/h)", "required": true, "default": 50}
+        ]
+      }
+    },
+    "tpl-speeding-premium": {
+      "supported": true,
+      "capability_id": "speeding",
+      "human_description": "Excès de vitesse (routier national).",
+      "prerequisites": ["Calibration caméra"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "speed_kmh", "type": "number", "label": "Limite (km/h)", "required": true, "default": 50}
+        ]
+      }
+    },
+    "tpl-line-cross-forbidden": {
+      "supported": true,
+      "capability_id": "line_cross",
+      "human_description": "Franchissement de ligne continue interdit.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "car"}
+        ]
+      }
+    },
+    "tpl-plate-pipeline": {
+      "supported": true,
+      "capability_id": "plate_detected",
+      "human_description": "Plaque détectée via OCR (pipeline routier).",
+      "prerequisites": ["Modèle PaddleOCR chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-congestion": {
+      "supported": true,
+      "capability_id": "vehicle_count_threshold",
+      "human_description": "Embouteillage — seuil de véhicules atteint.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "vehicle_threshold", "type": "number", "label": "Seuil véhicules", "required": true, "default": 8}
+        ]
+      }
+    },
+    "tpl-accident-composite": {
+      "supported": true,
+      "capability_id": "sudden_stop",
+      "human_description": "Accident (arrêt brutal + véhicules immobiles).",
+      "tutorial": "Calibrez la caméra ; la séquence sudden_stop puis vehicle_stopped utilise le rules-engine SEQUENCE.",
+      "prerequisites": ["Calibration caméra", "Modèle YOLO actif"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-plate-unknown": {
+      "supported": true,
+      "capability_id": "plate_unknown",
+      "human_description": "Plaque non enregistrée (alias tpl-unknown-plate).",
+      "prerequisites": ["Modèle PaddleOCR chargé"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-behavior-anomaly": {
+      "supported": true,
+      "capability_id": "behavior_anomaly",
+      "human_description": "Comportement anormal générique (fallback heuristiques).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-intrusion": {
+      "supported": true,
+      "capability_id": "zone_enter",
+      "human_description": "Intrusion zone interdite (personne dans zone restricted).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone interdite", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet surveillé", "required": true, "default": "person"}
+        ]
+      }
+    },
+    "tpl-red-light": {
+      "supported": false,
+      "capability_id": "red_light_violation",
+      "human_description": "Franchissement feu rouge.",
+      "unsupported_message_fr": "Modèle feu rouge non intégré — aucune simulation.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone feu", "required": true}
+        ]
+      }
+    },
+    "tpl-seatbelt": {
+      "supported": false,
+      "capability_id": "seatbelt_violation",
+      "human_description": "Ceinture de sécurité non portée.",
+      "unsupported_message_fr": "Modèle ceinture non intégré — stub catalogue, pas de simulation.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-phone-driving": {
+      "supported": false,
+      "capability_id": "phone_driving",
+      "human_description": "Téléphone au volant.",
+      "unsupported_message_fr": "Modèle téléphone au volant non intégré — stub catalogue, pas de simulation.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-group-formation": {
+      "supported": true,
+      "capability_id": "crowd_gathering",
+      "human_description": "Attroupement suspect (seuil foule + durée).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "crowd_threshold", "type": "number", "label": "Seuil personnes", "required": true, "default": 5}
+        ]
+      }
+    },
+    "tpl-stopped-traffic": {
+      "supported": true,
+      "capability_id": "vehicle_stopped",
+      "human_description": "Véhicule arrêté sur voie.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 60}
+        ]
+      }
+    },
+    "tpl-sudden-stop": {
+      "supported": true,
+      "capability_id": "sudden_stop",
+      "human_description": "Arrêt brusque véhicule.",
+      "prerequisites": ["Calibration caméra"],
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
+    },
+    "tpl-traffic-jam": {
+      "supported": true,
+      "capability_id": "vehicle_count_threshold",
+      "human_description": "Embouteillage (alias congestion).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "vehicle_threshold", "type": "number", "label": "Seuil véhicules", "required": true, "default": 8}
+        ]
+      }
+    },
+    "tpl-illegal-parking": {
+      "supported": false,
+      "capability_id": "vehicle_stopped",
+      "human_description": "Stationnement illégal prolongé.",
+      "unsupported_message_fr": "Heuristique stationnement — calibrer zone + durée ; pas de modèle dédié.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone stationnement", "required": true},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 120}
+        ]
+      }
+    },
+    "tpl-intrusion-after-hours": {
+      "supported": true,
+      "capability_id": "zone_enter",
+      "human_description": "Intrusion hors plage horaire (zone_enter + planification).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet", "required": true, "default": "person"}
+        ]
+      }
+    },
+    "tpl-industrial-intrusion": {
+      "supported": true,
+      "capability_id": "zone_enter",
+      "human_description": "Intrusion site industriel.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet", "required": true, "default": "person"}
+        ]
+      }
+    },
+    "tpl-pedestrian-zone": {
+      "supported": true,
+      "capability_id": "zone_presence",
+      "human_description": "Piéton en zone véhicules.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "zone_name", "type": "zone", "label": "Zone", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Objet", "required": true, "default": "person"},
+          {"key": "duration_seconds", "type": "number", "label": "Durée (s)", "required": true, "default": 5}
+        ]
+      }
+    },
+    "tpl-wrong-lane": {
+      "supported": true,
+      "capability_id": "wrong_way",
+      "human_description": "Sens interdit (voie).",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "direction", "type": "enum", "label": "Sens", "required": true, "options": ["in", "out"], "default": "in"}
+        ]
+      }
+    },
+    "tpl-vehicle-wrong-direction": {
+      "supported": true,
+      "capability_id": "wrong_way",
+      "human_description": "Véhicule sens interdit.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true},
+          {"key": "line_name", "type": "line", "label": "Ligne", "required": true},
+          {"key": "class_filter", "type": "class_filter", "label": "Classe", "required": true, "default": "car"}
+        ]
+      }
+    },
+    "tpl-multi-zone": {
+      "supported": false,
+      "capability_id": "zone_enter",
+      "human_description": "Présence simultanée multi-zones.",
+      "unsupported_message_fr": "Composite multi-zones — utiliser plusieurs règles zone_enter ou SEQUENCE.",
+      "configSchema": {
+        "fields": [
+          {"key": "camera_id", "type": "camera", "label": "Caméra", "required": true}
+        ]
+      }
     }
   }
 }

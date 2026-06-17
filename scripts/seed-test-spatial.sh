@@ -1,10 +1,10 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_URL="${API_URL:-http://localhost:8081}"
 
-echo "==> Seeding test zones, lines, and rules for virtual camera"
+echo "==> Seeding test zones, lines, and 3 rules (modern format + evidence policy)"
 
 TOKEN=$(curl -sf "$API_URL/api/v1/auth/login" \
   -H "Content-Type: application/json" \
@@ -12,7 +12,7 @@ TOKEN=$(curl -sf "$API_URL/api/v1/auth/login" \
   | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || true)
 
 if [ -z "$TOKEN" ]; then
-  echo "Login failed â€” run setup first or set ADMIN_EMAIL/ADMIN_PASSWORD"
+  echo "Login failed — run setup first or set ADMIN_EMAIL/ADMIN_PASSWORD"
   exit 1
 fi
 
@@ -31,6 +31,8 @@ print(cam['id'], cam['site_id'])
 
 echo "Camera: $CAMERA_ID  Site: $SITE_ID"
 
+EVIDENCE='{"enabled":true,"clip_seconds":6,"draw_bbox":true,"images":[{"role":"scene","label":"Vue d'\''ensemble","crop":"full"},{"role":"subject","label":"Cible détectée","crop":"bbox","padding_pct":10,"zoom":1.0}],"min_confidence":0}'
+
 ZONE_JSON='{
   "site_id": "'"$SITE_ID"'",
   "camera_id": "'"$CAMERA_ID"'",
@@ -47,7 +49,7 @@ ZONE_JSON='{
 curl -sf -X POST "$API_URL/api/v1/orgs/$ORG_ID/zones" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$ZONE_JSON" | python3 -m json.tool
+  -d "$ZONE_JSON" >/dev/null 2>&1 || true
 
 LINE_JSON='{
   "site_id": "'"$SITE_ID"'",
@@ -61,24 +63,99 @@ LINE_JSON='{
 curl -sf -X POST "$API_URL/api/v1/orgs/$ORG_ID/lines" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$LINE_JSON" | python3 -m json.tool
+  -d "$LINE_JSON" >/dev/null 2>&1 || true
 
-RULES=(
-  '{"name":"Intrusion test-zone","definition":{"condition":{"op":"AND","children":[{"op":"eq","field":"event","value":"zone_enter"},{"op":"in_zone","field":"zone_id","value":"test-zone"}]},"actions":[{"type":"alert","config":{"severity":"high"}}]},"priority":10}'
-  '{"name":"Line cross entry","definition":{"condition":{"op":"eq","field":"event","value":"line_cross"},"actions":[{"type":"alert","config":{"severity":"medium"}}]},"priority":20}'
-  '{"name":"Loitering alert","definition":{"condition":{"op":"eq","field":"event","value":"loitering"},"actions":[{"type":"alert","config":{"severity":"warning"}}]},"priority":30}'
-  '{"name":"Crowd gathering","definition":{"condition":{"op":"eq","field":"event","value":"crowd_gathering"},"actions":[{"type":"alert","config":{"severity":"medium"}}]},"priority":40}'
-  '{"name":"Running detected","definition":{"condition":{"op":"eq","field":"event","value":"running"},"actions":[{"type":"alert","config":{"severity":"medium"}}]},"priority":50}'
-  '{"name":"Face detected","definition":{"condition":{"op":"eq","field":"event","value":"face_detected"},"actions":[{"type":"alert","config":{"severity":"info"}}]},"priority":60}'
-  '{"name":"Plate detected","definition":{"condition":{"op":"eq","field":"event","value":"plate_detected"},"actions":[{"type":"alert","config":{"severity":"info"}}]},"priority":70}'
-  '{"name":"Video blur","definition":{"condition":{"op":"eq","field":"event","value":"video_blur"},"actions":[{"type":"alert","config":{"severity":"info"}}]},"priority":80}'
-)
+python3 - "$API_URL" "$TOKEN" "$ORG_ID" "$CAMERA_ID" "$EVIDENCE" <<'PY'
+import json, sys, urllib.request
 
-for rule in "${RULES[@]}"; do
-  curl -sf -X POST "$API_URL/api/v1/orgs/$ORG_ID/rules" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "$rule" >/dev/null && echo "[OK] Rule created"
-done
+api, token, org, camera_id, evidence_raw = sys.argv[1:6]
+evidence = json.loads(evidence_raw)
 
-echo "==> Spatial config seeded. Orchestrator will reload within 10s."
+rules = [
+    {
+        "name": "Intrusion test-zone",
+        "priority": 10,
+        "definition": {
+            "bindings": {
+                "template_id": "tpl-intrusion-zone",
+                "camera_id": camera_id,
+                "zone_name": "test-zone",
+                "class_filter": "person",
+                "origin": "system",
+            },
+            "condition": {
+                "op": "AND",
+                "children": [
+                    {"op": "eq", "field": "event_type", "value": "zone_enter"},
+                    {"op": "eq", "field": "zone_id", "value": "test-zone"},
+                    {"op": "matches_class", "value": "person"},
+                ],
+            },
+            "actions": [{"type": "alert", "config": {"severity": "high"}}],
+            "evidence": evidence,
+        },
+    },
+    {
+        "name": "Line cross entry",
+        "priority": 20,
+        "definition": {
+            "bindings": {
+                "template_id": "tpl-line-cross",
+                "camera_id": camera_id,
+                "line_name": "entry-line",
+                "class_filter": "person",
+                "origin": "system",
+            },
+            "condition": {
+                "op": "AND",
+                "children": [
+                    {"op": "eq", "field": "event_type", "value": "line_cross"},
+                    {"op": "matches_class", "value": "person"},
+                ],
+            },
+            "actions": [{"type": "alert", "config": {"severity": "medium"}}],
+            "evidence": evidence,
+        },
+    },
+    {
+        "name": "Présence zone test",
+        "priority": 30,
+        "definition": {
+            "bindings": {
+                "template_id": "tpl-zone-presence",
+                "camera_id": camera_id,
+                "zone_name": "test-zone",
+                "class_filter": "person",
+                "origin": "system",
+            },
+            "condition": {
+                "op": "AND",
+                "children": [
+                    {"op": "eq", "field": "event_type", "value": "zone_presence"},
+                    {"op": "eq", "field": "zone_id", "value": "test-zone"},
+                    {"op": "matches_class", "value": "person"},
+                ],
+            },
+            "actions": [{"type": "alert", "config": {"severity": "medium"}}],
+            "evidence": evidence,
+        },
+    },
+]
+
+for rule in rules:
+    body = json.dumps(rule).encode()
+    req = urllib.request.Request(
+        f"{api}/api/v1/orgs/{org}/rules",
+        data=body,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            resp.read()
+        print(f"[OK] Rule created: {rule['name']}")
+    except Exception as e:
+        print(f"[skip] {rule['name']}: {e}")
+PY
+
+echo "==> 3 spatial test rules seeded. Run scripts/trim-test-rules.sh to disable extras."

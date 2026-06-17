@@ -21,11 +21,11 @@ export const RULE_ACTIONS_REGISTRY: RuleActionDef[] = [
   { type: 'alert', family: 'alert', label: 'Créer une alerte', description: 'Enregistre une alerte avec preuves dans le tableau de bord.', executed: true, defaultConfig: { severity: 'medium' } },
   { type: 'alert', family: 'alert', label: 'Alerte haute priorité', description: 'Alerte sévérité élevée.', executed: true, defaultConfig: { severity: 'high' } },
   { type: 'alert', family: 'alert', label: 'Alerte critique', description: 'Alerte sévérité critique.', executed: true, defaultConfig: { severity: 'critical' } },
-  { type: 'record', family: 'recording', label: 'Clip 15 s', description: 'Capture vidéo ffmpeg 15 secondes.', executed: true, defaultConfig: { duration_sec: 15 } },
-  { type: 'record', family: 'recording', label: 'Clip 30 s', description: 'Capture vidéo ffmpeg 30 secondes.', executed: true, defaultConfig: { duration_sec: 30 } },
-  { type: 'record', family: 'recording', label: 'Clip 60 s', description: 'Capture vidéo ffmpeg 60 secondes.', executed: true, defaultConfig: { duration_sec: 60 } },
+  { type: 'record', family: 'recording', label: 'Enregistrement long 15 s (ffmpeg)', description: 'Capture vidéo ffmpeg 15 secondes (enregistrement serveur).', executed: true, defaultConfig: { duration_sec: 15 } },
+  { type: 'record', family: 'recording', label: 'Enregistrement long 30 s (ffmpeg)', description: 'Capture vidéo ffmpeg 30 secondes.', executed: true, defaultConfig: { duration_sec: 30 } },
+  { type: 'record', family: 'recording', label: 'Enregistrement long 60 s (ffmpeg)', description: 'Capture vidéo ffmpeg 60 secondes.', executed: true, defaultConfig: { duration_sec: 60 } },
   { type: 'notify', family: 'notification', label: 'E-mail', description: 'Notification SMTP si configuré.', executed: true, defaultConfig: { channel: 'email' } },
-  { type: 'webhook', family: 'notification', label: 'Webhook local', description: 'POST vers URL locale (WEBHOOK_LOCAL_URL ou config).', executed: true, defaultConfig: {} },
+  { type: 'webhook', family: 'notification', label: 'Webhook / n8n / Make', description: 'Envoie l\'alerte et les preuves vers une URL externe.', executed: true, defaultConfig: {} },
   { type: 'log', family: 'notification', label: 'Journal fichier', description: 'Append dans le fichier audit actions local.', executed: true, defaultConfig: {} },
   { type: 'counter', family: 'counting', label: 'Incrémenter compteur', description: 'Compteur par règle (table rule_counters).', executed: true, defaultConfig: { delta: 1 } },
   { type: 'counter', family: 'counting', label: 'Compteur +5', description: 'Incrémente le compteur de 5.', executed: true, defaultConfig: { delta: 5 } },
@@ -59,6 +59,7 @@ export function buildActionsPayload(
   selectedKeys: string[],
   severity: string,
   email?: string,
+  webhook?: { url?: string; preset?: string },
 ) {
   return selectedKeys.map((key) => {
     const reg = RULE_ACTIONS_REGISTRY.find((a) => actionKey(a) === key);
@@ -68,6 +69,10 @@ export function buildActionsPayload(
     if (reg.type === 'notify' && email) {
       cfg.channel = 'email';
       cfg.to = email;
+    }
+    if (reg.type === 'webhook' && webhook) {
+      if (webhook.url) cfg.url = webhook.url;
+      if (webhook.preset) cfg.preset = webhook.preset;
     }
     return { type: reg.type, config: cfg };
   });

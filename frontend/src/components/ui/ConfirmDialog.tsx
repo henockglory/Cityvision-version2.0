@@ -1,7 +1,7 @@
-import { useEffect, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
-import ModalPortal from '@/components/ui/ModalPortal';
+import Modal from '@/components/ui/Modal';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -24,33 +24,13 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
-
   return (
-    <ModalPortal>
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="cv-card w-full max-w-md p-6 animate-fade-in" role="alertdialog" aria-labelledby="confirm-title">
-        <div className="flex items-start gap-3 mb-4">
-          <div className={`p-2 rounded-lg ${danger ? 'bg-red-500/15' : 'bg-cv-accent/10'}`}>
-            <AlertTriangle className={`w-5 h-5 ${danger ? 'text-red-500' : 'text-cv-accent'}`} />
-          </div>
-          <div>
-            <h2 id="confirm-title" className="font-display text-lg font-semibold text-cv-text">
-              {title}
-            </h2>
-            <p className="text-sm text-cv-muted mt-1">{message}</p>
-          </div>
-        </div>
-        <div className="flex gap-3 justify-end">
+    <Modal
+      open={open}
+      onClose={onCancel}
+      maxWidth="md"
+      footer={
+        <>
           <button type="button" onClick={onCancel} className="cv-btn-secondary">
             {cancelLabel}
           </button>
@@ -61,10 +41,21 @@ export default function ConfirmDialog({
           >
             {confirmLabel}
           </button>
+        </>
+      }
+    >
+      <div className="flex items-start gap-3" role="alertdialog" aria-labelledby="confirm-title">
+        <div className={`p-2 rounded-lg ${danger ? 'bg-red-500/15' : 'bg-cv-accent/10'}`}>
+          <AlertTriangle className={`w-5 h-5 ${danger ? 'text-red-500' : 'text-cv-accent'}`} />
+        </div>
+        <div>
+          <h2 id="confirm-title" className="font-display text-lg font-semibold text-cv-text">
+            {title}
+          </h2>
+          <p className="text-sm text-cv-muted mt-1">{message}</p>
         </div>
       </div>
-    </div>
-    </ModalPortal>
+    </Modal>
   );
 }
 

@@ -116,6 +116,7 @@ type Zone struct {
 	Name      string          `json:"name"`
 	Polygon   json.RawMessage `json:"polygon"`
 	Color     string          `json:"color"`
+	ZoneKind  string          `json:"zone_kind,omitempty"`
 	IsActive  bool            `json:"is_active"`
 	CreatedAt time.Time       `json:"created_at"`
 	UpdatedAt time.Time       `json:"updated_at"`

@@ -24,6 +24,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27"]
+identity = ["insightface>=0.7.3", "onnx>=1.15"]
+anpr = ["paddlepaddle>=2.6.0", "paddleocr>=2.7.0"]
+full = ["citevision-ai[identity,anpr,dev]"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

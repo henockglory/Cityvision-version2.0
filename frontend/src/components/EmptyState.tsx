@@ -1,12 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
 import { Inbox } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import GuideIllustration from '@/components/ui/GuideIllustration';
 
 interface EmptyStateProps {
   title?: string;
   hint?: string;
   icon?: LucideIcon;
   action?: React.ReactNode;
+  guideVariant?: 'rules' | 'spatial' | 'alerts' | 'live' | 'default';
 }
 
 export default function EmptyState({
@@ -14,8 +16,23 @@ export default function EmptyState({
   hint,
   icon: Icon = Inbox,
   action,
+  guideVariant,
 }: EmptyStateProps) {
   const { t } = useTranslation();
+
+  if (guideVariant) {
+    return (
+      <div className="py-10 px-6 animate-fade-in">
+        <GuideIllustration
+          variant={guideVariant}
+          title={title ?? t('emptyState.defaultTitle')}
+          caption={hint ?? t('emptyState.defaultHint')}
+          className="max-w-lg mx-auto"
+        />
+        {action && <div className="mt-6 flex justify-center">{action}</div>}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center animate-fade-in">

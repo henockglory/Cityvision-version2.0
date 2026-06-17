@@ -55,6 +55,8 @@ type StartCameraRequest struct {
 	Watchlist            []map[string]interface{} `json:"watchlist"`
 	Plates               []map[string]interface{} `json:"plates"`
 	AnalyticsThresholds  AnalyticsThresholds      `json:"analytics_thresholds,omitempty"`
+	EvidenceCaptureRules []map[string]interface{} `json:"evidence_capture_rules,omitempty"`
+	CapabilityProfiles   []map[string]interface{} `json:"capability_profiles,omitempty"`
 }
 
 func (c *AIClient) StartCamera(ctx context.Context, cameraID string, req StartCameraRequest) error {
@@ -75,6 +77,28 @@ func (c *AIClient) StartCamera(ctx context.Context, cameraID string, req StartCa
 		return fmt.Errorf("ai engine start failed: %s", string(b))
 	}
 	return nil
+}
+
+func (c *AIClient) RequestEvidenceCapture(ctx context.Context, cameraID string, payload map[string]interface{}) (map[string]interface{}, error) {
+	body, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/cameras/%s/evidence/capture", c.baseURL, cameraID)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("ai evidence capture: %s", string(b))
+	}
+	var out map[string]interface{}
+	_ = json.Unmarshal(b, &out)
+	return out, nil
 }
 
 func (c *AIClient) StopCamera(ctx context.Context, cameraID string) error {
@@ -166,14 +190,18 @@ func (o *Orchestrator) sync(ctx context.Context) {
 		calib := o.extractCalibrationFromCamera(ctx, orgID, id)
 		videoFile := o.extractVideoFileFromCamera(ctx, orgID, id)
 		thresholds := o.mergeAnalyticsThresholds(ctx, orgID, id)
+		evidenceRules := o.buildEvidenceCaptureRulesForCamera(ctx, orgID, id)
+		capProfiles := o.buildCapabilityProfiles(ctx, orgID, id)
 		req := StartCameraRequest{
-			OrgID:               orgID.String(),
-			SpatialRules:        spatialCfg,
-			Calibration:         calib,
-			Watchlist:           o.buildWatchlist(ctx, orgID),
-			Plates:              o.buildPlates(ctx, orgID),
-			AIFps:               8,
-			AnalyticsThresholds: thresholds,
+			OrgID:                orgID.String(),
+			SpatialRules:         spatialCfg,
+			Calibration:          calib,
+			Watchlist:            o.buildWatchlist(ctx, orgID),
+			Plates:               o.buildPlates(ctx, orgID),
+			AIFps:                8,
+			AnalyticsThresholds:  thresholds,
+			EvidenceCaptureRules: evidenceRules,
+			CapabilityProfiles:   capProfiles,
 		}
 		if videoFile != "" {
 			req.VideoFile = videoFile
@@ -242,9 +270,10 @@ func (o *Orchestrator) buildSpatialConfig(ctx context.Context, orgID, cameraID u
 		var polygon []map[string]float64
 		_ = json.Unmarshal(z.Polygon, &polygon)
 		zoneList = append(zoneList, map[string]interface{}{
-			"zone_id": z.Name,
-			"name":    z.Name,
-			"polygon": polygon,
+			"zone_id":   z.Name,
+			"name":      z.Name,
+			"zone_kind": z.ZoneKind,
+			"polygon":   polygon,
 		})
 	}
 
@@ -427,7 +456,10 @@ func (o *Orchestrator) buildPlates(ctx context.Context, orgID uuid.UUID) []map[s
 			status = "allowed"
 		}
 		for _, e := range ents {
-			plate := e["identifier"]
+			plate := e["plate_number"]
+			if plate == nil {
+				plate = e["identifier"]
+			}
 			if plate == nil {
 				plate = e["plate"]
 			}

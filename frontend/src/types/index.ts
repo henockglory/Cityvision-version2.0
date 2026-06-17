@@ -60,6 +60,7 @@ export interface AlertFilters {
   from?: string;
   to?: string;
   limit?: number;
+  includeIncomplete?: boolean;
 }
 
 export interface Event {
@@ -101,6 +102,9 @@ export interface RuleCatalogTemplate {
   supported?: boolean;
   capability_id?: string;
   human_description?: string;
+  role_summary_fr?: string;
+  illustration?: string;
+  deployment_scopes?: string[];
   tutorial?: string;
   prerequisites?: string[];
   unsupported_message_fr?: string;
@@ -201,4 +205,6 @@ export interface Zone {
   points: number[];
   color: string;
   cameraId: string;
+  /** perimeter | controlled_exit | corridor | parking | … (API spatial) */
+  zoneKind?: string;
 }

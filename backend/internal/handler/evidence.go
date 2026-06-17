@@ -2,8 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -87,10 +89,40 @@ func (a *API) ServeEvidenceAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "invalid asset key")
 		return
 	}
-	presigned, err := a.Evidence.PresignedGet(r.Context(), decoded)
+	stat, err := a.Evidence.StatObject(r.Context(), decoded)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "asset not found")
 		return
 	}
-	http.Redirect(w, r, presigned, http.StatusTemporaryRedirect)
+	obj, err := a.Evidence.GetObject(r.Context(), decoded)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "asset not found")
+		return
+	}
+	defer obj.Close()
+
+	ct := stat.ContentType
+	if ct == "" || ct == "application/octet-stream" {
+		ct = contentTypeForKey(decoded)
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size, 10))
+	if _, err := io.Copy(w, obj); err != nil {
+		return
+	}
+}
+
+func contentTypeForKey(key string) string {
+	lower := strings.ToLower(key)
+	switch {
+	case strings.HasSuffix(lower, ".mp4"):
+		return "video/mp4"
+	case strings.HasSuffix(lower, ".jpg"), strings.HasSuffix(lower, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(lower, ".png"):
+		return "image/png"
+	default:
+		return "application/octet-stream"
+	}
 }

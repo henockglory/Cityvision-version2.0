@@ -12,6 +12,7 @@ help:
 	@echo "  test-go      Run rules-engine go test"
 	@echo "  test         Run all unit tests"
 	@echo "  validate     Run validate-phase1..8"
+	@echo "  coverage-matrix  Regenerate docs/RULE-COVERAGE-MATRIX.*"
 	@echo "  build-video  Build video engine (FFmpeg required)"
 	@echo "  ai-dev       Run AI engine on :8001"
 
@@ -46,6 +47,9 @@ test: test-ai test-go
 
 validate:
 	@for i in 1 2 3 4 5 6 7 8; do bash scripts/validate-phase$$i.sh; done
+
+coverage-matrix:
+	python3 scripts/generate-rule-coverage-matrix.py
 
 build-video:
 	cd video-engine && mkdir -p build && cd build && cmake .. && cmake --build .

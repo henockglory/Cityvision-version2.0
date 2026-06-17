@@ -123,6 +123,49 @@ func (a *API) PurgeAlertsDemo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "purged", "deleted": n})
 }
 
+// PurgeOrgCommercial disables all rules and purges alerts, events, and evidence media for the org.
+func (a *API) PurgeOrgCommercial(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	ctx := r.Context()
+
+	rulesDisabled, err := a.Rules.DisableAll(ctx, orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "disable rules failed")
+		return
+	}
+	rulesPurged, err := a.Rules.PurgeNonUserRules(ctx, orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "purge non-user rules failed")
+		return
+	}
+	alertsDeleted, err := a.Alerts.PurgeForOrg(ctx, orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "purge alerts failed")
+		return
+	}
+	eventsDeleted, err := a.Events.PurgeForOrg(ctx, orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "purge events failed")
+		return
+	}
+	evidenceObjects := 0
+	if a.Evidence != nil && a.Evidence.Available() {
+		evidenceObjects, err = a.Evidence.PurgeOrg(ctx, orgID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "purge evidence failed")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":                   "purged",
+		"rules_disabled":           rulesDisabled,
+		"rules_purged":            rulesPurged,
+		"alerts_deleted":           alertsDeleted,
+		"events_deleted":           eventsDeleted,
+		"evidence_objects_deleted": evidenceObjects,
+	})
+}
+
 func parseAlertListFilter(r *http.Request) alerts.ListFilter {
 	f := alerts.ListFilter{Limit: 100}
 	q := r.URL.Query()
@@ -154,6 +197,7 @@ func parseAlertListFilter(r *http.Request) alerts.ListFilter {
 			f.To = &t
 		}
 	}
+	f.IncludeIncomplete = q.Get("include_incomplete") == "true"
 	return f
 }
 

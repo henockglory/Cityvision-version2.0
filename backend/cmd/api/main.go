@@ -31,6 +31,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/org"
 	"github.com/citevision/citevision-v2/backend/internal/rbac"
 	"github.com/citevision/citevision-v2/backend/internal/record"
+	"github.com/citevision/citevision-v2/backend/internal/routing"
 	redisstore "github.com/citevision/citevision-v2/backend/internal/redis"
 	"github.com/citevision/citevision-v2/backend/internal/rules"
 	"github.com/citevision/citevision-v2/backend/internal/setup"
@@ -84,9 +85,16 @@ func main() {
 	}
 
 	alertsSvc := alerts.NewService(pool)
+	orgSvc := org.NewService(pool)
+	routingSvc := routing.NewService(pool)
 	checker := health.NewChecker(pool, redisClient)
 	alertHub := ws.NewHub(log)
-	broadcaster := &mqttsub.Broadcaster{Hub: alertHub, Alerts: alertsSvc}
+	broadcaster := &mqttsub.Broadcaster{
+		Hub:     alertHub,
+		Alerts:  alertsSvc,
+		Routing: routingSvc,
+		Orgs:    orgSvc,
+	}
 
 	mqttBroker := os.Getenv("MQTT_BROKER")
 	if mqttBroker == "" {
@@ -140,12 +148,14 @@ func main() {
 		Users:       users.NewService(pool),
 		Alerts:      alertsSvc,
 		Dashboard:   dashboard.NewService(pool),
-		Orgs:        org.NewService(pool),
+		Orgs:        orgSvc,
+		Routing:     routingSvc,
 		Hub:         alertHub,
 		CatalogPath: catalogPath,
 		SharedPath:  sharedPath,
 		Record:      record.NewService(pool, cameraSvc),
 		Evidence:    evidenceSvc,
+		AI:          aiClient,
 	}
 
 	r := chi.NewRouter()
@@ -169,11 +179,13 @@ func main() {
 			r.Post("/notify/email", api.InternalNotifyEmail)
 			r.Post("/record/clip", api.InternalRecordClip)
 			r.Post("/evidence/upload", api.InternalEvidenceUpload)
+			r.Post("/evidence/request", api.InternalEvidenceRequest)
 			r.Post("/incidents", api.InternalCreateIncident)
 			r.Post("/alerts/archive", api.InternalArchiveAlert)
 			r.Post("/alerts/archive-stale", api.InternalArchiveStaleAlerts)
 			r.Post("/rules/counter", api.InternalIncrementRuleCounter)
 			r.Post("/webhook", api.InternalWebhook)
+			r.Get("/notification-defaults", api.InternalNotificationDefaults)
 		})
 
 		r.Group(func(r chi.Router) {
@@ -200,6 +212,7 @@ func main() {
 					r.Post("/integrations/smtp/test", api.TestSMTP)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/reset", api.ResetDemo)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/purge-alerts", api.PurgeAlertsDemo)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/maintenance/purge", api.PurgeOrgCommercial)
 
 					r.With(middleware.RequirePermission(rbacSvc, "audit:read")).Get("/audit", api.ListAuditLog)
 					r.With(middleware.RequirePermission(rbacSvc, "audit:read")).Get("/audit/verify", api.VerifyAuditChain)
@@ -247,7 +260,7 @@ func main() {
 
 					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Post("/events/ingest", api.IngestEvent)
 					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Get("/events", api.ListEvents)
-					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Get("/evidence/asset", api.ServeEvidenceAsset)
+					r.With(middleware.RequireAnyPermission(rbacSvc, "events:read", "alerts:read")).Get("/evidence/asset", api.ServeEvidenceAsset)
 
 					r.Route("/rules", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/", api.ListRules)
@@ -264,8 +277,17 @@ func main() {
 					r.Route("/alerts", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:read")).Get("/", api.ListAlerts)
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Post("/", api.CreateAlert)
+						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Post("/{alertID}/forward", api.ForwardAlert)
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Patch("/{alertID}/acknowledge", api.AcknowledgeAlert)
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Patch("/{alertID}/archive", api.ArchiveAlert)
+					})
+
+					r.Route("/routing-rules", func(r chi.Router) {
+						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/", api.ListRoutingRules)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/", api.CreateRoutingRule)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Patch("/{ruleID}", api.UpdateRoutingRule)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Delete("/{ruleID}", api.DeleteRoutingRule)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:simulate")).Post("/test", api.TestRoutingRules)
 					})
 
 					r.Route("/incidents", func(r chi.Router) {

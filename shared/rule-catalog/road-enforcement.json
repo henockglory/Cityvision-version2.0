@@ -1,0 +1,156 @@
+[
+  {
+    "id": "tpl-traffic-pipeline",
+    "name": "Pipeline voiture → plaque + vitesse",
+    "category": "road-enforcement",
+    "severity": "high",
+    "supported": true,
+    "tutorial": {
+      "legend": "Détection → Enrichissement OCR/vitesse → Condition → Alerte + preuves",
+      "steps": [
+        "Dessinez une zone sur la voie",
+        "Filtrez sur la classe « voiture »",
+        "Le pipeline active OCR plaque et estimation vitesse dans la zone",
+        "Définissez la condition (ex. vitesse > 50 km/h)",
+        "Configurez preuves et notifications"
+      ]
+    },
+    "definition": {
+      "priority": 150,
+      "suppress_lower": true,
+      "pipeline": {
+        "trigger": { "event_type": "zone_presence", "class_filter": "car" },
+        "stages": [
+          { "capability": "plate_ocr", "budget": "high" },
+          { "capability": "speed_estimate" },
+          { "capability": "evidence_capture" }
+        ]
+      },
+      "condition": {
+        "op": "AND",
+        "children": [
+          { "op": "eq", "field": "event_type", "value": "vehicle_corridor" },
+          { "op": "gt", "field": "speed_kmh", "value": 50 }
+        ]
+      },
+      "actions": [
+        { "type": "alert", "config": { "severity": "high" } },
+        { "type": "record", "config": {} }
+      ],
+      "bindings": {
+        "template_id": "tpl-traffic-corridor",
+        "class_filter": "car"
+      }
+    }
+  },
+  {
+    "id": "tpl-speeding-premium",
+    "name": "Excès de vitesse",
+    "category": "road-enforcement",
+    "severity": "high",
+    "supported": true,
+    "prerequisites": ["calibration_vitesse"],
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "speeding" },
+      "actions": [{ "type": "alert", "config": { "severity": "high" } }]
+    }
+  },
+  {
+    "id": "tpl-wrong-way",
+    "name": "Sens interdit",
+    "category": "road-enforcement",
+    "severity": "high",
+    "supported": true,
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "wrong_way" },
+      "actions": [{ "type": "alert", "config": { "severity": "high" } }]
+    }
+  },
+  {
+    "id": "tpl-line-cross-forbidden",
+    "name": "Franchissement ligne continue",
+    "category": "road-enforcement",
+    "severity": "medium",
+    "supported": true,
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "line_cross" },
+      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
+    }
+  },
+  {
+    "id": "tpl-plate-pipeline",
+    "name": "Plaque détectée (OCR)",
+    "category": "road-enforcement",
+    "severity": "medium",
+    "supported": true,
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "plate_detected" },
+      "actions": [{ "type": "alert", "config": {} }]
+    }
+  },
+  {
+    "id": "tpl-congestion",
+    "name": "Embouteillage",
+    "category": "road-enforcement",
+    "severity": "low",
+    "supported": true,
+    "definition": {
+      "condition": { "op": "eq", "field": "event_type", "value": "vehicle_count_threshold" },
+      "actions": [{ "type": "alert", "config": { "severity": "low" } }]
+    }
+  },
+  {
+    "id": "tpl-accident-composite",
+    "name": "Accident (arrêt brutal)",
+    "category": "road-enforcement",
+    "severity": "critical",
+    "supported": true,
+    "definition": {
+      "condition": {
+        "op": "SEQUENCE",
+        "window_seconds": 30,
+        "children": [
+          { "op": "eq", "field": "event_type", "value": "sudden_stop" },
+          { "op": "eq", "field": "event_type", "value": "vehicle_stopped" }
+        ]
+      },
+      "actions": [{ "type": "alert", "config": { "severity": "critical" } }]
+    }
+  },
+  {
+    "id": "tpl-red-light",
+    "name": "Feu rouge",
+    "category": "road-enforcement",
+    "severity": "high",
+    "supported": false,
+    "coming_soon": true,
+    "tutorial": {
+      "legend": "Détection feu rouge — modèle dédié en cours d'intégration",
+      "steps": ["Définir zone feu", "Attendre modèle ML — aucune fausse détection simulée"]
+    }
+  },
+  {
+    "id": "tpl-seatbelt",
+    "name": "Ceinture de sécurité",
+    "category": "road-enforcement",
+    "severity": "medium",
+    "supported": false,
+    "coming_soon": true,
+    "tutorial": {
+      "legend": "Stub catalogue — hook modèle futur, pas de simulation",
+      "steps": ["Zone véhicule conducteur", "Modèle ceinture à venir"]
+    }
+  },
+  {
+    "id": "tpl-phone-driving",
+    "name": "Téléphone au volant",
+    "category": "road-enforcement",
+    "severity": "medium",
+    "supported": false,
+    "coming_soon": true,
+    "tutorial": {
+      "legend": "Stub catalogue — hook modèle futur, pas de simulation",
+      "steps": ["Zone habitacle", "Modèle téléphone à venir"]
+    }
+  }
+]

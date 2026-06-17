@@ -29,6 +29,7 @@ type ZoneRequest struct {
 	Name     string          `json:"name"`
 	Polygon  json.RawMessage `json:"polygon"`
 	Color    string          `json:"color"`
+	ZoneKind string          `json:"zone_kind,omitempty"`
 }
 
 func (s *Service) CreateZone(ctx context.Context, req ZoneRequest) (*models.Zone, error) {
@@ -38,16 +39,16 @@ func (s *Service) CreateZone(ctx context.Context, req ZoneRequest) (*models.Zone
 	}
 	var z models.Zone
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO zones (org_id, site_id, camera_id, name, polygon, color)
-		VALUES ($1,$2,$3,$4,$5,$6)
-		RETURNING id, org_id, site_id, camera_id, name, polygon, color, is_active, created_at, updated_at`,
-		req.OrgID, req.SiteID, req.CameraID, req.Name, req.Polygon, color,
-	).Scan(&z.ID, &z.OrgID, &z.SiteID, &z.CameraID, &z.Name, &z.Polygon, &z.Color, &z.IsActive, &z.CreatedAt, &z.UpdatedAt)
+		INSERT INTO zones (org_id, site_id, camera_id, name, polygon, color, zone_kind)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		RETURNING id, org_id, site_id, camera_id, name, polygon, color, zone_kind, is_active, created_at, updated_at`,
+		req.OrgID, req.SiteID, req.CameraID, req.Name, req.Polygon, color, req.ZoneKind,
+	).Scan(&z.ID, &z.OrgID, &z.SiteID, &z.CameraID, &z.Name, &z.Polygon, &z.Color, &z.ZoneKind, &z.IsActive, &z.CreatedAt, &z.UpdatedAt)
 	return &z, err
 }
 
 func (s *Service) ListZones(ctx context.Context, orgID uuid.UUID, siteID *uuid.UUID) ([]models.Zone, error) {
-	q := `SELECT id, org_id, site_id, camera_id, name, polygon, color, is_active, created_at, updated_at FROM zones WHERE org_id = $1`
+	q := `SELECT id, org_id, site_id, camera_id, name, polygon, color, zone_kind, is_active, created_at, updated_at FROM zones WHERE org_id = $1`
 	args := []interface{}{orgID}
 	if siteID != nil {
 		q += ` AND site_id = $2`
@@ -61,7 +62,7 @@ func (s *Service) ListZones(ctx context.Context, orgID uuid.UUID, siteID *uuid.U
 	var list []models.Zone
 	for rows.Next() {
 		var z models.Zone
-		if err := rows.Scan(&z.ID, &z.OrgID, &z.SiteID, &z.CameraID, &z.Name, &z.Polygon, &z.Color, &z.IsActive, &z.CreatedAt, &z.UpdatedAt); err != nil {
+		if err := rows.Scan(&z.ID, &z.OrgID, &z.SiteID, &z.CameraID, &z.Name, &z.Polygon, &z.Color, &z.ZoneKind, &z.IsActive, &z.CreatedAt, &z.UpdatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, z)
@@ -138,9 +139,9 @@ func (s *Service) DeleteLine(ctx context.Context, orgID, id uuid.UUID) error {
 func (s *Service) GetZone(ctx context.Context, orgID, id uuid.UUID) (*models.Zone, error) {
 	var z models.Zone
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, org_id, site_id, camera_id, name, polygon, color, is_active, created_at, updated_at
+		SELECT id, org_id, site_id, camera_id, name, polygon, color, zone_kind, is_active, created_at, updated_at
 		FROM zones WHERE id = $1 AND org_id = $2`, id, orgID,
-	).Scan(&z.ID, &z.OrgID, &z.SiteID, &z.CameraID, &z.Name, &z.Polygon, &z.Color, &z.IsActive, &z.CreatedAt, &z.UpdatedAt)
+	).Scan(&z.ID, &z.OrgID, &z.SiteID, &z.CameraID, &z.Name, &z.Polygon, &z.Color, &z.ZoneKind, &z.IsActive, &z.CreatedAt, &z.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

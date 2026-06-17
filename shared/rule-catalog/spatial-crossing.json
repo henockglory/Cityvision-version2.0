@@ -42,7 +42,7 @@
     "category": "spatial",
     "severity": "high",
     "definition": {
-      "condition": { "op": "eq", "field": "event_type", "value": "wrong_direction" },
+      "condition": { "op": "eq", "field": "event_type", "value": "wrong_way" },
       "actions": [{ "type": "alert", "config": { "severity": "high" } }, { "type": "record", "config": { "duration_sec": 30 } }]
     }
   },

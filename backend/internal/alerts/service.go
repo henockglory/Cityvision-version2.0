@@ -11,10 +11,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/citevision/citevision-v2/backend/internal/evidence"
 	"github.com/citevision/citevision-v2/backend/internal/models"
 )
 
 var ErrNotFound = errors.New("resource not found")
+var ErrIncompleteEvidence = errors.New("incomplete evidence for required policy")
 
 type CreateAlertRequest struct {
 	OrgID    uuid.UUID       `json:"org_id"`
@@ -51,7 +53,19 @@ func (s *Service) CreateAlert(ctx context.Context, req CreateAlertRequest) (*mod
 	meta := EnrichCreateMetadata(req.Metadata)
 	var metaMap map[string]interface{}
 	_ = json.Unmarshal(meta, &metaMap)
-	evidence := BuildEvidenceSnapshot(metaMap)
+	evidenceSnap := BuildEvidenceSnapshot(metaMap)
+
+	if req.RuleID != nil {
+		var definition json.RawMessage
+		err := s.pool.QueryRow(ctx, `SELECT definition FROM rules WHERE id = $1 AND org_id = $2`, *req.RuleID, req.OrgID).Scan(&definition)
+		if err == nil {
+			policy := evidence.PolicyFromDefinition(definition)
+			if evidence.PolicyRequiresProof(policy) && !evidence.IsComplete(evidenceSnap, policy) {
+				return nil, ErrIncompleteEvidence
+			}
+		}
+	}
+
 	var msg *string
 	if req.Message != "" {
 		msg = &req.Message
@@ -61,7 +75,7 @@ func (s *Service) CreateAlert(ctx context.Context, req CreateAlertRequest) (*mod
 		INSERT INTO alerts (org_id, site_id, rule_id, event_id, title, message, severity, metadata, evidence_snapshot)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		RETURNING id, org_id, site_id, rule_id, event_id, title, message, severity, status, metadata, created_at, updated_at`,
-		req.OrgID, req.SiteID, req.RuleID, req.EventID, req.Title, msg, req.Severity, meta, evidence,
+		req.OrgID, req.SiteID, req.RuleID, req.EventID, req.Title, msg, req.Severity, meta, evidenceSnap,
 	).Scan(&a.ID, &a.OrgID, &a.SiteID, &a.RuleID, &a.EventID, &a.Title, &a.Message, &a.Severity, &a.Status, &a.Metadata, &a.CreatedAt, &a.UpdatedAt)
 	return &a, err
 }
@@ -77,14 +91,15 @@ type EnrichedAlert struct {
 }
 
 type ListFilter struct {
-	Status   string
-	Severity string
-	RuleID   *uuid.UUID
-	CameraID string
-	From     *time.Time
-	To       *time.Time
-	Limit    int
-	Offset   int
+	Status            string
+	Severity          string
+	RuleID            *uuid.UUID
+	CameraID          string
+	From              *time.Time
+	To                *time.Time
+	Limit             int
+	Offset            int
+	IncludeIncomplete bool
 }
 
 func (s *Service) PurgeForOrg(ctx context.Context, orgID uuid.UUID) (int64, error) {
@@ -103,7 +118,7 @@ func (s *Service) ListEnriched(ctx context.Context, orgID uuid.UUID, f ListFilte
 		SELECT a.id, a.org_id, a.site_id, a.rule_id, a.event_id, a.title, a.message, a.severity, a.status, a.metadata, a.created_at, a.updated_at,
 			a.archived_at, a.archive_comment, COALESCE(a.evidence_snapshot, '{}'::jsonb),
 			COALESCE(c.name, a.metadata->>'camera_name', ''),
-			r.name
+			r.name, COALESCE(r.definition, '{}'::jsonb)
 		FROM alerts a
 		LEFT JOIN rules r ON r.id = a.rule_id
 		LEFT JOIN cameras c ON c.id::text = COALESCE(a.metadata->>'camera_id', '')
@@ -151,14 +166,21 @@ func (s *Service) ListEnriched(ctx context.Context, orgID uuid.UUID, f ListFilte
 	for rows.Next() {
 		var ea EnrichedAlert
 		var ruleName *string
+		var ruleDef json.RawMessage
 		if err := rows.Scan(
 			&ea.ID, &ea.OrgID, &ea.SiteID, &ea.RuleID, &ea.EventID, &ea.Title, &ea.Message, &ea.Severity, &ea.Status, &ea.Metadata, &ea.CreatedAt, &ea.UpdatedAt,
 			&ea.ArchivedAt, &ea.ArchiveComment, &ea.EvidenceSnapshot,
-			&ea.CameraName, &ruleName,
+			&ea.CameraName, &ruleName, &ruleDef,
 		); err != nil {
 			return nil, err
 		}
 		ea.RuleName = ruleName
+		if !f.IncludeIncomplete {
+			policy := evidence.PolicyFromDefinition(ruleDef)
+			if ea.RuleID != nil && evidence.PolicyRequiresProof(policy) && !evidence.IsComplete(ea.EvidenceSnapshot, policy) {
+				continue
+			}
+		}
 		var meta map[string]interface{}
 		_ = json.Unmarshal(ea.Metadata, &meta)
 		if cid, ok := meta["camera_id"].(string); ok {
@@ -301,4 +323,51 @@ func (s *Service) ArchiveStaleByRule(ctx context.Context, orgID, ruleID uuid.UUI
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+func (s *Service) GetByID(ctx context.Context, orgID, alertID uuid.UUID) (*EnrichedAlert, error) {
+	var ea EnrichedAlert
+	var ruleName *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT a.id, a.org_id, a.site_id, a.rule_id, a.event_id, a.title, a.message, a.severity, a.status, a.metadata, a.created_at, a.updated_at,
+			a.archived_at, a.archive_comment, COALESCE(a.evidence_snapshot, '{}'::jsonb),
+			COALESCE(c.name, a.metadata->>'camera_name', ''),
+			r.name
+		FROM alerts a
+		LEFT JOIN rules r ON r.id = a.rule_id
+		LEFT JOIN cameras c ON c.id::text = COALESCE(a.metadata->>'camera_id', '')
+		WHERE a.id = $1 AND a.org_id = $2`, alertID, orgID,
+	).Scan(
+		&ea.ID, &ea.OrgID, &ea.SiteID, &ea.RuleID, &ea.EventID, &ea.Title, &ea.Message, &ea.Severity, &ea.Status, &ea.Metadata, &ea.CreatedAt, &ea.UpdatedAt,
+		&ea.ArchivedAt, &ea.ArchiveComment, &ea.EvidenceSnapshot,
+		&ea.CameraName, &ruleName,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	ea.RuleName = ruleName
+	var meta map[string]interface{}
+	_ = json.Unmarshal(ea.Metadata, &meta)
+	if cid, ok := meta["camera_id"].(string); ok {
+		ea.CameraID = cid
+	}
+	return &ea, nil
+}
+
+func (s *Service) AppendForwardLog(ctx context.Context, orgID, alertID uuid.UUID, entry map[string]interface{}) error {
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE alerts SET metadata = jsonb_set(
+			COALESCE(metadata, '{}'::jsonb),
+			'{forward_log}',
+			COALESCE(metadata->'forward_log', '[]'::jsonb) || jsonb_build_array($1::jsonb)
+		), updated_at = NOW()
+		WHERE id = $2 AND org_id = $3`, string(b), alertID, orgID)
+	return err
 }

@@ -29,15 +29,18 @@ type TimeWindow struct {
 }
 
 type RuleDefinition struct {
-	RuleID         string        `json:"rule_id"`
-	Name           string        `json:"name"`
-	CameraID       string        `json:"camera_id,omitempty"`
-	Enabled        bool          `json:"enabled"`
-	Priority       int           `json:"priority"`
-	Condition      ConditionNode `json:"condition"`
-	Actions        []Action      `json:"actions"`
-	Window         *TimeWindow   `json:"window,omitempty"`
-	DedupKeyFields []string      `json:"dedup_key_fields,omitempty"`
+	RuleID         string                 `json:"rule_id"`
+	Name           string                 `json:"name"`
+	CameraID       string                 `json:"camera_id,omitempty"`
+	Enabled        bool                   `json:"enabled"`
+	Priority       int                    `json:"priority"`
+	SuppressLower  bool                   `json:"suppress_lower"`
+	Condition      ConditionNode          `json:"condition"`
+	Actions        []Action               `json:"actions"`
+	Window         *TimeWindow            `json:"window,omitempty"`
+	DedupKeyFields []string               `json:"dedup_key_fields,omitempty"`
+	Evidence       map[string]interface{} `json:"evidence,omitempty"`
+	Bindings       map[string]interface{} `json:"bindings,omitempty"`
 }
 
 func ValidateDefinition(raw json.RawMessage) error {

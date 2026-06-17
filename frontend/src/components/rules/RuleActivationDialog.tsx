@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Settings2, X } from 'lucide-react';
+import { Loader2, Settings2, X, MapPin, GitBranch, Zap, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   identityApi,
@@ -27,6 +27,10 @@ import {
 } from '@/lib/ruleActionsRegistry';
 import ConditionTreeEditor from '@/components/rules/ConditionTreeEditor';
 import RuleFlowBuilder from '@/components/rules/RuleFlowBuilder';
+import EvidencePolicyPanel from '@/components/rules/EvidencePolicyPanel';
+import OutputChannelsPanel from '@/components/rules/OutputChannelsPanel';
+import { DEFAULT_EVIDENCE_POLICY, SPATIAL_TEMPLATES_REQUIRING_CLASS, normalizeEvidencePolicy, type EvidencePolicy } from '@/lib/evidencePolicy';
+import { orgApi } from '@/api/client';
 import {
   cloneCondition,
   createGroup,
@@ -35,7 +39,10 @@ import {
   validateConditionTree,
 } from '@/lib/conditionTree';
 import InfoTip from '@/components/ui/InfoTip';
-import ModalPortal from '@/components/ui/ModalPortal';
+import Modal from '@/components/ui/Modal';
+import WizardSteps from '@/components/ui/WizardSteps';
+import SegmentedTabs from '@/components/ui/SegmentedTabs';
+import GuideIllustration from '@/components/ui/GuideIllustration';
 import { useAuthStore } from '@/stores/authStore';
 import { useCameras } from '@/hooks/api/queries';
 import type { ConfigSchemaField, Rule, RuleCatalogTemplate } from '@/types';
@@ -48,13 +55,17 @@ interface BackendLine {
 interface RuleActivationDialogProps {
   template: RuleCatalogTemplate | null;
   existingRule?: Rule | null;
+  initialStep?: 1 | 2 | 3 | 4;
   onClose: () => void;
   onActivated: () => void;
 }
 
+const STEP_LABELS = ['Config', 'Conditions', 'Actions & preuves', 'Aperçu'] as const;
+
 export default function RuleStudioDialog({
   template,
   existingRule,
+  initialStep = 1,
   onClose,
   onActivated,
 }: RuleActivationDialogProps) {
@@ -89,12 +100,17 @@ export default function RuleStudioDialog({
   const [loadingSpatial, setLoadingSpatial] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(initialStep);
+  const [step3Tab, setStep3Tab] = useState<'actions' | 'evidence' | 'notifications'>('actions');
   const [ruleName, setRuleName] = useState('');
   const [conditionTree, setConditionTree] = useState<ConditionNode>(createGroup('AND', [createLeaf()]));
   const [selectedActions, setSelectedActions] = useState<string[]>(defaultActionsSelection());
   const [actionSeverity, setActionSeverity] = useState('medium');
   const [notifyEmail, setNotifyEmail] = useState('');
+  const [evidencePolicy, setEvidencePolicy] = useState<EvidencePolicy>(DEFAULT_EVIDENCE_POLICY);
+  const [enableWebhook, setEnableWebhook] = useState(false);
+  const [webhookPreset, setWebhookPreset] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
 
   const cameraId = String(values.camera_id ?? '');
 
@@ -120,13 +136,29 @@ export default function RuleStudioDialog({
     setRuleName(existingRule?.name ?? activeTemplate.name);
     const cond = (existingRule?.definition?.condition ?? activeTemplate.definition?.condition) as ConditionNode | undefined;
     setConditionTree(cloneCondition(cond) ?? createGroup('AND', [createLeaf()]));
-    setStep(1);
+    setStep(initialStep);
+    setStep3Tab(initialStep === 3 ? 'evidence' : 'actions');
     const defActions = (existingRule?.definition?.actions ?? activeTemplate.definition?.actions) as Array<{ type: string; config?: Record<string, unknown> }> | undefined;
     setSelectedActions(actionsFromRule(defActions));
     const sev = defActions?.find((a) => a.type === 'alert')?.config?.severity;
     setActionSeverity(String(sev ?? activeTemplate.severity ?? 'medium'));
+    const ev = (existingRule?.definition?.evidence ?? {}) as Partial<EvidencePolicy>;
+    setEvidencePolicy({ ...DEFAULT_EVIDENCE_POLICY, ...ev, images: ev.images ?? DEFAULT_EVIDENCE_POLICY.images });
+    const wh = defActions?.find((a) => a.type === 'webhook');
+    setEnableWebhook(Boolean(wh));
+    setWebhookUrl(String(wh?.config?.url ?? ''));
+    setWebhookPreset(String(wh?.config?.preset ?? ''));
+    setNotifyEmail(String(defActions?.find((a) => a.type === 'notify')?.config?.to ?? ''));
     setError('');
-  }, [activeTemplate, schema, cameras, existingRule]);
+  }, [activeTemplate, schema, cameras, existingRule, initialStep]);
+
+  useEffect(() => {
+    if (!orgId || isEdit) return;
+    void orgApi.get(orgId).then((r) => {
+      const raw = (r.data.notification_prefs as Record<string, unknown> | undefined)?.evidence_defaults as Partial<EvidencePolicy> | undefined;
+      if (raw) setEvidencePolicy(normalizeEvidencePolicy(raw));
+    }).catch(() => undefined);
+  }, [orgId, isEdit]);
 
   useEffect(() => {
     if (!orgId || !cameraId) return;
@@ -165,6 +197,33 @@ export default function RuleStudioDialog({
 
   const activationCfg = useMemo(() => activationConfigFromValues(values), [values]);
 
+  const resolveActionKeys = () => {
+    let keys = [...selectedActions];
+    if (enableWebhook && !keys.some((k) => k.startsWith('webhook:'))) {
+      keys.push('webhook:Webhook / n8n / Make');
+    }
+    if (notifyEmail && !keys.some((k) => k.startsWith('notify:'))) {
+      keys.push('notify:E-mail');
+    }
+    return keys;
+  };
+
+  const buildDefinition = (cond: ConditionNode) => {
+    if (!activeTemplate) return {};
+    const cfg = {
+      ...activationCfg,
+      actions: buildActionsPayload(
+        resolveActionKeys(),
+        actionSeverity,
+        notifyEmail || undefined,
+        enableWebhook ? { url: webhookUrl || undefined, preset: webhookPreset || undefined } : undefined,
+      ),
+    };
+    const definition = buildConfiguredDefinition(activeTemplate, cfg, cond);
+    definition.evidence = evidencePolicy;
+    return definition;
+  };
+
   const previewSummary = useMemo(() => {
     const parts: string[] = [];
     const cls = values.class_filter ? String(values.class_filter) : '';
@@ -178,11 +237,7 @@ export default function RuleStudioDialog({
 
   const previewRule: Rule | null = useMemo(() => {
     if (!activeTemplate) return null;
-    const cfg = {
-      ...activationCfg,
-      actions: buildActionsPayload(selectedActions, actionSeverity, notifyEmail || undefined),
-    };
-    const def = buildConfiguredDefinition(activeTemplate, cfg, conditionTree);
+    const def = buildDefinition(conditionTree);
     return {
       id: existingRule?.id ?? 'preview',
       name: ruleName || activeTemplate.name,
@@ -192,13 +247,17 @@ export default function RuleStudioDialog({
       definition: def,
       actions: def.actions as Rule['actions'],
     } as Rule;
-  }, [activeTemplate, activationCfg, conditionTree, selectedActions, actionSeverity, notifyEmail, ruleName, existingRule]);
+  }, [activeTemplate, activationCfg, conditionTree, selectedActions, actionSeverity, notifyEmail, evidencePolicy, enableWebhook, webhookUrl, webhookPreset, ruleName, existingRule]);
 
   if (!activeTemplate) return null;
 
   const setField = (key: string, val: unknown) => setValues((v) => ({ ...v, [key]: val }));
 
   const validate = (): string | null => {
+    const tplId = activeTemplate?.id ?? '';
+    if (SPATIAL_TEMPLATES_REQUIRING_CLASS.has(tplId) && !values.class_filter) {
+      return t('rules.studio.classRequired');
+    }
     for (const f of schema.fields) {
       if (!f.required) continue;
       const v = values[f.key];
@@ -224,12 +283,8 @@ export default function RuleStudioDialog({
     setSubmitting(true);
     setError('');
     try {
-      const cfg = {
-        ...activationCfg,
-        actions: buildActionsPayload(selectedActions, actionSeverity, notifyEmail || undefined),
-      };
-      const syncedCond = ensureSpatialConditions(conditionTree, cfg);
-      const definition = buildConfiguredDefinition(activeTemplate, cfg, syncedCond);
+      const syncedCond = ensureSpatialConditions(conditionTree, activationCfg);
+      const definition = buildDefinition(syncedCond);
       const name = ruleName.trim() || activeTemplate.name;
       if (isEdit && existingRule) {
         await rulesApi.update(orgId, existingRule.id, { definition, name });
@@ -238,7 +293,7 @@ export default function RuleStudioDialog({
           name,
           definition,
           priority: 10,
-          description: `Activée: cam=${cfg.cameraId}${cfg.zoneName ? ` zone=${cfg.zoneName}` : ''}${cfg.lineName ? ` ligne=${cfg.lineName}` : ''}`,
+          description: `Activée: cam=${activationCfg.cameraId}${activationCfg.zoneName ? ` zone=${activationCfg.zoneName}` : ''}${activationCfg.lineName ? ` ligne=${activationCfg.lineName}` : ''}`,
           ...(siteId ? { site_id: siteId } : {}),
         });
       }
@@ -251,7 +306,7 @@ export default function RuleStudioDialog({
     }
   };
 
-  const actionsStepContent = (
+  const actionsOnlyContent = (
     <div className="space-y-4">
       <p className="text-sm font-medium">{t('rules.studio.actionsTitle')}</p>
       {Object.entries(ACTION_FAMILIES).map(([familyId, familyLabel]) => {
@@ -297,17 +352,39 @@ export default function RuleStudioDialog({
           </select>
         </div>
       )}
-      {selectedActions.some((k) => k.startsWith('notify:')) && (
-        <div>
-          <label className="cv-label">{t('rules.studio.notifyEmail')}</label>
-          <input
-            type="email"
-            className="cv-input w-full"
-            placeholder="alertes@exemple.cd"
-            value={notifyEmail}
-            onChange={(e) => setNotifyEmail(e.target.value)}
-          />
+    </div>
+  );
+
+  const actionsStepContent = (
+    <div className="space-y-4">
+      <SegmentedTabs
+        className="sticky top-0 z-10"
+        tabs={[
+          { id: 'actions', label: 'Actions' },
+          { id: 'evidence', label: 'Preuves' },
+          { id: 'notifications', label: 'Notifications' },
+        ]}
+        value={step3Tab}
+        onChange={(id) => setStep3Tab(id as 'actions' | 'evidence' | 'notifications')}
+      />
+      {step3Tab === 'actions' && actionsOnlyContent}
+      {step3Tab === 'evidence' && (
+        <div id="evidence-policy-panel">
+          <p className="text-xs text-cv-muted mb-2">Clip de preuve automatique (H.264, {evidencePolicy.clip_seconds} s par défaut) — distinct de l&apos;enregistrement long ffmpeg.</p>
+          <EvidencePolicyPanel policy={evidencePolicy} onChange={setEvidencePolicy} />
         </div>
+      )}
+      {step3Tab === 'notifications' && (
+        <OutputChannelsPanel
+          notifyEmail={notifyEmail}
+          onNotifyEmail={setNotifyEmail}
+          webhookPreset={webhookPreset}
+          onWebhookPreset={setWebhookPreset}
+          webhookUrl={webhookUrl}
+          onWebhookUrl={setWebhookUrl}
+          enableWebhook={enableWebhook}
+          onEnableWebhook={setEnableWebhook}
+        />
       )}
     </div>
   );
@@ -330,35 +407,94 @@ export default function RuleStudioDialog({
     }
   };
 
+  const wizardSteps = [
+    { n: 1, label: STEP_LABELS[0], icon: MapPin },
+    { n: 2, label: STEP_LABELS[1], icon: GitBranch },
+    { n: 3, label: STEP_LABELS[2], icon: Zap },
+    { n: 4, label: STEP_LABELS[3], icon: Check },
+  ];
+
   return (
-    <ModalPortal>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="cv-card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6" role="dialog">
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-cv-accent font-semibold mb-1">
-              {isEdit ? t('rules.studio.editTitle') : t('rules.studio.createTitle')}
-            </p>
-            <h2 className="text-lg font-display font-semibold">{activeTemplate.name}</h2>
-            <p className="text-xs text-cv-muted mt-1">
-              {t('rules.studio.step', { step, total: 4 })} · {activeTemplate.category} · {activeTemplate.severity}
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="cv-btn-ghost p-2 rounded-lg" aria-label={t('common.cancel')}>
-            <X className="w-4 h-4" />
-          </button>
+    <Modal
+      open
+      onClose={onClose}
+      maxWidth="2xl"
+      className="max-h-[90vh] overflow-y-auto"
+      footer={
+        <>
+          {step > 1 && (
+            <button type="button" className="cv-btn-secondary" onClick={() => setStep((step - 1) as 1 | 2 | 3 | 4)}>
+              {t('common.back')}
+            </button>
+          )}
+          {step < 4 ? (
+            <button type="button" className="cv-btn-primary" onClick={goNext}>
+              {t('common.next')}
+            </button>
+          ) : (
+            <button type="button" className="cv-btn-primary" disabled={submitting} onClick={() => void submit()}>
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {isEdit ? t('common.save') : t('rules.studio.activate')}
+            </button>
+          )}
+        </>
+      }
+    >
+      <div className="flex items-start justify-between gap-3 mb-4 -mt-2">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-cv-accent font-semibold mb-1">
+            {isEdit ? t('rules.studio.editTitle') : t('rules.studio.createTitle')}
+          </p>
+          <h2 className="text-lg font-display font-semibold">{activeTemplate.name}</h2>
+          <p className="text-xs text-cv-muted mt-1">
+            {STEP_LABELS[step - 1]} — {t('rules.studio.stepLegend', { defaultValue: 'Étape {{step}}/4 — {{label}}', step, label: STEP_LABELS[step - 1] })} · {activeTemplate.category}
+          </p>
         </div>
+        <button type="button" onClick={onClose} className="cv-btn-ghost p-2 rounded-lg" aria-label={t('common.cancel')}>
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-        <div className="flex gap-1 mb-4">
-          {[1, 2, 3, 4].map((s) => (
-            <div
-              key={s}
-              className={`h-1 flex-1 rounded-full transition-colors ${step >= s ? 'bg-cv-accent' : 'bg-cv-border'}`}
-            />
-          ))}
+      <WizardSteps steps={wizardSteps} current={step} className="mb-4" />
+
+      {activeTemplate.tutorial && step === 1 && (
+        <GuideIllustration
+          variant="rules"
+          src={activeTemplate.illustration ?? '/guides/rules-zone-intrusion.svg'}
+          title={t('rules.guide.wizardTitle')}
+          caption={activeTemplate.tutorial}
+          className="mb-4"
+        />
+      )}
+
+      {step === 1 && activeTemplate.definition?.pipeline && (
+        <div className="mb-4 rounded-xl border border-cv-accent/30 bg-cv-accent/5 p-4 space-y-2">
+          <p className="text-sm font-semibold text-cv-accent">
+            {t('rules.pipeline.title', { defaultValue: 'Pipeline multi-étapes' })}
+          </p>
+          <p className="text-xs text-cv-muted">
+            {t('rules.pipeline.legend', {
+              defaultValue: 'Déclencheur → enrichissements (OCR, vitesse) → condition → preuves',
+            })}
+          </p>
+          <ol className="text-xs text-cv-muted list-decimal list-inside space-y-1">
+            {(Array.isArray((activeTemplate.tutorial as { steps?: string[] })?.steps)
+              ? (activeTemplate.tutorial as { steps: string[] }).steps
+              : [
+                  t('rules.pipeline.stepZone', { defaultValue: 'Dessinez la zone sur la voie' }),
+                  t('rules.pipeline.stepClass', { defaultValue: 'Filtrez la classe véhicule' }),
+                  t('rules.pipeline.stepEnrich', { defaultValue: 'OCR plaque + vitesse dans la zone' }),
+                  t('rules.pipeline.stepCondition', { defaultValue: 'Définissez la condition (ex. vitesse)' }),
+                  t('rules.pipeline.stepProofs', { defaultValue: 'Configurez preuves et notifications' }),
+                ]
+            ).map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
         </div>
+      )}
 
-        <div className="space-y-4">
+      <div className="space-y-4">
           {step === 1 && (
             <>
               <div>
@@ -397,6 +533,14 @@ export default function RuleStudioDialog({
                   {t('rules.studio.previewSummary', { details: previewSummary })}
                 </p>
               )}
+              <div className="p-3 rounded-lg border border-cv-border/60 bg-cv-deep/20 text-xs">
+                <p className="font-medium text-sm mb-1">Preuves configurées</p>
+                <p className="text-cv-muted">
+                  Clip {evidencePolicy.clip_seconds}s · {evidencePolicy.images.length} image(s)
+                  {evidencePolicy.draw_bbox ? ' · cadre bbox' : ''}
+                  {!evidencePolicy.enabled ? ' · désactivées' : ''}
+                </p>
+              </div>
               <RuleFlowBuilder rule={previewRule} />
             </div>
           )}
@@ -405,29 +549,7 @@ export default function RuleStudioDialog({
         {error && (
           <p className="mt-4 text-sm text-red-500 bg-red-500/10 border border-red-500/30 rounded-lg p-3">{error}</p>
         )}
-
-        <div className="flex gap-3 mt-6">
-          {step > 1 && (
-            <button type="button" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3 | 4)} className="cv-btn-secondary">
-              {t('onboarding.prev')}
-            </button>
-          )}
-          <button type="button" onClick={onClose} className="cv-btn-secondary flex-1">
-            {t('common.cancel')}
-          </button>
-          {step < 4 ? (
-            <button type="button" onClick={goNext} className="cv-btn-primary flex-1">
-              {t('onboarding.next')}
-            </button>
-          ) : (
-            <button type="button" disabled={submitting} onClick={() => void submit()} className="cv-btn-primary flex-1">
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : t('common.save')}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-    </ModalPortal>
+    </Modal>
   );
 }
 

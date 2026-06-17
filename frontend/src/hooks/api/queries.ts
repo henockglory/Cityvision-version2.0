@@ -157,6 +157,7 @@ export function useEvents(filters?: { eventType?: string; cameraId?: string; rul
         event_type: filters?.eventType,
         camera_id: filters?.cameraId,
         rule_linked: filters?.showAll ? undefined : true,
+        include_incomplete: filters?.showAll ? true : undefined,
       });
       return ensureArray(data).map((e) => mapEvent(e as Parameters<typeof mapEvent>[0]));
     },

@@ -43,6 +43,15 @@
     --cv-body-bg: #f1f5f9;
     --cv-shadow-card: 0 4px 24px rgba(15, 23, 42, 0.08);
     --cv-shadow-soft: 0 2px 8px rgba(15, 23, 42, 0.06);
+    --cv-shadow-glow: 0 0 20px rgb(var(--cv-accent) / 0.12);
+    --cv-metric-cameras: 8 145 178;
+    --cv-metric-alerts: 217 119 6;
+    --cv-metric-events: 124 58 237;
+    --cv-metric-rules: 5 150 105;
+    --cv-severity-low: 100 116 139;
+    --cv-severity-medium: 217 119 6;
+    --cv-severity-high: 234 88 12;
+    --cv-severity-critical: 225 29 72;
   }
 
   html {
@@ -121,6 +130,18 @@
 
   .cv-label {
     @apply block text-sm font-medium text-cv-muted mb-1.5;
+  }
+
+  .cv-panel {
+    @apply p-4 rounded-xl border border-cv-border/60 bg-cv-deep/30;
+  }
+
+  .cv-range {
+    @apply accent-cv-accent;
+  }
+
+  .cv-modal-overlay {
+    @apply bg-black/60 backdrop-blur-sm;
   }
 
   .cv-badge {

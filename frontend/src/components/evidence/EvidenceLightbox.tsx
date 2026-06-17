@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { X, ZoomIn } from 'lucide-react';
 import type { EvidenceBBox } from '@/lib/evidence';
+import { EvidenceImage } from './EvidenceMedia';
 
 interface EvidenceLightboxProps {
-  src: string;
+  apiUrl: string;
   alt: string;
   bbox?: EvidenceBBox | null;
   onClose: () => void;
 }
 
-export default function EvidenceLightbox({ src, alt, bbox, onClose }: EvidenceLightboxProps) {
+export default function EvidenceLightbox({ apiUrl, alt, bbox, onClose }: EvidenceLightboxProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
@@ -27,7 +28,7 @@ export default function EvidenceLightbox({ src, alt, bbox, onClose }: EvidenceLi
         <X className="w-5 h-5" />
       </button>
       <div className="relative max-w-5xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-        <img src={src} alt={alt} className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
+        <EvidenceImage apiUrl={apiUrl} alt={alt} className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
         {bbox && (
           <div
             className="absolute border-2 border-cv-accent pointer-events-none"
@@ -45,20 +46,20 @@ export default function EvidenceLightbox({ src, alt, bbox, onClose }: EvidenceLi
 }
 
 interface EvidenceImageTileProps {
-  src: string;
+  apiUrl: string;
   label: string;
   bbox?: EvidenceBBox | null;
   onOpen: () => void;
 }
 
-export function EvidenceImageTile({ src, label, bbox, onOpen }: EvidenceImageTileProps) {
+export function EvidenceImageTile({ apiUrl, label, bbox, onOpen }: EvidenceImageTileProps) {
   return (
     <button
       type="button"
       onClick={onOpen}
       className="group relative aspect-video rounded-lg overflow-hidden border border-cv-border bg-black/40 text-left"
     >
-      <img src={src} alt={label} className="w-full h-full object-cover" />
+      <EvidenceImage apiUrl={apiUrl} alt={label} />
       {bbox && (
         <div
           className="absolute border border-cv-accent/90 bg-cv-accent/10 pointer-events-none"
@@ -79,10 +80,10 @@ export function EvidenceImageTile({ src, label, bbox, onOpen }: EvidenceImageTil
 }
 
 export function useLightbox() {
-  const [lightbox, setLightbox] = useState<{ src: string; alt: string; bbox?: EvidenceBBox | null } | null>(null);
+  const [lightbox, setLightbox] = useState<{ apiUrl: string; alt: string; bbox?: EvidenceBBox | null } | null>(null);
   return {
     lightbox,
-    openLightbox: (src: string, alt: string, bbox?: EvidenceBBox | null) => setLightbox({ src, alt, bbox }),
+    openLightbox: (apiUrl: string, alt: string, bbox?: EvidenceBBox | null) => setLightbox({ apiUrl, alt, bbox }),
     closeLightbox: () => setLightbox(null),
   };
 }

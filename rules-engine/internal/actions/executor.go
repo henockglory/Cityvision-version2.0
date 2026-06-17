@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/citevision/citevision-v2/rules-engine/internal/evaluator"
@@ -85,6 +86,12 @@ func (e *Executor) runNonAlert(orgID string, rule evaluator.RuleDefinition, payl
 	case "archive_auto":
 		e.runArchiveAuto(orgID, rule, payload, act)
 		entry["status"] = "executed"
+	case "trigger_rule":
+		if e.runTriggerRule(orgID, rule, payload, act) {
+			entry["status"] = "executed"
+		} else {
+			entry["status"] = "skipped"
+		}
 	default:
 		log.Printf("action type %q not in honest registry", act.Type)
 		entry["status"] = "not_implemented"
@@ -136,11 +143,141 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 	if s, ok := cfg["severity"].(string); ok && s != "" {
 		severity = s
 	}
+	e.ensureEvidencePackage(orgID, rule, payload)
+	evPolicy := defaultEvidencePolicy()
+	if rule.Evidence != nil {
+		evPolicy = rule.Evidence
+	}
+	if policyRequiresProof(evPolicy) && !hasEvidencePackage(payload, evPolicy) {
+		log.Printf("alert suppressed: incomplete evidence for rule %s", rule.RuleID)
+		return
+	}
 	meta := e.enrichedMeta(orgID, rule, payload, nil)
 	evidence := buildEvidenceSnapshot(payload)
 	meta["evidence_snapshot"] = evidence
 	if e.Publisher != nil {
 		e.Publisher.PublishAlert(orgID, rule.RuleID, rule.Name, "Règle déclenchée: "+rule.Name, severity, meta)
+	}
+}
+
+func (e *Executor) ensureEvidencePackage(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}) {
+	evPolicy := defaultEvidencePolicy()
+	if rule.Evidence != nil {
+		evPolicy = rule.Evidence
+	}
+	if hasEvidencePackage(payload, evPolicy) {
+		return
+	}
+	cameraID, _ := payload["camera_id"].(string)
+	if cameraID == "" {
+		cameraID = rule.CameraID
+	}
+	if cameraID == "" {
+		return
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"camera_id": cameraID,
+		"event":     payload,
+		"evidence":  evPolicy,
+	})
+	url := fmt.Sprintf("%s/internal/orgs/%s/evidence/request", e.BackendURL, orgID)
+	resp := e.postInternal(url, body)
+	if pkg, ok := resp["package"]; ok {
+		payload["package"] = pkg
+	}
+	if ev, ok := resp["evidence"].(map[string]interface{}); ok {
+		payload["evidence"] = ev
+		if pkg, ok := ev["package"]; ok {
+			payload["package"] = pkg
+		}
+	}
+}
+
+func hasEvidencePackage(payload map[string]interface{}, policy map[string]interface{}) bool {
+	pkg := extractPackage(payload)
+	if pkg == nil {
+		return false
+	}
+	needClip := true
+	if policy != nil {
+		if en, ok := policy["enabled"].(bool); ok && !en {
+			return true
+		}
+		if cs, ok := policy["clip_seconds"].(float64); ok {
+			needClip = cs > 0
+		}
+	}
+	if needClip {
+		clip, _ := pkg["clip"].(map[string]interface{})
+		if clip == nil || (clip["url"] == nil && clip["asset_id"] == nil) {
+			return false
+		}
+	}
+	images, _ := pkg["images"].([]interface{})
+	roles := map[string]bool{}
+	for _, im := range images {
+		m, _ := im.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		role, _ := m["role"].(string)
+		if (m["url"] != nil || m["asset_id"] != nil) && role != "" {
+			roles[role] = true
+		}
+	}
+	required := []string{"scene", "subject"}
+	if policy != nil {
+		if imgs, ok := policy["images"].([]interface{}); ok && len(imgs) > 0 {
+			required = required[:0]
+			for _, im := range imgs {
+				m, _ := im.(map[string]interface{})
+				if m == nil {
+					continue
+				}
+				if role, ok := m["role"].(string); ok && role != "" {
+					required = append(required, role)
+				}
+			}
+		}
+	}
+	for _, r := range required {
+		if !roles[r] {
+			return false
+		}
+	}
+	return true
+}
+
+func policyRequiresProof(policy map[string]interface{}) bool {
+	if policy == nil {
+		return true
+	}
+	if en, ok := policy["enabled"].(bool); ok {
+		return en
+	}
+	return true
+}
+
+func extractPackage(payload map[string]interface{}) map[string]interface{} {
+	if pkg, ok := payload["package"].(map[string]interface{}); ok && pkg != nil {
+		return pkg
+	}
+	if ev, ok := payload["evidence"].(map[string]interface{}); ok {
+		if pkg, ok := ev["package"].(map[string]interface{}); ok {
+			return pkg
+		}
+	}
+	return nil
+}
+
+func defaultEvidencePolicy() map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":      true,
+		"clip_seconds": 6,
+		"images": []map[string]interface{}{
+			{"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
+			{"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 10, "zoom": 1.0},
+		},
 	}
 }
 
@@ -173,6 +310,14 @@ func (e *Executor) runRecord(orgID string, rule evaluator.RuleDefinition, payloa
 	}
 }
 
+func (e *Executor) orgNotificationDefaults(orgID string) (email, webhook string) {
+	url := fmt.Sprintf("%s/internal/orgs/%s/notification-defaults", e.BackendURL, orgID)
+	out := e.getInternal(url)
+	email, _ = out["default_email_to"].(string)
+	webhook, _ = out["default_webhook_url"].(string)
+	return email, webhook
+}
+
 func (e *Executor) runNotify(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) bool {
 	var cfg map[string]interface{}
 	_ = json.Unmarshal(act.Config, &cfg)
@@ -182,19 +327,52 @@ func (e *Executor) runNotify(orgID string, rule evaluator.RuleDefinition, payloa
 	}
 	to, _ := cfg["to"].(string)
 	if to == "" {
+		defEmail, _ := e.orgNotificationDefaults(orgID)
+		to = defEmail
+	}
+	if to == "" {
 		to = os.Getenv("ALERT_EMAIL_TO")
 	}
 	if to == "" {
 		return false
 	}
+	evSnap := buildEvidenceSnapshot(payload)
+	msg := fmt.Sprintf("Règle « %s » déclenchée.\nCaméra: %v\nÉvénement: %v\n", rule.Name, payload["camera_id"], payload["event_type"])
+	msg += formatEvidenceLinksForEmail(evSnap)
 	body, _ := json.Marshal(map[string]interface{}{
 		"to":      to,
 		"subject": "Alerte CitéVision — " + rule.Name,
-		"message": fmt.Sprintf("Règle « %s » déclenchée.\nCaméra: %v\nÉvénement: %v", rule.Name, payload["camera_id"], payload["event_type"]),
+		"message": msg,
 	})
 	url := fmt.Sprintf("%s/internal/orgs/%s/notify/email", e.BackendURL, orgID)
 	e.postInternal(url, body)
 	return true
+}
+
+func formatEvidenceLinksForEmail(evSnap map[string]interface{}) string {
+	if evSnap == nil {
+		return ""
+	}
+	pkg, _ := evSnap["package"].(map[string]interface{})
+	if pkg == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\nPreuves :\n")
+	if clip, ok := pkg["clip"].(map[string]interface{}); ok {
+		if u, ok := clip["url"].(string); ok && u != "" {
+			fmt.Fprintf(&b, "- Clip : %s\n", u)
+		}
+	}
+	if imgs, ok := pkg["images"].([]interface{}); ok {
+		for _, im := range imgs {
+			m, _ := im.(map[string]interface{})
+			if u, ok := m["url"].(string); ok && u != "" {
+				fmt.Fprintf(&b, "- Image : %s\n", u)
+			}
+		}
+	}
+	return b.String()
 }
 
 func (e *Executor) runWebhook(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) bool {
@@ -202,19 +380,34 @@ func (e *Executor) runWebhook(orgID string, rule evaluator.RuleDefinition, paylo
 	_ = json.Unmarshal(act.Config, &cfg)
 	url, _ := cfg["url"].(string)
 	if url == "" {
+		_, defWebhook := e.orgNotificationDefaults(orgID)
+		url = defWebhook
+	}
+	if url == "" {
 		url = os.Getenv("WEBHOOK_LOCAL_URL")
 	}
 	if url == "" {
 		return false
 	}
+	evSnap := buildEvidenceSnapshot(payload)
+	webhookPayload := map[string]interface{}{
+		"org_id":            orgID,
+		"rule_id":           rule.RuleID,
+		"rule_name":         rule.Name,
+		"timestamp":         time.Now().UTC().Format(time.RFC3339),
+		"event":             payload,
+		"evidence_snapshot": evSnap,
+		"camera_id":         payload["camera_id"],
+		"zone_id":           payload["zone_id"],
+		"class_name":        payload["class_name"],
+		"event_type":        payload["event_type"],
+	}
+	if preset, ok := cfg["preset"].(string); ok && preset != "" {
+		webhookPayload["integration_preset"] = preset
+	}
 	body, _ := json.Marshal(map[string]interface{}{
-		"url": url,
-		"payload": map[string]interface{}{
-			"org_id":    orgID,
-			"rule_id":   rule.RuleID,
-			"rule_name": rule.Name,
-			"event":     payload,
-		},
+		"url":     url,
+		"payload": webhookPayload,
 	})
 	ep := fmt.Sprintf("%s/internal/orgs/%s/webhook", e.BackendURL, orgID)
 	e.postInternal(ep, body)
@@ -271,6 +464,21 @@ func (e *Executor) runLog(orgID string, rule evaluator.RuleDefinition, payload m
 	}
 	defer f.Close()
 	_, _ = f.Write(append(line, '\n'))
+}
+
+func (e *Executor) runTriggerRule(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) bool {
+	var cfg struct {
+		RuleID string `json:"rule_id"`
+	}
+	_ = json.Unmarshal(act.Config, &cfg)
+	target := strings.TrimSpace(cfg.RuleID)
+	if target == "" || target == rule.RuleID {
+		return false
+	}
+	if e.Publisher != nil {
+		e.Publisher.PublishRuleTrigger(orgID, target, payload)
+	}
+	return true
 }
 
 func (e *Executor) runArchiveAuto(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) {
@@ -335,6 +543,31 @@ func (e *Executor) postInternal(url string, body []byte) map[string]interface{} 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		log.Printf("internal action HTTP %d for %s", resp.StatusCode, url)
+		return out
+	}
+	_ = json.Unmarshal(respBody, &out)
+	return out
+}
+
+func (e *Executor) getInternal(url string) map[string]interface{} {
+	out := map[string]interface{}{}
+	if e.BackendURL == "" {
+		return out
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return out
+	}
+	if e.InternalKey != "" {
+		req.Header.Set("X-Internal-Key", e.InternalKey)
+	}
+	resp, err := e.HTTP.Do(req)
+	if err != nil {
+		return out
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
 		return out
 	}
 	_ = json.Unmarshal(respBody, &out)

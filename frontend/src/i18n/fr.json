@@ -142,6 +142,54 @@
       "enabled": "Actives",
       "disabled": "Désactivées"
     },
+    "scope": {
+      "national": "Nationale",
+      "enterprise": "Entreprise",
+      "domestic": "Domestique",
+      "all": "Toutes",
+      "mix": "Mix"
+    },
+    "guide": {
+      "bannerTitle": "Choisissez une règle adaptée à votre contexte",
+      "national": "Surveillance à grande échelle : foule, trafic, sites publics.",
+      "enterprise": "Site privé : entrées, zones sensibles, véhicules.",
+      "domestic": "Maison ou résidence : intrusion, présence, accès.",
+      "all": "Parcourez le catalogue par échelle ou configurez vos règles actives ci-dessous.",
+      "wizardTitle": "Comment ça marche"
+    },
+    "catalogTab": {
+      "available": "Disponibles ({{count}})",
+      "extended": "Bientôt ({{count}})",
+      "search": "Rechercher une règle…",
+      "emptyFilter": "Aucune règle ne correspond."
+    },
+    "catalogCard": {
+      "configure": "Configurer",
+      "reactivate": "Réactiver",
+      "configured": "Configurée",
+      "soonBadge": "Bientôt",
+      "showGuide": "Voir le rôle illustré",
+      "hideGuide": "Masquer l'illustration",
+      "disabling": "Désactivation de « {{name}} »…"
+    },
+    "catalogCategory": {
+      "security": "Sécurité & intrusion",
+      "spatial": "Spatial & zones",
+      "traffic": "Trafic & vitesse",
+      "identity": "Identité & plaques",
+      "behavior": "Comportements",
+      "composite": "Composites",
+      "crowd": "Foule & densité",
+      "time": "Temps & horaires",
+      "objects": "Objets & détection",
+      "presence": "Présence & occupation",
+      "quality": "Qualité vidéo",
+      "speed": "Vitesse",
+      "road-enforcement": "Infractions routières",
+      "incident": "Incidents",
+      "industrial": "Industriel"
+    },
+    "enable": "Activer",
     "severity": {
       "low": "Faible",
       "medium": "Moyenne",
@@ -171,7 +219,28 @@
       "addGroup": "Groupe ET/OU",
       "valuePlaceholder": "Valeur",
       "opAnd": "ET (toutes)",
-      "opOr": "OU (au moins une)"
+      "opOr": "OU (au moins une)",
+      "classRequired": "Choisissez l'objet surveillé (personne, véhicule…) pour que la détection soit fiable.",
+      "evidenceTitle": "Preuves automatiques",
+      "evidenceHint": "À chaque alerte : un court clip vidéo et deux photos (vue d'ensemble + cible zoomée) sont enregistrés comme preuve.",
+      "evidenceEnabled": "Capturer clip + images à chaque déclenchement",
+      "clipDuration": "Durée du clip vidéo",
+      "clipDurationHint": "Entre 3 et 15 secondes. Par défaut 6 s — suffisant pour comprendre la situation.",
+      "subjectZoom": "Zoom sur la cible",
+      "subjectZoomHint": "Rapproche l'image sur la personne ou l'objet détecté (cadre coloré).",
+      "drawBbox": "Afficher le cadre de détection sur l'image cible",
+      "imageCount": "Nombre de photos",
+      "imageCountHint": "Par défaut 2 : vue d'ensemble + gros plan sur la cible. Vous pouvez n'en garder qu'une ou en ajouter une troisième.",
+      "subjectPadding": "Marge autour de la cible",
+      "subjectPaddingHint": "Espace laissé autour de la personne ou de l'objet sur la photo zoomée.",
+      "minConfidence": "Fiabilité minimale",
+      "minConfidenceHint": "Ignore les détections trop incertaines avant d'enregistrer une preuve.",
+      "outputsTitle": "Que faire quand la règle se déclenche ?",
+      "outputsHint": "Alerte dans l'app + notifications optionnelles vers e-mail ou outils d'automatisation (n8n, Make, Zapier…).",
+      "notifyEmailHint": "Une alerte par e-mail sera envoyée si le serveur mail est configuré dans Paramètres.",
+      "enableWebhook": "Envoyer aussi vers une automatisation (webhook)",
+      "webhookPreset": "Type d'intégration",
+      "webhookUrl": "URL du webhook"
     }
   },
   "alerts": {
@@ -213,7 +282,22 @@
     "zone": "Zone",
     "track": "Piste",
     "openLive": "Ouvrir live",
-    "download": "Télécharger"
+    "download": "Télécharger",
+    "loadFailed": "Impossible de charger ce média",
+    "loadingMedia": "Chargement des preuves…",
+    "metadataOnly": "Métadonnées présentes, médias en cours de chargement",
+    "automationsTitle": "Automatisations liées",
+    "automationsHint": "Canaux configurés sur la règle source au moment de l'alerte.",
+    "forwardTitle": "Renvoyer / transférer cette alerte",
+    "forwardHint": "Envoyez les données et les liens de preuve vers un e-mail ou un outil d'automatisation (n8n, Make, Zapier…).",
+    "forwardEmail": "E-mail destinataire",
+    "forwardEmailHint": "Un résumé avec liens vers les preuves sera envoyé si le serveur mail est configuré.",
+    "forwardWebhook": "URL webhook / automatisation",
+    "forwardWebhookHint": "Les données complètes de l'alerte et le snapshot des preuves seront envoyés en JSON.",
+    "forwardPreset": "Type d'intégration",
+    "forwardSend": "Envoyer maintenant",
+    "forwardSuccess": "Alerte transférée avec succès.",
+    "forwardError": "Échec du transfert — vérifiez l'e-mail, l'URL ou la configuration SMTP."
   },
   "liveView": {
     "title": "Vue directe",
@@ -296,7 +380,9 @@
     "noData": "Aucune donnée",
     "online": "En ligne",
     "offline": "Hors ligne",
-    "skipTour": "Passer la visite"
+    "skipTour": "Passer la visite",
+    "back": "Retour",
+    "next": "Suivant"
   },
   "roles": {
     "admin": "Administrateur",
@@ -358,13 +444,13 @@
     },
     "rules": {
       "catalog": "Catalogue",
-      "catalogDesc": "Recherchez et activez des règles par catégorie.",
+      "catalogDesc": "Filtrez par échelle (nationale, entreprise, domestique) et activez une règle illustrée.",
       "active": "Règles configurées",
-      "activeDesc": "Modifiez, dupliquez ou désactivez vos règles ici."
+      "activeDesc": "Seules vos règles créées ici — activez ou désactivez avec le bouton dédié."
     },
     "alerts": {
       "filters": "Filtres",
-      "filtersDesc": "Filtrez par période, caméra, règle et sévérité."
+      "filtersDesc": "Filtrez par période, caméra, règle et sévérité. Chaque alerte peut inclure une preuve visuelle."
     },
     "videoWall": {
       "layout": "Disposition",
@@ -374,7 +460,7 @@
     },
     "liveView": {
       "player": "Flux principal",
-      "playerDesc": "Sélectionnez une caméra et contrôlez le PTZ."
+      "playerDesc": "Sélectionnez une caméra et contrôlez le PTZ — le flux est la source des détections."
     },
     "cameras": {
       "list": "Liste caméras",
@@ -382,7 +468,7 @@
     },
     "zones": {
       "canvas": "Canevas zones",
-      "canvasDesc": "Dessinez zones et lignes de détection."
+      "canvasDesc": "Dessinez zones et lignes de détection sur le plan de la caméra."
     },
     "events": {
       "timeline": "Chronologie",

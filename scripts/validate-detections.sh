@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,7 +13,8 @@ EXPECTED_EVENTS=(
   zone_enter zone_exit line_cross loitering
   running crowd_gathering person_stopped vehicle_stopped
   dwell_time_exceeded scene_density_high crowd_count_threshold
-  vehicle_count_threshold speeding speed_below_minimum
+  vehicle_count_threshold speeding speed_below_minimum sudden_stop
+  perimeter_breach unauthorized_exit vehicle_corridor
   face_detected face_unknown plate_detected
   object_abandoned person_vehicle_proximity
   video_blur video_darkness behavior_anomaly
@@ -60,7 +61,8 @@ expected = [
   "zone_enter", "zone_exit", "line_cross", "loitering",
   "running", "crowd_gathering", "person_stopped", "vehicle_stopped",
   "dwell_time_exceeded", "scene_density_high", "crowd_count_threshold",
-  "vehicle_count_threshold", "speeding", "speed_below_minimum",
+  "vehicle_count_threshold", "speeding", "speed_below_minimum", "sudden_stop",
+  "perimeter_breach", "unauthorized_exit", "vehicle_corridor",
   "face_detected", "face_unknown", "plate_detected",
   "object_abandoned", "person_vehicle_proximity",
   "video_blur", "video_darkness", "behavior_anomaly",

@@ -102,6 +102,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*models.Camera
 	if err != nil {
 		return nil, err
 	}
+	if rtsp, err := s.BuildRTSP(ctx, cam.OrgID, cam.ID); err == nil && rtsp != "" {
+		_ = OnboardCamera(ctx, &cam, rtsp)
+		if len(cam.Metadata) > 0 {
+			_, _ = s.pool.Exec(ctx, `UPDATE cameras SET metadata = $1, updated_at = NOW() WHERE id = $2`, cam.Metadata, cam.ID)
+		}
+	}
 	return &cam, nil
 }
 

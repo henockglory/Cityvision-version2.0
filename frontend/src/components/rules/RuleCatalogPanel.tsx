@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Check, ChevronDown, Clock, PowerOff, Search } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { mapRuleCatalogItem } from '@/api/mappers';
 import { resolveConfigSchema } from '@/lib/ruleConfigSchema';
 import { iconForTemplate } from '@/lib/iconMap';
 import IconBadge from '@/components/ui/IconBadge';
+import GuideIllustration from '@/components/ui/GuideIllustration';
 import type { Rule, RuleCatalogTemplate } from '@/types';
 
 interface RuleCatalogPanelProps {
@@ -17,20 +19,18 @@ interface RuleCatalogPanelProps {
   onActivated?: () => void;
   compact?: boolean;
   catalogOnly?: boolean;
+  deploymentScope?: 'all' | 'national' | 'enterprise' | 'domestic';
 }
 
 type CatalogTab = 'supported' | 'extended';
 
-const CATEGORY_LABELS: Record<string, string> = {
-  security: 'Sécurité & intrusion',
-  spatial: 'Spatial & zones',
-  traffic: 'Trafic & vitesse',
-  identity: 'Identité & plaques',
-  behavior: 'Comportements',
-  composite: 'Composites',
-  crowd: 'Foule & densité',
-  time: 'Temps & horaires',
-};
+function scopeBadgeLabel(tpl: RuleCatalogTemplate, t: (k: string) => string): string {
+  const scopes = tpl.deployment_scopes ?? [];
+  const unique = Array.from(new Set(scopes));
+  if (unique.length === 0 || unique.length >= 3) return t('rules.scope.all');
+  if (unique.length === 1) return t(`rules.scope.${unique[0]}`);
+  return t('rules.scope.mix');
+}
 
 function hasConfigSchema(tpl: RuleCatalogTemplate): boolean {
   return (resolveConfigSchema(tpl).fields?.length ?? 0) > 0;
@@ -54,6 +54,7 @@ function RuleCard({
   onEnable,
   setMessage,
   catalogOnly,
+  t,
 }: {
   tpl: RuleCatalogTemplate;
   isActive: boolean;
@@ -64,26 +65,45 @@ function RuleCard({
   onEnable?: (id: string) => void;
   setMessage: (m: string) => void;
   catalogOnly?: boolean;
+  t: (k: string, opts?: Record<string, unknown>) => string;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const summary = tpl.role_summary_fr ?? tpl.human_description ?? '';
+  const illustration = tpl.illustration ?? (tpl.category === 'spatial' ? '/guides/spatial.svg' : '/guides/rules-zone-intrusion.svg');
+
   return (
     <div
-      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+      className={`rounded-lg border transition-colors ${
         isActive ? 'border-metric-rules/40 bg-metric-rules/5' :
         isOccupied ? 'border-metric-alerts/30 bg-metric-alerts/5' :
         'border-cv-border/70 bg-cv-deep/30 hover:border-cv-accent/20'
       }`}
     >
-      <IconBadge src={iconForTemplate(tpl.id, tpl.category)} alt="" size="md" />
+      <div className="flex items-start gap-3 p-3">
+      <IconBadge src={iconForTemplate(tpl.id, tpl.category)} alt="" size="md" category={tpl.category} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="font-medium text-sm">{tpl.name}</p>
-          {isActive && <span className="cv-badge-online text-[10px]">Active</span>}
-          {isOccupied && !isActive && <span className="text-[10px] text-metric-alerts font-semibold">Désactivée</span>}
-          {!isSupported && <span className="text-[10px] text-cv-muted bg-cv-surface px-1.5 py-0.5 rounded">Bientôt</span>}
+          <span className="text-[10px] text-cv-muted bg-cv-surface px-1.5 py-0.5 rounded">{scopeBadgeLabel(tpl, t)}</span>
+          {isActive && <span className="cv-badge-online text-[10px]">{t('rules.enabled')}</span>}
+          {isOccupied && !isActive && <span className="text-[10px] text-metric-alerts font-semibold">{t('rules.disabled')}</span>}
+          {!isSupported && <span className="text-[10px] text-cv-muted bg-cv-surface px-1.5 py-0.5 rounded">{t('rules.catalogCard.soonBadge')}</span>}
         </div>
         <p className="text-xs text-cv-muted mt-0.5">{tpl.severity}</p>
         {tpl.human_description && (
           <p className="text-xs text-cv-muted/90 mt-1 line-clamp-2">{tpl.human_description}</p>
+        )}
+        {summary && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[11px] text-cv-accent/90 mt-1 text-left hover:underline"
+          >
+            {expanded ? t('rules.catalogCard.hideGuide') : t('rules.catalogCard.showGuide')}
+          </button>
+        )}
+        {tpl.tutorial && isSupported && (
+          <p className="text-[11px] text-cv-accent/80 mt-1 line-clamp-2">{tpl.tutorial}</p>
         )}
         {!isSupported && (
           <p className="text-[10px] text-metric-alerts mt-1 flex items-start gap-1">
@@ -97,7 +117,7 @@ function RuleCard({
           <>
             {isOccupied && (
               <span className="text-[10px] text-metric-rules flex items-center gap-1 justify-end">
-                <Check className="w-3 h-3" /> {isActive ? 'Active' : 'Configurée'}
+                <Check className="w-3 h-3" /> {isActive ? t('rules.enabled') : t('rules.catalogCard.configured')}
               </span>
             )}
             <button
@@ -106,21 +126,21 @@ function RuleCard({
               onClick={() => onConfigure(tpl)}
               className="cv-btn-primary text-xs py-1.5 px-2 disabled:opacity-40"
             >
-              Configurer
+              {t('rules.catalogCard.configure')}
             </button>
           </>
         ) : isActive ? (
           <button
             type="button"
-            onClick={() => { onDisable?.(tpl.id); setMessage(`Désactivation de « ${tpl.name} »…`); }}
+            onClick={() => { onDisable?.(tpl.id); setMessage(t('rules.catalogCard.disabling', { name: tpl.name })); }}
             className="cv-btn-secondary text-xs py-1.5 px-2"
           >
             <PowerOff className="w-3 h-3" />
-            Désactiver
+            {t('rules.disable')}
           </button>
         ) : isOccupied ? (
           <button type="button" disabled={!onEnable} onClick={() => onEnable?.(tpl.id)} className="cv-btn-secondary text-xs py-1.5 px-2">
-            Réactiver
+            {t('rules.catalogCard.reactivate')}
           </button>
         ) : (
           <button
@@ -129,10 +149,22 @@ function RuleCard({
             onClick={() => onConfigure(tpl)}
             className="cv-btn-primary text-xs py-1.5 px-2 disabled:opacity-40"
           >
-            Configurer
+            {t('rules.catalogCard.configure')}
           </button>
         )}
       </div>
+      </div>
+      {expanded && summary && (
+        <div className="px-3 pb-3">
+          <GuideIllustration
+            variant="rules"
+            src={illustration}
+            title={tpl.name}
+            caption={summary}
+            compact
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -146,15 +178,22 @@ export default function RuleCatalogPanel({
   onEnable,
   compact = false,
   catalogOnly = false,
+  deploymentScope = 'all',
 }: RuleCatalogPanelProps) {
+  const { t } = useTranslation();
   const [message, setMessage] = useState('');
   const [tab, setTab] = useState<CatalogTab>('supported');
   const [query, setQuery] = useState('');
   const [openCats, setOpenCats] = useState<Set<string>>(new Set(['security', 'spatial']));
 
+  const scopedTemplates = useMemo(() => {
+    if (!deploymentScope || deploymentScope === 'all') return templates;
+    return templates.filter((t) => (t.deployment_scopes ?? []).includes(deploymentScope));
+  }, [templates, deploymentScope]);
+
   const sorted = useMemo(
-    () => [...templates].map(mapRuleCatalogItem).sort((a, b) => a.name.localeCompare(b.name)),
-    [templates],
+    () => [...scopedTemplates].map(mapRuleCatalogItem).sort((a, b) => a.name.localeCompare(b.name)),
+    [scopedTemplates],
   );
 
   const supported = sorted.filter((t) => t.supported !== false && hasConfigSchema(t));
@@ -200,14 +239,14 @@ export default function RuleCatalogPanel({
             onClick={() => setTab('supported')}
             className={`text-xs font-medium px-3 py-1.5 rounded-lg ${tab === 'supported' ? 'bg-cv-accent/15 text-cv-accent' : 'text-cv-muted'}`}
           >
-            Disponibles ({supported.length})
+            {t('rules.catalogTab.available', { count: supported.length })}
           </button>
           <button
             type="button"
             onClick={() => setTab('extended')}
             className={`text-xs font-medium px-3 py-1.5 rounded-lg ${tab === 'extended' ? 'bg-cv-accent/15 text-cv-accent' : 'text-cv-muted'}`}
           >
-            Bientôt ({extended.length})
+            {t('rules.catalogTab.extended', { count: extended.length })}
           </button>
         </div>
         <div className="relative flex-1 max-w-xs">
@@ -215,7 +254,7 @@ export default function RuleCatalogPanel({
           <input
             type="search"
             className="cv-input text-xs pl-9 py-2"
-            placeholder="Rechercher une règle…"
+            placeholder={t('rules.catalogTab.search')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -225,7 +264,7 @@ export default function RuleCatalogPanel({
       {message && <p className="text-xs text-cv-accent font-medium">{message}</p>}
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-cv-muted py-4 text-center">Aucune règle ne correspond.</p>
+        <p className="text-sm text-cv-muted py-4 text-center">{t('rules.catalogTab.emptyFilter')}</p>
       ) : (
         <div className="space-y-2">
           {byCategory.map(([cat, items]) => (
@@ -236,8 +275,8 @@ export default function RuleCatalogPanel({
                 className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-cv-deep/40 hover:bg-cv-deep/60 text-left"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <img src={iconForTemplate(undefined, cat)} alt="" className="w-6 h-6" />
-                  <span className="text-sm font-medium truncate">{CATEGORY_LABELS[cat] ?? cat}</span>
+                  <IconBadge src={iconForTemplate(undefined, cat)} alt="" size="lg" category={cat} />
+                  <span className="text-sm font-medium truncate">{t(`rules.catalogCategory.${cat}`, { defaultValue: cat })}</span>
                   <span className="text-xs text-cv-muted">({items.length})</span>
                 </div>
                 <ChevronDown className={`w-4 h-4 text-cv-muted transition-transform ${openCats.has(cat) ? 'rotate-180' : ''}`} />
@@ -256,6 +295,7 @@ export default function RuleCatalogPanel({
                       onEnable={onEnable}
                       setMessage={setMessage}
                       catalogOnly={catalogOnly}
+                      t={t}
                     />
                   ))}
                 </div>

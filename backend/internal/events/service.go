@@ -109,7 +109,7 @@ type EnrichedEvent struct {
 	LabelFR    string   `json:"label_fr,omitempty"`
 }
 
-func (s *Service) ListEnriched(ctx context.Context, orgID uuid.UUID, limit int, eventType, cameraID string, ruleLinkedOnly bool) ([]EnrichedEvent, error) {
+func (s *Service) ListEnriched(ctx context.Context, orgID uuid.UUID, limit int, eventType, cameraID string, ruleLinkedOnly bool, includeIncomplete bool) ([]EnrichedEvent, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -117,7 +117,7 @@ func (s *Service) ListEnriched(ctx context.Context, orgID uuid.UUID, limit int, 
 		SELECT e.id, e.org_id, e.site_id, e.camera_id, e.event_type, e.severity, e.payload,
 			COALESCE(e.evidence_snapshot, '{}'::jsonb), e.occurred_at, e.ingested_at,
 			COALESCE(c.name, ''),
-			r.name
+			r.name, COALESCE(r.definition, '{}'::jsonb)
 		FROM events e
 		LEFT JOIN cameras c ON c.id = e.camera_id
 		LEFT JOIN rules r ON r.id = (e.payload->>'matched_rule_id')::uuid
@@ -151,14 +151,21 @@ func (s *Service) ListEnriched(ctx context.Context, orgID uuid.UUID, limit int, 
 	for rows.Next() {
 		var ee EnrichedEvent
 		var ruleName *string
+		var ruleDef json.RawMessage
 		if err := rows.Scan(
 			&ee.ID, &ee.OrgID, &ee.SiteID, &ee.CameraID, &ee.EventType, &ee.Severity, &ee.Payload,
 			&ee.EvidenceSnapshot, &ee.OccurredAt, &ee.IngestedAt,
-			&ee.CameraName, &ruleName,
+			&ee.CameraName, &ruleName, &ruleDef,
 		); err != nil {
 			return nil, err
 		}
 		ee.RuleName = ruleName
+		if !includeIncomplete && ruleLinkedOnly {
+			policy := evidence.PolicyFromDefinition(ruleDef)
+			if evidence.PolicyRequiresProof(policy) && !evidence.IsComplete(ee.EvidenceSnapshot, policy) {
+				continue
+			}
+		}
 		var payload map[string]interface{}
 		_ = json.Unmarshal(ee.Payload, &payload)
 		if meta, ok := payload["metadata"].(map[string]interface{}); ok {
@@ -172,4 +179,12 @@ func (s *Service) ListEnriched(ctx context.Context, orgID uuid.UUID, limit int, 
 		list = append(list, ee)
 	}
 	return list, rows.Err()
+}
+
+func (s *Service) PurgeForOrg(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM events WHERE org_id = $1`, orgID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }

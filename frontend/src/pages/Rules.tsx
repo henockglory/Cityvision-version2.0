@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { RuleCatalogTemplate } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { BookOpen } from 'lucide-react';
@@ -10,12 +11,14 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { RulesSkeleton } from '@/components/ui/Skeleton';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
-import { rulesApi } from '@/api/client';
+import { orgApi, rulesApi } from '@/api/client';
 import { useRules, useRuleCatalog } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
 import { useUndoToast } from '@/hooks/useUndoToast';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
+import SegmentedTabs from '@/components/ui/SegmentedTabs';
+import GuideIllustration from '@/components/ui/GuideIllustration';
 import type { Rule } from '@/types';
 
 export default function Rules() {
@@ -28,25 +31,70 @@ export default function Rules() {
   const startRulesTour = useAutoPageTour('rules');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editRule, setEditRule] = useState<Rule | null>(null);
+  const [editInitialStep, setEditInitialStep] = useState<1 | 2 | 3 | 4>(1);
   const [configuringTemplate, setConfiguringTemplate] = useState<RuleCatalogTemplate | null>(null);
   const [pickTemplate, setPickTemplate] = useState(false);
   const [confirm, setConfirm] = useState<{ type: 'delete' | 'disable'; rule: Rule } | null>(null);
+  const [deploymentScope, setDeploymentScope] = useState<'all' | 'national' | 'enterprise' | 'domestic'>('all');
+  const [orgDeployLoaded, setOrgDeployLoaded] = useState(false);
+  const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
+
+  const flashRuleHighlight = (ruleId: string) => {
+    setHighlightedRuleId(ruleId);
+    window.setTimeout(() => {
+      setHighlightedRuleId((cur) => (cur === ruleId ? null : cur));
+    }, 2000);
+  };
+
+  const ruleOrigin = (rule: Rule) => String((rule.definition?.bindings as Record<string, unknown>)?.origin ?? '');
+
+  const userRules = useMemo(() => rules.filter((r) => ruleOrigin(r) === 'user'), [rules]);
 
   const occupiedTemplateIds = useMemo(
     () =>
-      rules
+      userRules
         .map((r) => String((r.definition?.bindings as Record<string, unknown>)?.template_id ?? ''))
         .filter(Boolean),
-    [rules],
+    [userRules],
   );
+
+  const location = useLocation();
+  const navState = location.state as { editRuleId?: string; editStep?: 1 | 2 | 3 | 4 } | null;
+
+  useEffect(() => {
+    if (!navState?.editRuleId || rules.length === 0) return;
+    const rule = rules.find((r) => r.id === navState.editRuleId);
+    if (rule) {
+      setEditInitialStep(navState.editStep ?? 3);
+      setEditRule(rule);
+      window.history.replaceState({}, document.title);
+    }
+  }, [navState?.editRuleId, navState?.editStep, rules]);
+
+  useEffect(() => {
+    if (!orgId) return;
+    if (orgDeployLoaded) return;
+    void orgApi
+      .get(orgId)
+      .then((r) => {
+        const profile = (r.data.notification_prefs as Record<string, unknown> | undefined)?.deployment_profile;
+        if (profile === 'national' || profile === 'enterprise' || profile === 'domestic') {
+          setDeploymentScope(profile);
+        } else {
+          setDeploymentScope('enterprise');
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setOrgDeployLoaded(true));
+  }, [orgId, orgDeployLoaded]);
 
   const activeTemplateIds = useMemo(
     () =>
-      rules
+      userRules
         .filter((r) => r.enabled)
         .map((r) => String((r.definition?.bindings as Record<string, unknown>)?.template_id ?? ''))
         .filter(Boolean),
-    [rules],
+    [userRules],
   );
 
   const runDelete = async (rule: Rule) => {
@@ -108,6 +156,7 @@ export default function Rules() {
     void refetch();
   };
 
+
   if (isLoading || catalog.isLoading) {
     return (
       <PageShell title={t('rules.title')} onHelpTour={startRulesTour}>
@@ -132,11 +181,40 @@ export default function Rules() {
     >
       <ToastContainer />
 
+      <GuideIllustration
+        variant="rules"
+        title={t('rules.guide.bannerTitle')}
+        caption={
+          deploymentScope === 'national'
+            ? t('rules.guide.national')
+            : deploymentScope === 'domestic'
+              ? t('rules.guide.domestic')
+              : deploymentScope === 'enterprise'
+                ? t('rules.guide.enterprise')
+                : t('rules.guide.all')
+        }
+        className="mb-4"
+      />
+
       <section id="rules-catalog" className="cv-card p-5">
         <div className="flex items-center gap-2 mb-4">
           <BookOpen className="w-5 h-5 text-cv-accent" />
           <h2 className="font-display text-lg font-semibold">{t('rules.catalog')}</h2>
         </div>
+
+        <div className="mb-4">
+          <SegmentedTabs
+            tabs={[
+              { id: 'national', label: t('rules.scope.national') },
+              { id: 'enterprise', label: t('rules.scope.enterprise') },
+              { id: 'domestic', label: t('rules.scope.domestic') },
+              { id: 'all', label: t('rules.scope.all') },
+            ]}
+            value={deploymentScope}
+            onChange={(id) => setDeploymentScope(id as 'all' | 'national' | 'enterprise' | 'domestic')}
+          />
+        </div>
+
         <RuleCatalogPanel
           templates={catalog.data ?? []}
           occupiedTemplateIds={occupiedTemplateIds}
@@ -144,16 +222,20 @@ export default function Rules() {
           onConfigure={setConfiguringTemplate}
           onActivated={() => void refetch()}
           catalogOnly
+          deploymentScope={deploymentScope}
         />
       </section>
 
-      {rules.length === 0 ? (
-        <EmptyState title={t('rules.empty')} hint={t('rules.emptyHint')} />
+      {userRules.length === 0 ? (
+        <EmptyState title={t('rules.empty')} hint={t('rules.emptyHint')} guideVariant="rules" />
       ) : (
         <ActiveRulesPanel
-          rules={rules}
+          rules={userRules}
           busyId={busyId}
-          onEdit={setEditRule}
+          highlightedRuleId={highlightedRuleId}
+          onHighlight={flashRuleHighlight}
+          onEdit={(r) => { setEditInitialStep(1); setEditRule(r); }}
+          onEditEvidence={(r) => { setEditInitialStep(3); setEditRule(r); }}
           onDelete={(r) => setConfirm({ type: 'delete', rule: r })}
           onDisable={(r) => setConfirm({ type: 'disable', rule: r })}
           onEnable={runEnable}
@@ -177,6 +259,7 @@ export default function Rules() {
         <RuleStudioDialog
           template={null}
           existingRule={editRule}
+          initialStep={editInitialStep}
           onClose={() => setEditRule(null)}
           onActivated={() => void refetch()}
         />
@@ -200,6 +283,7 @@ export default function Rules() {
               }}
               compact
               catalogOnly
+              deploymentScope="all"
             />
             <button type="button" className="cv-btn-secondary w-full mt-4" onClick={() => setPickTemplate(false)}>
               {t('common.cancel')}

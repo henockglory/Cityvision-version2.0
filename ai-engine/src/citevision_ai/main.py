@@ -90,6 +90,14 @@ class CameraStartRequest(BaseModel):
     watchlist: list[dict[str, Any]] = Field(default_factory=list)
     plates: list[dict[str, Any]] = Field(default_factory=list)
     analytics_thresholds: dict[str, Any] = Field(default_factory=dict)
+    evidence_capture_rules: list[dict[str, Any]] = Field(default_factory=list)
+    capability_profiles: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class EvidenceCaptureRequest(BaseModel):
+    org_id: str
+    event: dict[str, Any] = Field(default_factory=dict)
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class RulePayload(BaseModel):
@@ -104,6 +112,8 @@ class ProcessRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    import shutil
+
     loaded = pipeline.detector.is_loaded if pipeline else False
     provider = pipeline.detector.active_provider if pipeline else "none"
     return {
@@ -112,6 +122,7 @@ def health() -> dict[str, str]:
         "yolo_loaded": str(loaded).lower(),
         "yolo_provider": provider,
         "yolo_cuda": str(pipeline.detector.uses_cuda if pipeline else False).lower(),
+        "ffmpeg_available": str(shutil.which("ffmpeg") is not None).lower(),
     }
 
 
@@ -166,6 +177,10 @@ def start_camera(camera_id: str, body: CameraStartRequest) -> dict[str, Any]:
         pipeline.set_plates(body.plates)
     if body.analytics_thresholds:
         pipeline.apply_runtime_config(camera_id, body.analytics_thresholds)
+    if body.evidence_capture_rules:
+        pipeline.set_evidence_capture_rules(camera_id, body.evidence_capture_rules)
+    if body.capability_profiles:
+        pipeline.set_capability_profiles(camera_id, body.capability_profiles)
     if not body.rtsp_url and not body.video_file:
         raise HTTPException(status_code=400, detail="rtsp_url or video_file required")
     status = worker_manager.start_camera(
@@ -176,6 +191,19 @@ def start_camera(camera_id: str, body: CameraStartRequest) -> dict[str, Any]:
         ai_fps=body.ai_fps,
     )
     return {"status": "started", **status}
+
+
+@app.post("/cameras/{camera_id}/evidence/capture")
+def capture_evidence(camera_id: str, body: EvidenceCaptureRequest) -> dict[str, Any]:
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    policy = body.evidence or {}
+    uploaded = pipeline.evidence.capture_retroactive(
+        camera_id, body.org_id, dict(body.event), policy if policy else None
+    )
+    if not uploaded:
+        raise HTTPException(status_code=404, detail="capture unavailable")
+    return uploaded
 
 
 @app.post("/cameras/{camera_id}/stop")

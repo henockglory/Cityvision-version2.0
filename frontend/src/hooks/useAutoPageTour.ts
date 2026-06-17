@@ -37,6 +37,7 @@ export function useAutoPageTour(tourId: TourId) {
   }, [t, tourId, completeTour]);
 
   useEffect(() => {
+    if ((window as unknown as { __CV_E2E__?: boolean }).__CV_E2E__) return;
     if (!toursAutoStart || completed || startedRef.current) return;
     const steps = getTourSteps(tourId, (k) => t(k));
     if (steps.length === 0) return;

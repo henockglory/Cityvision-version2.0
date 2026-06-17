@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import logging
+import os
+import shutil
+import subprocess
+import tempfile
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -7,11 +12,20 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class BufferedFrame:
     jpeg: bytes
     ts: float
+
+
+@dataclass
+class ClipExport:
+    data: bytes
+    duration_sec: float
+    frame_count: int
 
 
 class FrameRingBuffer:
@@ -21,8 +35,10 @@ class FrameRingBuffer:
         self.max_seconds = max_seconds
         self.min_interval = 1.0 / max(fps, 1)
         self.jpeg_quality = jpeg_quality
+        self.fps = fps
         self._frames: deque[BufferedFrame] = deque()
         self._last_push: float = 0.0
+        self._last_bgr: np.ndarray | None = None
 
     def maybe_push(self, frame: np.ndarray) -> None:
         now = time.time()
@@ -36,40 +52,98 @@ class FrameRingBuffer:
         cutoff = now - self.max_seconds
         while self._frames and self._frames[0].ts < cutoff:
             self._frames.popleft()
+        self._last_bgr = frame.copy()
 
-    def export_clip_mp4(self, duration_sec: float = 6.0, fps: int = 5) -> bytes | None:
+    def _decode_frame(self, bf: BufferedFrame) -> np.ndarray | None:
+        arr = np.frombuffer(bf.jpeg, dtype=np.uint8)
+        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+    def get_last_frame(self) -> np.ndarray | None:
+        if self._last_bgr is not None:
+            return self._last_bgr
         if not self._frames:
             return None
+        return self._decode_frame(self._frames[-1])
+
+    def get_frame_at_ts(self, event_ts: float | None) -> np.ndarray | None:
+        """Return frame closest to event timestamp, or last frame."""
+        if not self._frames:
+            return self.get_last_frame()
+        if event_ts is None or event_ts <= 0:
+            return self.get_last_frame()
+        best = min(self._frames, key=lambda f: abs(f.ts - event_ts))
+        img = self._decode_frame(best)
+        return img if img is not None else self.get_last_frame()
+
+    def export_clip_mp4(self, duration_sec: float = 6.0, fps: int | None = None) -> ClipExport | None:
+        if not self._frames:
+            return None
+        use_fps = fps or self.fps
         frames_bgr: list[np.ndarray] = []
         for bf in self._frames:
-            arr = np.frombuffer(bf.jpeg, dtype=np.uint8)
-            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            img = self._decode_frame(bf)
             if img is not None:
                 frames_bgr.append(img)
         if not frames_bgr:
             return None
-        max_frames = int(duration_sec * fps)
+
+        max_frames = max(1, int(duration_sec * use_fps))
+        min_frames = max(3, int(duration_sec * use_fps * 0.4))
         if len(frames_bgr) > max_frames:
             frames_bgr = frames_bgr[-max_frames:]
-        h, w = frames_bgr[0].shape[:2]
-        import tempfile
-        import os
 
-        tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-        tmp_path = tmp.name
-        tmp.close()
-        try:
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            writer = cv2.VideoWriter(tmp_path, fourcc, float(fps), (w, h))
-            if not writer.isOpened():
+        # Pad with last valid frame to reach minimum playable duration
+        if len(frames_bgr) < min_frames:
+            last = frames_bgr[-1]
+            while len(frames_bgr) < min_frames:
+                frames_bgr.append(last.copy())
+
+        if shutil.which("ffmpeg"):
+            data = self._export_h264_ffmpeg(frames_bgr, use_fps)
+            if data is None:
                 return None
-            for img in frames_bgr:
-                writer.write(img)
-            writer.release()
-            with open(tmp_path, "rb") as f:
-                return f.read()
+            actual_dur = len(frames_bgr) / max(use_fps, 1)
+            return ClipExport(data=data, duration_sec=round(actual_dur, 2), frame_count=len(frames_bgr))
+
+        logger.warning("ffmpeg not found — evidence clip skipped (browser requires H.264)")
+        return None
+
+    def _export_h264_ffmpeg(self, frames_bgr: list[np.ndarray], fps: int) -> bytes | None:
+        tmp_dir = tempfile.mkdtemp(prefix="cv_evidence_")
+        out_path = os.path.join(tmp_dir, "clip.mp4")
+        try:
+            for i, img in enumerate(frames_bgr):
+                path = os.path.join(tmp_dir, f"frame_{i:04d}.jpg")
+                if not cv2.imwrite(path, img):
+                    return None
+            cmd = [
+                "ffmpeg", "-y",
+                "-framerate", str(fps),
+                "-i", os.path.join(tmp_dir, "frame_%04d.jpg"),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                "-preset", "veryfast",
+                "-tune", "zerolatency",
+                out_path,
+            ]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if result.returncode != 0:
+                logger.warning("ffmpeg evidence clip failed: %s", result.stderr[-500:])
+                return None
+            with open(out_path, "rb") as f:
+                data = f.read()
+            if len(data) < 256:
+                return None
+            return data
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("ffmpeg evidence clip error: %s", exc)
+            return None
         finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+            shutil.rmtree(tmp_dir, ignore_errors=True)

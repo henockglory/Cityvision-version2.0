@@ -97,6 +97,8 @@ function backendToZone(z: BackendZone): Zone {
 
     cameraId: z.camera_id ?? '',
 
+    zoneKind: z.zone_kind || undefined,
+
   };
 
 }
@@ -403,6 +405,8 @@ export default function ZoneEditor() {
             polygon,
 
             color: zone.color,
+
+            zone_kind: zone.zoneKind || '',
 
           });
 
@@ -777,6 +781,34 @@ export default function ZoneEditor() {
             />
 
           )}
+
+          {editMode === 'zone' && selectedId?.startsWith('draft-') && (() => {
+            const draft = draftZones.find((z) => z.id === selectedId);
+            if (!draft) return null;
+            return (
+              <div className="mt-3 pt-3 border-t border-cv-border space-y-2">
+                <label className="text-xs text-cv-muted block">
+                  {t('zoneEditor.zoneKind', 'Type de zone (sémantique IA)')}
+                </label>
+                <select
+                  className="cv-input w-full text-sm"
+                  value={draft.zoneKind ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDraftZones((prev) =>
+                      prev.map((z) => (z.id === selectedId ? { ...z, zoneKind: v || undefined } : z)),
+                    );
+                  }}
+                >
+                  <option value="">{t('zoneEditor.zoneKindAuto', 'Auto (nom de zone)')}</option>
+                  <option value="perimeter">{t('zoneEditor.zoneKindPerimeter', 'Périmètre')}</option>
+                  <option value="controlled_exit">{t('zoneEditor.zoneKindExit', 'Sortie contrôlée')}</option>
+                  <option value="corridor">{t('zoneEditor.zoneKindCorridor', 'Couloir / véhicules')}</option>
+                  <option value="parking">{t('zoneEditor.zoneKindParking', 'Stationnement')}</option>
+                </select>
+              </div>
+            );
+          })()}
 
           <button
 

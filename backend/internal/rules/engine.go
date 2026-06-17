@@ -80,7 +80,7 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, siteID *uuid.UUID
 func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]models.Rule, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, org_id, site_id, name, description, definition, is_enabled, priority, created_at, updated_at
-		FROM rules WHERE org_id = $1 ORDER BY priority DESC, name`, orgID)
+		FROM rules WHERE org_id = $1 ORDER BY created_at ASC, name ASC`, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func ValidateDefinition(raw json.RawMessage) error {
 			return fmt.Errorf("action type is required")
 		}
 	}
-	return nil
+	return validateDefinitionMap(raw)
 }
 
 func EvaluateDefinition(raw json.RawMessage, eventPayload map[string]interface{}, now time.Time) (EvaluateResponse, error) {
@@ -360,4 +360,48 @@ func inTimeWindow(w TimeWindow, now time.Time) bool {
 		return h >= w.StartHour && h < w.EndHour
 	}
 	return h >= w.StartHour || h < w.EndHour
+}
+
+func (s *Service) DisableAll(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE rules SET is_enabled = FALSE, updated_at = NOW() WHERE org_id = $1 AND is_enabled = TRUE`, orgID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// PurgeNonUserRules deletes rules not explicitly created by a user (bindings.origin != "user").
+func (s *Service) PurgeNonUserRules(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM rules
+		WHERE org_id = $1
+		  AND COALESCE(definition->'bindings'->>'origin', '') <> 'user'`, orgID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// StampUserOrigin ensures definition.bindings.origin is "user" for API-created rules.
+func StampUserOrigin(def json.RawMessage) json.RawMessage {
+	if len(def) == 0 {
+		def = []byte(`{}`)
+	}
+	var root map[string]interface{}
+	if err := json.Unmarshal(def, &root); err != nil {
+		return def
+	}
+	bindings, _ := root["bindings"].(map[string]interface{})
+	if bindings == nil {
+		bindings = map[string]interface{}{}
+		root["bindings"] = bindings
+	}
+	if origin, ok := bindings["origin"].(string); !ok || origin == "" {
+		bindings["origin"] = "user"
+	}
+	out, err := json.Marshal(root)
+	if err != nil {
+		return def
+	}
+	return out
 }

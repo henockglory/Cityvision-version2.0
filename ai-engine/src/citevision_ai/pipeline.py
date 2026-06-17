@@ -64,6 +64,7 @@ class PipelineService:
         self._line_configs: dict[str, dict[str, dict[str, Any]]] = {}
         self._timestamps: dict[str, float] = {}
         self._org_ids: dict[str, str] = {}
+        self._capability_profiles: dict[str, list[dict[str, Any]]] = {}
 
     def register_camera(self, camera_id: str, spatial_config: dict[str, Any] | None = None) -> None:
         self.budget.register_camera(camera_id)
@@ -78,6 +79,65 @@ class PipelineService:
         if org_id:
             self._org_ids[camera_id] = org_id
 
+    def set_evidence_capture_rules(self, camera_id: str, rules: list[dict[str, Any]] | None) -> None:
+        self.evidence.set_capture_rules(camera_id, rules)
+
+    def set_capability_profiles(self, camera_id: str, profiles: list[dict[str, Any]] | None) -> None:
+        self._capability_profiles[camera_id] = list(profiles or [])
+
+    def _profile_has_capability(self, profile: dict[str, Any], capability: str) -> bool:
+        caps = profile.get("capabilities")
+        if isinstance(caps, list):
+            if capability in caps:
+                return True
+            if not caps:
+                return True
+        stages = profile.get("stages") or []
+        for stage in stages:
+            if isinstance(stage, dict) and stage.get("capability") == capability:
+                return True
+        if not caps and not stages:
+            return True
+        return False
+
+    def _track_in_capability_zone(self, camera_id: str, track: dict[str, Any], capability: str) -> bool:
+        profiles = self._capability_profiles.get(camera_id, [])
+        if not profiles:
+            return True
+        class_name = str(track.get("class_name", ""))
+        bbox = track.get("bbox") or {}
+        cx = float(bbox.get("x", 0)) + float(bbox.get("width", 0)) / 2
+        cy = float(bbox.get("y", 0)) + float(bbox.get("height", 0)) / 2
+        spatial = self._spatial_configs.get(camera_id, {})
+        zone_map = {z.get("zone_id", z.get("name", "")): z for z in spatial.get("zones", [])}
+        for pr in profiles:
+            if not self._profile_has_capability(pr, capability):
+                continue
+            cf = str(pr.get("class_filter", "any"))
+            if cf not in ("any", "", class_name) and class_name != cf:
+                continue
+            zone_id = str(pr.get("zone_id", ""))
+            if not zone_id:
+                return True
+            zone = zone_map.get(zone_id)
+            if zone and self._point_in_polygon(cx, cy, zone.get("polygon", [])):
+                return True
+        return False
+
+    @staticmethod
+    def _point_in_polygon(x: float, y: float, polygon: list[dict]) -> bool:
+        if len(polygon) < 3:
+            return False
+        inside = False
+        j = len(polygon) - 1
+        for i in range(len(polygon)):
+            xi, yi = float(polygon[i].get("x", 0)), float(polygon[i].get("y", 0))
+            xj, yj = float(polygon[j].get("x", 0)), float(polygon[j].get("y", 0))
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-9) + xi):
+                inside = not inside
+            j = i
+        return inside
+
     def unregister_camera(self, camera_id: str) -> None:
         self.budget.unregister_camera(camera_id)
         self._trackers.pop(camera_id, None)
@@ -87,6 +147,7 @@ class PipelineService:
         self._runtime_config.pop(camera_id, None)
         self._line_configs.pop(camera_id, None)
         self._org_ids.pop(camera_id, None)
+        self._capability_profiles.pop(camera_id, None)
         self.evidence.clear_camera(camera_id)
 
     def apply_runtime_config(self, camera_id: str, config: dict[str, Any]) -> None:
@@ -146,6 +207,8 @@ class PipelineService:
                 "zone": {
                     "zone_id": zone_id,
                     "polygon": polygon,
+                    "zone_kind": zone.get("zone_kind", ""),
+                    "name": zone.get("name", zone_id),
                 },
             })
             rules.append({
@@ -407,7 +470,39 @@ class PipelineService:
         all_events.extend(quality_events)
 
         all_events.extend(self.face_engine.process_frame(camera_id, frame, ts))
-        all_events.extend(self.plate_engine.process_frame(camera_id, frame, track_dicts, ts))
+
+        gated_tracks = [t for t in track_dicts if self._track_in_capability_zone(camera_id, t, "plate_ocr")]
+        if gated_tracks:
+            all_events.extend(self.plate_engine.process_frame(camera_id, frame, gated_tracks, ts))
+
+        for t in track_dicts:
+            if not self._track_in_capability_zone(camera_id, t, "speed_estimate"):
+                continue
+            spd = t.get("metadata", {}).get("speed_kmh")
+            plate = next(
+                (e.get("plate_number") for e in all_events if e.get("track_id") == t.get("track_id") and e.get("plate_number")),
+                None,
+            )
+            zone_id = next(
+                (e.get("zone_id") for e in all_events if e.get("track_id") == t.get("track_id") and e.get("zone_id")),
+                None,
+            )
+            if spd is not None and float(spd) > 0:
+                all_events.append({
+                    "event_id": str(uuid.uuid4()),
+                    "camera_id": camera_id,
+                    "event_type": "vehicle_corridor",
+                    "event": "vehicle_corridor",
+                    "timestamp": ts,
+                    "track_id": t.get("track_id"),
+                    "class_name": t.get("class_name"),
+                    "zone_id": zone_id,
+                    "plate_number": plate,
+                    "speed_kmh": spd,
+                    "bbox": t.get("bbox"),
+                    "confidence": t.get("confidence", 0.8),
+                    "severity": "info",
+                })
 
         for evt in all_events:
             if self._org_ids.get(camera_id):

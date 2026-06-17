@@ -12,7 +12,7 @@ export function cloneCondition(node: ConditionNode | undefined): ConditionNode |
 
 export function isGroupNode(node: ConditionNode): boolean {
   const op = String(node.op ?? '').toUpperCase();
-  return op === 'AND' || op === 'OR';
+  return op === 'AND' || op === 'OR' || op === 'SEQUENCE';
 }
 
 export function createLeaf(field = 'event_type', op = 'eq', value = ''): ConditionNode {

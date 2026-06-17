@@ -3,6 +3,7 @@ package mqttsub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -10,6 +11,8 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 
 	"github.com/citevision/citevision-v2/backend/internal/alerts"
+	"github.com/citevision/citevision-v2/backend/internal/org"
+	"github.com/citevision/citevision-v2/backend/internal/routing"
 	"github.com/citevision/citevision-v2/backend/internal/ws"
 )
 
@@ -130,6 +133,8 @@ func mergeProofFields(top, meta map[string]interface{}) map[string]interface{} {
 type Broadcaster struct {
 	Hub     *ws.Hub
 	Alerts  *alerts.Service
+	Routing *routing.Service
+	Orgs    *org.Service
 	OnAlert func(*alerts.CreateAlertRequest)
 }
 
@@ -138,6 +143,9 @@ func (b *Broadcaster) HandleMQTTAlert(req *alerts.CreateAlertRequest) {
 	defer cancel()
 	a, err := b.Alerts.CreateAlert(ctx, *req)
 	if err != nil {
+		if errors.Is(err, alerts.ErrIncompleteEvidence) {
+			return
+		}
 		return
 	}
 	b.Hub.Broadcast(map[string]interface{}{
@@ -145,4 +153,10 @@ func (b *Broadcaster) HandleMQTTAlert(req *alerts.CreateAlertRequest) {
 		"alert":   a,
 		"message": a.Title,
 	})
+	if b.Routing != nil && b.Orgs != nil {
+		go b.Routing.DispatchAuto(context.Background(), b.Orgs, b.Alerts, req.OrgID, a.ID)
+	}
+	if b.OnAlert != nil {
+		b.OnAlert(req)
+	}
 }

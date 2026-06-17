@@ -12,7 +12,11 @@ class CalibrationEngine:
         self._world_scale = 1.0
         self._speed_limit_kmh = 50.0
         self._min_speed_kmh = 5.0
+        self._sudden_stop_drop_kmh = 25.0
+        self._sudden_stop_window_s = 2.0
         self._positions: dict[tuple[str, int], list[tuple[float, float, float]]] = {}
+        self._last_speed: dict[tuple[str, int], float] = {}
+        self._sudden_stop_fired: set[tuple[str, int]] = set()
         if calibration:
             self.set_calibration(calibration)
 
@@ -70,9 +74,25 @@ class CalibrationEngine:
             speed_kmh = (dist_m / dt) * 3.6
 
         result: dict[str, Any] = {"speed_kmh": round(speed_kmh, 2)}
-        if class_name in ("car", "truck", "bus", "motorcycle") and speed_kmh > 1:
+        track_key = (camera_id, track_id)
+        prev_speed = self._last_speed.get(track_key, 0.0)
+        is_vehicle = class_name in ("car", "truck", "bus", "motorcycle")
+        if is_vehicle and (
+            prev_speed >= self._sudden_stop_drop_kmh
+            and speed_kmh < self._min_speed_kmh
+            and track_key not in self._sudden_stop_fired
+            and len(hist) >= 2
+            and (timestamp - hist[-2][2]) <= self._sudden_stop_window_s
+        ):
+            result["speed_event"] = "sudden_stop"
+            result["prior_speed_kmh"] = round(prev_speed, 2)
+            self._sudden_stop_fired.add(track_key)
+        elif is_vehicle and speed_kmh > 1:
             if speed_kmh > self._speed_limit_kmh:
                 result["speed_event"] = "speeding"
             elif speed_kmh < self._min_speed_kmh:
                 result["speed_event"] = "speed_below_minimum"
+        if is_vehicle and speed_kmh >= self._min_speed_kmh:
+            self._sudden_stop_fired.discard(track_key)
+        self._last_speed[track_key] = speed_kmh
         return result

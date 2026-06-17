@@ -42,21 +42,13 @@ func ConfigFromEnv() Config {
 		}
 		endpoint = host + ":" + port
 	}
-	apiBase := os.Getenv("PUBLIC_API_BASE")
-	if apiBase == "" {
-		port := os.Getenv("API_PORT")
-		if port == "" {
-			port = "8081"
-		}
-		apiBase = "http://localhost:" + port + "/api/v1"
-	}
 	return Config{
 		Endpoint:  endpoint,
 		AccessKey: os.Getenv("MINIO_ACCESS_KEY"),
 		SecretKey: os.Getenv("MINIO_SECRET_KEY"),
 		Bucket:    getenv("MINIO_BUCKET", "citevision-evidence"),
 		UseSSL:    useSSL,
-		APIBase:   strings.TrimRight(apiBase, "/"),
+		APIBase:   normalizeAPIBase(os.Getenv("PUBLIC_API_BASE")),
 	}
 }
 
@@ -119,10 +111,16 @@ func (s *Service) UploadPackage(ctx context.Context, in UploadInput) (*Package, 
 		if _, err := s.client.PutObject(ctx, s.cfg.Bucket, key, in.Clip, in.ClipSize, minio.PutObjectOptions{ContentType: "video/mp4"}); err != nil {
 			return nil, fmt.Errorf("upload clip: %w", err)
 		}
+		dur := 6.0
+		if in.Metadata != nil {
+			if v, ok := in.Metadata["clip_duration_sec"].(float64); ok && v > 0 {
+				dur = v
+			}
+		}
 		pkg.Clip = &Clip{
 			AssetID:     key,
 			URL:         s.assetURL(in.OrgID, key),
-			DurationSec: 6,
+			DurationSec: dur,
 			Mime:        "video/mp4",
 		}
 	}
@@ -198,11 +196,61 @@ func (s *Service) StatObject(ctx context.Context, objectKey string) (minio.Objec
 	return s.client.StatObject(ctx, s.cfg.Bucket, objectKey, minio.StatObjectOptions{})
 }
 
+// PurgeOrg deletes all evidence objects for an organization from object storage.
+func (s *Service) PurgeOrg(ctx context.Context, orgID uuid.UUID) (int, error) {
+	if !s.Available() {
+		return 0, nil
+	}
+	prefix := path.Join("orgs", orgID.String()) + "/"
+	listCh := s.client.ListObjects(ctx, s.cfg.Bucket, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: true,
+	})
+	objectsCh := make(chan minio.ObjectInfo)
+	go func() {
+		defer close(objectsCh)
+		for obj := range listCh {
+			if obj.Err != nil {
+				objectsCh <- minio.ObjectInfo{Err: obj.Err}
+				return
+			}
+			if obj.Key != "" {
+				objectsCh <- obj
+			}
+		}
+	}()
+
+	removed := 0
+	for rmErr := range s.client.RemoveObjects(ctx, s.cfg.Bucket, objectsCh, minio.RemoveObjectsOptions{}) {
+		if rmErr.Err != nil {
+			return removed, rmErr.Err
+		}
+		removed++
+	}
+	return removed, nil
+}
+
 func getenv(k, def string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
 	}
 	return def
+}
+
+func normalizeAPIBase(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		port := os.Getenv("API_PORT")
+		if port == "" {
+			port = "8081"
+		}
+		raw = "http://localhost:" + port
+	}
+	raw = strings.TrimRight(raw, "/")
+	if !strings.HasSuffix(raw, "/api/v1") {
+		raw += "/api/v1"
+	}
+	return raw
 }
 
 // normalizeMinIOEndpoint strips scheme/path from MINIO_ENDPOINT for minio-go (host:port only).

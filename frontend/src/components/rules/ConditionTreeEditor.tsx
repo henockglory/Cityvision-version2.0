@@ -69,6 +69,7 @@ export default function ConditionTreeEditor({ value, onChange }: ConditionTreeEd
             >
               <option value="AND">{t('rules.studio.opAnd')}</option>
               <option value="OR">{t('rules.studio.opOr')}</option>
+              <option value="SEQUENCE">{t('rules.studio.opSequence', 'Séquence temporelle')}</option>
             </select>
             <button
               type="button"

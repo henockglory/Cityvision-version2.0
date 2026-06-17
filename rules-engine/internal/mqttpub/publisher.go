@@ -43,6 +43,24 @@ func (p *Publisher) PublishMatchedEvent(orgID, ruleID string, payload map[string
 	token.Wait()
 }
 
+func (p *Publisher) PublishRuleTrigger(orgID, targetRuleID string, payload map[string]interface{}) {
+	if p == nil || p.client == nil || !p.client.IsConnected() {
+		return
+	}
+	enriched := make(map[string]interface{}, len(payload)+3)
+	for k, v := range payload {
+		enriched[k] = v
+	}
+	enriched["org_id"] = orgID
+	enriched["trigger_rule_id"] = targetRuleID
+	enriched["event_type"] = "rule_trigger"
+	enriched["event"] = "rule_trigger"
+	b, _ := json.Marshal(enriched)
+	topic := "cv/rules/trigger/" + orgID
+	token := p.client.Publish(topic, 1, false, b)
+	token.Wait()
+}
+
 func (p *Publisher) PublishAlert(orgID, ruleID, title, message, severity string, metadata map[string]interface{}) {
 	if p == nil || p.client == nil || !p.client.IsConnected() {
 		return

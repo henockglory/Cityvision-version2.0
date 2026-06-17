@@ -14,14 +14,16 @@ export const GO2RTC_ORIGIN = resolveDirectOrigin();
 export const DEFAULT_STREAM = 'benedicte';
 
 export function go2rtcStreamSrc(camera?: {
+  id?: string;
   streamKey?: string;
   streamUrl?: string;
   name?: string;
   metadata?: Record<string, unknown>;
 } | null): string {
   if (camera?.streamKey) return camera.streamKey;
-  const meta = camera?.metadata as { go2rtc_src?: string; source?: string } | undefined;
+  const meta = camera?.metadata as { go2rtc_src?: string; source?: string; virtual?: boolean } | undefined;
   if (meta?.go2rtc_src) return meta.go2rtc_src;
+  if (camera?.id) return `cam-${camera.id}`;
   if (meta?.source === 'benedicte.mp4') return DEFAULT_STREAM;
   const url = camera?.streamUrl ?? '';
   if (url.includes('benedicte') || url.includes('8554/benedicte')) return DEFAULT_STREAM;

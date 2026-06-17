@@ -7,7 +7,9 @@ import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
 import EvidenceViewer from '@/components/evidence/EvidenceViewer';
+import { EvidenceThumbnail } from '@/components/evidence/EvidenceMedia';
 import { useEvents, useCameras } from '@/hooks/api/queries';
+import { useAuthStore } from '@/stores/authStore';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 import { useSound } from '@/hooks/useSound';
 import { labelForEventType } from '@/lib/eventLabels';
@@ -27,23 +29,32 @@ function EventListItem({
   evt,
   selected,
   onSelect,
+  orgId,
 }: {
   evt: Event;
   selected: boolean;
   onSelect: () => void;
+  orgId: string | null;
 }) {
-  const thumb = evt.thumbnail ?? evidenceThumbnailUrl(parseEvidenceSnapshot(evt.evidenceSnapshot));
+  const thumb = evt.thumbnail ?? evidenceThumbnailUrl(parseEvidenceSnapshot(evt.evidenceSnapshot), orgId);
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left cv-card p-3 transition-colors ${selected ? 'ring-1 ring-cv-accent/50' : 'hover:bg-cv-surface/40'}`}
+      className={`w-full text-left rounded-lg border transition-colors p-3 ${
+        selected
+          ? 'border-cv-accent/50 bg-cv-accent/5 ring-1 ring-cv-accent/30'
+          : 'border-cv-border/50 bg-cv-deep/20 hover:border-cv-accent/25 hover:bg-cv-surface/30'
+      }`}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-3">
         {thumb ? (
-          <img src={thumb} alt="" className="w-12 h-12 rounded object-cover shrink-0 border border-cv-border/50" />
+          <EvidenceThumbnail
+            apiUrl={thumb}
+            className="w-14 h-14 rounded-lg object-cover shrink-0 border border-cv-border/50"
+          />
         ) : (
-          <span className="w-12 h-12 rounded bg-cv-deep/60 border border-cv-border/40 flex items-center justify-center shrink-0">
+          <span className="w-14 h-14 rounded-lg bg-cv-deep/60 border border-cv-border/40 flex items-center justify-center shrink-0">
             <Film className="w-4 h-4 text-cv-muted" />
           </span>
         )}
@@ -64,6 +75,7 @@ function EventListItem({
 export default function Events() {
   const { t } = useTranslation();
   const { playClick } = useSound();
+  const orgId = useAuthStore((s) => s.orgId);
   const startTour = useAutoPageTour('events');
   const { data: cameras = [] } = useCameras();
   const [eventType, setEventType] = useState('');
@@ -102,11 +114,11 @@ export default function Events() {
   }
 
   return (
-    <div>
+    <div className="flex flex-col h-[calc(100dvh-7rem)] max-h-[calc(100dvh-7rem)] overflow-hidden gap-5">
       <PageHeader title={t('events.title')} subtitle={t('events.timeline')} onHelpTour={startTour} />
 
-      <div id="events-timeline">
-        <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div id="events-timeline" className="flex flex-col flex-1 min-h-0 overflow-hidden gap-4">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <Filter className="w-4 h-4 text-cv-muted" />
           <select
             className="cv-input text-sm max-w-[180px]"
@@ -149,19 +161,19 @@ export default function Events() {
         {events.length === 0 ? (
           <EmptyState title={t('events.empty')} hint={t('events.emptyHint')} icon={Calendar} />
         ) : (
-          <SplitLayout
-            list={(
-              <div className="space-y-2 pr-1">
-                {events.map((evt) => (
-                  <EventListItem
-                    key={evt.id}
-                    evt={evt}
-                    selected={selected?.id === evt.id}
-                    onSelect={() => { playClick(); setSelectedId(evt.id); }}
-                  />
-                ))}
-              </div>
-            )}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <SplitLayout
+              fillHeight
+              className="h-full"
+              list={events.map((evt) => (
+              <EventListItem
+                key={evt.id}
+                evt={evt}
+                orgId={orgId}
+                selected={selected?.id === evt.id}
+                onSelect={() => { playClick(); setSelectedId(evt.id); }}
+              />
+            ))}
             detail={selected ? (
               <div>
                 <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -193,14 +205,15 @@ export default function Events() {
                   )}
                 </div>
 
-                <div className="p-4 rounded-xl bg-cv-surface/40 border border-cv-border/60">
+                <div className="cv-panel">
                   <EvidenceViewer evidence={selected.evidenceSnapshot} cameraId={selected.cameraId} />
                 </div>
               </div>
             ) : (
               <p className="text-sm text-cv-muted">{t('events.selectHint')}</p>
             )}
-          />
+            />
+          </div>
         )}
       </div>
     </div>
