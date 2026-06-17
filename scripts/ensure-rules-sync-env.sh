@@ -31,11 +31,18 @@ fi
 
 CURRENT_ORG="$(grep '^DEFAULT_ORG_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' \r' || true)"
 if [[ -z "$CURRENT_ORG" ]]; then
-  TOKEN="$(curl -sf -X POST "$API/api/v1/auth/login" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")"
-  ORG="$(curl -sf "$API/api/v1/auth/me" -H "Authorization: Bearer $TOKEN" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('org_id',''))")"
+  TOKEN=""
+  LOGIN_RESP="$(curl -sf -X POST "$API/api/v1/auth/login" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" 2>/dev/null || true)"
+  if [[ -n "$LOGIN_RESP" ]]; then
+    TOKEN="$(echo "$LOGIN_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || true)"
+  fi
+  if [[ -n "$TOKEN" ]]; then
+    ORG="$(curl -sf "$API/api/v1/auth/me" -H "Authorization: Bearer $TOKEN" 2>/dev/null \
+      | python3 -c "import sys,json; print(json.load(sys.stdin).get('org_id',''))" 2>/dev/null || true)"
+  else
+    ORG=""
+  fi
   if [[ -n "$ORG" ]]; then
     if grep -q '^DEFAULT_ORG_ID=' "$ENV_FILE" 2>/dev/null; then
       sed -i "s/^DEFAULT_ORG_ID=.*/DEFAULT_ORG_ID=$ORG/" "$ENV_FILE"
