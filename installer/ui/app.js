@@ -332,15 +332,20 @@ function startInstall() {
 
 // ── Launch ────────────────────────────────────────────────────
 function startLaunch() {
-  const log  = document.getElementById('launch-log');
-  const fill = document.getElementById('launch-fill');
-  const pct  = document.getElementById('launch-pct');
-  const step = document.getElementById('launch-current-step');
-  const btn  = document.getElementById('launch-open-btn');
-  log.innerHTML = ''; let progress = 0;
-  let hbEl = null;
-  let aiWarnBanner = null;
-  let aiOk = false;
+  const log      = document.getElementById('launch-log');
+  const fill     = document.getElementById('launch-fill');
+  const pct      = document.getElementById('launch-pct');
+  const step     = document.getElementById('launch-current-step');
+  const btn      = document.getElementById('launch-open-btn');
+  const btnArea  = btn.parentNode;
+  log.innerHTML  = '';
+  let progress   = 0;
+  let hbEl       = null;
+  let aiOk       = false;
+  let appUrl     = 'http://localhost:5174';
+  let bannerEl   = null;
+  let waitingEl  = null;
+  let fallbackBtn = null;
 
   function appendLog(text, cls = '') {
     const line = document.createElement('div');
@@ -350,19 +355,43 @@ function startLaunch() {
     log.scrollTop = log.scrollHeight;
   }
 
-  function showAiWarnBanner(msg) {
-    if (aiWarnBanner) return;
-    aiWarnBanner = document.createElement('div');
-    aiWarnBanner.className = 'ai-warn-banner';
-    aiWarnBanner.innerHTML =
-      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>` +
-      `<span>${msg}</span>`;
-    const logParent = log.parentNode;
-    if (logParent) logParent.insertBefore(aiWarnBanner, log);
+  function removeBanner() {
+    if (bannerEl) { bannerEl.remove(); bannerEl = null; }
   }
 
-  function removeAiWarnBanner() {
-    if (aiWarnBanner) { aiWarnBanner.remove(); aiWarnBanner = null; }
+  function showBanner(msg, type /* 'warn' | 'fail' */) {
+    removeBanner();
+    bannerEl = document.createElement('div');
+    bannerEl.className = type === 'fail' ? 'ai-fail-banner' : 'ai-warn-banner';
+    const icon = type === 'fail'
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+    bannerEl.innerHTML = icon + `<span>${msg}</span>`;
+    const logParent = log.parentNode;
+    if (logParent) logParent.insertBefore(bannerEl, log);
+  }
+
+  function showAiWaiting() {
+    if (waitingEl) return;
+    waitingEl = document.createElement('div');
+    waitingEl.className = 'ai-waiting-indicator';
+    waitingEl.innerHTML =
+      `<div class="ai-waiting-dots"><div></div><div></div><div></div></div>` +
+      `<span id="ai-waiting-txt">Initialisation de l'IA en cours…</span>`;
+    btnArea.insertBefore(waitingEl, btn);
+  }
+
+  function removeAiWaiting() {
+    if (waitingEl) { waitingEl.remove(); waitingEl = null; }
+  }
+
+  function showFallbackBtn() {
+    if (fallbackBtn) return;
+    fallbackBtn = document.createElement('button');
+    fallbackBtn.className = 'btn-fallback';
+    fallbackBtn.textContent = 'Ouvrir sans IA (mode dégradé)';
+    fallbackBtn.onclick = () => window.open(appUrl, '_blank');
+    btnArea.appendChild(fallbackBtn);
   }
 
   const timer = setInterval(() => {
@@ -372,10 +401,11 @@ function startLaunch() {
   const es = new EventSource(API + '/api/launch');
   es.onmessage = (e) => {
     try {
-      const msg = JSON.parse(e.data);
+      const msg  = JSON.parse(e.data);
       const text = (msg.message || '').trim();
       if (!text) return;
 
+      // ── Heartbeat ────────────────────────────────────────────
       if (msg.event === 'heartbeat') {
         if (!hbEl) {
           hbEl = document.createElement('div');
@@ -384,49 +414,71 @@ function startLaunch() {
           log.appendChild(hbEl);
         }
         document.getElementById('hb-launch-txt').textContent = text;
-        step.textContent = text; log.scrollTop = log.scrollHeight;
+        step.textContent = text;
+        log.scrollTop = log.scrollHeight;
         return;
       }
       if (hbEl) { hbEl.remove(); hbEl = null; }
 
-      // Détecter si l'AI engine est opérationnel
-      if (msg.event === 'ok' && text.toLowerCase().includes('yolo chargé')) {
+      // ── AI prête ─────────────────────────────────────────────
+      // ai_ready arrive toujours avant launch_ready dans le flux SSE.
+      // On mémorise aiOk=true ; c'est launch_ready qui activera le bouton.
+      if (msg.event === 'ai_ready') {
         aiOk = true;
-        removeAiWarnBanner();
+        removeBanner();
+        removeAiWaiting();
+        appendLog('  ' + text, 'ok');
+        step.textContent = 'IA active — prête à détecter';
+        return;
       }
 
+      // ── AI échouée ───────────────────────────────────────────
+      if (msg.event === 'ai_fail') {
+        removeAiWaiting();
+        appendLog('  ' + text, 'error');
+        showBanner(text, 'fail');
+        step.textContent = 'IA non disponible — détection vidéo inactive';
+        // Le bouton principal reste désactivé — proposer le mode dégradé
+        showFallbackBtn();
+        return;
+      }
+
+      // ── Interface prête (5174) ────────────────────────────────
       if (msg.event === 'launch_ready') {
         clearInterval(timer);
         fill.style.width = '100%'; pct.textContent = '100%';
-        step.textContent = aiOk ? 'Application prête — IA active' : 'Application prête';
-        appendLog('  CitéVision est accessible', 'ok');
-        if (!aiOk) {
-          showAiWarnBanner("L'IA sera disponible dans quelques instants — actualisez System Health");
+        appUrl = text || appUrl;
+        appendLog('  Interface CitéVision accessible', 'ok');
+
+        if (aiOk) {
+          // IA déjà confirmée avant la réception de launch_ready
+          step.textContent = 'Application prête — IA active';
+          removeBanner();
+          removeAiWaiting();
+          btn.disabled = false;
+          btn.onclick = () => window.open(appUrl, '_blank');
+        } else {
+          // IA pas encore confirmée — bloquer le bouton et attendre ai_ready / ai_fail
+          step.textContent = 'Interface prête — initialisation de l\'IA…';
+          showAiWaiting();
+          showBanner('Initialisation de l\'IA en cours — veuillez patienter…', 'warn');
+          // Le bouton s'activera à la réception de ai_ready (ci-dessus)
         }
-        btn.disabled = false;
-        btn.onclick = () => window.open(text || 'http://localhost:5174', '_blank');
         es.close();
-      } else if (msg.event === 'step') {
+        return;
+      }
+
+      // ── Autres événements ────────────────────────────────────
+      if (msg.event === 'step') {
         appendLog('  ' + text, 'step');
         step.textContent = text;
         progress = Math.min(progress + 6, 88);
         fill.style.width = progress.toFixed(1) + '%'; pct.textContent = Math.floor(progress) + '%';
-      } else if (msg.event === 'ok') {
-        appendLog('  ' + text, 'ok');
-      } else if (msg.event === 'warn') {
-        appendLog('  ' + text, 'warn');
-        // Afficher le bandeau dès qu'un warn AI est détecté
-        if (text.toLowerCase().includes('yolo') || text.toLowerCase().includes('ai engine')) {
-          showAiWarnBanner(text);
-        }
-      } else if (msg.event === 'error') {
-        appendLog('  ' + text, 'error');
-        clearInterval(timer);
-      } else if (msg.event === 'info') {
-        appendLog('  ' + text, 'info');
-      } else {
-        appendLog('  ' + text);
-      }
+      } else if (msg.event === 'ok')    { appendLog('  ' + text, 'ok'); }
+      else if (msg.event === 'warn')    { appendLog('  ' + text, 'warn'); }
+      else if (msg.event === 'error')   { appendLog('  ' + text, 'error'); clearInterval(timer); }
+      else if (msg.event === 'info')    { appendLog('  ' + text, 'info'); }
+      else                              { appendLog('  ' + text); }
     } catch { appendLog(e.data); }
   };
   es.onerror = () => { clearInterval(timer); appendLog('  Connexion interrompue', 'error'); es.close(); };

@@ -866,23 +866,23 @@ def launch_stream():
                 ai_up = _poll_port(8001, timeout=120)
                 ai_yolo_ok = False
                 if ai_up:
-                    yield emit("ok", message="AI Engine démarré — vérification modèle YOLO...")
+                    yield emit("ok", message="AI Engine démarré — vérification du modèle YOLO...")
                     ai_yolo_ok = _poll_http_key(
                         "http://localhost:8001/health", "yolo_loaded", "true", timeout=60
                     )
                     if ai_yolo_ok:
-                        yield emit("ok", message="AI Engine opérationnel — modèle YOLO chargé")
+                        yield emit("ai_ready", message="AI Engine opérationnel — modèle YOLO chargé et prêt")
                     else:
-                        yield emit("warn", message=(
-                            "AI Engine up mais YOLO non chargé — "
-                            "détection vidéo non disponible. "
+                        yield emit("ai_fail", message=(
+                            "AI Engine démarré mais modèle YOLO non chargé après 60s. "
+                            "Cause probable : modèle absent ou corrompu. "
                             "Lancez : bash scripts/download-yolo-model.sh"
                         ))
                 else:
-                    yield emit("warn", message=(
-                        "AI Engine non joignable après 120s — "
-                        "surveillance IA désactivée. "
-                        "Vérifiez logs/ai-engine.log"
+                    yield emit("ai_fail", message=(
+                        "AI Engine non joignable après 120s. "
+                        "Cause probable : erreur de démarrage uvicorn. "
+                        "Consultez logs/ai-engine.log"
                     ))
 
                 yield emit("step", message="Vérification du moteur de règles (8010)...")
@@ -894,11 +894,6 @@ def launch_stream():
                 yield emit("step", message="Vérification de l'interface (5174)...")
                 if _poll_port(5174, timeout=60):
                     yield emit("ok", message="Interface CitéVision accessible")
-                    if not ai_yolo_ok:
-                        yield emit("warn", message=(
-                            "L'IA sera disponible dans quelques instants — "
-                            "actualisez System Health dans l'application"
-                        ))
                     yield emit("launch_ready", message="http://localhost:5174")
                 else:
                     yield emit("warn", message="Timeout interface — tentez d'ouvrir manuellement")

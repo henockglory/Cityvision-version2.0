@@ -528,24 +528,77 @@ html, body {
   .splash-title { font-size: 2rem; }
 }
 
-/* ── AI Warn Banner ─────────────────────────────────────────── */
-.ai-warn-banner {
+/* ── AI Status Banners ──────────────────────────────────────── */
+.ai-warn-banner,
+.ai-fail-banner {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.35);
   border-radius: var(--radius-sm);
-  color: rgb(251, 191, 36);
   font-size: 0.8rem;
   line-height: 1.5;
   padding: 10px 14px;
   margin-bottom: 12px;
 }
-.ai-warn-banner svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: rgb(245, 158, 11);
+.ai-warn-banner {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: rgb(251, 191, 36);
+}
+.ai-warn-banner svg { flex-shrink: 0; margin-top: 2px; color: rgb(245, 158, 11); }
+
+.ai-fail-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: rgb(252, 165, 165);
+}
+.ai-fail-banner svg { flex-shrink: 0; margin-top: 2px; color: rgb(239, 68, 68); }
+
+/* ── Bouton dégradé (ouvrir sans IA) ────────────────────────── */
+.btn-fallback {
+  display: block;
+  margin-top: 10px;
+  width: 100%;
+  padding: 9px 18px;
+  background: transparent;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: var(--radius-sm);
+  color: rgb(251, 191, 36);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-fallback:hover {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.8);
+}
+
+/* ── Indicateur d'attente IA (sous la barre de progression) ─── */
+.ai-waiting-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.ai-waiting-dots {
+  display: flex;
+  gap: 4px;
+}
+.ai-waiting-dots div {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: aiDotPulse 1.2s ease-in-out infinite;
+}
+.ai-waiting-dots div:nth-child(2) { animation-delay: 0.2s; }
+.ai-waiting-dots div:nth-child(3) { animation-delay: 0.4s; }
+@keyframes aiDotPulse {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+  40%           { opacity: 1;   transform: scale(1.1); }
 }
 
 @media (min-width: 1280px) {
