@@ -14,13 +14,100 @@ echo    Plateforme de télésurveillance intelligente
 echo  ============================================================
 echo.
 
-:: ── 1. Trouver Python ────────────────────────────────────────
+:: ── 0. Bootstrap prérequis (machine vierge) ───────────────────
+set SENTINEL=%~dp0installer\.bootstrap_done
+set NEED_BOOTSTRAP=0
+
+:: Vérifier si Python est dans le PATH
 set PYTHON=
 for %%P in (python3.12 python3 python py) do (
     if "!PYTHON!"=="" (
         %%P --version >nul 2>&1
         if !errorlevel! == 0 (
             set PYTHON=%%P
+        )
+    )
+)
+
+if "!PYTHON!"=="" (
+    echo  [BOOTSTRAP] Python introuvable — démarrage du bootstrap automatique...
+    set NEED_BOOTSTRAP=1
+) else if not exist "!SENTINEL!" (
+    echo  [BOOTSTRAP] Première exécution détectée — vérification des prérequis...
+    set NEED_BOOTSTRAP=1
+)
+
+if "!NEED_BOOTSTRAP!"=="1" (
+    echo  [BOOTSTRAP] Lancement de installer\windows\bootstrap.ps1 ...
+    echo.
+
+    :: Vérifier si on est admin, sinon relancer avec UAC
+    net session >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo  [BOOTSTRAP] Élévation des droits administrateur requise...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+            "Start-Process cmd -ArgumentList '/c cd /d ""%~dp0"" && setup.bat' -Verb RunAs -Wait"
+        if !errorlevel! neq 0 (
+            echo  [ERREUR] Impossible d'obtenir les droits administrateur.
+            echo  Relancez setup.bat en cliquant droit → Exécuter en tant qu'administrateur
+            pause
+            exit /b 1
+        )
+        exit /b 0
+    )
+
+    :: Exécuter le bootstrap PowerShell et récupérer le JSON
+    for /f "delims=" %%R in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer\windows\bootstrap.ps1" 2^>^&1') do (
+        set BOOTSTRAP_OUTPUT=%%R
+        echo  [BOOTSTRAP] %%R
+    )
+
+    :: Vérifier si reboot requis
+    echo !BOOTSTRAP_OUTPUT! | findstr /i "reboot_required.*true" >nul 2>&1
+    if !errorlevel! == 0 (
+        echo.
+        echo  ╔══════════════════════════════════════════════════════════╗
+        echo  ║  REDÉMARRAGE REQUIS                                      ║
+        echo  ║                                                          ║
+        echo  ║  WSL2 a été activé sur votre système.                   ║
+        echo  ║  Veuillez REDÉMARRER Windows puis relancer setup.bat.   ║
+        echo  ╚══════════════════════════════════════════════════════════╝
+        echo.
+        pause
+        exit /b 0
+    )
+
+    :: Rafraîchir le PATH après installation Python
+    if "!PYTHON!"=="" (
+        for %%P in (python3.12 python3 python py) do (
+            if "!PYTHON!"=="" (
+                %%P --version >nul 2>&1
+                if !errorlevel! == 0 (
+                    set PYTHON=%%P
+                )
+            )
+        )
+    )
+
+    if "!PYTHON!"=="" (
+        echo.
+        echo  [ERREUR] Python reste introuvable après le bootstrap.
+        echo  Redémarrez Windows et relancez setup.bat.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo.
+)
+
+:: ── 1. Trouver Python (si pas encore trouvé) ──────────────────
+if "!PYTHON!"=="" (
+    for %%P in (python3.12 python3 python py) do (
+        if "!PYTHON!"=="" (
+            %%P --version >nul 2>&1
+            if !errorlevel! == 0 (
+                set PYTHON=%%P
+            )
         )
     )
 )

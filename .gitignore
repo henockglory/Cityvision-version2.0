@@ -58,13 +58,13 @@ vendor/onvif/
 # Cursor
 .cursor/
 
-# Temp scripts (orphan push helpers)
-_push.sh
-_push2.sh
-_fix-commit.sh
-_git-commit.sh
-_orphan-push.sh
-_check-push.sh
-_clean-push.sh
-_create-zip.sh
-_run-tests.sh
+# Temp push/helper scripts (may contain credentials)
+_push*.sh
+_fix-*.sh
+_git-*.sh
+_orphan-*.sh
+_check-*.sh
+_clean-*.sh
+_create-*.sh
+_run-*.sh
+_do-*.sh
