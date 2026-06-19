@@ -4,11 +4,34 @@ from urllib.parse import urlparse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _AI_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = _AI_ROOT.parent  # citevision-v2/
+
+
+def _env_files() -> list[str]:
+    """
+    Retourne la liste ordonnée des fichiers .env à charger.
+    generated.env (produit par apply-hardware-profile.py) est chargé EN PREMIER
+    pour que ses valeurs soient visibles, mais .env peut les surcharger.
+    L'ordre pydantic-settings: le dernier fichier a la priorité.
+    On place donc generated.env avant .env pour que .env puisse override.
+    """
+    files: list[str] = []
+    generated = _REPO_ROOT / "generated.env"
+    if generated.exists():
+        files.append(str(generated))
+    # .env can be repo-root or ai-engine/.env
+    for candidate in (_REPO_ROOT / ".env", _AI_ROOT / ".env"):
+        if candidate.exists():
+            files.append(str(candidate))
+    # Always include relative ".env" as fallback for backward compat
+    if not files:
+        files = [".env"]
+    return files
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -27,6 +50,16 @@ class Settings(BaseSettings):
     hardware_tier: str = "auto"
     batch_size: int = 4
 
+    # Aliases produits par generated.env (apply-hardware-profile.py)
+    # Ces variables prennent effet si generated.env est présent et .env ne les override pas.
+    # pydantic-settings les lit via les noms de champ (case-insensitive).
+    cv_gpu_tier: str = ""           # ex: "ultra" — copié dans hardware_tier par apply()
+    cv_max_cameras: int = 0         # override de max_cameras si > 0
+    cv_yolo_model: str = ""         # override de yolo_model_path si non vide
+    cv_batch_size: int = 0          # override de batch_size si > 0
+    cv_target_fps: float = 0.0      # info FPS cible
+    cv_inference_backend: str = ""  # "cuda" ou "cpu" — override de yolo_device si non vide
+
     mqtt_broker: str = "localhost"
     mqtt_port: int = 1884
     mqtt_user: str = ""
@@ -39,6 +72,23 @@ class Settings(BaseSettings):
     postgres_port: int = 5433
     redis_host: str = "localhost"
     redis_port: int = 6380
+
+    def model_post_init(self, __context: object) -> None:
+        """
+        Applique les variables CV_* de generated.env si elles sont définies
+        et si les valeurs correspondantes n'ont pas été explicitement surchargées
+        par les variables standard dans .env.
+        """
+        if self.cv_gpu_tier and self.hardware_tier == "auto":
+            object.__setattr__(self, "hardware_tier", self.cv_gpu_tier)
+        if self.cv_max_cameras > 0:
+            object.__setattr__(self, "max_cameras", self.cv_max_cameras)
+        if self.cv_yolo_model:
+            object.__setattr__(self, "yolo_model_path", f"models/{self.cv_yolo_model}")
+        if self.cv_batch_size > 0:
+            object.__setattr__(self, "batch_size", self.cv_batch_size)
+        if self.cv_inference_backend:
+            object.__setattr__(self, "yolo_device", self.cv_inference_backend)
 
     def resolved_yolo_path(self) -> Path:
         p = Path(self.yolo_model_path)

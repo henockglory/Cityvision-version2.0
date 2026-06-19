@@ -64,6 +64,8 @@ def _run(cmd: list[str], timeout: int = 5) -> str:
         kwargs: dict = dict(
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             stdin=subprocess.DEVNULL,
         )
@@ -438,6 +440,309 @@ def check_network() -> Check:
     )
 
 
+def check_docker_registry() -> Check:
+    """Teste la connectivité au Docker Hub pour le téléchargement des images."""
+    import socket as _socket
+    try:
+        _socket.create_connection(("registry-1.docker.io", 443), timeout=4)
+        status: Status = "pass"
+        detail = "Docker Hub accessible — téléchargement des images Docker possible"
+        value = "registry-1.docker.io:443 accessible"
+    except Exception:
+        # Fallback: tester ghcr.io
+        try:
+            _socket.create_connection(("ghcr.io", 443), timeout=4)
+            status = "warn"
+            detail = "Docker Hub inaccessible mais GHCR accessible — certaines images peuvent échouer"
+            value = "registry-1.docker.io:443 injoignable (ghcr.io OK)"
+        except Exception:
+            status = "fail"
+            detail = "Registres Docker inaccessibles — les images ne pourront pas être téléchargées"
+            value = "Inaccessible"
+
+    return Check(
+        id="docker_registry",
+        label="Docker Registry (hub.docker.com)",
+        status=status,
+        value=value,
+        expected="registry-1.docker.io:443 accessible",
+        detail=detail,
+        technical="socket.create_connection('registry-1.docker.io', 443, timeout=4)",
+    )
+
+
+# ---------------------------------------------------------------------------
+# RAM swap
+# ---------------------------------------------------------------------------
+def check_swap() -> Check:
+    """Vérifie le swap si RAM < 16 Go (recommandé swap ≥ 4 Go pour le build Go)."""
+    ram_gb = _get_ram_gb()
+    swap_gb = _get_swap_gb()
+
+    if ram_gb >= 16.0:
+        return Check(
+            id="swap",
+            label="Mémoire swap",
+            status="pass",
+            value=f"RAM {ram_gb:.0f} Go — swap non critique",
+            expected="≥ 4 Go swap si RAM < 16 Go",
+            detail="RAM suffisante — le swap n'est pas critique pour cette configuration",
+            technical=f"RAM={ram_gb:.1f} Go ≥ 16 Go → swap optionnel",
+        )
+
+    if swap_gb >= 4.0:
+        return Check(
+            id="swap",
+            label="Mémoire swap",
+            status="pass",
+            value=f"{swap_gb:.1f} Go swap (RAM: {ram_gb:.0f} Go)",
+            expected="≥ 4 Go swap (RAM < 16 Go)",
+            detail="Swap suffisant pour compenser la RAM limitée lors du build Go et npm",
+            technical=f"RAM={ram_gb:.1f} Go < 16 Go → swap={swap_gb:.1f} Go ≥ 4 Go",
+        )
+    elif swap_gb > 0:
+        return Check(
+            id="swap",
+            label="Mémoire swap",
+            status="warn",
+            value=f"{swap_gb:.1f} Go swap (RAM: {ram_gb:.0f} Go)",
+            expected="≥ 4 Go swap (RAM < 16 Go)",
+            detail=f"Swap insuffisant ({swap_gb:.1f} Go). "
+                   "Des OOM kills possibles lors du build Go. "
+                   "Augmentez: sudo fallocate -l 4G /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile",
+            technical=f"RAM={ram_gb:.1f} Go < 16 Go → swap={swap_gb:.1f} Go < 4 Go",
+        )
+    else:
+        return Check(
+            id="swap",
+            label="Mémoire swap",
+            status="warn",
+            value=f"Pas de swap (RAM: {ram_gb:.0f} Go)",
+            expected="≥ 4 Go swap (RAM < 16 Go)",
+            detail="Aucun swap avec RAM limitée — risque d'OOM lors des builds. "
+                   "Créez un swap: sudo fallocate -l 4G /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile",
+            technical=f"RAM={ram_gb:.1f} Go < 16 Go → swap=0",
+        )
+
+
+def _get_ram_gb() -> float:
+    """Retourne la RAM totale en Go."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal"):
+                    return int(line.split()[1]) / 1024 / 1024
+    except Exception:
+        pass
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            class _MEM(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            stat = _MEM(); stat.dwLength = ctypes.sizeof(stat)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))  # type: ignore
+            return stat.ullTotalPhys / 1024 ** 3
+        except Exception:
+            pass
+    return 0.0
+
+
+def _get_swap_gb() -> float:
+    """Retourne le swap total en Go (Linux)."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("SwapTotal"):
+                    return int(line.split()[1]) / 1024 / 1024
+    except Exception:
+        pass
+    # Windows: PageFile
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            class _MEM(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            stat = _MEM(); stat.dwLength = ctypes.sizeof(stat)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))  # type: ignore
+            ram_gb = stat.ullTotalPhys / 1024 ** 3
+            pagefile_gb = stat.ullTotalPageFile / 1024 ** 3
+            return max(0.0, pagefile_gb - ram_gb)
+        except Exception:
+            pass
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
+# CPU Virtualization (VT-x / AMD-V)
+# ---------------------------------------------------------------------------
+def check_cpu_virtualization() -> Check:
+    """Vérifie que VT-x/AMD-V est activé (requis pour WSL2 et Docker)."""
+    system = platform.system()
+
+    if system == "Linux":
+        # Lire /proc/cpuinfo pour vmx (Intel VT-x) ou svm (AMD-V)
+        try:
+            with open("/proc/cpuinfo") as f:
+                cpuinfo = f.read()
+            has_vmx = "vmx" in cpuinfo
+            has_svm = "svm" in cpuinfo
+            if has_vmx or has_svm:
+                vtype = "Intel VT-x" if has_vmx else "AMD-V"
+                return Check(
+                    id="cpu_virt",
+                    label="Virtualisation CPU (VT-x/AMD-V)",
+                    status="pass",
+                    value=f"{vtype} activé",
+                    expected="VT-x ou AMD-V requis pour WSL2/Docker",
+                    detail=f"{vtype} détecté dans /proc/cpuinfo — WSL2 et Docker fonctionneront correctement",
+                    technical=f"vmx={'oui' if has_vmx else 'non'} svm={'oui' if has_svm else 'non'} dans /proc/cpuinfo",
+                )
+        except Exception:
+            pass
+        return Check(
+            id="cpu_virt",
+            label="Virtualisation CPU (VT-x/AMD-V)",
+            status="warn",
+            value="Non détectable",
+            expected="VT-x ou AMD-V requis pour WSL2/Docker",
+            detail="Impossible de lire /proc/cpuinfo — vérifiez manuellement dans le BIOS",
+            technical="flags vmx/svm absent de /proc/cpuinfo",
+        )
+
+    if system == "Windows":
+        # Vérifier via systeminfo ou la présence de WSL2
+        out = _run(["systeminfo"])
+        if "Hyper-V" in out and ("Yes" in out or "Oui" in out):
+            return Check(
+                id="cpu_virt",
+                label="Virtualisation CPU / Hyper-V",
+                status="pass",
+                value="Hyper-V activé",
+                expected="Hyper-V / VT-x pour WSL2",
+                detail="Hyper-V actif — WSL2 et Docker Desktop fonctionneront correctement",
+                technical="systeminfo: Hyper-V = Yes",
+            )
+        # Tester si WSL2 tourne (implique que la virt est activée)
+        wsl_out = _run(["wsl", "--status"])
+        if wsl_out and "Default Distribution" in wsl_out:
+            return Check(
+                id="cpu_virt",
+                label="Virtualisation CPU / Hyper-V",
+                status="pass",
+                value="WSL actif (virtualisation OK)",
+                expected="Hyper-V / VT-x pour WSL2",
+                detail="WSL fonctionne — la virtualisation CPU est donc activée",
+                technical="wsl --status: exit 0 implique virtualisation active",
+            )
+        return Check(
+            id="cpu_virt",
+            label="Virtualisation CPU / Hyper-V",
+            status="warn",
+            value="Non confirmé",
+            expected="Hyper-V / VT-x pour WSL2 et Docker",
+            detail="Activez VT-x/AMD-V dans le BIOS et Hyper-V dans Windows: "
+                   "Panneau de config → Programmes → Fonctionnalités Windows → Hyper-V",
+            technical="Hyper-V non détecté dans systeminfo et wsl --status échoue",
+        )
+
+    return Check(
+        id="cpu_virt",
+        label="Virtualisation CPU",
+        status="warn",
+        value="N/A",
+        expected="VT-x/AMD-V",
+        detail=f"OS non supporté pour ce check ({system})",
+        technical=f"platform.system() = {system}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Disque — vérifier le bon disque (C: sur Windows)
+# ---------------------------------------------------------------------------
+def check_disk_drive() -> Check:
+    """Vérifie l'espace libre sur le disque d'installation."""
+    system = platform.system()
+    ROOT_DIR = Path(__file__).resolve().parents[1]
+
+    if system == "Windows":
+        # Sur Windows: vérifier C: (là où WSL stocke ses données)
+        drive = ROOT_DIR.drive or "C:"
+        try:
+            stat = shutil.disk_usage(drive + "\\")
+            free_gb = stat.free / 1024 ** 3
+            total_gb = stat.total / 1024 ** 3
+            drive_label = drive
+        except Exception:
+            try:
+                stat = shutil.disk_usage("C:\\")
+                free_gb = stat.free / 1024 ** 3
+                total_gb = stat.total / 1024 ** 3
+                drive_label = "C:"
+            except Exception:
+                return Check(
+                    id="disk_drive",
+                    label="Espace disque (lecteur système)",
+                    status="warn",
+                    value="Non détectable",
+                    expected=f"≥ {MINIMUM['disk_gb']} Go libres sur C:",
+                    detail="Impossible de lire l'espace disque du lecteur C:",
+                    technical="shutil.disk_usage('C:\\') a échoué",
+                )
+    else:
+        # Linux: vérifier /
+        try:
+            stat = shutil.disk_usage(str(ROOT_DIR))
+            free_gb = stat.free / 1024 ** 3
+            total_gb = stat.total / 1024 ** 3
+            drive_label = str(ROOT_DIR.anchor)
+        except Exception:
+            return Check(
+                id="disk_drive",
+                label="Espace disque (partition racine)",
+                status="warn",
+                value="Non détectable",
+                expected=f"≥ {MINIMUM['disk_gb']} Go libres",
+                detail="Impossible de lire l'espace disque",
+                technical=f"shutil.disk_usage('{ROOT_DIR}') a échoué",
+            )
+
+    if free_gb >= RECOMMENDED["disk_gb"]:
+        status: Status = "pass"
+        detail = f"Espace suffisant sur {drive_label} pour les modèles IA, vidéos et données long terme"
+    elif free_gb >= MINIMUM["disk_gb"]:
+        status = "warn"
+        detail = f"Espace limité sur {drive_label} — évitez plus de 30 jours de rétention vidéo"
+    else:
+        status = "fail"
+        detail = (
+            f"Espace insuffisant sur {drive_label} — "
+            f"minimum {MINIMUM['disk_gb']} Go libres requis "
+            "(modèles YOLO, images Docker, données PostgreSQL)"
+        )
+
+    return Check(
+        id="disk_drive",
+        label=f"Espace disque ({drive_label})",
+        status=status,
+        value=f"{free_gb:.0f} Go libres / {total_gb:.0f} Go total",
+        expected=f"≥ {MINIMUM['disk_gb']} Go libres (recommandé {RECOMMENDED['disk_gb']}+ Go)",
+        detail=detail,
+        technical=f"shutil.disk_usage({drive_label!r}): free={free_gb:.1f} Go",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Rapport global
 # ---------------------------------------------------------------------------
@@ -445,9 +750,13 @@ def run_all() -> dict:
     checks: list[Check] = []
     checks += check_cpu()
     checks.append(check_ram())
+    checks.append(check_swap())
     checks.append(check_disk())
+    checks.append(check_disk_drive())
+    checks.append(check_cpu_virtualization())
     checks.append(check_os())
     checks.append(check_network())
+    checks.append(check_docker_registry())
     checks += check_gpu()
 
     results = [asdict(c) for c in checks]

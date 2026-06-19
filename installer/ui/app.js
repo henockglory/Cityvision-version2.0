@@ -144,9 +144,10 @@ function renderHwChecks(data, grid, tierCard, nextBtn) {
   }
 
   // Check cards
-  for (const c of (data.checks || [])) {
+  (data.checks || []).forEach((c, idx) => {
     const card = document.createElement('div');
     card.className = `check-card ${c.status}`;
+    card.style.animationDelay = `${idx * 40}ms`;
     card.innerHTML = `
       <div class="check-icon">${ICON[c.status] || ICON.warn}</div>
       <div class="check-info">
@@ -156,7 +157,7 @@ function renderHwChecks(data, grid, tierCard, nextBtn) {
         ${c.technical ? `<div class="check-technical">${esc(c.technical)}</div>` : ''}
       </div>`;
     grid.appendChild(card);
-  }
+  });
 
   if (overall !== 'fail') nextBtn.disabled = false;
 }

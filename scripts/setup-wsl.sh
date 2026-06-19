@@ -164,6 +164,30 @@ else
   _ok "YOLO model already present"
 fi
 
+# ── Hardware profile generation ──────────────────────────────
+_step "Hardware profile"
+_info "Génération du profil matériel et de generated.env..."
+
+# Chercher Python dans le venv, puis Python 3.12, puis python3
+PYTHON_CMD=""
+if [[ -f "ai-engine/.venv/bin/python" ]]; then
+  PYTHON_CMD="ai-engine/.venv/bin/python"
+elif command -v python3.12 &>/dev/null; then
+  PYTHON_CMD="python3.12"
+elif command -v python3 &>/dev/null; then
+  PYTHON_CMD="python3"
+elif command -v python &>/dev/null; then
+  PYTHON_CMD="python"
+fi
+
+if [[ -n "$PYTHON_CMD" ]] && [[ -f "installer/apply-hardware-profile.py" ]]; then
+  "$PYTHON_CMD" installer/apply-hardware-profile.py 2>>"${LOG_FILE:-/dev/null}" \
+    && _ok "generated.env créé" \
+    || _warn "apply-hardware-profile.py a échoué — generated.env absent (mode CPU-only par défaut)"
+else
+  _warn "Python ou apply-hardware-profile.py introuvable — generated.env non créé"
+fi
+
 _log ""
 _ok "Setup complete"
 _log ""

@@ -5,13 +5,14 @@ Serveur HTTP stdlib (aucun pip requis) — port 7315.
 Sert l'UI d'installation et expose les APIs de vérification/installation.
 
 Routes :
-  GET  /                   → installer/ui/index.html
-  GET  /api/hardware       → check-hardware.py (JSON)
-  GET  /api/deps           → deps-checker.py (JSON)
-  POST /api/install        → SSE stream d'installation
-  GET  /api/status         → état global de préparation
-  GET  /api/app-status     → vérifie si l'app est déjà démarrée
-  GET  /static/*           → fichiers statiques de installer/ui/
+  GET  /                      → installer/ui/index.html
+  GET  /api/hardware          → check-hardware.py (JSON)
+  GET  /api/hardware-profile  → apply-hardware-profile.py --json (profil GPU + generated.env)
+  GET  /api/deps              → deps-checker.py (JSON)
+  POST /api/install           → SSE stream d'installation
+  GET  /api/status            → état global de préparation
+  GET  /api/app-status        → vérifie si l'app est déjà démarrée
+  GET  /static/*              → fichiers statiques de installer/ui/
 """
 from __future__ import annotations
 
@@ -53,6 +54,7 @@ def _run_py_module(script: Path, timeout: int = 20, fallback: dict | None = None
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             stdin=_subprocess.DEVNULL,
             env=env,
@@ -197,6 +199,31 @@ class InstallerHandler(BaseHTTPRequestHandler):
                 })
             except Exception as e:
                 _send_json(self, {"ready": False, "error": str(e)})
+            return
+
+        if path == "/api/hardware-profile":
+            # Call apply-hardware-profile.py with --json flag for JSON output
+            flags = {}
+            if platform.system() == "Windows":
+                flags["creationflags"] = _subprocess.CREATE_NO_WINDOW
+            try:
+                env = os.environ.copy()
+                env["PYTHONIOENCODING"] = "utf-8"
+                r = _subprocess.run(
+                    [sys.executable, str(INSTALLER_DIR / "apply-hardware-profile.py"), "--json"],
+                    capture_output=True, text=True, encoding="utf-8",
+                    timeout=35, stdin=_subprocess.DEVNULL, env=env, **flags,
+                )
+                if r.returncode == 0 and r.stdout.strip():
+                    result = json.loads(r.stdout)
+                else:
+                    result = {"tier": "unknown", "error": r.stderr.strip() or f"exit {r.returncode}"}
+            except _subprocess.TimeoutExpired:
+                result = {"tier": "unknown", "error": "Timeout (35s) — relancez le diagnostic"}
+            except Exception as exc:
+                import traceback
+                result = {"tier": "unknown", "error": traceback.format_exc()}
+            _send_json(self, result)
             return
 
         if path == "/api/app-status":

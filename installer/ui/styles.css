@@ -118,7 +118,7 @@ html, body {
 .splash-loader { width: 280px; }
 
 .loader-bar {
-  height: 3px;
+  height: 6px;
   background: rgb(var(--cv-border));
   border-radius: 99px;
   overflow: hidden;
@@ -297,6 +297,11 @@ html, body {
   gap: 12px;
 }
 
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .check-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -305,6 +310,7 @@ html, body {
   display: flex;
   gap: 12px;
   transition: border-color .2s;
+  animation: cardIn .35s ease both;
 }
 .check-card.pass { border-left: 3px solid #22c55e; }
 .check-card.warn { border-left: 3px solid #eab308; }
@@ -491,3 +497,51 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Ready checkmark (stroke-dashoffset animation) ─────────── */
+@keyframes checkDraw {
+  from { stroke-dashoffset: 40; }
+  to   { stroke-dashoffset: 0; }
+}
+.ready-check-path {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: checkDraw .55s ease forwards;
+  animation-delay: .35s;
+}
+
+/* ── Staggered card animation delay ───────────────────────── */
+.check-card:nth-child(1)  { animation-delay: 0ms; }
+.check-card:nth-child(2)  { animation-delay: 40ms; }
+.check-card:nth-child(3)  { animation-delay: 80ms; }
+.check-card:nth-child(4)  { animation-delay: 120ms; }
+.check-card:nth-child(5)  { animation-delay: 160ms; }
+.check-card:nth-child(6)  { animation-delay: 200ms; }
+.check-card:nth-child(7)  { animation-delay: 240ms; }
+.check-card:nth-child(8)  { animation-delay: 280ms; }
+.check-card:nth-child(9)  { animation-delay: 320ms; }
+
+/* ── Responsive ────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .step-nav   { width: 180px; }
+  .step-content { padding: 24px 28px; }
+  .splash-title { font-size: 2rem; }
+}
+
+@media (min-width: 1280px) {
+  .step-content { padding: 40px 48px; }
+  .checks-grid  { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+}
+
+@media (min-width: 1440px) {
+  .step-nav     { width: 240px; }
+  .step-content { padding: 48px 60px; }
+  .checks-grid  { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+}
+
+@media (min-width: 1920px) {
+  .step-nav     { width: 260px; }
+  .step-content { padding: 56px 80px; }
+  .checks-grid  { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+  .install-log  { max-height: 480px; }
+}
