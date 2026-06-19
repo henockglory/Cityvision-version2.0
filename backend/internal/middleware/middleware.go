@@ -138,6 +138,25 @@ func RequirePermission(rbacSvc *rbac.Service, permission string) func(http.Handl
 	return RequireAnyPermission(rbacSvc, permission)
 }
 
+func RequireOrgAdmin() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role := GetOrgRole(r.Context())
+			if role == "" {
+				claims := GetClaims(r.Context())
+				if claims != nil {
+					role = models.Role(claims.Role)
+				}
+			}
+			if role != models.RoleOrgAdmin && role != models.RoleSuperAdmin {
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func RequireAnyPermission(rbacSvc *rbac.Service, permissions ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

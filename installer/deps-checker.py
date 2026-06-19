@@ -678,6 +678,59 @@ def _register_windows_service(start_mode: str) -> tuple[bool, str]:
     return False, msg or f"Enregistrement service Windows échoué (code {rc})"
 
 
+def read_service_start_mode() -> str:
+    """Lit le mode de démarrage choisi lors de l'installation."""
+    mode_file = ROOT / "installer" / ".service_start_mode"
+    if mode_file.exists():
+        try:
+            mode = mode_file.read_text(encoding="utf-8").strip()
+            if mode in ("auto", "manual"):
+                return mode
+        except OSError:
+            pass
+    return "auto"
+
+
+def _register_linux_service(start_mode: str) -> tuple[bool, str]:
+    """Enregistre citevision.service via systemd (Linux natif)."""
+    script = ROOT / "installer" / "linux" / "install-service.sh"
+    if not script.exists():
+        return False, f"Script introuvable : {script}"
+    import getpass
+    user = getpass.getuser()
+    rc, out, err = _run([
+        "sudo", "bash", str(script),
+        f"--root={ROOT}", f"--user={user}", f"--start-mode={start_mode}",
+    ], timeout=120)
+    msg = (out or err or "").strip()
+    if rc == 0:
+        return True, msg or f"Service citevision.service enregistré (mode: {start_mode})"
+    return False, msg or f"Enregistrement service Linux échoué (code {rc})"
+
+
+def register_system_service(start_mode: str | None = None) -> dict:
+    """
+    Enregistre le service système CitéVision (Windows NSSM ou Linux systemd).
+    Retourne {"ok": bool, "message": str, "start_mode": str, "skipped": bool}.
+    """
+    import shutil
+
+    mode = start_mode if start_mode in ("auto", "manual") else read_service_start_mode()
+    if IS_WINDOWS:
+        ok, msg = _register_windows_service(mode)
+        return {"ok": ok, "message": msg, "start_mode": mode, "skipped": False, "platform": "windows"}
+    if not shutil.which("systemctl"):
+        return {
+            "ok": True,
+            "message": "systemd non disponible — service non enregistré (démarrage manuel via scripts/start-linux.sh)",
+            "start_mode": mode,
+            "skipped": True,
+            "platform": "linux",
+        }
+    ok, msg = _register_linux_service(mode)
+    return {"ok": ok, "message": msg, "start_mode": mode, "skipped": False, "platform": "linux"}
+
+
 def install_stream(start_mode: str = "auto"):
     """
     Générateur SSE : installe les dépendances manquantes via setup-wsl.sh.
@@ -782,17 +835,6 @@ def install_stream(start_mode: str = "auto"):
         if kind == "done":
             rc = payload
             if rc == 0:
-                if IS_WINDOWS:
-                    yield emit("step", message="Enregistrement du service Windows CitéVision…")
-                    ok, msg = _register_windows_service(start_mode)
-                    if ok:
-                        yield emit("ok", message=msg)
-                        if start_mode == "manual":
-                            yield emit("info", message="Mode manuel — démarrer via: sc start CitéVision ou services.msc")
-                    else:
-                        yield emit("warn", message=msg)
-                elif start_mode == "manual":
-                    yield emit("info", message="Mode manuel — démarrer via: sudo systemctl start citevision")
                 yield emit("done", message="Installation terminée avec succès !")
             else:
                 yield emit("error", message=f"Erreur lors de l'installation (code {rc})")

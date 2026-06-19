@@ -12,6 +12,7 @@ __pycache__/
 .venv/
 venv/
 .bootstrap_done
+installer/.service_start_mode
 
 # Node
 node_modules/

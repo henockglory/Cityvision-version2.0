@@ -204,6 +204,12 @@ func main() {
 				r.Post("/auth/totp/setup", api.StartTOTP)
 				r.Post("/auth/totp/confirm", api.ConfirmTOTPSetup)
 
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireOrgAdmin())
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/system/status", api.SystemStatus)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/system/uninstall/stream", api.SystemUninstallStream)
+				})
+
 				r.Route("/orgs/{orgID}", func(r chi.Router) {
 					r.Use(middleware.RequireOrgAccess(authSvc))
 

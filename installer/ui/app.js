@@ -374,6 +374,7 @@ function startLaunch() {
   let progress   = 0;
   let hbEl       = null;
   let aiOk       = false;
+  let launchReady = false;
   let appUrl     = 'http://localhost:5174';
   let bannerEl   = null;
   let waitingEl  = null;
@@ -417,13 +418,64 @@ function startLaunch() {
     if (waitingEl) { waitingEl.remove(); waitingEl = null; }
   }
 
+  let serviceRegEl = null;
+
+  function removeServiceWaiting() {
+    if (serviceRegEl) { serviceRegEl.remove(); serviceRegEl = null; }
+  }
+
+  function showServiceWaiting() {
+    removeServiceWaiting();
+    serviceRegEl = document.createElement('div');
+    serviceRegEl.className = 'ai-waiting-indicator';
+    serviceRegEl.innerHTML =
+      `<div class="ai-waiting-dots"><div></div><div></div><div></div></div>` +
+      `<span>Enregistrement du service système…</span>`;
+    btnArea.insertBefore(serviceRegEl, btn);
+  }
+
   function showFallbackBtn() {
     if (fallbackBtn) return;
     fallbackBtn = document.createElement('button');
     fallbackBtn.className = 'btn-fallback';
     fallbackBtn.textContent = 'Ouvrir sans IA (mode dégradé)';
-    fallbackBtn.onclick = () => window.open(appUrl, '_blank');
+    fallbackBtn.onclick = () => openCiteVision(appUrl);
     btnArea.appendChild(fallbackBtn);
+  }
+
+  async function openCiteVision(url) {
+    btn.disabled = true;
+    if (fallbackBtn) fallbackBtn.disabled = true;
+    showServiceWaiting();
+    step.textContent = 'Enregistrement du service CitéVision…';
+    try {
+      const res = await fetch(API + '/api/register-service');
+      const data = await res.json();
+      removeServiceWaiting();
+      if (data.ok) {
+        appendLog('  ' + (data.message || 'Service enregistré'), data.skipped ? 'warn' : 'ok');
+        step.textContent = data.skipped ? 'Application prête' : 'Service enregistré — ouverture…';
+        window.open(url, '_blank');
+        btn.disabled = false;
+        if (fallbackBtn) fallbackBtn.disabled = false;
+      } else {
+        appendLog('  ' + (data.message || 'Échec enregistrement service'), 'error');
+        showBanner(data.message || 'Enregistrement du service échoué — réessayez', 'fail');
+        step.textContent = 'Erreur service — cliquez pour réessayer';
+        btn.disabled = false;
+        btn.onclick = () => openCiteVision(url);
+        if (fallbackBtn) {
+          fallbackBtn.disabled = false;
+          fallbackBtn.onclick = () => openCiteVision(url);
+        }
+      }
+    } catch (err) {
+      removeServiceWaiting();
+      appendLog('  Erreur réseau : ' + err.message, 'error');
+      showBanner('Impossible de contacter l\'installateur — réessayez', 'fail');
+      btn.disabled = false;
+      btn.onclick = () => openCiteVision(url);
+    }
   }
 
   const timer = setInterval(() => {
@@ -461,6 +513,10 @@ function startLaunch() {
         removeAiWaiting();
         appendLog('  ' + text, 'ok');
         step.textContent = 'IA active — prête à détecter';
+        if (launchReady) {
+          btn.disabled = false;
+          btn.onclick = () => openCiteVision(appUrl);
+        }
         return;
       }
 
@@ -480,6 +536,7 @@ function startLaunch() {
         clearInterval(timer);
         fill.style.width = '100%'; pct.textContent = '100%';
         appUrl = text || appUrl;
+        launchReady = true;
         appendLog('  Interface CitéVision accessible', 'ok');
 
         if (aiOk) {
@@ -488,7 +545,7 @@ function startLaunch() {
           removeBanner();
           removeAiWaiting();
           btn.disabled = false;
-          btn.onclick = () => window.open(appUrl, '_blank');
+          btn.onclick = () => openCiteVision(appUrl);
         } else {
           // IA pas encore confirmée — bloquer le bouton et attendre ai_ready / ai_fail
           step.textContent = 'Interface prête — initialisation de l\'IA…';

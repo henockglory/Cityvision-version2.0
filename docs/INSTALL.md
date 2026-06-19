@@ -30,9 +30,10 @@ sudo bash scripts/install-headless.sh
 
 Le script enchaîne sans interaction :
 1. `installer/linux/bootstrap.sh` — dépendances OS (Docker, Go, Node, Python…)
-2. `scripts/setup-wsl.sh` — build, migrations, modèle YOLO, enregistrement systemd
-3. Démarrage des services (via systemd en mode `auto`, ou `start-linux.sh` sinon)
+2. `scripts/setup-wsl.sh` — build, migrations, modèles IA (mode service persisté)
+3. Démarrage des services (via `start-linux.sh` si systemd inactif)
 4. Vérification séquentielle : backend :8081, AI :8001 (`yolo_loaded`, `face_loaded`, `plate_loaded`), rules :8010, frontend :5174
+5. Enregistrement du service systemd (équivalent du clic « Ouvrir CitéVision »)
 
 Options utiles :
 
@@ -75,6 +76,49 @@ Arrêt :
 ```bash
 bash scripts/stop-linux.sh
 ```
+
+## Service système (Windows / Linux)
+
+Le **service CitéVision** (NSSM sous Windows, `citevision.service` sous Linux) n'est **pas** créé pendant l'installation. Il est enregistré au **premier accès** :
+
+- **Installateur UI (port 7315)** : clic sur « Ouvrir CitéVision » après le gate IA
+- **Installation headless** : automatiquement après vérification santé OK
+
+Le mode de démarrage (`auto` / `manual`) choisi à l'installation est relu depuis `installer/.service_start_mode`.
+
+Vérification :
+
+```bash
+# Linux
+systemctl status citevision
+
+# Windows
+services.msc   # service « CitéVision »
+```
+
+## Désinstallation
+
+### Depuis l'application
+
+Paramètres → **Système** (administrateurs uniquement) : statut du service, désinstallation guidée avec progression.
+
+Par défaut, les **volumes Docker sont supprimés**. Cochez « Conserver les données applicatives » pour les garder.
+
+### En ligne de commande
+
+```bash
+# Linux / WSL
+bash scripts/uninstall-all.sh --yes
+bash scripts/uninstall-all.sh --keep-data --yes
+```
+
+```powershell
+# Windows (administrateur)
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-all.ps1 -Yes
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-all.ps1 -KeepData -Yes
+```
+
+Après désinstallation, relancez `setup.bat` ou `bash scripts/setup-wsl.sh` pour réinstaller.
 
 Diagnostic :
 

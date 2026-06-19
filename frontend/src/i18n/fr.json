@@ -463,6 +463,45 @@
     "plateModel": "Lecture de plaques (OCR)",
     "aiUnreachable": "Moteur IA non joignable — les modèles ne peuvent pas être vérifiés."
   },
+  "system": {
+    "serviceStatus": "Service CitéVision",
+    "platform": "Plateforme",
+    "platformWindows": "Windows",
+    "platformLinux": "Linux",
+    "serviceName": "Nom du service",
+    "startMode": "Mode de démarrage",
+    "startModeAuto": "Automatique au boot",
+    "startModeManual": "Manuel",
+    "registered": "Enregistré",
+    "running": "État",
+    "yes": "Oui",
+    "no": "Non",
+    "active": "Actif",
+    "stopped": "Arrêté",
+    "uninstall": {
+      "title": "Désinstallation",
+      "description": "Supprime le service système, arrête tous les processus CitéVision et retire l'infrastructure Docker. Action irréversible.",
+      "keepData": "Conserver les données applicatives",
+      "keepDataHint": "Garde les volumes Docker (PostgreSQL, Redis, MinIO…) — désinstalle uniquement les binaires et services.",
+      "wipeWarning": "Par défaut, tous les volumes Docker seront supprimés. Les données de l'organisation seront perdues.",
+      "button": "Désinstaller CitéVision",
+      "confirmTitle": "Confirmer la désinstallation ?",
+      "confirmWipe": "Cette action supprimera le service, arrêtera tous les processus et effacera les volumes Docker. Irréversible.",
+      "confirmKeepData": "Cette action supprimera le service et arrêtera tous les processus. Les volumes Docker seront conservés.",
+      "continue": "Continuer",
+      "typeConfirmTitle": "Confirmation finale",
+      "typeConfirmHint": "Saisissez DESINSTALLER pour confirmer définitivement.",
+      "finalConfirm": "Désinstaller définitivement",
+      "progressTitle": "Désinstallation en cours",
+      "inProgress": "Veuillez patienter — ne fermez pas cette fenêtre…",
+      "waitingLog": "En attente des logs…",
+      "done": "Désinstallation terminée avec succès",
+      "failed": "La désinstallation a rencontré des erreurs",
+      "reinstallHint": "Relancez setup.bat (Windows) ou bash scripts/setup-wsl.sh pour réinstaller.",
+      "adminOnly": "Réservé aux administrateurs organisation.",
+      "statusError": "Impossible de lire le statut système"
+    }
+  },
   "emptyState": {
     "defaultTitle": "Rien ici pour le moment",
     "defaultHint": "Les données apparaîtront une fois disponibles"
@@ -484,7 +523,9 @@
     "offline": "Hors ligne",
     "skipTour": "Passer la visite",
     "back": "Retour",
-    "next": "Suivant"
+    "next": "Suivant",
+    "retry": "Réessayer",
+    "close": "Fermer"
   },
   "roles": {
     "admin": "Administrateur",

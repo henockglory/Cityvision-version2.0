@@ -238,6 +238,16 @@ class InstallerHandler(BaseHTTPRequestHandler):
             _send_json(self, {"running": app_running, "url": APP_URL})
             return
 
+        if path == "/api/register-service" or path.startswith("/api/register-service?"):
+            try:
+                dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")
+                result = dc.register_system_service()
+                _send_json(self, result)
+            except Exception as e:
+                import traceback
+                _send_json(self, {"ok": False, "message": traceback.format_exc(), "skipped": False})
+            return
+
         if path == "/api/launch":
             try:
                 dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")

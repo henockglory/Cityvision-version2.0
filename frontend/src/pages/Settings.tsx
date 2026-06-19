@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Shield, Bell, UserSearch, User, Building2, Lock, Mail, Sparkles, Palette, Film, Route,
+  Shield, Bell, UserSearch, User, Building2, Lock, Mail, Sparkles, Palette, Film, Route, HardDrive,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -10,6 +10,7 @@ import MuteToggle from '@/components/MuteToggle';
 import SurveillanceListsPanel from '@/components/settings/SurveillanceListsPanel';
 import EvidenceDefaultsPanel from '@/components/settings/EvidenceDefaultsPanel';
 import AlertRoutingPanel from '@/components/settings/AlertRoutingPanel';
+import SystemPanel from '@/components/settings/SystemPanel';
 import InfoTip from '@/components/ui/InfoTip';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { authApi, orgApi, type OrganizationSettings } from '@/api/client';
@@ -19,7 +20,7 @@ import { useSound } from '@/hooks/useSound';
 import { useAutoPageTour, useRunTour } from '@/hooks/useAutoPageTour';
 import { TOUR_LABELS, type TourId } from '@/lib/tourRegistry';
 
-type Tab = 'general' | 'profile' | 'org' | 'security' | 'notifications' | 'integrations' | 'identity' | 'evidence' | 'routing' | 'demo';
+type Tab = 'general' | 'profile' | 'org' | 'security' | 'notifications' | 'integrations' | 'identity' | 'evidence' | 'routing' | 'system' | 'demo';
 
 const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: 'general', label: 'Général', icon: Palette },
@@ -31,6 +32,7 @@ const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: 'evidence', label: 'Preuves & capture', icon: Film },
   { id: 'routing', label: 'Routage alertes', icon: Route },
   { id: 'identity', label: 'Identité', icon: UserSearch },
+  { id: 'system', label: 'Système', icon: HardDrive },
   { id: 'demo', label: 'Démo', icon: Sparkles },
 ];
 
@@ -353,6 +355,12 @@ export default function Settings() {
           {tab === 'identity' && (
             <Section title="Listes de surveillance" icon={UserSearch}>
               <SurveillanceListsPanel />
+            </Section>
+          )}
+
+          {tab === 'system' && (
+            <Section title="Système" icon={HardDrive}>
+              <SystemPanel />
             </Section>
           )}
 

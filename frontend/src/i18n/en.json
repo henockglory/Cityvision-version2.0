@@ -404,6 +404,45 @@
     "plateModel": "License plate OCR",
     "aiUnreachable": "AI engine unreachable — model status cannot be checked."
   },
+  "system": {
+    "serviceStatus": "CitéVision Service",
+    "platform": "Platform",
+    "platformWindows": "Windows",
+    "platformLinux": "Linux",
+    "serviceName": "Service name",
+    "startMode": "Start mode",
+    "startModeAuto": "Automatic on boot",
+    "startModeManual": "Manual",
+    "registered": "Registered",
+    "running": "Status",
+    "yes": "Yes",
+    "no": "No",
+    "active": "Running",
+    "stopped": "Stopped",
+    "uninstall": {
+      "title": "Uninstall",
+      "description": "Removes the system service, stops all CitéVision processes and tears down Docker infrastructure. Irreversible.",
+      "keepData": "Keep application data",
+      "keepDataHint": "Preserves Docker volumes (PostgreSQL, Redis, MinIO…) — only removes binaries and services.",
+      "wipeWarning": "By default, all Docker volumes will be deleted. Organization data will be lost.",
+      "button": "Uninstall CitéVision",
+      "confirmTitle": "Confirm uninstall?",
+      "confirmWipe": "This will remove the service, stop all processes and wipe Docker volumes. Irreversible.",
+      "confirmKeepData": "This will remove the service and stop all processes. Docker volumes will be kept.",
+      "continue": "Continue",
+      "typeConfirmTitle": "Final confirmation",
+      "typeConfirmHint": "Type DESINSTALLER to confirm.",
+      "finalConfirm": "Uninstall permanently",
+      "progressTitle": "Uninstall in progress",
+      "inProgress": "Please wait — do not close this window…",
+      "waitingLog": "Waiting for logs…",
+      "done": "Uninstall completed successfully",
+      "failed": "Uninstall encountered errors",
+      "reinstallHint": "Run setup.bat (Windows) or bash scripts/setup-wsl.sh to reinstall.",
+      "adminOnly": "Organization administrators only.",
+      "statusError": "Could not read system status"
+    }
+  },
   "emptyState": {
     "defaultTitle": "Nothing here yet",
     "defaultHint": "Data will appear once available"
@@ -425,7 +464,9 @@
     "offline": "Offline",
     "skipTour": "Skip tour",
     "back": "Back",
-    "next": "Next"
+    "next": "Next",
+    "retry": "Retry",
+    "close": "Close"
   },
   "roles": {
     "admin": "Administrator",

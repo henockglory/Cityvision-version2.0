@@ -217,28 +217,15 @@ else
   _warn "scripts/download-models.sh introuvable"
 fi
 
-# ── Service système (citevision.service) ─────────────────────
-_step "Service système (citevision.service)"
+# ── Mode de démarrage du service (enregistré au premier lancement) ──
+_step "Mode de démarrage du service"
 if [[ "$START_MODE" != "auto" && "$START_MODE" != "manual" ]]; then
   _warn "Mode de démarrage invalide ($START_MODE) — utilisation de 'auto'"
   START_MODE="auto"
 fi
-
-if command -v systemctl &>/dev/null && [[ -f "installer/linux/install-service.sh" ]]; then
-  chmod +x installer/linux/install-service.sh 2>/dev/null || true
-  if sudo -n true 2>/dev/null; then
-    sudo bash installer/linux/install-service.sh \
-      --root="$ROOT" --user="$(whoami)" --start-mode="$START_MODE" \
-      2>>"${LOG_FILE:-/dev/null}" \
-      && _ok "Service citevision.service enregistré (mode: $START_MODE)" \
-      || _warn "Enregistrement service échoué — lancez: sudo bash installer/linux/install-service.sh"
-  else
-    _warn "Sudo requis pour enregistrer citevision.service"
-    _warn "Lancez: sudo bash installer/linux/install-service.sh --root=$ROOT --user=$(whoami) --start-mode=$START_MODE"
-  fi
-else
-  _warn "systemd non disponible — service citevision.service non enregistré"
-fi
+mkdir -p installer
+echo "$START_MODE" > installer/.service_start_mode
+_ok "Mode service enregistré pour le premier lancement ($START_MODE)"
 
 _log ""
 _ok "Setup complete"

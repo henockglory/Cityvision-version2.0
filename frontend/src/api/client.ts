@@ -393,3 +393,51 @@ export const aiHealthApi = {
       ffmpeg_available?: string;
     }>('/ai-engine/health', { baseURL: '' }),
 };
+
+export interface SystemStatus {
+  platform: string;
+  service_registered: boolean;
+  service_running: boolean;
+  start_mode: string;
+  service_name: string;
+}
+
+export interface SystemStreamEvent {
+  event: string;
+  message: string;
+  ok?: boolean;
+}
+
+export const systemApi = {
+  status: () => api.get<SystemStatus>('/system/status'),
+  async *streamUninstall(keepData: boolean, signal?: AbortSignal): AsyncGenerator<SystemStreamEvent> {
+    const { token } = getAuthCredentials();
+    const res = await fetch(`/api/v1/system/uninstall/stream?keep_data=${keepData}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal,
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      throw new Error('streaming not supported');
+    }
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        for (const line of part.split('\n')) {
+          if (line.startsWith('data: ')) {
+            yield JSON.parse(line.slice(6)) as SystemStreamEvent;
+          }
+        }
+      }
+    }
+  },
+};

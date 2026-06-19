@@ -250,5 +250,19 @@ if [[ "$HEALTH_OK" == "false" ]]; then
   exit 1
 fi
 
+# ── 6. Enregistrement service (équivalent clic « Ouvrir CitéVision ») ──
+_step "Enregistrement du service système"
+START_MODE="$(cat installer/.service_start_mode 2>/dev/null || echo auto)"
+if command -v systemctl &>/dev/null; then
+  if sudo bash installer/linux/install-service.sh \
+      --root="$ROOT" --user="$INSTALL_USER" --start-mode="$START_MODE" >>"$LOG_FILE" 2>&1; then
+    _ok "Service citevision.service enregistré (mode: $START_MODE)"
+  else
+    _warn "Enregistrement service échoué — voir $LOG_FILE"
+  fi
+else
+  _warn "systemd non disponible — service non enregistré"
+fi
+
 _ok "Tous les services sont opérationnels"
 exit 0
