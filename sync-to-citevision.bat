@@ -13,6 +13,7 @@ echo [SYNC] citevision-v2 -^> %DST%
 robocopy "%SRC%\installer" "%DST%\installer" /E /XD __pycache__ .venv /XF "*.pyc" /NFL /NJH /NJS
 robocopy "%SRC%\scripts"   "%DST%\scripts"   /E /XD __pycache__ /XF "*.pyc" /NFL /NJH /NJS
 copy /Y "%SRC%\setup.bat" "%DST%\setup.bat" >nul
+powershell -NoProfile -Command "$p='%DST:\=\\%\setup.bat'; $c=[IO.File]::ReadAllText($p); $c=$c -replace \"`r`n\",\"`n\" -replace \"`n\",\"`r`n\"; [IO.File]::WriteAllText($p,$c,[Text.UTF8Encoding]::new($false))"
 copy /Y "%SRC%\setup.sh"  "%DST%\setup.sh"  >nul 2>&1
 copy /Y "%SRC%\sync-to-citevision.bat" "%DST%\sync-to-citevision.bat" >nul 2>&1
 if exist "%SRC%\installer\.bootstrap_done" (
