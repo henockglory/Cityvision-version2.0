@@ -129,6 +129,23 @@ echo  [INFO] Python detecte : !PY_VER!
 :: ── 2. Répertoire du script ───────────────────────────────────
 cd /d "%~dp0"
 
+:: ── 2b. Enregistrement service Windows CitéVision ─────────────
+echo  [INFO] Vérification du service Windows CitéVision...
+sc query "CitéVision" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo  [INFO] Enregistrement du service Windows...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer\windows\install-service.ps1" 2>&1
+    if !errorlevel! == 0 (
+        echo  [OK] Service Windows enregistre avec succes.
+    ) else (
+        echo  [WARN] Enregistrement service echoue (droits admin requis ?).
+        echo         L'application fonctionne quand meme sans service Windows.
+    )
+) else (
+    echo  [OK] Service Windows CitéVision deja enregistre.
+)
+echo.
+
 :: ── 3. Lancer le serveur d'installation ──────────────────────
 echo  [INFO] Démarrage du serveur d'installation (port 7315)...
 echo  [INFO] L'interface s'ouvrira dans votre navigateur.

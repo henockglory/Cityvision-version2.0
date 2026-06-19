@@ -554,6 +554,42 @@ def check_python_venv() -> Dep:
                install_cmd="cd ai-engine && python3.12 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt")
 
 
+def check_windows_service() -> Dep:
+    """Vérifie si le service Windows 'CitéVision' est enregistré (Windows uniquement)."""
+    rc, out, _ = _run(["sc", "query", "CitéVision"], timeout=8)
+    if rc == 0:
+        running = "RUNNING" in out.upper()
+        return Dep(
+            "windows_service",
+            "Service Windows CitéVision",
+            "ok" if running else "outdated",
+            "en cours d'exécution" if running else "arrêté",
+            "sc start CitéVision ou services.msc",
+            (
+                "Service Windows actif — démarrage/arrêt via services.msc ou sc start/stop"
+                if running
+                else "Service enregistré mais arrêté — démarrez-le via services.msc ou sc start"
+            ),
+            install_cmd=None,
+            critical=False,
+        )
+    # Service non enregistré
+    install_ps1 = str(ROOT / "installer" / "windows" / "install-service.ps1")
+    return Dep(
+        "windows_service",
+        "Service Windows CitéVision",
+        "missing",
+        "non enregistré",
+        "services.msc (après setup.bat)",
+        (
+            "Le service Windows CitéVision n'est pas enregistré. "
+            "Relancez setup.bat en tant qu'Administrateur pour l'enregistrer automatiquement."
+        ),
+        install_cmd=f'powershell -NoProfile -ExecutionPolicy Bypass -File "{install_ps1}"',
+        critical=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Run all checks
 # ---------------------------------------------------------------------------
@@ -580,6 +616,7 @@ def run_all(mode: str = "check") -> dict:
     ]
     if IS_WINDOWS:
         deps.insert(2, check_wsl())
+        deps.append(check_windows_service())
 
     # Port checks (retourne liste)
     deps.extend(check_ports())
