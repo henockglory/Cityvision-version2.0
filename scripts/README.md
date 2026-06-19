@@ -7,11 +7,34 @@ Scripts utilitaires pour le démarrage, l'arrêt, la configuration et la validat
 | Script | OS | Description |
 |--------|----|-------------|
 | `setup-wsl.sh` | Linux/WSL | Installation complète de l'environnement (Docker, Go, Node, Python, venv, npm) |
+| `install-headless.sh` | Linux/WSL | Installation complète sans interaction (bootstrap + setup + démarrage + gate IA) |
 | `start-all.sh` | Linux/WSL | Démarre tous les services (Docker compose + backend + AI engine + frontend) |
 | `stop-all.sh` | Linux/WSL | Arrête tous les services |
 | `run-all-tests.sh` | Linux/WSL | Lance tous les tests (Go, Python, TypeScript) |
 | `download-yolo-model.sh` | Linux/WSL | Télécharge le modèle yolov8n.onnx |
 | `validate.ps1` | Windows | Validation rapide de l'environnement Windows/WSL |
+
+## install-headless.sh
+
+Installation sans navigateur pour serveur Linux headless (SSH, CI, VM sans GUI). Enchaîne bootstrap, setup, démarrage et vérification des services (gate `yolo_loaded` incluse).
+
+```bash
+# Installation complète (recommandé avec sudo pour apt + systemd)
+sudo bash scripts/install-headless.sh
+
+# Mode manuel (service créé, démarrage via systemctl)
+sudo bash scripts/install-headless.sh --start-mode=manual
+
+# Dépendances déjà installées, sans redémarrer les services
+sudo bash scripts/install-headless.sh --skip-bootstrap --skip-start
+```
+
+| Option | Défaut | Description |
+|--------|--------|-------------|
+| `--start-mode=auto\|manual` | `auto` | Mode de démarrage du service systemd |
+| `--skip-bootstrap` | — | Ignorer `installer/linux/bootstrap.sh` |
+| `--skip-start` | — | Installation uniquement, sans démarrage |
+| `--log-file=PATH` | `logs/install-headless.log` | Fichier de log unifié |
 
 ## setup-wsl.sh
 
