@@ -339,6 +339,8 @@ function startLaunch() {
   const btn  = document.getElementById('launch-open-btn');
   log.innerHTML = ''; let progress = 0;
   let hbEl = null;
+  let aiWarnBanner = null;
+  let aiOk = false;
 
   function appendLog(text, cls = '') {
     const line = document.createElement('div');
@@ -346,6 +348,21 @@ function startLaunch() {
     line.textContent = text;
     log.appendChild(line);
     log.scrollTop = log.scrollHeight;
+  }
+
+  function showAiWarnBanner(msg) {
+    if (aiWarnBanner) return;
+    aiWarnBanner = document.createElement('div');
+    aiWarnBanner.className = 'ai-warn-banner';
+    aiWarnBanner.innerHTML =
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>` +
+      `<span>${msg}</span>`;
+    const logParent = log.parentNode;
+    if (logParent) logParent.insertBefore(aiWarnBanner, log);
+  }
+
+  function removeAiWarnBanner() {
+    if (aiWarnBanner) { aiWarnBanner.remove(); aiWarnBanner = null; }
   }
 
   const timer = setInterval(() => {
@@ -372,24 +389,44 @@ function startLaunch() {
       }
       if (hbEl) { hbEl.remove(); hbEl = null; }
 
+      // Détecter si l'AI engine est opérationnel
+      if (msg.event === 'ok' && text.toLowerCase().includes('yolo chargé')) {
+        aiOk = true;
+        removeAiWarnBanner();
+      }
+
       if (msg.event === 'launch_ready') {
         clearInterval(timer);
         fill.style.width = '100%'; pct.textContent = '100%';
-        step.textContent = 'Application prête';
+        step.textContent = aiOk ? 'Application prête — IA active' : 'Application prête';
         appendLog('  CitéVision est accessible', 'ok');
+        if (!aiOk) {
+          showAiWarnBanner("L'IA sera disponible dans quelques instants — actualisez System Health");
+        }
         btn.disabled = false;
         btn.onclick = () => window.open(text || 'http://localhost:5174', '_blank');
         es.close();
       } else if (msg.event === 'step') {
         appendLog('  ' + text, 'step');
         step.textContent = text;
-        progress = Math.min(progress + 8, 88);
+        progress = Math.min(progress + 6, 88);
         fill.style.width = progress.toFixed(1) + '%'; pct.textContent = Math.floor(progress) + '%';
-      } else if (msg.event === 'ok')    { appendLog('  ' + text, 'ok'); }
-      else if (msg.event === 'warn')   { appendLog('  ' + text, 'warn'); }
-      else if (msg.event === 'error')  { appendLog('  ' + text, 'error'); clearInterval(timer); }
-      else if (msg.event === 'info')   { appendLog('  ' + text, 'info'); }
-      else                             { appendLog('  ' + text); }
+      } else if (msg.event === 'ok') {
+        appendLog('  ' + text, 'ok');
+      } else if (msg.event === 'warn') {
+        appendLog('  ' + text, 'warn');
+        // Afficher le bandeau dès qu'un warn AI est détecté
+        if (text.toLowerCase().includes('yolo') || text.toLowerCase().includes('ai engine')) {
+          showAiWarnBanner(text);
+        }
+      } else if (msg.event === 'error') {
+        appendLog('  ' + text, 'error');
+        clearInterval(timer);
+      } else if (msg.event === 'info') {
+        appendLog('  ' + text, 'info');
+      } else {
+        appendLog('  ' + text);
+      }
     } catch { appendLog(e.data); }
   };
   es.onerror = () => { clearInterval(timer); appendLog('  Connexion interrompue', 'error'); es.close(); };

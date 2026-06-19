@@ -150,21 +150,7 @@ else
   _info "Frontend node_modules already present — skipping"
 fi
 
-# ── YOLO model download ───────────────────────────────────────
-_step "YOLO model"
-mkdir -p ai-engine/models logs
-if [[ ! -f ai-engine/models/yolov8n.onnx ]]; then
-  _info "Downloading yolov8n.onnx (≈ 12 Mo)…"
-  if command -v bash &>/dev/null && [[ -f scripts/download-yolo-model.sh ]]; then
-    bash scripts/download-yolo-model.sh 2>>"${LOG_FILE:-/dev/null}" || _warn "YOLO download script failed — run manually"
-  else
-    _warn "scripts/download-yolo-model.sh not found — download model manually"
-  fi
-else
-  _ok "YOLO model already present"
-fi
-
-# ── Hardware profile generation ──────────────────────────────
+# ── Hardware profile generation (avant YOLO pour connaître le bon modèle) ──
 _step "Hardware profile"
 _info "Génération du profil matériel et de generated.env..."
 
@@ -186,6 +172,36 @@ if [[ -n "$PYTHON_CMD" ]] && [[ -f "installer/apply-hardware-profile.py" ]]; the
     || _warn "apply-hardware-profile.py a échoué — generated.env absent (mode CPU-only par défaut)"
 else
   _warn "Python ou apply-hardware-profile.py introuvable — generated.env non créé"
+fi
+
+# ── YOLO model download (selon le tier GPU détecté) ──────────
+_step "YOLO model"
+mkdir -p ai-engine/models logs
+
+# Lire le modèle recommandé par le profil GPU, sinon yolov8n par défaut
+CV_YOLO_MODEL="$(grep '^CV_YOLO_MODEL=' generated.env 2>/dev/null | cut -d= -f2 | tr -d ' \r' || true)"
+CV_YOLO_MODEL="${CV_YOLO_MODEL:-yolov8n.onnx}"
+_info "Modèle YOLO requis selon profil GPU : $CV_YOLO_MODEL"
+
+if [[ -f "ai-engine/models/$CV_YOLO_MODEL" ]]; then
+  _ok "Modèle $CV_YOLO_MODEL déjà présent"
+else
+  _info "Téléchargement de $CV_YOLO_MODEL…"
+  if [[ -f "scripts/download-yolo-model.sh" ]]; then
+    YOLO_MODEL="$CV_YOLO_MODEL" bash scripts/download-yolo-model.sh 2>>"${LOG_FILE:-/dev/null}" \
+      && _ok "$CV_YOLO_MODEL téléchargé" \
+      || _warn "Téléchargement de $CV_YOLO_MODEL échoué"
+  else
+    _warn "scripts/download-yolo-model.sh introuvable"
+  fi
+fi
+
+# Toujours s'assurer que yolov8n.onnx est présent (fallback universel)
+if [[ "$CV_YOLO_MODEL" != "yolov8n.onnx" ]] && [[ ! -f "ai-engine/models/yolov8n.onnx" ]]; then
+  _info "Téléchargement du modèle de secours yolov8n.onnx…"
+  YOLO_MODEL="yolov8n.onnx" bash scripts/download-yolo-model.sh 2>>"${LOG_FILE:-/dev/null}" \
+    && _ok "yolov8n.onnx (fallback) téléchargé" \
+    || _warn "Téléchargement yolov8n.onnx échoué — download-yolo-model.sh requis manuellement"
 fi
 
 _log ""

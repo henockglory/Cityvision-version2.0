@@ -491,17 +491,40 @@ def check_redis_connectivity() -> Dep:
 
 
 def check_yolo_model() -> Dep:
-    model_path = ROOT / "ai-engine" / "models" / "yolov8n.onnx"
+    models_dir = ROOT / "ai-engine" / "models"
+    # Vérifier le modèle recommandé par generated.env, sinon yolov8n.onnx
+    gen_env = ROOT / "generated.env"
+    cv_model = "yolov8n.onnx"
+    if gen_env.exists():
+        try:
+            for line in gen_env.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("CV_YOLO_MODEL="):
+                    cv_model = line.split("=", 1)[1].strip()
+                    break
+        except Exception:
+            pass
+    model_path = models_dir / cv_model
+    fallback_path = models_dir / "yolov8n.onnx"
+
     if model_path.exists():
         size_mb = model_path.stat().st_size / 1024 / 1024
-        return Dep("yolo_model", "Modèle YOLO (yolov8n.onnx)", "ok",
+        return Dep("yolo_model", f"Modèle YOLO ({cv_model})", "ok",
                    f"{size_mb:.1f} Mo", "≥ 6 Mo",
-                   "Modèle de détection d'objets (personnes, véhicules, etc.)")
-    return Dep("yolo_model", "Modèle YOLO (yolov8n.onnx)", "missing",
-               "non trouvé", "yolov8n.onnx (≈ 6 Mo)",
-               "Modèle de détection requis pour toute analyse vidéo. "
+                   f"Modèle de détection d'objets ({cv_model}) — prêt pour l'inférence vidéo")
+    if cv_model != "yolov8n.onnx" and fallback_path.exists():
+        size_mb = fallback_path.stat().st_size / 1024 / 1024
+        return Dep("yolo_model", f"Modèle YOLO ({cv_model})", "outdated",
+                   f"yolov8n.onnx présent ({size_mb:.1f} Mo)",
+                   f"{cv_model} recommandé pour votre GPU",
+                   f"Le modèle optimal pour votre GPU ({cv_model}) est absent — "
+                   "yolov8n.onnx sera utilisé en fallback (performances réduites)",
+                   install_cmd=f"YOLO_MODEL={cv_model} bash scripts/download-yolo-model.sh",
+                   critical=False)
+    return Dep("yolo_model", f"Modèle YOLO ({cv_model})", "missing",
+               "non trouvé", f"{cv_model} (≈ 6–100 Mo selon tier GPU)",
+               "Modèle de détection YOLO requis pour toute analyse vidéo et application des règles. "
                f"Attendu : {model_path}",
-               install_cmd="bash scripts/download-models.sh",
+               install_cmd="bash scripts/download-yolo-model.sh",
                critical=True)
 
 
@@ -737,7 +760,7 @@ def install_stream():
 # Launch stream — starts services via start-linux.sh
 # ---------------------------------------------------------------------------
 def launch_stream():
-    """SSE generator: runs start-linux.sh via WSL then polls for port 5174."""
+    """SSE generator: runs start-linux.sh via WSL then verifies all services are healthy."""
     def emit(event: str, **kw) -> str:
         return f"data: {json.dumps({'event': event, **kw}, ensure_ascii=False)}\n\n"
 
@@ -746,12 +769,13 @@ def launch_stream():
         yield emit("error", message=f"Script introuvable : {start_script}")
         return
 
-    yield emit("step", message="Demarrage des services CitéVision...")
+    yield emit("step", message="Démarrage des services CitéVision...")
 
-    import queue as _queue, threading as _threading
+    import queue as _queue, threading as _threading, time as _time
+    import urllib.request as _urlreq
 
     def _poll_port(port: int, timeout: int = 120) -> bool:
-        import socket as _socket, time as _time
+        import socket as _socket
         deadline = _time.time() + timeout
         while _time.time() < deadline:
             try:
@@ -759,6 +783,21 @@ def launch_stream():
                     return True
             except Exception:
                 _time.sleep(3)
+        return False
+
+    def _poll_http_key(url: str, key: str, expected: str, timeout: int = 60) -> bool:
+        """Poll a JSON endpoint until response[key] == expected."""
+        import json as _json
+        deadline = _time.time() + timeout
+        while _time.time() < deadline:
+            try:
+                with _urlreq.urlopen(url, timeout=3) as r:
+                    data = _json.loads(r.read())
+                    if str(data.get(key, "")).lower() == expected.lower():
+                        return True
+            except Exception:
+                pass
+            _time.sleep(3)
         return False
 
     line_q: _queue.Queue = _queue.Queue()
@@ -796,8 +835,11 @@ def launch_stream():
     heartbeat_msgs = [
         "Démarrage du backend Go...",
         "Compilation des modules Go (premier démarrage)...",
-        "Démarrage du frontend Vite...",
+        "Téléchargement / vérification du modèle YOLO...",
         "Démarrage de l'AI engine...",
+        "Chargement du modèle YOLO (initialisation ONNX)...",
+        "Démarrage du moteur de règles...",
+        "Démarrage du frontend Vite...",
         "Services en cours d'initialisation...",
     ]
     hb_idx = 0
@@ -813,11 +855,53 @@ def launch_stream():
         if kind == "done":
             rc = payload
             if rc == 0:
-                yield emit("step", message="Services démarrés — vérification de l'interface...")
-                if _poll_port(5174, timeout=120):
+                # ── Vérification séquentielle de tous les services ──────────
+                yield emit("step", message="Vérification du backend (8081)...")
+                if _poll_port(8081, timeout=30):
+                    yield emit("ok", message="Backend API opérationnel")
+                else:
+                    yield emit("warn", message="Backend lent — vérifiez logs/backend.log")
+
+                yield emit("step", message="Vérification de l'AI Engine (8001)...")
+                ai_up = _poll_port(8001, timeout=120)
+                ai_yolo_ok = False
+                if ai_up:
+                    yield emit("ok", message="AI Engine démarré — vérification modèle YOLO...")
+                    ai_yolo_ok = _poll_http_key(
+                        "http://localhost:8001/health", "yolo_loaded", "true", timeout=60
+                    )
+                    if ai_yolo_ok:
+                        yield emit("ok", message="AI Engine opérationnel — modèle YOLO chargé")
+                    else:
+                        yield emit("warn", message=(
+                            "AI Engine up mais YOLO non chargé — "
+                            "détection vidéo non disponible. "
+                            "Lancez : bash scripts/download-yolo-model.sh"
+                        ))
+                else:
+                    yield emit("warn", message=(
+                        "AI Engine non joignable après 120s — "
+                        "surveillance IA désactivée. "
+                        "Vérifiez logs/ai-engine.log"
+                    ))
+
+                yield emit("step", message="Vérification du moteur de règles (8010)...")
+                if _poll_port(8010, timeout=30):
+                    yield emit("ok", message="Moteur de règles opérationnel")
+                else:
+                    yield emit("warn", message="Moteur de règles non joignable — vérifiez logs/rules-engine.log")
+
+                yield emit("step", message="Vérification de l'interface (5174)...")
+                if _poll_port(5174, timeout=60):
+                    yield emit("ok", message="Interface CitéVision accessible")
+                    if not ai_yolo_ok:
+                        yield emit("warn", message=(
+                            "L'IA sera disponible dans quelques instants — "
+                            "actualisez System Health dans l'application"
+                        ))
                     yield emit("launch_ready", message="http://localhost:5174")
                 else:
-                    yield emit("warn", message="Timeout — l'interface met plus de temps que prévu.")
+                    yield emit("warn", message="Timeout interface — tentez d'ouvrir manuellement")
                     yield emit("launch_ready", message="http://localhost:5174")
             else:
                 yield emit("error", message=f"Erreur démarrage (code {rc}) — consultez logs/backend.log")

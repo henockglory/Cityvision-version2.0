@@ -77,6 +77,27 @@ fi
 install_ai_cuda_deps "$ROOT/ai-engine/.venv/bin/pip"
 setup_cuda_library_path "$ROOT/ai-engine/.venv/bin/python3"
 
+# ── Vérifier / télécharger le modèle YOLO avant de démarrer l'AI engine ───
+mkdir -p ai-engine/models
+# Déterminer le modèle requis selon generated.env (fallback: yolov8n.onnx)
+CV_YOLO_MODEL="$(grep '^CV_YOLO_MODEL=' generated.env 2>/dev/null | cut -d= -f2 | tr -d ' \r' || true)"
+CV_YOLO_MODEL="${CV_YOLO_MODEL:-yolov8n.onnx}"
+YOLO_MODEL_PATH="$ROOT/ai-engine/models/$CV_YOLO_MODEL"
+if [[ ! -f "$YOLO_MODEL_PATH" ]]; then
+  echo "[INFO] Modèle YOLO manquant ($CV_YOLO_MODEL) — téléchargement automatique..."
+  YOLO_MODEL="$CV_YOLO_MODEL" bash "$ROOT/scripts/download-yolo-model.sh" 2>&1 \
+    && echo "[OK] Modèle $CV_YOLO_MODEL téléchargé" \
+    || echo "[WARN] Téléchargement $CV_YOLO_MODEL échoué — fallback yolov8n.onnx"
+  # Fallback ultime : tenter yolov8n si le modèle tier n'a pas pu être téléchargé
+  if [[ ! -f "$YOLO_MODEL_PATH" ]] && [[ "$CV_YOLO_MODEL" != "yolov8n.onnx" ]]; then
+    if [[ ! -f "$ROOT/ai-engine/models/yolov8n.onnx" ]]; then
+      YOLO_MODEL="yolov8n.onnx" bash "$ROOT/scripts/download-yolo-model.sh" 2>&1 || true
+    fi
+  fi
+else
+  echo "[OK] Modèle YOLO présent : $CV_YOLO_MODEL"
+fi
+
 if [[ ! -d frontend/node_modules ]]; then
   echo "[INFO] npm install..."
   (cd frontend && npm install --silent)
@@ -111,6 +132,35 @@ if wait_http_ok "http://localhost:$BACKEND_PORT/health" 120; then
   echo "[OK] Backend healthy"
 else
   echo "[WARN] Backend timeout - see logs/backend.log"
+fi
+
+echo ""
+echo "[INFO] Waiting for AI Engine (first run compiles ONNX session)..."
+if wait_http_ok "http://localhost:$AI_PORT/health" 120; then
+  echo "[OK] AI Engine healthy — http://localhost:$AI_PORT"
+  # Vérifier que YOLO est réellement chargé
+  YOLO_STATUS="$(curl -sf "http://localhost:$AI_PORT/health" 2>/dev/null \
+    | grep -o '"yolo_loaded":"[^"]*"' | cut -d'"' -f4 || echo "unknown")"
+  if [[ "$YOLO_STATUS" == "true" ]]; then
+    echo "[OK] YOLO model chargé et opérationnel — inférence vidéo active"
+  else
+    echo "[WARN] AI Engine up mais YOLO non chargé (yolo_loaded=$YOLO_STATUS)"
+    echo "       Tentative de téléchargement du modèle à chaud..."
+    YOLO_MODEL="${CV_YOLO_MODEL:-yolov8n.onnx}" bash "$ROOT/scripts/download-yolo-model.sh" 2>&1 | tail -3 || true
+    echo "       Redémarrez l'AI Engine si le modèle vient d'être téléchargé :"
+    echo "       pkill -f uvicorn && bash scripts/start-linux.sh"
+  fi
+else
+  echo "[WARN] AI Engine non joignable après 120s — vérifiez logs/ai-engine.log"
+  echo "       Règles de détection vidéo désactivées jusqu'au démarrage de l'AI Engine"
+fi
+
+echo ""
+echo "[INFO] Waiting for Rules Engine..."
+if wait_http_ok "http://localhost:$RULES_PORT/health" 30; then
+  echo "[OK] Rules Engine healthy — http://localhost:$RULES_PORT"
+else
+  echo "[WARN] Rules Engine timeout - see logs/rules-engine.log"
 fi
 
 echo ""
