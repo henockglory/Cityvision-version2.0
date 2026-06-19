@@ -3,19 +3,28 @@ chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 title CitéVision v2 - Assistant d'installation
 
-:: Set UTF-8 for Python output
+:: UTF-8 for Python output
 set PYTHONIOENCODING=utf-8
 set PYTHONUTF8=1
 
 echo.
 echo  ============================================================
 echo    CitéVision v2  -  Installateur
-echo    Plateforme de télésurveillance intelligente
+echo    Plateforme de telesurveillance intelligente
 echo  ============================================================
 echo.
 
+:: Safe entry into script directory (%~dp0. avoids trailing-backslash quote bug)
+pushd "%~dp0." >nul 2>&1
+if errorlevel 1 (
+    echo  [ERREUR] Impossible d'acceder au repertoire du script.
+    echo           Chemin: %~dp0
+    pause
+    exit /b 1
+)
+
 :: ── 0. Bootstrap prérequis (machine vierge) ───────────────────
-set SENTINEL=%~dp0installer\.bootstrap_done
+set "SENTINEL=installer\.bootstrap_done"
 set NEED_BOOTSTRAP=0
 
 :: Vérifier si Python est dans le PATH
@@ -30,10 +39,10 @@ for %%P in (python3.12 python3 python py) do (
 )
 
 if "!PYTHON!"=="" (
-    echo  [BOOTSTRAP] Python introuvable — démarrage du bootstrap automatique...
+    echo  [BOOTSTRAP] Python introuvable — demarrage du bootstrap automatique...
     set NEED_BOOTSTRAP=1
 ) else if not exist "!SENTINEL!" (
-    echo  [BOOTSTRAP] Première exécution détectée — vérification des prérequis...
+    echo  [BOOTSTRAP] Premiere execution detectee — verification des prerequis...
     set NEED_BOOTSTRAP=1
 )
 
@@ -41,43 +50,50 @@ if "!NEED_BOOTSTRAP!"=="1" (
     echo  [BOOTSTRAP] Lancement de installer\windows\bootstrap.ps1 ...
     echo.
 
-    :: Vérifier si on est admin, sinon relancer avec UAC
+    :: Admin requis pour WSL2 — relancer ce script en élevé (sans quoting fragile)
     net session >nul 2>&1
     if !errorlevel! neq 0 (
-        echo  [BOOTSTRAP] Élévation des droits administrateur requise...
+        echo  [BOOTSTRAP] Elevation des droits administrateur requise...
+        echo  [BOOTSTRAP] Acceptez la fenetre UAC pour continuer.
+        echo.
         powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-            "Start-Process cmd -ArgumentList '/c cd /d ""%~dp0"" && setup.bat' -Verb RunAs -Wait"
+            "Start-Process -FilePath '%~f0' -Verb RunAs -Wait"
         if !errorlevel! neq 0 (
+            echo.
             echo  [ERREUR] Impossible d'obtenir les droits administrateur.
-            echo  Relancez setup.bat en cliquant droit → Exécuter en tant qu'administrateur
+            echo  Relancez setup.bat : clic droit -^> Executer en tant qu'administrateur
             pause
+            popd
             exit /b 1
         )
+        popd
         exit /b 0
     )
 
-    :: Exécuter le bootstrap PowerShell et récupérer le JSON
-    for /f "delims=" %%R in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer\windows\bootstrap.ps1" 2^>^&1') do (
+    :: Exécuter le bootstrap PowerShell
+    set BOOTSTRAP_OUTPUT=
+    for /f "delims=" %%R in ('powershell -NoProfile -ExecutionPolicy Bypass -File "installer\windows\bootstrap.ps1" 2^>^&1') do (
         set BOOTSTRAP_OUTPUT=%%R
         echo  [BOOTSTRAP] %%R
     )
 
-    :: Vérifier si reboot requis
+    :: Reboot requis (WSL2 activé)
     echo !BOOTSTRAP_OUTPUT! | findstr /i "reboot_required.*true" >nul 2>&1
     if !errorlevel! == 0 (
         echo.
-        echo  ╔══════════════════════════════════════════════════════════╗
-        echo  ║  REDÉMARRAGE REQUIS                                      ║
-        echo  ║                                                          ║
-        echo  ║  WSL2 a été activé sur votre système.                   ║
-        echo  ║  Veuillez REDÉMARRER Windows puis relancer setup.bat.   ║
-        echo  ╚══════════════════════════════════════════════════════════╝
+        echo  ============================================================
+        echo    REDEMARRAGE REQUIS
+        echo.
+        echo    WSL2 a ete active sur votre systeme.
+        echo    Redemarrez Windows puis relancez setup.bat.
+        echo  ============================================================
         echo.
         pause
+        popd
         exit /b 0
     )
 
-    :: Rafraîchir le PATH après installation Python
+    :: Rafraîchir Python après bootstrap
     if "!PYTHON!"=="" (
         for %%P in (python3.12 python3 python py) do (
             if "!PYTHON!"=="" (
@@ -91,10 +107,11 @@ if "!NEED_BOOTSTRAP!"=="1" (
 
     if "!PYTHON!"=="" (
         echo.
-        echo  [ERREUR] Python reste introuvable après le bootstrap.
-        echo  Redémarrez Windows et relancez setup.bat.
+        echo  [ERREUR] Python reste introuvable apres le bootstrap.
+        echo  Redemarrez Windows et relancez setup.bat.
         echo.
         pause
+        popd
         exit /b 1
     )
     echo.
@@ -115,22 +132,19 @@ if "!PYTHON!"=="" (
 if "!PYTHON!"=="" (
     echo [ERREUR] Python 3.x introuvable dans le PATH.
     echo.
-    echo  Téléchargez Python 3.12 sur : https://python.org/downloads/
+    echo  Telechargez Python 3.12 sur : https://python.org/downloads/
     echo  Cochez "Add Python to PATH" lors de l'installation.
     echo.
     pause
+    popd
     exit /b 1
 )
 
-:: ── Vérifier version Python >= 3.10 ──────────────────────────
 for /f "tokens=2 delims= " %%V in ('!PYTHON! --version 2^>^&1') do set PY_VER=%%V
 echo  [INFO] Python detecte : !PY_VER!
 
-:: ── 2. Répertoire du script ───────────────────────────────────
-cd /d "%~dp0"
-
-:: ── 3. Lancer le serveur d'installation ──────────────────────
-echo  [INFO] Démarrage du serveur d'installation (port 7315)...
+:: ── 2. Lancer le serveur d'installation ──────────────────────
+echo  [INFO] Demarrage du serveur d'installation (port 7315)...
 echo  [INFO] L'interface s'ouvrira dans votre navigateur.
 echo.
 echo  Si le navigateur ne s'ouvre pas :
@@ -139,13 +153,23 @@ echo.
 echo  Appuyez sur Ctrl+C pour arreter.
 echo.
 
+if not exist "installer\setup-server.py" (
+    echo  [ERREUR] Fichier introuvable : installer\setup-server.py
+    echo  Verifiez que le projet est complet dans : %CD%
+    pause
+    popd
+    exit /b 1
+)
+
 !PYTHON! -X utf8 installer\setup-server.py
 
 if !errorlevel! neq 0 (
     echo.
     echo [ERREUR] Le serveur a rencontre une erreur (code !errorlevel!).
     pause
+    popd
     exit /b !errorlevel!
 )
 
+popd
 endlocal
