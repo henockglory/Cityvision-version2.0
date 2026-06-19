@@ -133,12 +133,12 @@ if [[ ! -d ai-engine/.venv ]]; then
 fi
 # shellcheck disable=SC1091
 source ai-engine/.venv/bin/activate
-if [[ -f "$VENV_SENTINEL" ]]; then
+if [[ -f "$VENV_SENTINEL" ]] && python -c "import citevision_ai, insightface, paddleocr" 2>/dev/null; then
   _info "Python packages already installed — skipping pip install"
 else
-  _info "Installing AI engine requirements (première fois, peut prendre quelques minutes)…"
+  _info "Installing AI engine requirements (YOLO + InsightFace + PaddleOCR)…"
   pip install --upgrade pip -q 2>>"${LOG_FILE:-/dev/null}"
-  ( cd ai-engine && pip install -r requirements.txt -q 2>>"${LOG_FILE:-/dev/null}" )
+  ( cd ai-engine && pip install -q -e '.[identity,anpr,dev]' 2>>"${LOG_FILE:-/dev/null}" )
   touch "$VENV_SENTINEL"
 fi
 _ok "Python virtualenv ready"
@@ -205,6 +205,16 @@ if [[ "$CV_YOLO_MODEL" != "yolov8n.onnx" ]] && [[ ! -f "ai-engine/models/yolov8n
   YOLO_MODEL="yolov8n.onnx" bash scripts/download-yolo-model.sh 2>>"${LOG_FILE:-/dev/null}" \
     && _ok "yolov8n.onnx (fallback) téléchargé" \
     || _warn "Téléchargement yolov8n.onnx échoué — download-yolo-model.sh requis manuellement"
+fi
+
+# ── Modèles IA complémentaires (InsightFace + PaddleOCR) ─────
+_step "Modèles IA (InsightFace + PaddleOCR)"
+if [[ -f "scripts/download-models.sh" ]]; then
+  bash scripts/download-models.sh --skip-yolo 2>>"${LOG_FILE:-/dev/null}" \
+    && _ok "Modèles InsightFace et PaddleOCR prêts" \
+    || _warn "Téléchargement InsightFace/PaddleOCR échoué — voir logs"
+else
+  _warn "scripts/download-models.sh introuvable"
 fi
 
 # ── Service système (citevision.service) ─────────────────────

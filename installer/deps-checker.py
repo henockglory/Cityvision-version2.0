@@ -872,6 +872,31 @@ def launch_stream():
             _time.sleep(3)
         return False
 
+    def _poll_all_ai_models(url: str, timeout: int = 180) -> tuple[bool, str]:
+        """Poll /health until yolo_loaded, face_loaded and plate_loaded are true."""
+        import json as _json
+        labels = {
+            "yolo_loaded": "YOLO",
+            "face_loaded": "Reconnaissance faciale (InsightFace)",
+            "plate_loaded": "Lecture de plaques (PaddleOCR)",
+        }
+        deadline = _time.time() + timeout
+        missing: list[str] = list(labels.values())
+        while _time.time() < deadline:
+            try:
+                with _urlreq.urlopen(url, timeout=3) as r:
+                    data = _json.loads(r.read())
+                missing = [
+                    label for key, label in labels.items()
+                    if str(data.get(key, "")).lower() != "true"
+                ]
+                if not missing:
+                    return True, ""
+            except Exception:
+                missing = list(labels.values())
+            _time.sleep(3)
+        return False, ", ".join(missing)
+
     line_q: _queue.Queue = _queue.Queue()
 
     def _run() -> None:
@@ -909,6 +934,8 @@ def launch_stream():
         "Compilation des modules Go (premier démarrage)...",
         "Téléchargement / vérification du modèle YOLO...",
         "Démarrage de l'AI engine...",
+        "Téléchargement InsightFace (buffalo_l)...",
+        "Initialisation PaddleOCR...",
         "Chargement du modèle YOLO (initialisation ONNX)...",
         "Démarrage du moteur de règles...",
         "Démarrage du frontend Vite...",
@@ -936,19 +963,20 @@ def launch_stream():
 
                 yield emit("step", message="Vérification de l'AI Engine (8001)...")
                 ai_up = _poll_port(8001, timeout=120)
-                ai_yolo_ok = False
+                ai_models_ok = False
                 if ai_up:
-                    yield emit("ok", message="AI Engine démarré — vérification du modèle YOLO...")
-                    ai_yolo_ok = _poll_http_key(
-                        "http://localhost:8001/health", "yolo_loaded", "true", timeout=60
+                    yield emit("ok", message="AI Engine démarré — vérification des modèles IA...")
+                    ai_models_ok, missing = _poll_all_ai_models(
+                        "http://localhost:8001/health", timeout=180
                     )
-                    if ai_yolo_ok:
-                        yield emit("ai_ready", message="AI Engine opérationnel — modèle YOLO chargé et prêt")
+                    if ai_models_ok:
+                        yield emit("ai_ready", message=(
+                            "AI Engine opérationnel — YOLO, InsightFace et PaddleOCR chargés"
+                        ))
                     else:
                         yield emit("ai_fail", message=(
-                            "AI Engine démarré mais modèle YOLO non chargé après 60s. "
-                            "Cause probable : modèle absent ou corrompu. "
-                            "Lancez : bash scripts/download-yolo-model.sh"
+                            f"Modèles IA incomplets après 180s : {missing}. "
+                            "Lancez : bash scripts/download-models.sh"
                         ))
                 else:
                     yield emit("ai_fail", message=(

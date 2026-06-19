@@ -100,6 +100,17 @@ class Settings(BaseSettings):
             p = Path(*parts[1:])
         return (_AI_ROOT / p).resolve()
 
+    def resolved_insightface_root(self) -> Path:
+        if self.insightface_model_path.strip():
+            p = Path(self.insightface_model_path)
+            if p.is_absolute():
+                return p
+            parts = p.parts
+            if parts and parts[0] == "ai-engine":
+                p = Path(*parts[1:])
+            return (_AI_ROOT / p).resolve()
+        return (_AI_ROOT / "models" / "insightface").resolve()
+
     def resolved_mqtt_host(self) -> str:
         broker = self.mqtt_broker.strip()
         if broker.startswith("tcp://") or broker.startswith("mqtt://"):

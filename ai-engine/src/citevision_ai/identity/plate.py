@@ -81,6 +81,10 @@ class PlateIdentityEngine:
             self._backend.load()
         self._anpr.enable()
 
+    @property
+    def is_loaded(self) -> bool:
+        return getattr(self._backend, "is_loaded", False)
+
     def set_plates(self, entries: list[dict[str, Any]]) -> None:
         self._plates = entries
 

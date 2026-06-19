@@ -3,7 +3,7 @@
 # CitéVision v2 — Installation headless (sans navigateur)
 #
 # Enchaîne bootstrap, setup, démarrage et vérification des services
-# (gate IA yolo_loaded incluse). Aucune interaction requise.
+# (gate IA yolo_loaded + face_loaded + plate_loaded incluse). Aucune interaction requise.
 #
 # Usage recommandé :
 #   sudo bash scripts/install-headless.sh
@@ -86,14 +86,15 @@ _run_as_user() {
   fi
 }
 
-_wait_yolo_loaded() {
+_wait_health_key() {
   local url="$1"
-  local timeout="${2:-300}"
+  local key="$2"
+  local timeout="${3:-180}"
   local i=0
   while (( i < timeout )); do
     local status
     status="$(curl -sf "$url" 2>/dev/null \
-      | grep -o '"yolo_loaded":"[^"]*"' | cut -d'"' -f4 || echo "")"
+      | grep -o "\"${key}\":\"[^\"]*\"" | cut -d'"' -f4 || echo "")"
     if [[ "$status" == "true" ]]; then
       return 0
     fi
@@ -101,6 +102,15 @@ _wait_yolo_loaded() {
     ((i += 2))
   done
   return 1
+}
+
+_wait_all_ai_models() {
+  local url="$1"
+  local timeout="${2:-300}"
+  _wait_health_key "$url" "yolo_loaded" "$timeout" || return 1
+  _wait_health_key "$url" "face_loaded" "$timeout" || return 1
+  _wait_health_key "$url" "plate_loaded" "$timeout" || return 1
+  return 0
 }
 
 _step "Installation headless CitéVision v2"
@@ -189,12 +199,13 @@ else
   HEALTH_OK=false
 fi
 
-_info "AI Engine ($AI_PORT) + YOLO..."
+_info "AI Engine ($AI_PORT) — YOLO + InsightFace + PaddleOCR..."
 if wait_http_ok "http://127.0.0.1:$AI_PORT/health" 120; then
-  if _wait_yolo_loaded "http://127.0.0.1:$AI_PORT/health" 180; then
-    _ok "AI Engine opérationnel — yolo_loaded=true"
+  if _wait_all_ai_models "http://127.0.0.1:$AI_PORT/health" 300; then
+    _ok "AI Engine opérationnel — yolo_loaded, face_loaded, plate_loaded"
   else
-    _err "AI Engine up mais yolo_loaded!=true — voir logs/ai-engine.log"
+    _err "AI Engine up mais modèles IA incomplets — voir logs/ai-engine.log"
+    _err "Relancez : bash scripts/download-models.sh"
     HEALTH_OK=false
   fi
 else

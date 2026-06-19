@@ -12,7 +12,7 @@ from citevision_ai.budget.resource_budget import ResourceBudgetManager
 from citevision_ai.config import settings
 from citevision_ai.detection.yolo_onnx import YoloOnnxDetector
 from citevision_ai import hardware_profile
-from citevision_ai.identity.face import FaceIdentityEngine
+from citevision_ai.identity.face import FaceIdentityEngine, InsightFaceRecognizer
 from citevision_ai.identity.plate import PlateIdentityEngine
 from citevision_ai.ingest.rtsp_worker import WorkerManager
 from citevision_ai.mqtt.publisher import MqttPublisher
@@ -40,10 +40,21 @@ async def lifespan(app: FastAPI):
     )
     detector.load()
 
-    face_engine = FaceIdentityEngine()
+    iface_root = str(settings.resolved_insightface_root())
+    face_engine = FaceIdentityEngine(
+        recognizer=InsightFaceRecognizer(model_root=iface_root),
+    )
     face_engine.load()
     plate_engine = PlateIdentityEngine()
     plate_engine.load()
+    if face_engine.is_loaded:
+        logger.info("InsightFace loaded from %s", iface_root)
+    else:
+        logger.warning("InsightFace not loaded — install: pip install -e 'ai-engine/.[identity]'")
+    if plate_engine.is_loaded:
+        logger.info("PaddleOCR loaded for ANPR")
+    else:
+        logger.warning("PaddleOCR not loaded — install: pip install -e 'ai-engine/.[anpr]'")
 
     budget = ResourceBudgetManager(max_cameras=settings.max_cameras)
     mqtt = MqttPublisher(
@@ -119,12 +130,16 @@ class ProcessRequest(BaseModel):
 def health() -> dict[str, str]:
     import shutil
 
-    loaded = pipeline.detector.is_loaded if pipeline else False
+    yolo_loaded = pipeline.detector.is_loaded if pipeline else False
+    face_loaded = pipeline.face_engine.is_loaded if pipeline else False
+    plate_loaded = pipeline.plate_engine.is_loaded if pipeline else False
     provider = pipeline.detector.active_provider if pipeline else "none"
     return {
         "status": "ok",
         "service": "citevision-ai-engine",
-        "yolo_loaded": str(loaded).lower(),
+        "yolo_loaded": str(yolo_loaded).lower(),
+        "face_loaded": str(face_loaded).lower(),
+        "plate_loaded": str(plate_loaded).lower(),
         "yolo_provider": provider,
         "yolo_cuda": str(pipeline.detector.uses_cuda if pipeline else False).lower(),
         "ffmpeg_available": str(shutil.which("ffmpeg") is not None).lower(),

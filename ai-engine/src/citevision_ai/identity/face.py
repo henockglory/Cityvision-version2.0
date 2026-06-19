@@ -77,6 +77,10 @@ class FaceIdentityEngine:
         if hasattr(self.recognizer, "load"):
             self.recognizer.load()
 
+    @property
+    def is_loaded(self) -> bool:
+        return hasattr(self.recognizer, "is_loaded") and bool(self.recognizer.is_loaded)
+
     def set_watchlist(self, entries: list[dict[str, Any]]) -> None:
         self._watchlist = entries
         self._last_refresh = time.monotonic()

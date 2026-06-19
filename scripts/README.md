@@ -16,7 +16,7 @@ Scripts utilitaires pour le démarrage, l'arrêt, la configuration et la validat
 
 ## install-headless.sh
 
-Installation sans navigateur pour serveur Linux headless (SSH, CI, VM sans GUI). Enchaîne bootstrap, setup, démarrage et vérification des services (gate `yolo_loaded` incluse).
+Installation sans navigateur pour serveur Linux headless (SSH, CI, VM sans GUI). Enchaîne bootstrap, setup, démarrage et vérification des services (gate `yolo_loaded` + `face_loaded` + `plate_loaded` incluse).
 
 ```bash
 # Installation complète (recommandé avec sudo pour apt + systemd)

@@ -32,7 +32,7 @@ Le script enchaîne sans interaction :
 1. `installer/linux/bootstrap.sh` — dépendances OS (Docker, Go, Node, Python…)
 2. `scripts/setup-wsl.sh` — build, migrations, modèle YOLO, enregistrement systemd
 3. Démarrage des services (via systemd en mode `auto`, ou `start-linux.sh` sinon)
-4. Vérification séquentielle : backend :8081, AI :8001 (`yolo_loaded=true`), rules :8010, frontend :5174
+4. Vérification séquentielle : backend :8081, AI :8001 (`yolo_loaded`, `face_loaded`, `plate_loaded`), rules :8010, frontend :5174
 
 Options utiles :
 
