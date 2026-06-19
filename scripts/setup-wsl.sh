@@ -150,11 +150,33 @@ elif command -v python &>/dev/null; then
 fi
 
 if [[ -n "$PYTHON_CMD" ]] && [[ -f "installer/apply-hardware-profile.py" ]]; then
-  "$PYTHON_CMD" installer/apply-hardware-profile.py 2>>"${LOG_FILE:-/dev/null}" \
-    && _ok "generated.env créé" \
-    || _warn "apply-hardware-profile.py a échoué — generated.env absent (mode CPU-only par défaut)"
+  hw_ok=false
+  for attempt in 1 2; do
+    if "$PYTHON_CMD" installer/apply-hardware-profile.py 2>>"${LOG_FILE:-/dev/null}"; then
+      hw_ok=true
+      _ok "generated.env créé"
+      break
+    fi
+    [[ $attempt -eq 1 ]] && _info "apply-hardware-profile retry…"
+  done
+  if [[ "$hw_ok" != "true" ]]; then
+    if [[ ! -f generated.env ]]; then
+      _warn "apply-hardware-profile échoué — fallback CPU-only (yolov8n)"
+      cat >generated.env <<'FALLBACK'
+# Fallback CPU-only (apply-hardware-profile failed)
+CV_YOLO_MODEL=yolov8n.onnx
+CV_YOLO_DEVICE=cpu
+CV_FACE_DEVICE=cpu
+CV_PLATE_DEVICE=cpu
+FALLBACK
+    else
+      _err "apply-hardware-profile.py a échoué et generated.env existant est invalide"
+      exit 1
+    fi
+  fi
 else
-  _warn "Python ou apply-hardware-profile.py introuvable — generated.env non créé"
+  _err "Python ou apply-hardware-profile.py introuvable"
+  exit 1
 fi
 
 # ── AI stack complet (venv + pip + modèles) — auto-fix obligatoire ──

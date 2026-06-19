@@ -382,7 +382,6 @@ function startLaunch() {
   let appUrl     = 'http://localhost:5174';
   let bannerEl   = null;
   let waitingEl  = null;
-  let fallbackBtn = null;
 
   function appendLog(text, cls = '') {
     const line = document.createElement('div');
@@ -438,14 +437,8 @@ function startLaunch() {
     btnArea.insertBefore(serviceRegEl, btn);
   }
 
-  function showFallbackBtn() {
-    // Mode dégradé réservé — désactivé par défaut (auto-fix prioritaire)
-    return;
-  }
-
   async function openCiteVision(url) {
     btn.disabled = true;
-    if (fallbackBtn) fallbackBtn.disabled = true;
     showServiceWaiting();
     step.textContent = 'Enregistrement du service CitéVision…';
     try {
@@ -457,17 +450,12 @@ function startLaunch() {
         step.textContent = data.skipped ? 'Application prête' : 'Service enregistré — ouverture…';
         window.open(url, '_blank');
         btn.disabled = false;
-        if (fallbackBtn) fallbackBtn.disabled = false;
       } else {
         appendLog('  ' + (data.message || 'Échec enregistrement service'), 'error');
         showBanner(data.message || 'Enregistrement du service échoué — réessayez', 'fail');
         step.textContent = 'Erreur service — cliquez pour réessayer';
         btn.disabled = false;
         btn.onclick = () => openCiteVision(url);
-        if (fallbackBtn) {
-          fallbackBtn.disabled = false;
-          fallbackBtn.onclick = () => openCiteVision(url);
-        }
       }
     } catch (err) {
       removeServiceWaiting();
@@ -538,16 +526,6 @@ function startLaunch() {
         return;
       }
 
-      // ── AI échouée (legacy — remplacé par fix loop) ───────────
-      if (msg.event === 'ai_fail_legacy') {
-        aiFailed = true;
-        removeAiWaiting();
-        appendLog('  ' + text, 'error');
-        showBanner(text, 'fail');
-        step.textContent = 'IA non disponible';
-        return;
-      }
-
       // ── Interface prête (5174) ────────────────────────────────
       if (msg.event === 'launch_ready') {
         clearInterval(timer);
@@ -602,5 +580,18 @@ function goToReady()    { showStep('ready'); }
 
 window.app = { loadHardware, goToHardware, loadDeps, goToDeps, goToInstall, goToLaunch, goToReady, startInstall, startLaunch, resetInstallStep };
 
+async function loadVersionBanner() {
+  const el = document.getElementById('install-version');
+  if (!el) return;
+  try {
+    const res = await fetch(API + '/api/version');
+    const data = await res.json();
+    if (data.commit && data.commit !== 'unknown') {
+      el.textContent = `Build ${data.commit}`;
+    }
+  } catch { /* optional footer */ }
+}
+
 // ── Boot ──────────────────────────────────────────────────────
+loadVersionBanner();
 runSplash();

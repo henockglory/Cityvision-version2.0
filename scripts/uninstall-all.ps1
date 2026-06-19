@@ -23,6 +23,7 @@ $ErrorActionPreference = 'Continue'
 
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+. (Join-Path $PSScriptRoot 'lib\resolve-wsl-path.ps1')
 
 function Write-Log { param([string]$Msg, [string]$Level = 'INFO')
     Write-Host "[$Level] $Msg"
@@ -94,15 +95,13 @@ if ($wslOk) {
         wsl -- bash -lc "cd '$($Root -replace '\\','/')' && docker compose -f infra/docker-compose.yml down" 2>$null
     } else {
         Write-Log 'Docker compose down -v…'
-        $wslRoot = (wsl -- wslpath -a $Root 2>$null)
-        if (-not $wslRoot) { $wslRoot = "/mnt/c/Users/gheno/citevision-v2" }
+        $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
         wsl -- bash -lc "cd '$wslRoot' && docker compose -f infra/docker-compose.yml down -v" 2>$null
     }
     if ($LASTEXITCODE -eq 0) { $summary.docker = 'ok' } else { $summary.docker = 'warn' }
 
     Write-Log 'Suppression sentinelles…'
-    $wslRoot = (wsl -- wslpath -a $Root 2>$null)
-    if (-not $wslRoot) { $wslRoot = '/mnt/c/Users/gheno/citevision-v2' }
+    $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
     wsl -- bash -lc "cd '$wslRoot' && rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode" 2>$null
     if ($FromScratch) {
         Write-Log 'Purge from-scratch (venv, node_modules, logs)…'

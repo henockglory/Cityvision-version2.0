@@ -12,6 +12,7 @@ Routes :
   POST /api/install           → SSE stream d'installation
   GET  /api/status            → état global de préparation
   GET  /api/app-status        → vérifie si l'app est déjà démarrée
+  GET  /api/version           → commit build + racine projet
   GET  /static/*              → fichiers statiques de installer/ui/
 """
 from __future__ import annotations
@@ -182,6 +183,26 @@ class InstallerHandler(BaseHTTPRequestHandler):
             result = _run_py_module(INSTALLER_DIR / "deps-checker.py",
                                     fallback={"ready": False, "summary": "Timeout", "deps": []})
             _send_json(self, result)
+            return
+
+        if path == "/api/version":
+            commit = "unknown"
+            build_file = INSTALLER_DIR / ".build_version"
+            if build_file.is_file():
+                lines = build_file.read_text(encoding="utf-8").strip().splitlines()
+                if lines:
+                    commit = lines[0].strip()
+            else:
+                try:
+                    r = _subprocess.run(
+                        ["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
+                        capture_output=True, text=True, timeout=5,
+                    )
+                    if r.returncode == 0 and r.stdout.strip():
+                        commit = r.stdout.strip()
+                except Exception:
+                    pass
+            _send_json(self, {"commit": commit, "root": str(ROOT)})
             return
 
         if path == "/api/status":

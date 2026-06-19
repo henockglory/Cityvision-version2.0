@@ -11,6 +11,7 @@ echo.
 echo  ============================================================
 echo    CitéVision v2  -  Installateur
 echo    Plateforme de telesurveillance intelligente
+echo    Windows : WSL2 requis pour la stack IA (InsightFace / PaddleOCR)
 echo  ============================================================
 echo.
 

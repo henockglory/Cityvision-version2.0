@@ -693,3 +693,9 @@ html, body {
   .checks-grid  { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
   .install-log  { max-height: 480px; }
 }
+
+.install-version {
+  position: fixed; bottom: 10px; right: 16px; z-index: 50;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+  color: var(--muted); opacity: 0.55; pointer-events: none;
+}

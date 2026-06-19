@@ -71,7 +71,7 @@ fi
 "$PYTHON" - <<'PY'
 try:
     from paddleocr import PaddleOCR
-    PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+    PaddleOCR(use_angle_cls=True, lang="en")
     print("[OK] PaddleOCR models ready")
 except Exception as e:
     raise SystemExit(f"[ERR] PaddleOCR init failed: {e}")

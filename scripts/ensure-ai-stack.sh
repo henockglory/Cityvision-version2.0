@@ -43,6 +43,11 @@ done
 source "$ROOT/scripts/lib/env-utils.sh"
 # shellcheck source=scripts/lib/cuda-utils.sh
 source "$ROOT/scripts/lib/cuda-utils.sh"
+# shellcheck source=scripts/lib/wsl-root.sh
+source "$ROOT/scripts/lib/wsl-root.sh"
+
+ensure_venv_not_on_drvfs
+write_build_version 2>/dev/null || true
 
 VENV_SENTINEL="ai-engine/.venv/.installed_ok"
 LOGDIR="$ROOT/logs"
@@ -74,6 +79,7 @@ _models_ok() {
 
 _health_keys_ok() {
   local url="$1"
+  [[ "$url" == "none" || "$url" == "skip" ]] && return 0
   curl -sf "$url" 2>/dev/null | ai-engine/.venv/bin/python -c "
 import json, sys
 d = json.load(sys.stdin)
@@ -87,7 +93,8 @@ verify_stack() {
   _imports_ok || return 1
   _yolo_file_ok || return 1
   _models_ok || return 1
-  if curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
+  if [[ "$HEALTH_URL" != "none" && "$HEALTH_URL" != "skip" ]] \
+      && curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
     _health_keys_ok "$HEALTH_URL" || return 1
   fi
   return 0
@@ -201,7 +208,9 @@ while (( attempt <= MAX_ATTEMPTS )); do
   fi
 
   _log "[FIX] Correction AI stack ($attempt/$MAX_ATTEMPTS)…"
-  apply_fixes || _log "[WARN] apply_fixes partiellement échoué"
+  if ! apply_fixes; then
+    _log "[ERR]  apply_fixes échoué (tentative $attempt/$MAX_ATTEMPTS)"
+  fi
   ((attempt++)) || true
   sleep 3
 done

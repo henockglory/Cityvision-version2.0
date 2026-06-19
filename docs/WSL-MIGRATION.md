@@ -113,6 +113,16 @@ Le script exclut `node_modules`, `.venv`, `logs`, `.env`.
 | Backend timeout | `docker compose -f infra/docker-compose.yml ps` |
 | Port occupé | `bash scripts/stop-linux.sh` puis relancer |
 | Lent sur `/mnt/c/` | Toujours travailler dans `~/citevision-v2` |
+| venv sur `/mnt/c/` (drvfs) | `ensure-ai-stack.sh` recrée automatiquement le venv sur ext4 local — voir `scripts/lib/wsl-root.sh` |
+
+## Politique venv drvfs
+
+Si le projet reste sous `/mnt/c/…`, le venv Python (`ai-engine/.venv`) est recréé automatiquement par `ensure-ai-stack.sh` lorsqu'il détecte un chemin drvfs (performance pip et wheels CUDA). Le code source peut rester sur Windows ; seul le venv migre vers le filesystem WSL natif.
+
+```bash
+# Déclenché automatiquement au setup / start
+bash scripts/ensure-ai-stack.sh --fix
+```
 
 ## Ports v2
 

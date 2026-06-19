@@ -102,10 +102,9 @@ start_bg frontend "$ROOT/frontend" "npm run dev -- --host 0.0.0.0 --port 5174 --
 
 echo ""
 echo "[INFO] Waiting for backend (first run may download Go modules)..."
-if wait_http_ok "http://localhost:$BACKEND_PORT/health" 120; then
-  echo "[OK] Backend healthy"
-else
-  echo "[WARN] Backend timeout - see logs/backend.log"
+if ! wait_service_with_retry backend "http://localhost:$BACKEND_PORT/health" \
+    "$LOGDIR/backend.pid" "$GO_BIN run ./cmd/api" "$ROOT/backend" "$LOGDIR" "$ENV_FILE" 120 2; then
+  exit 1
 fi
 
 echo ""
@@ -126,10 +125,9 @@ fi
 
 echo ""
 echo "[INFO] Waiting for Rules Engine..."
-if wait_http_ok "http://localhost:$RULES_PORT/health" 30; then
-  echo "[OK] Rules Engine healthy — http://localhost:$RULES_PORT"
-else
-  echo "[WARN] Rules Engine timeout - see logs/rules-engine.log"
+if ! wait_service_with_retry rules-engine "http://localhost:$RULES_PORT/health" \
+    "$LOGDIR/rules-engine.pid" "$GO_BIN run ./cmd/rules-engine" "$ROOT/rules-engine" "$LOGDIR" "$ENV_FILE" 30 2; then
+  exit 1
 fi
 
 echo ""

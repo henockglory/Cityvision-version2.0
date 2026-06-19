@@ -101,11 +101,10 @@ Write-Host "[OK] AI gate validated"
 
 Write-Host ""
 Write-Host "[INFO] Waiting for backend health..."
-if (Wait-HttpOk "http://localhost:$backendPort/health" 45) {
-    Write-Host "[OK] Backend healthy"
-} else {
-    Write-Host "[WARN] Backend health timeout - check logs\backend.log"
+if (-not (Wait-HttpOk "http://localhost:$backendPort/health" 45)) {
+    throw "Backend health timeout — check logs\backend.log"
 }
+Write-Host "[OK] Backend healthy"
 
 Write-Host ""
 Write-Host "=== Citevision v2 Running ==="

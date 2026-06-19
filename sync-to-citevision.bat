@@ -1,6 +1,6 @@
 @echo off
 :: Synchronise citevision-v2 -> C:\CiteVision (projet complet pour tests/deploiement)
-setlocal
+setlocal EnableDelayedExpansion
 set "SRC=c:\Users\gheno\citevision-v2"
 set "DST=C:\CitéVision"
 
@@ -9,9 +9,30 @@ for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":7315" ^| findstr "LISTENING
     taskkill /F /PID %%P >nul 2>&1
 )
 
+echo [SYNC] Ecriture installer\.build_version...
+pushd "%SRC%"
+git rev-parse --short HEAD > installer\.build_version 2>nul
+if errorlevel 1 echo unknown> installer\.build_version
+for /f %%D in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-ddTHH:mmZ"') do echo %%D>> installer\.build_version
+popd
+
+set "ROBO=/E /XD node_modules .venv __pycache__ logs .git /XF *.pyc"
+set "DIRS=backend frontend ai-engine rules-engine infra shared docs installer scripts"
+
 echo [SYNC] citevision-v2 -^> %DST%
-robocopy "%SRC%\installer" "%DST%\installer" /E /XD __pycache__ .venv /XF "*.pyc" /NFL /NJH /NJS
-robocopy "%SRC%\scripts"   "%DST%\scripts"   /E /XD __pycache__ /XF "*.pyc" /NFL /NJH /NJS
+for %%D in (%DIRS%) do (
+    if exist "%SRC%\%%D" (
+        robocopy "%SRC%\%%D" "%DST%\%%D" %ROBO% /NFL /NJH /NJS >nul
+    )
+)
+
+if exist "%SRC%\.env.example" copy /Y "%SRC%\.env.example" "%DST%\.env.example" >nul
+if exist "%SRC%\Makefile" copy /Y "%SRC%\Makefile" "%DST%\Makefile" >nul
+if exist "%SRC%\docker-compose.yml" copy /Y "%SRC%\docker-compose.yml" "%DST%\docker-compose.yml" >nul
+for %%F in (docker-compose*.yml) do (
+    if exist "%SRC%\%%F" copy /Y "%SRC%\%%F" "%DST%\%%F" >nul
+)
+
 copy /Y "%SRC%\setup.bat" "%DST%\setup.bat" >nul
 powershell -NoProfile -Command "$p='%DST:\=\\%\setup.bat'; $c=[IO.File]::ReadAllText($p); $c=$c -replace \"`r`n\",\"`n\" -replace \"`n\",\"`r`n\"; [IO.File]::WriteAllText($p,$c,[Text.UTF8Encoding]::new($false))"
 copy /Y "%SRC%\setup.sh"  "%DST%\setup.sh"  >nul 2>&1

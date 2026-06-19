@@ -11,6 +11,7 @@
 Guide complet : [WSL-MIGRATION.md](WSL-MIGRATION.md)
 
 ### Windows (alternative)
+- **WSL2 requis** pour la stack IA (InsightFace / PaddleOCR) — `setup.bat` délègue à WSL
 - Docker Desktop (PostgreSQL, Redis, MQTT, MinIO, go2rtc)
 - Go 1.22+, Node 20+, Python 3.12+
 - FFmpeg dans PATH
@@ -176,6 +177,13 @@ Caméra test (`.env` local uniquement, jamais committer):
 CAMERA_TEST_IP=192.168.1.108
 CAMERA_TEST_USER=admin
 CAMERA_TEST_PASSWORD=<secret>
+```
+
+## Validation CI / smoke install
+
+```bash
+bash scripts/validate-install-smoke.sh --ci    # CI : shellcheck + pip + imports
+bash scripts/validate-install-smoke.sh --fix   # local : inclut téléchargement modèles
 ```
 
 ## Validation

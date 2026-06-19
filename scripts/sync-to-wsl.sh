@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
 # Copy project from Windows mount into WSL home for fast I/O
+# Usage: bash scripts/sync-to-wsl.sh [WIN_SRC]
 set -euo pipefail
 
-WIN_SRC="/mnt/c/Users/gheno/citevision-v2"
-DEST="${HOME}/citevision-v2"
+if [[ -n "${1:-}" ]]; then
+  WIN_SRC="$1"
+elif [[ -n "${WIN_SRC:-}" ]]; then
+  :
+else
+  # Default: parent of scripts/ on /mnt/c when invoked from drvfs checkout
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  WIN_SRC="$(dirname "$SCRIPT_DIR")"
+  if [[ "$WIN_SRC" != /mnt/* ]]; then
+    WIN_SRC="/mnt/c/Users/gheno/citevision-v2"
+  fi
+fi
+
+DEST="${DEST:-${HOME}/citevision-v2}"
 
 if [[ ! -d "$WIN_SRC" ]]; then
   echo "Windows source not found: $WIN_SRC" >&2

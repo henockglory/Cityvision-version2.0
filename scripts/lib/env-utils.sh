@@ -113,3 +113,33 @@ free_port() {
     fi
   done
 }
+
+wait_service_with_retry() {
+  local name="$1"
+  local url="$2"
+  local pidfile="$3"
+  local start_cmd="$4"
+  local workdir="$5"
+  local logdir="$6"
+  local env_file="${7:-}"
+  local timeout="${8:-120}"
+  local rounds="${9:-2}"
+  local round=1
+  while (( round <= rounds )); do
+    if wait_http_ok "$url" "$timeout"; then
+      echo "[OK] $name healthy"
+      return 0
+    fi
+    if (( round < rounds )); then
+      echo "[FIX] $name timeout — restart (round $round/$rounds)…"
+      stop_from_pid "$pidfile"
+      free_port "$(echo "$url" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')"
+      sleep 2
+      start_bg "$name" "$workdir" "$start_cmd" "$logdir" "$env_file"
+      sleep 3
+    fi
+    ((round++)) || true
+  done
+  echo "[FAIL] $name not healthy after $rounds attempts — see logs/${name}.log" >&2
+  return 1
+}

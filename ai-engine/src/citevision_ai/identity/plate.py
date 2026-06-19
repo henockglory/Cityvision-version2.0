@@ -26,7 +26,7 @@ class PaddleOcrPlateBackend(PaddleOcrBackend):
         try:
             from paddleocr import PaddleOCR
 
-            self._ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+            self._ocr = PaddleOCR(use_angle_cls=True, lang="en")
             self._loaded = True
             logger.info("PaddleOCR loaded for ANPR")
         except Exception:
