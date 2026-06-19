@@ -380,3 +380,16 @@ export const healthApi = {
     ),
   live: () => api.get<{ status?: string }>('/health', { baseURL: '' }),
 };
+
+export const aiHealthApi = {
+  health: () =>
+    api.get<{
+      status?: string;
+      yolo_loaded?: string;
+      yolo_provider?: string;
+      yolo_cuda?: string;
+      face_loaded?: string;
+      plate_loaded?: string;
+      ffmpeg_available?: string;
+    }>('/ai-engine/health', { baseURL: '' }),
+};

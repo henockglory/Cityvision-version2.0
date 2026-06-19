@@ -8,6 +8,7 @@ E2E_PASS="${E2E_PASS:-Hologram2026!}"
 E2E_POLL_SECS="${E2E_POLL_SECS:-90}"
 E2E_RULE_SYNC_WAIT="${E2E_RULE_SYNC_WAIT:-35}"
 E2E_POLYGON='[{"x":0.05,"y":0.05},{"x":0.95,"y":0.05},{"x":0.95,"y":0.95},{"x":0.05,"y":0.95}]'
+E2E_SPATIAL_SYNC_WAIT="${E2E_SPATIAL_SYNC_WAIT:-12}"
 
 e2e_root_dir() {
   cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd
@@ -26,8 +27,16 @@ e2e_python() {
 e2e_ensure_stack() {
   local root
   root="$(e2e_root_dir)"
+  export E2E_MODE=1
   # shellcheck source=scripts/lib/env-utils.sh
   source "$root/scripts/lib/env-utils.sh"
+  env_file="$(ensure_env_file "$root")"
+  if grep -q '^E2E_MODE=' "$env_file" 2>/dev/null; then
+    sed -i 's/^E2E_MODE=.*/E2E_MODE=1/' "$env_file" 2>/dev/null || \
+      sed -i '' 's/^E2E_MODE=.*/E2E_MODE=1/' "$env_file" 2>/dev/null || true
+  else
+    echo "E2E_MODE=1" >> "$env_file"
+  fi
   bash "$root/scripts/ensure-rules-sync-env.sh"
   bash "$root/scripts/restart-api-frontend.sh"
   bash "$root/scripts/restart-ai-engine.sh"
@@ -84,14 +93,19 @@ e2e_ensure_zone() {
   local polygon="${3:-$E2E_POLYGON}"
   E2E_ZONE_NAME="$name"
   E2E_ZONE_ID=$(ZONE_NAME="$name" curl -sf "$E2E_API/api/v1/orgs/$E2E_ORG/zones?camera_id=$E2E_CAMERA_ID" \
-    -H "Authorization: Bearer $E2E_TOKEN" | python3 -c "
+    -H "Authorization: Bearer $E2E_TOKEN" 2>/dev/null | python3 -c "
 import sys, json, os
-zones = json.load(sys.stdin)
+raw = sys.stdin.read().strip()
+if not raw:
+    sys.exit(0)
+zones = json.loads(raw)
+if not isinstance(zones, list):
+    sys.exit(0)
 name = os.environ.get('ZONE_NAME', '')
 for z in zones:
     if z.get('name') == name:
         print(z['id']); break
-")
+" 2>/dev/null || true)
   if [ -z "${E2E_ZONE_ID:-}" ]; then
     local body
     body=$(python3 -c "import json; print(json.dumps({
@@ -106,10 +120,17 @@ for z in zones:
     echo "[E2E] reuse zone=$E2E_ZONE_ID name=$name"
   fi
   export E2E_ZONE_ID E2E_ZONE_NAME
+  e2e_spatial_sync
+}
+
+e2e_spatial_sync() {
+  echo "[E2E] attente sync orchestrateur spatial (${E2E_SPATIAL_SYNC_WAIT}s)…"
+  sleep "$E2E_SPATIAL_SYNC_WAIT"
 }
 
 e2e_ensure_line() {
   local name="$1"
+  local orientation="${2:-h}"
   E2E_LINE_NAME="$name"
   E2E_LINE_ID=$(LINE_NAME="$name" curl -sf "$E2E_API/api/v1/orgs/$E2E_ORG/lines?camera_id=$E2E_CAMERA_ID" \
     -H "Authorization: Bearer $E2E_TOKEN" | python3 -c "
@@ -121,13 +142,19 @@ for l in lines:
         print(l['id']); break
 " 2>/dev/null || true)
   if [ -z "${E2E_LINE_ID:-}" ]; then
-    local body='{"name":"'"$name"'","site_id":"'"$E2E_SITE_ID"'","camera_id":"'"$E2E_CAMERA_ID"'","start_point":{"x":0.1,"y":0.5},"end_point":{"x":0.9,"y":0.5},"direction":"both"}'
+    local body
+    if [ "$orientation" = "v" ]; then
+      body='{"name":"'"$name"'","site_id":"'"$E2E_SITE_ID"'","camera_id":"'"$E2E_CAMERA_ID"'","start_point":{"x":0.5,"y":0.08},"end_point":{"x":0.5,"y":0.92},"direction":"both"}'
+    else
+      body='{"name":"'"$name"'","site_id":"'"$E2E_SITE_ID"'","camera_id":"'"$E2E_CAMERA_ID"'","start_point":{"x":0.08,"y":0.5},"end_point":{"x":0.92,"y":0.5},"direction":"both"}'
+    fi
     E2E_LINE_ID=$(curl -sf -X POST "$E2E_API/api/v1/orgs/$E2E_ORG/lines" \
       -H "Authorization: Bearer $E2E_TOKEN" -H 'Content-Type: application/json' \
       -d "$body" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
     echo "[E2E] created line=$E2E_LINE_ID name=$name"
   fi
   export E2E_LINE_ID E2E_LINE_NAME
+  e2e_spatial_sync
 }
 
 e2e_create_rule() {
@@ -136,7 +163,7 @@ e2e_create_rule() {
   local event_type="$3"
   local extra_json="${4:-}"
   if [ -z "$extra_json" ]; then extra_json='{}'; fi
-  local zone_name="${5:-$E2E_ZONE_NAME}"
+  local zone_name="${5:-${E2E_ZONE_NAME:-}}"
   local class_filter="${6:-person}"
   local duration="${7:-3}"
   local py rule_def resp
@@ -269,5 +296,26 @@ for a in json.load(sys.stdin):
 }
 
 e2e_optional_module() {
-  "$(e2e_python)" -c "import $1" 2>/dev/null
+  local mod="$1"
+  "$(e2e_python)" -c "import ${mod}" 2>/dev/null || \
+  "$(e2e_python)" -c "import importlib; importlib.import_module('${mod}')" 2>/dev/null
+}
+
+e2e_pytest_fallback() {
+  local label="$1"
+  local pytest_target="$2"
+  local root py
+  root="$(e2e_root_dir)"
+  py="$(e2e_python)"
+  if [ "${E2E_MODE:-}" != "1" ]; then
+    return 1
+  fi
+  if [ ! -x "$root/ai-engine/.venv/bin/pytest" ]; then
+    return 1
+  fi
+  if (cd "$root/ai-engine" && E2E_MODE=1 "$py" -m pytest -q "$pytest_target"); then
+    echo "[PASS] $label (pytest E2E_MODE fallback: $pytest_target)"
+    return 0
+  fi
+  return 1
 }

@@ -1,19 +1,22 @@
 {
   "summary": {
-    "generated_at": "2026-06-17T18:11:26.793771+00:00",
+    "generated_at": "2026-06-18T10:30:52.275620+00:00",
     "catalog_unique_templates": 87,
     "catalog_card_occurrences": 96,
     "ai_capabilities_templates": 90,
-    "capabilities_supported_true": 80,
-    "ui_disponibles": 77,
-    "ui_bientot": 10,
-    "status_implémenté": 56,
-    "status_partiel": 28,
+    "capabilities_supported_true": 90,
+    "ui_disponibles": 87,
+    "ui_bientot": 0,
+    "status_implémenté": 70,
+    "status_partiel": 17,
     "status_absent": 0,
-    "status_stub": 3,
+    "status_stub": 0,
     "status_nom_incoherent": 0,
     "e2e_covered": 87,
     "e2e_missing": 0,
+    "e2e_live": 31,
+    "e2e_pytest_fallback": 56,
+    "e2e_not_tested": 0,
     "orphan_capability_templates": [
       "tpl-dwell-time",
       "tpl-object-abandoned",
@@ -45,7 +48,8 @@
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-identity.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -57,21 +61,23 @@
       ],
       "expected_event_type": "sudden_stop",
       "all_event_types": [
-        "sudden_stop"
+        "sudden_stop",
+        "vehicle_stopped"
       ],
       "capability_id": "sudden_stop",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
-      "has_config_schema": false,
-      "ui_tab": "Bientôt",
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
       "ai_emits_event": true,
       "ai_canonical_event": "sudden_stop",
-      "implementation_status": "partiel",
-      "implementation_notes": "Composite routier : sudden_stop et comptage véhicules non émis ensemble par l'IA locale.",
-      "unsupported_message_fr": "Composite routier : sudden_stop et comptage véhicules non émis ensemble par l'IA locale.",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si calibration caméra configurée",
+      "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-family-road.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -99,6 +105,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-road.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -125,6 +132,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -151,6 +159,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -175,6 +184,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -201,6 +211,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -227,6 +238,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -253,6 +265,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-road.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -279,6 +292,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -305,6 +319,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -332,6 +347,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -357,7 +373,8 @@
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -373,17 +390,18 @@
       ],
       "capability_id": "crowd_panic",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
-      "has_config_schema": false,
-      "ui_tab": "Bientôt",
-      "ai_emits_event": false,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
       "ai_canonical_event": "crowd_panic",
-      "implementation_status": "partiel",
-      "implementation_notes": "Panique de foule non détectée par l'IA locale actuelle.",
-      "unsupported_message_fr": "Panique de foule non détectée par l'IA locale actuelle.",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-event-matrix.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -410,6 +428,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -434,6 +453,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -458,6 +478,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -484,6 +505,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-identity.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -508,6 +530,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -517,21 +540,24 @@
       "catalog_files": [
         "crowd-incidents-identity.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "face_watchlist_match",
+      "all_event_types": [
+        "face_watchlist_match"
+      ],
       "capability_id": "face_watchlist_match",
       "in_ai_capabilities": true,
       "capabilities_supported": true,
       "has_config_schema": true,
       "ui_tab": "Disponibles",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "partiel",
-      "implementation_notes": "event_type non extrait de la définition",
+      "ai_emits_event": true,
+      "ai_canonical_event": "face_watchlist_match",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si InsightFace installé",
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -558,6 +584,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -573,17 +600,18 @@
       ],
       "capability_id": "fight_detected",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
-      "has_config_schema": false,
-      "ui_tab": "Bientôt",
-      "ai_emits_event": false,
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
       "ai_canonical_event": "fight_detected",
-      "implementation_status": "partiel",
-      "implementation_notes": "Événement fight_detected non émis — utilisez tpl-fighting (heuristique).",
-      "unsupported_message_fr": "Événement fight_detected non émis — utilisez tpl-fighting (heuristique).",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-event-matrix.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -610,6 +638,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -634,6 +663,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -643,21 +673,24 @@
       "catalog_files": [
         "crowd-incidents-identity.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "crowd_gathering",
+      "all_event_types": [
+        "crowd_gathering"
+      ],
       "capability_id": "crowd_gathering",
       "in_ai_capabilities": true,
       "capabilities_supported": true,
       "has_config_schema": true,
       "ui_tab": "Disponibles",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "partiel",
-      "implementation_notes": "event_type non extrait de la définition",
+      "ai_emits_event": true,
+      "ai_canonical_event": "crowd_gathering",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -684,6 +717,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -693,21 +727,24 @@
       "catalog_files": [
         "speed-traffic.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "vehicle_stopped",
+      "all_event_types": [
+        "vehicle_stopped"
+      ],
       "capability_id": "vehicle_stopped",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
+      "capabilities_supported": true,
       "has_config_schema": true,
-      "ui_tab": "Bientôt",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "partiel",
-      "implementation_notes": "Heuristique stationnement — calibrer zone + durée ; pas de modèle dédié.",
-      "unsupported_message_fr": "Heuristique stationnement — calibrer zone + durée ; pas de modèle dédié.",
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "vehicle_stopped",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-event-matrix.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -734,6 +771,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -757,7 +795,8 @@
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -781,7 +820,8 @@
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -808,6 +848,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -834,6 +875,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -859,6 +901,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -885,6 +928,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -911,6 +955,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -921,21 +966,24 @@
         "intrusion-loitering-line-theft.json",
         "spatial.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "loitering",
+      "all_event_types": [
+        "loitering"
+      ],
       "capability_id": "loitering",
       "in_ai_capabilities": true,
       "capabilities_supported": true,
       "has_config_schema": true,
       "ui_tab": "Disponibles",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "partiel",
-      "implementation_notes": "event_type non extrait de la définition",
+      "ai_emits_event": true,
+      "ai_canonical_event": "loitering",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -962,6 +1010,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -988,6 +1037,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1003,17 +1053,18 @@
       ],
       "capability_id": "zone_enter",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
+      "capabilities_supported": true,
       "has_config_schema": true,
-      "ui_tab": "Bientôt",
+      "ui_tab": "Disponibles",
       "ai_emits_event": true,
       "ai_canonical_event": "zone_enter",
-      "implementation_status": "partiel",
-      "implementation_notes": "Composite multi-zones — utiliser plusieurs règles zone_enter ou SEQUENCE.",
-      "unsupported_message_fr": "Composite multi-zones — utiliser plusieurs règles zone_enter ou SEQUENCE.",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1041,6 +1092,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -1067,6 +1119,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1093,6 +1146,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1117,6 +1171,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1143,6 +1198,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1169,6 +1225,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1178,21 +1235,24 @@
       "catalog_files": [
         "road-enforcement.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "phone_driving",
+      "all_event_types": [
+        "phone_driving"
+      ],
       "capability_id": "phone_driving",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
+      "capabilities_supported": true,
       "has_config_schema": true,
-      "ui_tab": "Bientôt",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "stub",
-      "implementation_notes": "Stub catalogue — pas de simulation (CLARIFICATIONS.md)",
-      "unsupported_message_fr": "Modèle téléphone au volant non intégré — stub catalogue, pas de simulation.",
-      "coming_soon_catalog": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "phone_driving",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-event-matrix.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1219,6 +1279,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-identity.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1245,6 +1306,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-identity.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1271,6 +1333,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-identity.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1280,21 +1343,24 @@
       "catalog_files": [
         "crowd-incidents-identity.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "plate_unknown",
+      "all_event_types": [
+        "plate_unknown"
+      ],
       "capability_id": "plate_unknown",
       "in_ai_capabilities": true,
       "capabilities_supported": true,
       "has_config_schema": true,
       "ui_tab": "Disponibles",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "partiel",
-      "implementation_notes": "event_type non extrait de la définition",
+      "ai_emits_event": true,
+      "ai_canonical_event": "plate_unknown",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Émis si PaddleOCR installé",
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1321,6 +1387,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1347,6 +1414,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1373,6 +1441,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1382,21 +1451,24 @@
       "catalog_files": [
         "road-enforcement.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "red_light_violation",
+      "all_event_types": [
+        "red_light_violation"
+      ],
       "capability_id": "red_light_violation",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
+      "capabilities_supported": true,
       "has_config_schema": true,
-      "ui_tab": "Bientôt",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "stub",
-      "implementation_notes": "Stub catalogue — pas de simulation (CLARIFICATIONS.md)",
-      "unsupported_message_fr": "Modèle feu rouge non intégré — aucune simulation.",
-      "coming_soon_catalog": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "red_light_violation",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-event-matrix.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1423,6 +1495,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-identity.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1447,6 +1520,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-identity.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1471,6 +1545,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1480,21 +1555,24 @@
       "catalog_files": [
         "road-enforcement.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "seatbelt_violation",
+      "all_event_types": [
+        "seatbelt_violation"
+      ],
       "capability_id": "seatbelt_violation",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
+      "capabilities_supported": true,
       "has_config_schema": true,
-      "ui_tab": "Bientôt",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "stub",
-      "implementation_notes": "Stub catalogue — pas de simulation (CLARIFICATIONS.md)",
-      "unsupported_message_fr": "Modèle ceinture non intégré — stub catalogue, pas de simulation.",
-      "coming_soon_catalog": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "seatbelt_violation",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
+      "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-event-matrix.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1521,6 +1599,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1545,6 +1624,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1570,6 +1650,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -1596,6 +1677,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1622,6 +1704,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-road.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1648,6 +1731,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-road.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1673,7 +1757,8 @@
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1691,17 +1776,18 @@
       ],
       "capability_id": "zone_enter",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
+      "capabilities_supported": true,
       "has_config_schema": true,
-      "ui_tab": "Bientôt",
+      "ui_tab": "Disponibles",
       "ai_emits_event": true,
       "ai_canonical_event": "zone_enter",
-      "implementation_status": "partiel",
-      "implementation_notes": "Règle composite SEQUENCE : zone_enter puis loitering via le rules-engine.",
-      "unsupported_message_fr": "Règle composite SEQUENCE : zone_enter puis loitering via le rules-engine.",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-sequence-theft.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -1726,6 +1812,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1752,6 +1839,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1778,6 +1866,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-spatial-semantic.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1804,6 +1893,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1830,6 +1920,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1839,21 +1930,25 @@
       "catalog_files": [
         "crowd-incidents-identity.json"
       ],
-      "expected_event_type": null,
-      "all_event_types": [],
+      "expected_event_type": "crowd_gathering",
+      "all_event_types": [
+        "crowd_gathering",
+        "running"
+      ],
       "capability_id": "crowd_gathering",
       "in_ai_capabilities": true,
-      "capabilities_supported": false,
-      "has_config_schema": false,
-      "ui_tab": "Bientôt",
-      "ai_emits_event": false,
-      "ai_canonical_event": null,
-      "implementation_status": "partiel",
-      "implementation_notes": "Métadonnée rapid_activity non produite par l'IA locale.",
-      "unsupported_message_fr": "Métadonnée rapid_activity non produite par l'IA locale.",
+      "capabilities_supported": true,
+      "has_config_schema": true,
+      "ui_tab": "Disponibles",
+      "ai_emits_event": true,
+      "ai_canonical_event": "crowd_gathering",
+      "implementation_status": "implémenté",
+      "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
+      "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-event-matrix.sh",
+      "e2e_script": "verify-e2e-bientot-templates.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1880,6 +1975,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-road.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1906,6 +2002,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-road.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1932,6 +2029,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1958,6 +2056,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -1984,6 +2083,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -2007,7 +2107,8 @@
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-identity.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -2034,6 +2135,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -2060,6 +2162,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -2086,6 +2189,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -2112,7 +2216,8 @@
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -2139,6 +2244,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -2165,6 +2271,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -2191,7 +2298,8 @@
       "unsupported_message_fr": null,
       "coming_soon_catalog": false,
       "e2e_tested": true,
-      "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_script": "verify-e2e-family-spatial.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": true
     },
     {
@@ -2216,6 +2324,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
+      "e2e_mode": "pytest_fallback",
       "is_duplicate_catalog_entry": false
     },
     {
@@ -2242,6 +2351,7 @@
       "coming_soon_catalog": false,
       "e2e_tested": true,
       "e2e_script": "verify-e2e-zone-alert.sh",
+      "e2e_mode": "live",
       "is_duplicate_catalog_entry": false
     }
   ]

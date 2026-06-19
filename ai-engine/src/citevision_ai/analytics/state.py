@@ -75,10 +75,12 @@ class StateEngine:
                 if stop_sec >= self.dwell_threshold_sec:
                     evt_type = "person_stopped" if state.class_name == "person" else "vehicle_stopped"
                     if state.class_name in ("car", "truck", "bus", "motorcycle", "person"):
-                        events.append(self._make_event(
-                            camera_id, evt_type, tid, timestamp,
-                            {"dwell_seconds": stop_sec, "class_name": state.class_name},
-                        ))
+                        meta = {"dwell_seconds": stop_sec, "class_name": state.class_name}
+                        evt = self._make_event(camera_id, evt_type, tid, timestamp, meta)
+                        evt["duration_seconds"] = int(stop_sec)
+                        if state.zone_ids:
+                            evt["zone_id"] = next(iter(state.zone_ids))
+                        events.append(evt)
             else:
                 self._stop_frames.pop(key, None)
 
@@ -107,18 +109,23 @@ class StateEngine:
         return active, events, zone_dwell
 
     def set_zone(self, camera_id: str, track_id: int, zone_id: str, inside: bool) -> None:
-        state = self._tracks.get((camera_id, track_id))
-        if not state:
-            return
+        key = (camera_id, track_id)
+        if key not in self._tracks:
+            self._tracks[key] = TrackState(
+                track_id=track_id,
+                camera_id=camera_id,
+                class_name="unknown",
+            )
+        state = self._tracks[key]
         now = datetime.now(timezone.utc)
-        key = (camera_id, track_id, zone_id)
+        enter_key = (camera_id, track_id, zone_id)
         if inside:
             state.zone_ids.add(zone_id)
-            if key not in self._enter_times:
-                self._enter_times[key] = now
+            if enter_key not in self._enter_times:
+                self._enter_times[enter_key] = now
         else:
             state.zone_ids.discard(zone_id)
-            self._enter_times.pop(key, None)
+            self._enter_times.pop(enter_key, None)
 
     def get_track(self, camera_id: str, track_id: int) -> TrackState | None:
         return self._tracks.get((camera_id, track_id))

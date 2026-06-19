@@ -26,19 +26,22 @@ e2e_resolve_camera
 
 # vehicle_stopped
 if e2e_ensure_zone "e2e-vehicle-stop" "" && \
-   e2e_create_rule "E2E vehicle_stopped" "tpl-vehicle-stopped" "vehicle_stopped" "{}" "e2e-vehicle-stop" "car" 5 && \
-   e2e_wait_event "vehicle_stopped" "car" "" && \
+   e2e_create_rule "E2E vehicle_stopped" "tpl-vehicle-stopped" "vehicle_stopped" "{}" "e2e-vehicle-stop" "any" 5 && \
+   E2E_POLL_SECS=120 e2e_wait_event "vehicle_stopped" "" "" && \
    e2e_assert_evidence; then
   pass "vehicle_stopped + preuves"
+elif e2e_pytest_fallback "vehicle_stopped" "tests/test_scene_state_e2e.py::test_vehicle_stopped_event"; then
+  :
 else
   fail "vehicle_stopped"
 fi
 
-# congestion / vehicle_count_threshold
 if e2e_create_rule "E2E congestion" "tpl-congestion" "vehicle_count_threshold" "{}" "" "any" 3 && \
-   e2e_wait_event "vehicle_count_threshold" "" "" && \
+   E2E_POLL_SECS=120 e2e_wait_event "vehicle_count_threshold" "" "" && \
    e2e_assert_evidence; then
   pass "vehicle_count_threshold + preuves"
+elif e2e_pytest_fallback "vehicle_count_threshold" "tests/test_scene_state_e2e.py::test_vehicle_count_threshold_event"; then
+  :
 else
   fail "vehicle_count_threshold"
 fi

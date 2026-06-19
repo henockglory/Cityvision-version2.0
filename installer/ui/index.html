@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CitéVision v2 — Installation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<!-- Macro SVG logo réutilisable (même que EyeLogo.tsx de l'app) -->
+<svg style="display:none">
+  <defs>
+    <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D4FF" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<div id="app">
+
+  <!-- ── STEP 0 : Splash ────────────────────────────────────── -->
+  <div id="step-splash" class="step active">
+    <div class="splash-center">
+      <div class="logo-wrap">
+        <!-- EyeLogo identique à l'application -->
+        <svg class="eye-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="24" r="20" stroke="url(#eyeGrad)" stroke-width="1.5" fill="none" opacity="0.6">
+            <animate attributeName="r" values="20;21;20" dur="3s" repeatCount="indefinite"/>
+          </circle>
+          <path d="M6 24 C6 24, 14 10, 24 10 C34 10, 42 24, 42 24 C42 24, 34 38, 24 38 C14 38, 6 24, 6 24 Z"
+                stroke="url(#eyeGrad)" stroke-width="1.5" fill="rgba(0,212,255,0.05)" filter="url(#glow)"/>
+          <circle cx="24" cy="24" r="8" stroke="#00D4FF" stroke-width="1" fill="rgba(0,212,255,0.15)">
+            <animate attributeName="r" values="8;8.5;8" dur="3s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="24" cy="24" r="3.5" fill="#00D4FF">
+            <animate attributeName="r"       values="3.5;2.5;3.5" dur="4s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="1;0.7;1"     dur="4s" repeatCount="indefinite"/>
+          </circle>
+          <line x1="10" y1="24" x2="38" y2="24" stroke="#00D4FF" stroke-width="0.5" opacity="0.4">
+            <animate attributeName="y1"      values="14;34;14" dur="2.5s" repeatCount="indefinite"/>
+            <animate attributeName="y2"      values="14;34;14" dur="2.5s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0;0.6;0"  dur="2.5s" repeatCount="indefinite"/>
+          </line>
+          <path d="M4 12 L4 4 L12 4"  stroke="#00D4FF" stroke-width="1" fill="none" opacity="0.5"/>
+          <path d="M44 12 L44 4 L36 4"  stroke="#00D4FF" stroke-width="1" fill="none" opacity="0.5"/>
+          <path d="M4 36 L4 44 L12 44" stroke="#00D4FF" stroke-width="1" fill="none" opacity="0.5"/>
+          <path d="M44 36 L44 44 L36 44" stroke="#00D4FF" stroke-width="1" fill="none" opacity="0.5"/>
+        </svg>
+        <div class="logo-pulse"></div>
+        <div class="logo-pulse delay-1"></div>
+      </div>
+      <h1 class="splash-title">CitéVision</h1>
+      <p class="splash-version">v2.0 — Plateforme de télésurveillance intelligente</p>
+      <div class="splash-loader">
+        <div class="loader-bar">
+          <div class="loader-fill" id="splash-progress"></div>
+        </div>
+        <p class="loader-text" id="splash-label">Initialisation…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 1 : Matériel ──────────────────────────────────── -->
+  <div id="step-hardware" class="step">
+    <div class="step-layout">
+      <aside class="step-nav">
+        <div class="nav-logo">
+          <svg class="eye-logo-sm" viewBox="0 0 48 48" fill="none">
+            <path d="M6 24 C6 24, 14 10, 24 10 C34 10, 42 24, 42 24 C42 24, 34 38, 24 38 C14 38, 6 24, 6 24 Z"
+                  stroke="url(#eyeGrad)" stroke-width="2" fill="rgba(0,212,255,0.08)"/>
+            <circle cx="24" cy="24" r="5" fill="#00D4FF"/>
+            <circle cx="24" cy="24" r="2" fill="#fff"/>
+          </svg>
+          <span class="nav-brand">CitéVision</span>
+        </div>
+        <div class="nav-step done"   id="nav-0"><div class="nav-num">✓</div> Initialisation</div>
+        <div class="nav-step active" id="nav-1"><div class="nav-num">1</div> Matériel</div>
+        <div class="nav-step"        id="nav-2"><div class="nav-num">2</div> Dépendances</div>
+        <div class="nav-step"        id="nav-3"><div class="nav-num">3</div> Installation</div>
+        <div class="nav-step"        id="nav-4"><div class="nav-num">4</div> Lancement</div>
+      </aside>
+
+      <div class="step-content">
+        <div class="step-header">
+          <h2>Analyse du matériel</h2>
+          <p>Vérification de la compatibilité avec les exigences de CitéVision</p>
+        </div>
+
+        <div class="overall-badge" id="hw-overall-badge">
+          <div class="badge-spinner"></div>
+          <span id="hw-overall-text">Analyse en cours…</span>
+        </div>
+
+        <div id="gpu-tier-card" class="gpu-tier-card" style="display:none">
+          <!-- GPU icon SVG -->
+          <svg class="tier-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="7" width="20" height="10" rx="2"/>
+            <path d="M6 7V5"/><path d="M10 7V5"/><path d="M14 7V5"/><path d="M18 7V5"/>
+            <path d="M6 17v2"/><path d="M10 17v2"/><path d="M14 17v2"/><path d="M18 17v2"/>
+            <circle cx="8" cy="12" r="1.5" fill="currentColor"/><circle cx="16" cy="12" r="1.5" fill="currentColor"/>
+          </svg>
+          <div class="tier-info">
+            <div class="tier-label">Tier GPU détecté</div>
+            <div class="tier-name" id="tier-name">—</div>
+          </div>
+          <div class="tier-specs" id="tier-specs"></div>
+        </div>
+
+        <div class="checks-grid" id="hw-checks"></div>
+
+        <div class="step-footer">
+          <button class="btn btn-ghost" onclick="window.app.loadHardware()">↺ Relancer le diagnostic</button>
+          <button class="btn btn-primary" id="hw-next" disabled onclick="window.app.goToDeps()">
+            Continuer vers les dépendances →
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 2 : Dépendances ───────────────────────────────── -->
+  <div id="step-deps" class="step">
+    <div class="step-layout">
+      <aside class="step-nav">
+        <div class="nav-logo">
+          <svg class="eye-logo-sm" viewBox="0 0 48 48" fill="none">
+            <path d="M6 24 C6 24, 14 10, 24 10 C34 10, 42 24, 42 24 C42 24, 34 38, 24 38 C14 38, 6 24, 6 24 Z"
+                  stroke="url(#eyeGrad)" stroke-width="2" fill="rgba(0,212,255,0.08)"/>
+            <circle cx="24" cy="24" r="5" fill="#00D4FF"/>
+            <circle cx="24" cy="24" r="2" fill="#fff"/>
+          </svg>
+          <span class="nav-brand">CitéVision</span>
+        </div>
+        <div class="nav-step done"   id="nav-d0"><div class="nav-num">✓</div> Initialisation</div>
+        <div class="nav-step done"   id="nav-d1"><div class="nav-num">✓</div> Matériel</div>
+        <div class="nav-step active" id="nav-d2"><div class="nav-num">2</div> Dépendances</div>
+        <div class="nav-step"        id="nav-d3"><div class="nav-num">3</div> Installation</div>
+        <div class="nav-step"        id="nav-d4"><div class="nav-num">4</div> Lancement</div>
+      </aside>
+
+      <div class="step-content">
+        <div class="step-header">
+          <h2>Vérification des dépendances</h2>
+          <p>Contrôle des outils et services requis pour CitéVision</p>
+        </div>
+
+        <div class="overall-badge" id="deps-overall-badge">
+          <div class="badge-spinner"></div>
+          <span id="deps-overall-text">Vérification en cours…</span>
+        </div>
+
+        <div class="deps-list" id="deps-list"></div>
+
+        <div class="step-footer">
+          <button class="btn btn-ghost" onclick="window.app.loadDeps()">↺ Revérifier</button>
+          <button class="btn btn-ghost" id="deps-skip" onclick="window.app.goToLaunch()" style="display:none">
+            Tout est installé — Démarrer →
+          </button>
+          <button class="btn btn-primary" id="deps-next" disabled onclick="window.app.goToInstall()">
+            Lancer l'installation →
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 3 : Installation ──────────────────────────────── -->
+  <div id="step-install" class="step">
+    <div class="step-layout">
+      <aside class="step-nav">
+        <div class="nav-logo">
+          <svg class="eye-logo-sm" viewBox="0 0 48 48" fill="none">
+            <path d="M6 24 C6 24, 14 10, 24 10 C34 10, 42 24, 42 24 C42 24, 34 38, 24 38 C14 38, 6 24, 6 24 Z"
+                  stroke="url(#eyeGrad)" stroke-width="2" fill="rgba(0,212,255,0.08)"/>
+            <circle cx="24" cy="24" r="5" fill="#00D4FF"/>
+            <circle cx="24" cy="24" r="2" fill="#fff"/>
+          </svg>
+          <span class="nav-brand">CitéVision</span>
+        </div>
+        <div class="nav-step done"   ><div class="nav-num">✓</div> Initialisation</div>
+        <div class="nav-step done"   ><div class="nav-num">✓</div> Matériel</div>
+        <div class="nav-step done"   ><div class="nav-num">✓</div> Dépendances</div>
+        <div class="nav-step active" ><div class="nav-num">3</div> Installation</div>
+        <div class="nav-step"        ><div class="nav-num">4</div> Lancement</div>
+      </aside>
+
+      <div class="step-content">
+        <div class="step-header">
+          <h2>Installation en cours</h2>
+          <p>Configuration automatique de l'environnement CitéVision</p>
+        </div>
+
+        <div class="install-progress">
+          <div class="install-progress-bar">
+            <div class="install-progress-fill" id="install-fill"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted)">
+            <span id="install-current-step">Démarrage…</span>
+            <span id="install-pct">0%</span>
+          </div>
+        </div>
+
+        <div class="install-log" id="install-log"></div>
+
+        <div class="step-footer">
+          <button class="btn btn-success" id="install-next" disabled onclick="window.app.goToLaunch()">
+            Démarrer CitéVision
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 4 : Lancement ───────────────────────────────────── -->
+  <div id="step-launch" class="step">
+    <div class="step-layout">
+      <aside class="step-nav">
+        <div class="nav-logo">
+          <svg class="eye-logo-sm" viewBox="0 0 48 48" fill="none">
+            <path d="M6 24 C6 24, 14 10, 24 10 C34 10, 42 24, 42 24 C42 24, 34 38, 24 38 C14 38, 6 24, 6 24 Z"
+                  stroke="url(#eyeGrad)" stroke-width="2" fill="rgba(0,212,255,0.08)"/>
+            <circle cx="24" cy="24" r="5" fill="#00D4FF"/><circle cx="24" cy="24" r="2" fill="#fff"/>
+          </svg>
+          <span class="nav-brand">CitéVision</span>
+        </div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Initialisation</div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Matériel</div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Dépendances</div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Installation</div>
+        <div class="nav-step active"><div class="nav-num">4</div> Lancement</div>
+      </aside>
+      <div class="step-content">
+        <div class="step-header">
+          <h2>Lancement des services</h2>
+          <p>Démarrage du backend, de l'IA et de l'interface CitéVision</p>
+        </div>
+        <div class="install-progress">
+          <div class="install-progress-bar">
+            <div class="install-progress-fill" id="launch-fill"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted)">
+            <span id="launch-current-step">Initialisation...</span>
+            <span id="launch-pct">0%</span>
+          </div>
+        </div>
+        <div class="install-log" id="launch-log"></div>
+        <div class="step-footer">
+          <button class="btn btn-success" id="launch-open-btn" disabled onclick="window.open('http://localhost:5174','_blank')">
+            Ouvrir CitéVision
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 5 : Ready ─────────────────────────────────────── -->
+  <div id="step-ready" class="step">
+    <div class="step-layout">
+      <aside class="step-nav">
+        <div class="nav-logo">
+          <svg class="eye-logo-sm" viewBox="0 0 48 48" fill="none">
+            <path d="M6 24 C6 24, 14 10, 24 10 C34 10, 42 24, 42 24 C42 24, 34 38, 24 38 C14 38, 6 24, 6 24 Z"
+                  stroke="url(#eyeGrad)" stroke-width="2" fill="rgba(0,212,255,0.08)"/>
+            <circle cx="24" cy="24" r="5" fill="#00D4FF"/>
+            <circle cx="24" cy="24" r="2" fill="#fff"/>
+          </svg>
+          <span class="nav-brand">CitéVision</span>
+        </div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Initialisation</div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Matériel</div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Dépendances</div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Installation</div>
+        <div class="nav-step done"><div class="nav-num">✓</div> Lancement</div>
+      </aside>
+
+      <div class="step-content">
+        <div class="ready-center">
+          <!-- Animated checkmark -->
+          <svg class="ready-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="32" cy="32" r="30" stroke="url(#eyeGrad)" stroke-width="2" opacity="0.4">
+              <animate attributeName="r" values="30;32;30" dur="3s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="32" cy="32" r="24" fill="rgba(34,197,94,0.12)" stroke="#22c55e" stroke-width="1.5"/>
+            <polyline points="20,32 28,40 44,24" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <animate attributeName="stroke-dasharray" from="0 40" to="40 0" dur="0.6s" fill="freeze" begin="0.3s"/>
+            </polyline>
+          </svg>
+          <div class="ready-title">CitéVision est prêt</div>
+          <p class="ready-subtitle">L'application est installée et configurée. Cliquez ci-dessous pour accéder à l'interface.</p>
+          <div style="display:flex;gap:12px;margin-top:8px">
+            <button class="btn btn-primary" onclick="window.open('http://localhost:5174','_blank')">
+              Ouvrir CitéVision
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

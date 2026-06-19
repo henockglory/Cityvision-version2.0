@@ -1,7 +1,7 @@
 interface GuideIllustrationProps {
   title: string;
   caption: string;
-  variant?: 'rules' | 'spatial' | 'alerts' | 'live' | 'default';
+  variant?: 'rules' | 'spatial' | 'alerts' | 'live' | 'road-enforcement' | 'crowd' | 'identity' | 'composite' | 'incident' | 'default';
   src?: string;
   compact?: boolean;
   className?: string;
@@ -12,6 +12,11 @@ const VARIANT_SRC: Record<string, string> = {
   spatial: '/guides/spatial.svg',
   alerts: '/guides/alerts.svg',
   live: '/guides/live.svg',
+  'road-enforcement': '/guides/road-enforcement.svg',
+  crowd: '/guides/crowd.svg',
+  identity: '/guides/identity.svg',
+  composite: '/guides/composite.svg',
+  incident: '/guides/composite.svg',
   default: '/guides/rules-banner.svg',
 };
 
@@ -20,6 +25,11 @@ const VARIANT_ACCENT: Record<string, string> = {
   spatial: '#8b5cf6',
   alerts: '#f59e0b',
   live: '#3b82f6',
+  'road-enforcement': '#ef4444',
+  crowd: '#8b5cf6',
+  identity: '#06b6d4',
+  composite: '#f59e0b',
+  incident: '#f59e0b',
   default: '#3b82f6',
 };
 

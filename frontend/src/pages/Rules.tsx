@@ -34,7 +34,8 @@ export default function Rules() {
   const [editInitialStep, setEditInitialStep] = useState<1 | 2 | 3 | 4>(1);
   const [configuringTemplate, setConfiguringTemplate] = useState<RuleCatalogTemplate | null>(null);
   const [pickTemplate, setPickTemplate] = useState(false);
-  const [confirm, setConfirm] = useState<{ type: 'delete' | 'disable'; rule: Rule } | null>(null);
+  const [confirm, setConfirm] = useState<{ type: 'delete' | 'disable' | 'reset-all'; rule?: Rule } | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [deploymentScope, setDeploymentScope] = useState<'all' | 'national' | 'enterprise' | 'domestic'>('all');
   const [orgDeployLoaded, setOrgDeployLoaded] = useState(false);
   const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
@@ -118,15 +119,35 @@ export default function Rules() {
     }
   };
 
+  const [inlineError, setInlineError] = useState('');
+
+  const runResetAll = async () => {
+    if (!orgId) return;
+    setResetting(true);
+    setInlineError('');
+    try {
+      for (const rule of userRules) {
+        await rulesApi.delete(orgId, rule.id);
+      }
+      void refetch();
+    } catch {
+      setInlineError(t('rules.resetError', { defaultValue: 'Erreur lors de la réinitialisation. Veuillez réessayer.' }));
+    } finally {
+      setResetting(false);
+      setConfirm(null);
+    }
+  };
+
   const runDisable = async (rule: Rule) => {
     if (!orgId) return;
     playClick();
     setBusyId(rule.id);
+    setInlineError('');
     try {
       await rulesApi.disable(orgId, rule.id);
       void refetch();
     } catch {
-      window.alert(t('rules.disableError'));
+      setInlineError(t('rules.disableError'));
     } finally {
       setBusyId(null);
       setConfirm(null);
@@ -181,6 +202,13 @@ export default function Rules() {
     >
       <ToastContainer />
 
+      {inlineError && (
+        <div className="mb-4 flex items-start gap-2 text-sm bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3">
+          <span className="flex-1">{inlineError}</span>
+          <button type="button" className="cv-btn-ghost p-0.5" onClick={() => setInlineError('')} aria-label={t('common.cancel')}>×</button>
+        </div>
+      )}
+
       <GuideIllustration
         variant="rules"
         title={t('rules.guide.bannerTitle')}
@@ -193,16 +221,15 @@ export default function Rules() {
                 ? t('rules.guide.enterprise')
                 : t('rules.guide.all')
         }
-        className="mb-4"
       />
 
       <section id="rules-catalog" className="cv-card p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <BookOpen className="w-5 h-5 text-cv-accent" />
-          <h2 className="font-display text-lg font-semibold">{t('rules.catalog')}</h2>
-        </div>
+        <header className="flex items-center gap-3 mb-4">
+          <BookOpen className="w-5 h-5 text-cv-accent shrink-0" />
+          <h2 className="cv-section-title">{t('rules.catalog')}</h2>
+        </header>
 
-        <div className="mb-4">
+        <div className="space-y-4">
           <SegmentedTabs
             tabs={[
               { id: 'national', label: t('rules.scope.national') },
@@ -212,10 +239,10 @@ export default function Rules() {
             ]}
             value={deploymentScope}
             onChange={(id) => setDeploymentScope(id as 'all' | 'national' | 'enterprise' | 'domestic')}
+            className="w-full sm:w-auto"
           />
-        </div>
 
-        <RuleCatalogPanel
+          <RuleCatalogPanel
           templates={catalog.data ?? []}
           occupiedTemplateIds={occupiedTemplateIds}
           activeTemplateIds={activeTemplateIds}
@@ -224,10 +251,21 @@ export default function Rules() {
           catalogOnly
           deploymentScope={deploymentScope}
         />
+        </div>
       </section>
 
       {userRules.length === 0 ? (
-        <EmptyState title={t('rules.empty')} hint={t('rules.emptyHint')} guideVariant="rules" />
+        <EmptyState
+          title={t('rules.empty')}
+          hint={t('rules.emptyHint')}
+          guideVariant="rules"
+          action={
+            <button className="cv-btn-primary inline-flex items-center gap-2" onClick={() => setPickTemplate(true)}>
+              <BookOpen className="w-4 h-4" />
+              Parcourir le catalogue de règles
+            </button>
+          }
+        />
       ) : (
         <ActiveRulesPanel
           rules={userRules}
@@ -241,6 +279,8 @@ export default function Rules() {
           onEnable={runEnable}
           onDuplicate={(r) => void runDuplicate(r)}
           onNewRule={() => setPickTemplate(true)}
+          onResetAll={() => setConfirm({ type: 'reset-all' })}
+          resetting={resetting}
         />
       )}
 
@@ -267,8 +307,8 @@ export default function Rules() {
 
       {pickTemplate && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50">
-          <div className="cv-card max-w-lg w-full p-5 max-h-[80vh] overflow-y-auto">
-            <h3 className="font-display font-semibold mb-3">{t('rules.pickTemplate')}</h3>
+          <div className="cv-card max-w-lg w-full p-5 max-h-[80vh] overflow-y-auto cv-stack-md">
+            <h3 className="font-display font-semibold text-lg leading-tight">{t('rules.pickTemplate')}</h3>
             <RuleCatalogPanel
               templates={(catalog.data ?? []).filter((tpl) => tpl.supported !== false)}
               occupiedTemplateIds={[]}
@@ -285,7 +325,7 @@ export default function Rules() {
               catalogOnly
               deploymentScope="all"
             />
-            <button type="button" className="cv-btn-secondary w-full mt-4" onClick={() => setPickTemplate(false)}>
+            <button type="button" className="cv-btn-secondary w-full" onClick={() => setPickTemplate(false)}>
               {t('common.cancel')}
             </button>
           </div>
@@ -295,18 +335,27 @@ export default function Rules() {
       <ConfirmDialog
         open={confirm?.type === 'delete'}
         title={t('rules.confirmDeleteTitle')}
-        message={t('rules.confirmDeleteMessage', { name: confirm?.rule.name ?? '' })}
+        message={t('rules.confirmDeleteMessage', { name: confirm?.rule?.name ?? '' })}
         confirmLabel={t('common.delete')}
         danger
-        onConfirm={() => confirm && void runDelete(confirm.rule)}
+        onConfirm={() => confirm?.rule && void runDelete(confirm.rule)}
         onCancel={() => setConfirm(null)}
       />
       <ConfirmDialog
         open={confirm?.type === 'disable'}
         title={t('rules.confirmDisableTitle')}
-        message={t('rules.confirmDisableMessage', { name: confirm?.rule.name ?? '' })}
+        message={t('rules.confirmDisableMessage', { name: confirm?.rule?.name ?? '' })}
         confirmLabel={t('rules.disable')}
-        onConfirm={() => confirm && void runDisable(confirm.rule)}
+        onConfirm={() => confirm?.rule && void runDisable(confirm.rule)}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm?.type === 'reset-all'}
+        title={t('rules.confirmResetAllTitle', { defaultValue: 'Réinitialiser toutes les règles ?' })}
+        message={t('rules.confirmResetAllMessage', { count: userRules.length, defaultValue: `Cette action supprimera définitivement {{count}} règles configurées. Vous repartirez d'une page vierge.` })}
+        confirmLabel={t('rules.resetAll', { defaultValue: 'Réinitialiser toutes les règles' })}
+        danger
+        onConfirm={() => void runResetAll()}
         onCancel={() => setConfirm(null)}
       />
     </PageShell>

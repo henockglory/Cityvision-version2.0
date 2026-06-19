@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Plus, Wifi, KeyRound, MonitorPlay, ChevronRight, ChevronLeft,
-  Check, Loader2, MoreVertical, Camera as CameraIcon, MapPin, Radio, PenTool,
+  Check, Loader2, MoreVertical, Camera as CameraIcon, MapPin, Shapes,
+  AlertCircle, Info, Radio,
 } from 'lucide-react';
 import { camerasApi } from '@/api/client';
 import PageHeader from '@/components/ui/PageHeader';
@@ -49,11 +50,14 @@ export default function Cameras() {
   const [subnet, setSubnet] = useState('192.168.1.0/24');
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<DiscoveredDevice | null>(null);
+  const [manualRtspUrl, setManualRtspUrl] = useState('');
+  const [selectedVendor, setSelectedVendor] = useState<'auto' | 'hikvision' | 'dahua' | 'generic'>('auto');
   const [credentials, setCredentials] = useState({ username: 'admin', password: '' });
   const [cameraName, setCameraName] = useState('');
   const [createdCameraId, setCreatedCameraId] = useState<string | null>(null);
   const [testOk, setTestOk] = useState(false);
   const [detectedVendor, setDetectedVendor] = useState('generic');
+  const [ffprobeInfo, setFfprobeInfo] = useState<{ video_codec?: string; width?: number; height?: number; fps?: number; error?: string; available?: boolean } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [wizardError, setWizardError] = useState('');
 
@@ -79,30 +83,53 @@ export default function Cameras() {
     setWizardError('');
     setTestOk(false);
     setPreviewUrl(null);
-    if (!siteId || !selectedDevice) return;
+
+    const useManual = Boolean(manualRtspUrl.trim());
+    const host = useManual
+      ? manualRtspUrl.trim().replace(/^rtsp:\/\//, '').split('/')[0].split(':')[0]
+      : selectedDevice?.ip ?? '';
+    const port = useManual
+      ? parseInt(manualRtspUrl.trim().replace(/^rtsp:\/\/[^:]+:/, '').split('/')[0]) || 554
+      : selectedDevice?.rtsp_port ?? 554;
+    const rtspPath = useManual
+      ? '/' + manualRtspUrl.trim().split('/').slice(3).join('/')
+      : undefined;
+
+    if (!siteId || (!selectedDevice && !useManual)) {
+      setWizardError(t('cameras.wizard.noDevices'));
+      return;
+    }
 
     try {
-      const probe = await probeMutation.mutateAsync({
-        host: selectedDevice.ip,
-        username: credentials.username,
-        password: credentials.password,
-        port: selectedDevice.rtsp_port ?? 554,
-      });
-      const best = probe.data.best;
-      const vendor = best?.vendor ?? 'generic';
-      setDetectedVendor(vendor);
+      let vendor = selectedVendor === 'auto' ? 'generic' : selectedVendor;
+      let detectedRtspPath = rtspPath;
 
-      const name = cameraName.trim() || `Camera ${selectedDevice.ip}`;
+      if (!useManual) {
+        const probe = await probeMutation.mutateAsync({
+          host,
+          username: credentials.username,
+          password: credentials.password,
+          port,
+          vendor: selectedVendor === 'auto' ? undefined : selectedVendor,
+        });
+        const best = probe.data.best;
+        vendor = (best?.vendor as 'hikvision' | 'dahua' | 'generic') ?? vendor;
+        detectedRtspPath = best?.rtsp_path ?? detectedRtspPath;
+        if ((probe.data as Record<string, unknown>).ffprobe) setFfprobeInfo((probe.data as Record<string, unknown>).ffprobe as typeof ffprobeInfo);
+      }
+
+      setDetectedVendor(vendor);
+      const name = cameraName.trim() || (useManual ? `Camera ${host}` : `Camera ${host}`);
       const { data } = await createMutation.mutateAsync({
         site_id: siteId,
         name,
-        host: selectedDevice.ip,
+        host,
         username: credentials.username,
         password: credentials.password,
-        port: selectedDevice.rtsp_port ?? 554,
+        port,
         vendor,
-        rtsp_path: best?.rtsp_path,
-        stream_profile: best?.profile ?? 'main',
+        rtsp_path: detectedRtspPath,
+        stream_profile: 'main',
       });
       const cam = data as Camera;
       setCreatedCameraId(cam.id);
@@ -116,7 +143,7 @@ export default function Cameras() {
           const preview = await previewMutation.mutateAsync(cam.id);
           setPreviewUrl(preview.data.preview_webrtc);
         } catch {
-          /* go2rtc optional */
+          /* go2rtc optional — stream might still work */
         }
       } else {
         setWizardError(t('cameras.wizard.connectionFailed'));
@@ -131,11 +158,14 @@ export default function Cameras() {
     setStep(1);
     setDevices([]);
     setSelectedDevice(null);
+    setManualRtspUrl('');
+    setSelectedVendor('auto');
     setCredentials({ username: 'admin', password: '' });
     setCameraName('');
     setCreatedCameraId(null);
     setTestOk(false);
     setDetectedVendor('generic');
+    setFfprobeInfo(null);
     setPreviewUrl(null);
     setWizardError('');
   };
@@ -208,6 +238,12 @@ export default function Cameras() {
 
           {step === 1 && (
             <div className="max-w-lg mx-auto space-y-4">
+              {/* Info honnête sur la couverture */}
+              <div className="flex gap-2 p-3 rounded-lg bg-cv-surface border border-cv-border text-xs text-cv-muted">
+                <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-cv-accent" />
+                <span>{t('cameras.wizard.scanHint')}</span>
+              </div>
+
               <div>
                 <label className="cv-label">{t('cameras.wizard.subnet')}</label>
                 <input value={subnet} onChange={(e) => setSubnet(e.target.value)} className="cv-input" />
@@ -221,6 +257,7 @@ export default function Cameras() {
                 {discoverMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
                 {discoverMutation.isPending ? t('cameras.wizard.scanning') : t('cameras.wizard.scan')}
               </button>
+
               {devices.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm text-cv-muted">{t('cameras.wizard.selectDevice')}</p>
@@ -228,17 +265,60 @@ export default function Cameras() {
                     <button
                       key={d.ip}
                       type="button"
-                      onClick={() => { playClick(); setSelectedDevice(d); }}
+                      onClick={() => { playClick(); setSelectedDevice(d); setManualRtspUrl(''); }}
                       className={`w-full flex items-center justify-between p-3 rounded-lg border transition-colors ${
                         selectedDevice?.ip === d.ip ? 'border-cv-accent bg-cv-accent/10' : 'border-cv-border hover:border-cv-accent/30'
                       }`}
                     >
                       <span className="font-mono text-sm">{d.ip}</span>
-                      <span className="text-xs text-cv-muted">{d.vendor ?? d.model ?? (d.reachable ? 'reachable' : '')}</span>
+                      <span className="text-xs text-cv-muted">{d.vendor ?? d.model ?? (d.reachable ? t('cameras.status.online') : t('cameras.status.offline'))}</span>
                     </button>
                   ))}
                 </div>
               )}
+
+              {/* Séparateur + URL RTSP manuelle */}
+              <div className="border-t border-cv-border/50 pt-3">
+                <p className="text-xs font-medium text-cv-muted mb-2">{t('cameras.wizard.manualUrl')}</p>
+                <p className="text-xs text-cv-muted mb-2">{t('cameras.wizard.manualUrlHint')}</p>
+                <input
+                  value={manualRtspUrl}
+                  onChange={(e) => { setManualRtspUrl(e.target.value); if (e.target.value) setSelectedDevice(null); }}
+                  placeholder={t('cameras.wizard.manualUrlPlaceholder')}
+                  className="cv-input font-mono text-sm"
+                />
+              </div>
+
+              {/* Sélecteur vendor */}
+              <div>
+                <label className="cv-label flex items-center gap-1">
+                  {t('cameras.wizard.vendorLabel')}
+                  <span className="text-xs text-cv-muted font-normal">({t('cameras.wizard.vendorHint')})</span>
+                </label>
+                <select
+                  className="cv-input w-full"
+                  value={selectedVendor}
+                  onChange={(e) => setSelectedVendor(e.target.value as typeof selectedVendor)}
+                >
+                  {(['auto', 'hikvision', 'dahua', 'generic'] as const).map((v) => (
+                    <option key={v} value={v}>{t(`cameras.wizard.vendor.${v}`)}</option>
+                  ))}
+                </select>
+                {selectedVendor !== 'auto' && (
+                  <p className={`text-xs mt-1 ${selectedVendor === 'generic' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {t(`cameras.wizard.vendorCoverage.${selectedVendor}`)}
+                  </p>
+                )}
+              </div>
+
+              {/* Aide générale */}
+              <details className="text-xs text-cv-muted">
+                <summary className="cursor-pointer flex items-center gap-1.5 text-cv-accent/80">
+                  <AlertCircle className="w-3 h-3" />
+                  {t('cameras.wizard.helpTitle')}
+                </summary>
+                <p className="mt-2 pl-4 border-l border-cv-border">{t('cameras.wizard.helpText')}</p>
+              </details>
             </div>
           )}
 
@@ -292,6 +372,23 @@ export default function Cameras() {
                   <p className="text-xs text-center text-cv-muted">
                     {t('cameras.wizard.detectedVendor', 'Profil détecté')}: <span className="font-mono text-cv-accent">{detectedVendor}</span>
                   </p>
+                  {ffprobeInfo?.video_codec && (
+                    <p className="text-xs text-center text-emerald-400/80">
+                      {ffprobeInfo.video_codec.toUpperCase()}
+                      {ffprobeInfo.width ? ` · ${ffprobeInfo.width}×${ffprobeInfo.height}` : ''}
+                      {ffprobeInfo.fps ? ` · ${ffprobeInfo.fps} fps` : ''}
+                    </p>
+                  )}
+                  {ffprobeInfo?.available && ffprobeInfo.error && (
+                    <p className="text-xs text-center text-amber-400">
+                      {t('cameras.wizard.ffprobeWarn')}: {ffprobeInfo.error}
+                    </p>
+                  )}
+                  {ffprobeInfo && !ffprobeInfo.available && (
+                    <p className="text-xs text-center text-cv-muted/60">
+                      {t('cameras.wizard.ffprobeNotInstalled', 'Validation approfondie indisponible (ffprobe absent)')}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -299,10 +396,18 @@ export default function Cameras() {
 
           {step === 3 && (
             <div className="max-w-2xl mx-auto text-center space-y-4">
-              <p className="text-sm text-cv-muted">{t('cameras.wizard.validating')}</p>
+              <p className="text-sm text-cv-muted">{t('cameras.wizard.validating', 'Vérification de la connexion…')}</p>
               {testOk ? (
                 <div className="flex items-center justify-center gap-2 text-emerald-400">
                   <Check className="w-5 h-5" /> {cameraName}
+                </div>
+              ) : wizardError ? (
+                <div className="flex items-center justify-center gap-2 text-red-400 text-sm">
+                  <AlertCircle className="w-5 h-5" />
+                  {t('cameras.wizard.connectionFailed')}
+                  <button type="button" className="cv-btn-secondary text-xs ml-2" onClick={() => setStep(2)}>
+                    {t('cameras.wizard.back')}
+                  </button>
                 </div>
               ) : (
                 <Loader2 className="w-6 h-6 animate-spin mx-auto text-cv-accent" />
@@ -338,7 +443,7 @@ export default function Cameras() {
             <button
               type="button"
               disabled={
-                (step === 1 && !selectedDevice) ||
+                (step === 1 && !selectedDevice && !manualRtspUrl.trim()) ||
                 (step === 2 && !testOk) ||
                 (step === 3 && !createdCameraId) ||
                 (step === 4 && !createdCameraId)
@@ -414,7 +519,7 @@ export default function Cameras() {
                         <MapPin className="w-3.5 h-3.5 inline mr-2" />Carte
                       </Link>
                       <Link to={`/zones?camera=${cam.id}`} className="block px-3 py-2 text-xs hover:bg-cv-accent/5" onClick={() => setMenuOpen(null)}>
-                        <PenTool className="w-3.5 h-3.5 inline mr-2" />Zones
+                        <Shapes className="w-3.5 h-3.5 inline mr-2" />{t('nav.zoneEditor')}
                       </Link>
                       <button
                         type="button"

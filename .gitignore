@@ -1,5 +1,9 @@
-.env
+# .env intentionnellement inclus dans ce repo privé
+# Voir README.md — Note sécurité
+
+# Python
 *.pyc
+*.pyo
 __pycache__/
 .pytest_cache/
 .mypy_cache/
@@ -7,19 +11,60 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.bootstrap_done
+
+# Node
 node_modules/
 dist/
+.parcel-cache/
+frontend/tsconfig.tsbuildinfo
+
+# Go binaries
+backend/api.exe
+backend/api
+rules-engine/rules-engine.exe
+rules-engine/rules-engine
+
+# Build artifacts
 build/
 video-engine/build/
+
+# Models (large files)
 ai-engine/models/*.onnx
 ai-engine/models/*.pt
+ai-engine/models/insightface/
+
+# Logs and runtime data
 *.log
 logs/
 data/
+generated.env
+
+# OS
 .DS_Store
 Thumbs.db
+
+# IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+
+# Vendors
 vendor/ByteTrack/
 vendor/go2rtc/
 vendor/onvif/
+
+# Cursor
+.cursor/
+
+# Temp scripts (orphan push helpers)
+_push.sh
+_push2.sh
+_fix-commit.sh
+_git-commit.sh
+_orphan-push.sh
+_check-push.sh
+_clean-push.sh
+_create-zip.sh
+_run-tests.sh

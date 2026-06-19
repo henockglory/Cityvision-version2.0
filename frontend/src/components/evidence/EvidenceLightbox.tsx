@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { X, ZoomIn } from 'lucide-react';
+import { Download, ZoomIn } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import Modal from '@/components/ui/Modal';
 import type { EvidenceBBox } from '@/lib/evidence';
+import { useEvidenceMediaUrl } from '@/hooks/useEvidenceMediaUrl';
 import { EvidenceImage } from './EvidenceMedia';
 
 interface EvidenceLightboxProps {
@@ -10,38 +13,67 @@ interface EvidenceLightboxProps {
   onClose: () => void;
 }
 
-export default function EvidenceLightbox({ apiUrl, alt, bbox, onClose }: EvidenceLightboxProps) {
+function BboxOverlay({ bbox }: { bbox: EvidenceBBox }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+      className="absolute border-2 border-cv-accent bg-cv-accent/10 pointer-events-none rounded-sm"
+      style={{
+        left: `${Math.min(100, Math.max(0, (bbox.x ?? 0) * 100))}%`,
+        top: `${Math.min(100, Math.max(0, (bbox.y ?? 0) * 100))}%`,
+        width: `${Math.min(100, Math.max(2, (bbox.width ?? 0.1) * 100))}%`,
+        height: `${Math.min(100, Math.max(2, (bbox.height ?? 0.1) * 100))}%`,
+      }}
+    />
+  );
+}
+
+export default function EvidenceLightbox({ apiUrl, alt, bbox, onClose }: EvidenceLightboxProps) {
+  const { t } = useTranslation();
+  const { blobUrl } = useEvidenceMediaUrl(apiUrl, { mimeFallback: 'image/jpeg' });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={alt}
+      maxWidth="2xl"
+      className="!max-w-3xl !p-4 sm:!p-5"
+      footerLeft={
+        bbox ? (
+          <span className="text-xs text-cv-muted">
+            {t('evidence.bboxHint', { defaultValue: 'Cadre bleu = zone détectée' })}
+          </span>
+        ) : undefined
+      }
+      footer={
+        <>
+          {blobUrl && (
+            <a
+              href={blobUrl}
+              download={`evidence-${alt.replace(/\s+/g, '-').toLowerCase()}.jpg`}
+              className="cv-btn-secondary text-sm"
+            >
+              <Download className="w-4 h-4" />
+              {t('evidence.download')}
+            </a>
+          )}
+          <button type="button" className="cv-btn-primary text-sm" onClick={onClose}>
+            {t('common.close', { defaultValue: 'Fermer' })}
+          </button>
+        </>
+      }
     >
-      <button
-        type="button"
-        className="absolute top-4 right-4 p-2 rounded-lg bg-black/50 text-white hover:bg-black/70"
-        onClick={onClose}
-        aria-label="Fermer"
-      >
-        <X className="w-5 h-5" />
-      </button>
-      <div className="relative max-w-5xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-        <EvidenceImage apiUrl={apiUrl} alt={alt} className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
-        {bbox && (
-          <div
-            className="absolute border-2 border-cv-accent pointer-events-none"
-            style={{
-              left: `${Math.min(100, Math.max(0, (bbox.x ?? 0) * 100))}%`,
-              top: `${Math.min(100, Math.max(0, (bbox.y ?? 0) * 100))}%`,
-              width: `${Math.min(100, Math.max(2, (bbox.width ?? 0.1) * 100))}%`,
-              height: `${Math.min(100, Math.max(2, (bbox.height ?? 0.1) * 100))}%`,
-            }}
+      <div className="flex justify-center rounded-lg bg-black/80 border border-cv-border/60 overflow-hidden">
+        <div className="relative inline-block max-w-full">
+          <EvidenceImage
+            apiUrl={apiUrl}
+            alt={alt}
+            className="block max-h-[min(70vh,520px)] max-w-full w-auto h-auto object-contain mx-auto"
           />
-        )}
+          {bbox && <BboxOverlay bbox={bbox} />}
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -53,27 +85,19 @@ interface EvidenceImageTileProps {
 }
 
 export function EvidenceImageTile({ apiUrl, label, bbox, onOpen }: EvidenceImageTileProps) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group relative aspect-video rounded-lg overflow-hidden border border-cv-border bg-black/40 text-left"
+      className="group relative aspect-video rounded-lg overflow-hidden border border-cv-border/70 bg-black/40 text-left transition-colors hover:border-cv-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-cv-accent/50"
+      aria-label={t('evidence.openPreview', { label, defaultValue: `Aperçu : ${label}` })}
     >
       <EvidenceImage apiUrl={apiUrl} alt={label} />
-      {bbox && (
-        <div
-          className="absolute border border-cv-accent/90 bg-cv-accent/10 pointer-events-none"
-          style={{
-            left: `${Math.min(100, Math.max(0, (bbox.x ?? 0) * 100))}%`,
-            top: `${Math.min(100, Math.max(0, (bbox.y ?? 0) * 100))}%`,
-            width: `${Math.min(100, Math.max(2, (bbox.width ?? 0.1) * 100))}%`,
-            height: `${Math.min(100, Math.max(2, (bbox.height ?? 0.1) * 100))}%`,
-          }}
-        />
-      )}
-      <span className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 text-[10px] text-white flex items-center justify-between">
-        {label}
-        <ZoomIn className="w-3 h-3 opacity-70 group-hover:opacity-100" />
+      {bbox && <BboxOverlay bbox={bbox} />}
+      <span className="absolute bottom-0 inset-x-0 bg-black/75 px-2 py-1.5 text-[11px] text-white flex items-center justify-between gap-2">
+        <span className="truncate">{label}</span>
+        <ZoomIn className="w-3.5 h-3.5 shrink-0 opacity-70 group-hover:opacity-100" />
       </span>
     </button>
   );

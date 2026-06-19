@@ -96,7 +96,7 @@ export default function Alerts() {
               onClick={() => { playClick(); setStatusFilter(f); }}
               className={`cv-btn-secondary text-xs ${statusFilter === f ? 'border-cv-accent/40' : ''}`}
             >
-              {f === 'open' ? 'Ouvertes' : f === 'archived' ? 'Archivées' : t('alerts.all')}
+              {f === 'open' ? t('alerts.archiveOpen') : f === 'archived' ? t('alerts.archived') : t('alerts.all')}
             </button>
           ))}
         </div>
@@ -158,8 +158,14 @@ export default function Alerts() {
       {alerts.length === 0 ? (
         <EmptyState
           title={t('alerts.empty')}
-          hint={showIncomplete ? t('alerts.emptyHint') : 'Les alertes sans preuves complètes sont masquées. Cochez « Tout afficher » pour le debug.'}
+          hint={showIncomplete ? t('alerts.emptyHint') : t('alerts.emptyHintIncomplete')}
           icon={Bell}
+          action={
+            <Link to="/rules" className="cv-btn-primary inline-flex items-center gap-2">
+              <Workflow className="w-4 h-4" />
+              Configurer une règle
+            </Link>
+          }
         />
       ) : (
         <div className="flex-1 min-h-0 overflow-hidden">
@@ -224,12 +230,12 @@ export default function Alerts() {
                       className="cv-btn-secondary text-xs shrink-0"
                     >
                       <Archive className="w-3.5 h-3.5" />
-                      Archiver
+                      {t('alerts.archive')}
                     </button>
                   ) : (
                     <span className="text-xs text-cv-muted inline-flex items-center gap-1">
                       <Archive className="w-3 h-3" />
-                      Archivée
+                      {t('alerts.archived')}
                     </span>
                   )}
                 </div>
@@ -407,18 +413,18 @@ export default function Alerts() {
       {archiveId && archiveTarget && (
         <ModalPortal>
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
-            <div className="cv-card w-full max-w-md p-6">
-              <h2 className="font-display text-lg font-semibold mb-2">Archiver l&apos;alerte</h2>
-              <p className="text-sm text-cv-muted mb-3">La preuve actuelle sera conservée avec l&apos;archivage.</p>
+              <div className="cv-card w-full max-w-md p-6">
+              <h2 className="font-display text-lg font-semibold mb-2">{t('alerts.archiveTitle')}</h2>
+              <p className="text-sm text-cv-muted mb-3">{t('alerts.archiveHint')}</p>
               <textarea
                 className="cv-input w-full text-sm mb-4"
                 rows={3}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Commentaire opérateur (optionnel)…"
+                placeholder={t('alerts.archiveCommentPlaceholder')}
               />
               <div className="flex gap-3 justify-end">
-                <button type="button" className="cv-btn-secondary" onClick={() => setArchiveId(null)}>Annuler</button>
+                <button type="button" className="cv-btn-secondary" onClick={() => setArchiveId(null)}>{t('common.cancel')}</button>
                 <button
                   type="button"
                   className="cv-btn-primary"
@@ -430,7 +436,7 @@ export default function Alerts() {
                     setArchiveId(null);
                   }}
                 >
-                  Archiver
+                  {t('alerts.archive')}
                 </button>
               </div>
             </div>

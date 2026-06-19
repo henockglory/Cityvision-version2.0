@@ -40,6 +40,10 @@ const TOUR_GUIDE_SRC: Partial<Record<TourId, string>> = {
   alerts: '/guides/alerts.svg',
   liveView: '/guides/live.svg',
   zones: '/guides/spatial.svg',
+  cameras: '/guides/live.svg',
+  events: '/guides/alerts.svg',
+  health: '/guides/spatial.svg',
+  demo: '/guides/rules-banner.svg',
 };
 
 function step(
@@ -90,21 +94,30 @@ export function getTourSteps(tourId: TourId, t: (k: string) => string): DriveSte
     case 'liveView':
       return [step('#live-view-player', 'tours.liveView.player', 'tours.liveView.playerDesc', 'bottom', t, 'liveView')];
     case 'cameras':
-      return [step('#cameras-list', 'tours.cameras.list', 'tours.cameras.listDesc', 'right', t)];
+      return [
+        step('#cameras-list', 'tours.cameras.list', 'tours.cameras.listDesc', 'right', t, 'cameras'),
+        step('button[data-tour="add-camera"]', 'tours.cameras.wizard', 'tours.cameras.wizardDesc', 'bottom', t, 'cameras'),
+      ].filter((s) => document.querySelector(s.element as string) != null);
     case 'zones':
-      return [step('#zone-canvas', 'tours.zones.canvas', 'tours.zones.canvasDesc', 'bottom', t, 'zones')];
+      return [step('#zone-canvas', 'tours.zones.canvas', 'tours.zones.canvasDesc', 'left', t, 'zones')];
     case 'events':
-      return [step('#events-timeline', 'tours.events.timeline', 'tours.events.timelineDesc', 'bottom', t)];
+      return [
+        step('#events-filters', 'tours.events.filters', 'tours.events.filtersDesc', 'bottom', t, 'events'),
+        step('#events-timeline', 'tours.events.timeline', 'tours.events.timelineDesc', 'bottom', t),
+      ];
     case 'users':
       return [step('#users-table', 'tours.users.table', 'tours.users.tableDesc', 'bottom', t)];
     case 'audit':
       return [step('#audit-log', 'tours.audit.log', 'tours.audit.logDesc', 'bottom', t)];
     case 'health':
-      return [step('#health-services', 'tours.health.services', 'tours.health.servicesDesc', 'bottom', t)];
+      return [
+        step('#health-services', 'tours.health.services', 'tours.health.servicesDesc', 'bottom', t, 'health'),
+        step('#health-ai-models', 'tours.health.aiModels', 'tours.health.aiModelsDesc', 'top', t),
+      ];
     case 'settings':
       return [step('#settings-tabs', 'tours.settings.tabs', 'tours.settings.tabsDesc', 'bottom', t)];
     case 'demo':
-      return [step('#demo-banner', 'tours.demo.banner', 'tours.demo.bannerDesc', 'bottom', t)];
+      return [step('#demo-status', 'tours.demo.banner', 'tours.demo.bannerDesc', 'bottom', t, 'demo')];
     default:
       return [];
   }

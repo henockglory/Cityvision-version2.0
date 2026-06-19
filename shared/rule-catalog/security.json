@@ -1,7 +1,14 @@
 [
   {
     "id": "tpl-abandoned-object",
-    "redirect_to": "tpl-abandoned-object"
+    "redirect_to": "tpl-abandoned-object",
+    "role_summary_fr": "Alerte si un objet reste immobile sans détection de porteur — bagage abandonné.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-object-removed",
@@ -20,11 +27,24 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si un objet référence est retiré de la scène.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-object-appeared",
-    "redirect_to": "tpl-object-appeared"
+    "redirect_to": "tpl-object-appeared",
+    "role_summary_fr": "Alerte quand un nouvel objet apparaît dans la zone — dépôt non autorisé.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-proximity-alert",
@@ -45,7 +65,14 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte quand deux personnes se rapprochent de façon inhabituelle — risque de conflit ou d'agression.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-multi-person-vehicle",
@@ -64,7 +91,14 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Détecte si plusieurs personnes occupent un véhicule — utile pour le covoiturage ou le contrôle.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-loitering-entrance",
@@ -83,11 +117,24 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Détecte les personnes qui traînent à l'entrée — comportement souvent précurseur d'un acte malveillant.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-theft-composite",
-    "redirect_to": "tpl-theft-composite"
+    "redirect_to": "tpl-theft-composite",
+    "role_summary_fr": "Détecte un scénario vol en deux temps : présence prolongée puis sortie rapide — SEQUENCE rules-engine.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-video-blur",
@@ -106,7 +153,13 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si la caméra est obstruée, déréglée ou volontairement brouillée — sabotage.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-video-darkness",
@@ -125,7 +178,13 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si la scène est trop sombre — caméra cachée ou éclairage défaillant.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-behavior-anomaly",
@@ -144,7 +203,14 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Détecte les comportements hors norme par rapport à l'activité normale de la scène.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-crowd-count",
@@ -165,6 +231,13 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte quand le nombre de personnes visibles dépasse le seuil de foule configuré.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   }
 ]

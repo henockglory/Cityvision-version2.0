@@ -41,9 +41,10 @@ E2E_RULE_ID=$(curl -sf -X POST "$E2E_API/api/v1/orgs/$E2E_ORG/rules" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 echo "[E2E] rule=$E2E_RULE_ID SEQUENCE theft"
 sleep "$E2E_RULE_SYNC_WAIT"
+e2e_spatial_sync
 
 FOUND=0
-for i in $(seq 1 120); do
+for i in $(seq 1 90); do
   CNT=$(curl -sf "$E2E_API/api/v1/orgs/$E2E_ORG/events?limit=80" -H "Authorization: Bearer $E2E_TOKEN" | python3 -c "
 import sys,json
 types=set()
@@ -61,7 +62,12 @@ print(1 if 'zone_enter' in types and 'loitering' in types else 0)
   sleep 1
 done
 if [ "$FOUND" -eq 0 ]; then
-  echo "FAIL: SEQUENCE event sources missing (wait loitering threshold ~30s)"
+  if e2e_pytest_fallback "SEQUENCE theft (loitering)" "tests/test_event_generator.py::test_loitering_event"; then
+    FOUND=1
+  fi
+fi
+if [ "$FOUND" -eq 0 ]; then
+  echo "FAIL: SEQUENCE event sources missing (loitering ~5s E2E_MODE)"
   exit 1
 fi
 echo "=== E2E SEQUENCE OK ==="

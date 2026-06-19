@@ -55,7 +55,7 @@
     "password": "Password",
     "submit": "Sign In",
     "error": "Invalid credentials",
-    "errorBackend": "Cannot reach server — run bash scripts/start-linux.sh (WSL)",
+    "errorBackend": "Cannot reach server — start services with: bash scripts/start-linux.sh (WSL)",
     "copyright": "© 2026 HOLOGRAM.CD — All rights reserved",
     "support": "If you experience connection issues, contact technical support:"
   },
@@ -79,7 +79,8 @@
     "wizard": {
       "step1": "Network Discovery",
       "step2": "Credentials",
-      "step3": "Preview",
+      "step3": "Connection Test",
+      "step4": "Preview",
       "scan": "Scan Network",
       "subnet": "Subnet (CIDR)",
       "scanning": "Scanning...",
@@ -93,10 +94,29 @@
       "back": "Back",
       "next": "Next",
       "connectionSuccess": "Connection successful",
-      "connectionFailed": "Connection failed",
+      "connectionFailed": "Connection failed — check credentials and RTSP path",
       "scanError": "Network scan failed",
       "createError": "Failed to create camera",
-      "noDevices": "No devices found"
+      "noDevices": "No devices found on this subnet",
+      "manualUrl": "Or enter RTSP URL directly",
+      "manualUrlHint": "Use this if your camera is not on the local network or was not detected by the scan.",
+      "manualUrlPlaceholder": "rtsp://192.168.1.100:554/stream",
+      "vendorLabel": "Camera brand",
+      "vendorHint": "Helps optimize the connection path. Choose Generic if your brand is not listed.",
+      "vendor": {
+        "auto": "Auto-detect",
+        "hikvision": "Hikvision",
+        "dahua": "Dahua",
+        "generic": "Generic (other brands)"
+      },
+      "vendorCoverage": {
+        "hikvision": "Optimized — verified compatibility",
+        "dahua": "Optimized — verified compatibility",
+        "generic": "Partial — uses standard RTSP paths; provide the full URL if connection fails"
+      },
+      "helpTitle": "Connecting cameras",
+      "helpText": "Hikvision and Dahua cameras are fully supported. For other brands (Axis, Reolink, Uniview, etc.), enter the RTSP URL manually from the camera's configuration interface.",
+      "scanHint": "The scanner detects devices on TCP ports 80 and 554. Only cameras reachable on the same subnet will appear."
     },
     "status": {
       "online": "Online",
@@ -129,12 +149,32 @@
     "activeTitle": "Configured rules",
     "activeSubtitle": "Manage, edit and duplicate your active rules",
     "activeEmpty": "No rules match this filter",
+    "pickTemplate": "Choose a rule template",
+    "duplicate": "Duplicate",
+    "copySuffix": "copy",
+    "deletedToast": "Rule «\u00a0{{name}}\u00a0» deleted",
+    "disableError": "Failed to disable — check your permissions.",
+    "confirmDeleteTitle": "Delete this rule?",
+    "confirmDeleteMessage": "«\u00a0{{name}}\u00a0» will be permanently deleted.",
+    "confirmDisableTitle": "Disable this rule?",
+    "confirmDisableMessage": "«\u00a0{{name}}\u00a0» will no longer generate alerts.",
+    "filter": {
+      "all": "All",
+      "enabled": "Active",
+      "disabled": "Disabled"
+    },
     "scope": {
       "national": "National",
       "enterprise": "Enterprise",
       "domestic": "Domestic",
       "all": "All",
       "mix": "Mixed"
+    },
+    "severity": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
     },
     "guide": {
       "bannerTitle": "Pick a rule that fits your context",
@@ -155,9 +195,12 @@
       "reactivate": "Re-enable",
       "configured": "Configured",
       "soonBadge": "Soon",
-      "showGuide": "Show illustrated role",
+      "showGuide": "Show illustrated guide",
       "hideGuide": "Hide illustration",
-      "disabling": "Disabling « {{name}} »…"
+      "disabling": "Disabling «\u00a0{{name}}\u00a0»…"
+    },
+    "catalogGroup": {
+      "variantsLabel": "Rules in this group"
     },
     "catalogCategory": {
       "security": "Security & intrusion",
@@ -175,6 +218,63 @@
       "road-enforcement": "Road enforcement",
       "incident": "Incidents",
       "industrial": "Industrial"
+    },
+    "studio": {
+      "createTitle": "Configure rule",
+      "editTitle": "Edit rule",
+      "step": "Step {{step}} / {{total}}",
+      "steps": {
+        "config": "Configuration",
+        "conditions": "Conditions",
+        "actionsEvidence": "Actions & Evidence",
+        "preview": "Preview"
+      },
+      "ruleName": "Rule name",
+      "conditionsTitle": "Condition tree",
+      "conditionsHint": "Add or remove conditions before the alert triggers.",
+      "actionsTitle": "Alert actions",
+      "alertSeverity": "Alert severity",
+      "notifyEmail": "Recipient email",
+      "previewTitle": "Stream preview",
+      "previewSummary": "Alert if {{details}}",
+      "previewClass": "object: {{cls}}",
+      "previewZone": "zone: {{zone}}",
+      "previewDuration": "duration: {{seconds}} s",
+      "classFilterChoose": "— Choose monitored object —",
+      "classFilterGroups": "Categories",
+      "classFilterCoco": "COCO classes (precise)",
+      "saveError": "Failed to save — check your permissions and configuration.",
+      "addCondition": "Condition",
+      "addGroup": "AND / OR group",
+      "valuePlaceholder": "Value",
+      "opAnd": "AND (all)",
+      "opOr": "OR (at least one)",
+      "classRequired": "Choose the monitored object type (person, vehicle…) for reliable detection.",
+      "evidenceTitle": "Automatic evidence",
+      "evidenceHint": "On each alert: a short video clip and two photos (overview + zoomed target) are saved as evidence.",
+      "evidenceEnabled": "Capture clip + images on each trigger",
+      "clipDuration": "Video clip duration",
+      "clipDurationHint": "Between 3 and 15 seconds. Default 6 s — enough to understand the situation.",
+      "subjectZoom": "Target zoom",
+      "subjectZoomHint": "Zooms in on the detected person or object (colored bounding box).",
+      "drawBbox": "Show detection box on the target image",
+      "imageCount": "Number of photos",
+      "imageCountHint": "Default 2: overview + close-up on target. You can keep one or add a third.",
+      "subjectPadding": "Margin around target",
+      "subjectPaddingHint": "Space left around the person or object in the zoomed photo.",
+      "minConfidence": "Minimum confidence",
+      "minConfidenceHint": "Ignores uncertain detections before saving evidence.",
+      "outputsTitle": "What happens when the rule triggers?",
+      "outputsHint": "In-app alert + optional notifications to email or automation tools (n8n, Make, Zapier…).",
+      "notifyEmailHint": "An email alert will be sent if the mail server is configured in Settings.",
+      "enableWebhook": "Also send to an automation webhook",
+      "webhookPreset": "Integration type",
+      "webhookUrl": "Webhook URL",
+      "scheduleLabel": "Active time window",
+      "scheduleFrom": "From",
+      "scheduleTo": "To",
+      "scheduleHint": "The rule only triggers during this daily time window. Leave as-is for 24/7 monitoring.",
+      "scheduleAllDay": "Active all day (24/7)"
     }
   },
   "alerts": {
@@ -195,7 +295,7 @@
     "emptyHint": "Detection events will appear here",
     "allTypes": "All types",
     "allCameras": "All cameras",
-    "showAll": "Show all (debug)",
+    "showAll": "Show all detection events",
     "selectHint": "Select an event to view evidence"
   },
   "evidence": {
@@ -206,7 +306,7 @@
     "clipLabel": "{{sec}}s clip",
     "scene": "Scene view",
     "subject": "Detected subject",
-    "bboxOnly": "bbox only",
+    "bboxOnly": "Position data only",
     "confidence": "Confidence:",
     "plate": "Plate",
     "face": "Face",
@@ -216,12 +316,22 @@
     "zone": "Zone",
     "track": "Track",
     "openLive": "Open live",
-    "download": "Télécharger",
+    "download": "Download",
     "loadFailed": "Unable to load this media",
     "loadingMedia": "Loading evidence…",
     "metadataOnly": "Metadata present, media still loading",
-    "automationsTitle": "Automatisations liées",
-    "automationsHint": "Canaux configurés sur la règle source au moment de l'alerte."
+    "automationsTitle": "Linked automations",
+    "automationsHint": "Channels configured on the source rule at the time of the alert.",
+    "forwardTitle": "Forward / share this alert",
+    "forwardHint": "Send alert data and evidence links to an email or automation tool (n8n, Make, Zapier…).",
+    "forwardEmail": "Recipient email",
+    "forwardEmailHint": "A summary with evidence links will be sent if the mail server is configured.",
+    "forwardWebhook": "Webhook / automation URL",
+    "forwardWebhookHint": "Full alert data and evidence snapshot will be sent as JSON.",
+    "forwardPreset": "Integration type",
+    "forwardSend": "Send now",
+    "forwardSuccess": "Alert forwarded successfully.",
+    "forwardError": "Forward failed — check email, URL or SMTP configuration."
   },
   "liveView": {
     "title": "Live View",
@@ -254,7 +364,9 @@
     "save": "Save",
     "tools": "Tools",
     "empty": "No zones defined",
-    "emptyHint": "Draw detection zones on the canvas"
+    "emptyHint": "Draw detection zones on the canvas",
+    "noLines": "No detection lines drawn yet.",
+    "noLinesHint": "Switch to line mode and draw a crossing line on the camera view."
   },
   "settings": {
     "title": "Settings",
@@ -264,7 +376,12 @@
     "theme": "Theme",
     "sound": "Interface sounds",
     "soundOn": "Enabled",
-    "soundOff": "Disabled"
+    "soundOff": "Disabled",
+    "toursTitle": "Guided tutorials",
+    "toursAutoStart": "Launch automatically when arriving on a page",
+    "toursAutoOn": "Enabled",
+    "toursAutoOff": "Disabled",
+    "resetAllTours": "Reset all tutorials"
   },
   "audit": {
     "title": "Audit Log",
@@ -278,7 +395,14 @@
     "title": "System Health",
     "services": "Services",
     "empty": "No health data",
-    "emptyHint": "System metrics will appear here"
+    "emptyHint": "System metrics will appear here",
+    "aiModels": "AI Models",
+    "modelLoaded": "Loaded",
+    "modelMissing": "Not installed",
+    "modelMissingHint": "This model is required for identity-related rules to work. See docs/INSTALL.md for setup instructions.",
+    "faceModel": "Face recognition",
+    "plateModel": "License plate OCR",
+    "aiUnreachable": "AI engine unreachable — model status cannot be checked."
   },
   "emptyState": {
     "defaultTitle": "Nothing here yet",
@@ -327,6 +451,95 @@
     "content": {
       "title": "Main Area",
       "description": "Your workspace for real-time surveillance."
+    }
+  },
+  "pageHeader": {
+    "startTour": "Launch page tutorial",
+    "tourAriaLabel": "Guided tutorial"
+  },
+  "tours": {
+    "labels": {
+      "global": "General tour",
+      "dashboard": "Dashboard",
+      "map": "GIS Map",
+      "rules": "Analytics Rules",
+      "alerts": "Alerts & Evidence",
+      "videoWall": "Video Wall",
+      "liveView": "Live View",
+      "cameras": "Cameras",
+      "zones": "Zone Editor",
+      "events": "Events",
+      "users": "Users",
+      "audit": "Audit",
+      "health": "System Health",
+      "settings": "Settings",
+      "demo": "Demo"
+    },
+    "dashboard": {
+      "stats": "Key indicators",
+      "statsDesc": "Cameras, alerts, events and rules — hover for explanations.",
+      "alerts": "Recent alerts",
+      "alertsDesc": "Latest alerts with link to details and evidence.",
+      "live": "Real-time feed",
+      "liveDesc": "AI-detected events live on your cameras."
+    },
+    "map": {
+      "modes": "Map modes",
+      "modesDesc": "Real OSM map, schematic plan, or 3D globe.",
+      "canvas": "GIS placement",
+      "canvasDesc": "Hover over a camera for live preview; click for details."
+    },
+    "rules": {
+      "catalog": "Catalog",
+      "catalogDesc": "Filter by scale (national, enterprise, domestic) and activate an illustrated rule.",
+      "active": "Configured rules",
+      "activeDesc": "Only rules you created — activate or disable with the dedicated button."
+    },
+    "alerts": {
+      "filters": "Filters",
+      "filtersDesc": "Filter by period, camera, rule and severity. Each alert can include visual evidence."
+    },
+    "videoWall": {
+      "layout": "Layout",
+      "layoutDesc": "Choose 1, 4, 9, or 16 cameras on the wall.",
+      "grid": "Video grid",
+      "gridDesc": "Each quadrant fills the space without overlap."
+    },
+    "liveView": {
+      "player": "Main feed",
+      "playerDesc": "Select a camera and control PTZ — the stream is the source of detections."
+    },
+    "cameras": {
+      "list": "Camera list",
+      "listDesc": "Add and test your cameras here."
+    },
+    "zones": {
+      "canvas": "Zone canvas",
+      "canvasDesc": "Draw zones and detection lines on the camera view."
+    },
+    "events": {
+      "timeline": "Timeline",
+      "timelineDesc": "Detection event history."
+    },
+    "users": {
+      "table": "Users",
+      "tableDesc": "Manage accounts and roles."
+    },
+    "audit": {
+      "log": "Log",
+      "logDesc": "Recorded actions for compliance."
+    },
+    "health": {
+      "services": "Services",
+      "servicesDesc": "Status of Citévision microservices."
+    },
+    "settings": {
+      "tabs": "Settings",
+      "tabsDesc": "Theme, sounds, tutorials and integrations."
+    },
+    "demo": {
+      "banner": "Demo mode",
+      "bannerDesc": "Kinshasa scenario and demonstration data."
     }
   }
 }

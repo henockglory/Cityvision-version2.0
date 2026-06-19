@@ -85,7 +85,7 @@ export function EvidenceImage({ apiUrl, alt, className = 'w-full h-full object-c
       </div>
     );
   }
-  return <img src={blobUrl} alt={alt} className={className} />;
+  return <img src={blobUrl} alt={alt} className={className} draggable={false} />;
 }
 
 interface EvidenceThumbnailProps {

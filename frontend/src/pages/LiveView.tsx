@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  ZoomIn, ZoomOut, Camera, Maximize2, MonitorPlay, Activity,
+  ZoomIn, ZoomOut, Camera, Maximize2, MonitorPlay, Activity, Plus,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import VideoPlaceholder from '@/components/ui/VideoPlaceholder';
@@ -52,7 +53,17 @@ export default function LiveView() {
     return (
       <div>
         <PageHeader title={t('liveView.title')} />
-        <EmptyState title={t('liveView.empty')} hint={t('liveView.emptyHint')} icon={MonitorPlay} />
+        <EmptyState
+          title={t('liveView.empty')}
+          hint={t('liveView.emptyHint')}
+          icon={MonitorPlay}
+          action={
+            <Link to="/cameras" className="cv-btn-primary inline-flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Ajouter une caméra
+            </Link>
+          }
+        />
       </div>
     );
   }

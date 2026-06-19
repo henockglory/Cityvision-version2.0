@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   PenTool, Workflow, Bell, Activity, ChevronRight, RefreshCw, Check,
 } from 'lucide-react';
@@ -14,6 +15,8 @@ import {
 } from '@/hooks/api/queries';
 import { AI_ENGINE_HEALTH, DEFAULT_STREAM, GO2RTC_STREAMS_API } from '@/config/streams';
 
+type StepDef = { n: number; title: string; body: string; href: string | null; cta?: string };
+
 function go2rtcStreamHealthy(stream: unknown): boolean {
   if (!stream || typeof stream !== 'object') return false;
   const s = stream as {
@@ -27,15 +30,16 @@ function go2rtcStreamHealthy(stream: unknown): boolean {
   );
 }
 
-const STEPS = [
-  { n: 1, title: 'Regardez la vidéo', body: 'Flux benedicte.mp4 en boucle. Badge LIVE = OK.', href: null },
-  { n: 2, title: 'Dessinez une zone', body: '3 clics → Fermer polygone → Enregistrer.', href: '/zones', cta: 'Éditeur de zones' },
-  { n: 3, title: 'Activez une règle', body: 'Catalogue ci-dessous → Activer.', href: '/rules?catalog=1', cta: 'Toutes les règles' },
-  { n: 4, title: 'Alertes & détections', body: 'Résultats en direct (30–60 s après activation).', href: '/alerts', cta: 'Centre d\'alertes' },
-] as const;
-
 export default function DemoCenter() {
+  const { t } = useTranslation();
   const orgId = useAuthStore((s) => s.orgId);
+
+  const STEPS: StepDef[] = [
+    { n: 1, title: t('demoCenter.step1Title'), body: t('demoCenter.step1Body'), href: null },
+    { n: 2, title: t('demoCenter.step2Title'), body: t('demoCenter.step2Body'), href: '/zones', cta: t('demoCenter.step2Cta') },
+    { n: 3, title: t('demoCenter.step3Title'), body: t('demoCenter.step3Body'), href: '/rules?catalog=1', cta: t('demoCenter.step3Cta') },
+    { n: 4, title: t('demoCenter.step4Title'), body: t('demoCenter.step4Body'), href: '/alerts', cta: t('demoCenter.step4Cta') },
+  ];
   const events = useEvents();
   const alerts = useAlerts();
   const rules = useRules();
@@ -89,28 +93,28 @@ export default function DemoCenter() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-cv-accent mb-1">
-            Ministère · Urbanisme & Transport · Kinshasa
+            {t('demoCenter.context')}
           </p>
           <h1 className="text-2xl md:text-3xl font-display font-semibold tracking-tight">
-            Démonstration CitéVision
+            {t('demoCenter.title')}
           </h1>
           <p className="text-sm text-cv-muted mt-1 max-w-xl">
-            Vidéo, zonage, règles et alertes — prêt pour présentation client.
+            {t('demoCenter.subtitle')}
           </p>
         </div>
         <button type="button" onClick={() => void refresh()} className="cv-btn-secondary text-sm">
           <RefreshCw className="w-4 h-4" />
-          Actualiser
+          {t('demoCenter.refresh')}
         </button>
       </header>
 
-      <div className="flex flex-wrap gap-2 text-xs">
-        <StatusChip label="Serveur" ok={services.backend} />
-        <StatusChip label="Vidéo" ok={services.go2rtc} />
-        <StatusChip label="Analyse IA" ok={services.ai} />
-        <StatusChip label="GPU CUDA" ok={services.cuda} />
-        <StatusChip label="Détections" ok={recentEvents.length > 0} />
-        <StatusChip label="Alertes" ok={recentAlerts.length > 0} />
+      <div id="demo-status" className="flex flex-wrap gap-2 text-xs">
+        <StatusChip label={t('demoCenter.serveur')} ok={services.backend} />
+        <StatusChip label={t('demoCenter.video')} ok={services.go2rtc} />
+        <StatusChip label={t('demoCenter.analyseIA')} ok={services.ai} />
+        <StatusChip label={t('demoCenter.gpuCuda')} ok={services.cuda} />
+        <StatusChip label={t('demoCenter.detections')} ok={recentEvents.length > 0} />
+        <StatusChip label={t('demoCenter.alertes')} ok={recentAlerts.length > 0} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -121,7 +125,7 @@ export default function DemoCenter() {
         </div>
 
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold">Parcours (4 étapes)</h2>
+          <h2 className="text-sm font-semibold">{t('demoCenter.stepsTitle')}</h2>
           {STEPS.map((step) => (
             <div key={step.n} className="cv-card p-4">
               <div className="flex gap-3">
@@ -147,7 +151,7 @@ export default function DemoCenter() {
       <div className="cv-card p-5">
         <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
           <Workflow className="w-5 h-5 text-cv-accent" />
-          Étape 3 — Catalogue de règles
+          {t('demoCenter.step3Title')} — {t('rules.catalog')}
         </h2>
         <RuleCatalogPanel
           templates={catalog.data ?? []}
@@ -182,9 +186,9 @@ export default function DemoCenter() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FeedPanel
-          title="Détections live"
+          title={t('demoCenter.detectionsLive')}
           icon={Activity}
-          empty="En attente… laissez la vidéo tourner 30–60 s."
+          empty={t('demoCenter.emptyDetections')}
           link="/events"
           items={recentEvents.map((e) => ({
             id: e.id,
@@ -194,9 +198,9 @@ export default function DemoCenter() {
           }))}
         />
         <FeedPanel
-          title="Alertes live"
+          title={t('demoCenter.alertesLive')}
           icon={Bell}
-          empty="Activez une règle du catalogue."
+          empty={t('demoCenter.emptyAlertes')}
           link="/alerts"
           items={recentAlerts.map((a) => ({
             id: a.id,
@@ -210,10 +214,10 @@ export default function DemoCenter() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <QuickLink to="/zones" icon={PenTool} label="Éditeur de zones" />
-        <QuickLink to="/rules?catalog=1" icon={Workflow} label="Règles & catalogue" />
-        <QuickLink to="/events" icon={Activity} label="Événements" />
-        <QuickLink to="/alerts" icon={Bell} label="Alertes" />
+        <QuickLink to="/zones" icon={PenTool} label={t('nav.zoneEditor')} />
+        <QuickLink to="/rules?catalog=1" icon={Workflow} label={t('nav.rules')} />
+        <QuickLink to="/events" icon={Activity} label={t('nav.events')} />
+        <QuickLink to="/alerts" icon={Bell} label={t('nav.alerts')} />
       </div>
     </div>
   );
@@ -223,8 +227,8 @@ function StatusChip({ label, ok }: { label: string; ok: boolean }) {
   return (
     <span className={`px-3 py-1 rounded-full border text-xs ${
       ok ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' : 'border-cv-border bg-cv-surface text-cv-muted'
-    }`}>
-      {label}{ok ? ' ✓' : ' …'}
+    }`} title={ok ? 'Opérationnel' : 'Hors ligne ou en attente'}>
+      {label}{ok ? ' ✓' : ' ✗'}
     </span>
   );
 }
@@ -241,6 +245,7 @@ function FeedPanel({
     acknowledged?: boolean; onAck?: () => void;
   }[];
 }) {
+  const { t } = useTranslation();
   return (
     <div className="cv-card overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-cv-border">
@@ -249,7 +254,7 @@ function FeedPanel({
           {title}
           <span className="text-cv-muted font-normal">({items.length})</span>
         </div>
-        <Link to={link} className="text-xs text-cv-accent hover:underline">Tout voir</Link>
+        <Link to={link} className="text-xs text-cv-accent hover:underline">{t('demoCenter.voirTout')}</Link>
       </div>
       <div className="max-h-52 overflow-y-auto divide-y divide-cv-border">
         {items.length === 0 ? (
@@ -265,7 +270,7 @@ function FeedPanel({
                 <span className="text-xs text-cv-muted font-mono">{item.time}</span>
                 {item.onAck && !item.acknowledged && (
                   <button type="button" onClick={item.onAck} className="text-[10px] text-cv-accent flex items-center gap-0.5 hover:underline">
-                    <Check className="w-3 h-3" /> Acquitter
+                    <Check className="w-3 h-3" /> {t('demoCenter.acquitter')}
                   </button>
                 )}
               </div>

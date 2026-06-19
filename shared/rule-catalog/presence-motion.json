@@ -6,9 +6,26 @@
     "category": "presence",
     "severity": "low",
     "definition": {
-      "condition": { "op": "eq", "field": "event_type", "value": "object_appeared" },
-      "actions": [{ "type": "alert", "config": { "severity": "low" } }]
-    }
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "object_appeared"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "low"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Alerte quand un nouvel objet apparaît dans la zone — dépôt non autorisé.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-object-disappeared",
@@ -17,9 +34,26 @@
     "category": "presence",
     "severity": "medium",
     "definition": {
-      "condition": { "op": "eq", "field": "event_type", "value": "object_disappeared" },
-      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
-    }
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "object_disappeared"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Détecte la disparition d'un objet présent dans la scène — vol ou déplacement suspect.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-zone-presence",
@@ -31,13 +65,38 @@
       "condition": {
         "op": "AND",
         "children": [
-          { "op": "eq", "field": "event_type", "value": "zone_presence" },
-          { "op": "eq", "field": "zone_id", "value": "__ZONE__" },
-          { "op": "matches_class", "field": "class_name", "value": "person" }
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "zone_presence"
+          },
+          {
+            "op": "eq",
+            "field": "zone_id",
+            "value": "__ZONE__"
+          },
+          {
+            "op": "matches_class",
+            "field": "class_name",
+            "value": "person"
+          }
         ]
       },
-      "actions": [{ "type": "alert", "config": { "severity": "low" } }]
-    }
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "low"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Vérifie en continu la présence d'un objet dans la zone et alerte si la condition est remplie.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-zone-absence",
@@ -49,14 +108,43 @@
       "condition": {
         "op": "AND",
         "children": [
-          { "op": "eq", "field": "event_type", "value": "zone_absence" },
-          { "op": "eq", "field": "zone_id", "value": "__ZONE__" },
-          { "op": "matches_class", "field": "class_name", "value": "person" },
-          { "op": "gt", "field": "duration_seconds", "value": 300 }
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "zone_absence"
+          },
+          {
+            "op": "eq",
+            "field": "zone_id",
+            "value": "__ZONE__"
+          },
+          {
+            "op": "matches_class",
+            "field": "class_name",
+            "value": "person"
+          },
+          {
+            "op": "gt",
+            "field": "duration_seconds",
+            "value": 300
+          }
         ]
       },
-      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
-    }
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Alerte si la zone est vide alors qu'elle devrait être occupée (ex. poste de garde abandonné).",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-immobility",
@@ -68,12 +156,33 @@
       "condition": {
         "op": "ET",
         "children": [
-          { "op": "eq", "field": "event_type", "value": "stationary" },
-          { "op": "gt", "field": "duration_seconds", "value": 90 }
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "stationary"
+          },
+          {
+            "op": "gt",
+            "field": "duration_seconds",
+            "value": 90
+          }
         ]
       },
-      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
-    }
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Alerte si une personne reste totalement immobile — peut indiquer un malaise ou un abandon de poste.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-erratic-motion",
@@ -82,9 +191,26 @@
     "category": "presence",
     "severity": "high",
     "definition": {
-      "condition": { "op": "contains", "field": "metadata.behavior", "value": "erratic" },
-      "actions": [{ "type": "alert", "config": { "severity": "high" } }]
-    }
+      "condition": {
+        "op": "contains",
+        "field": "metadata.behavior",
+        "value": "erratic"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Détecte les mouvements désordonnés ou imprévisibles — comportement inhabituel dans un lieu public.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-wandering",
@@ -93,8 +219,26 @@
     "category": "presence",
     "severity": "medium",
     "definition": {
-      "condition": { "op": "contains", "field": "metadata.behavior", "value": "wandering" },
-      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
-    }
+      "condition": {
+        "op": "contains",
+        "field": "metadata.behavior",
+        "value": "wandering"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Alerte quand une personne déambule sans trajectoire claire — peut signaler une personne désorientée.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "partial_aggregate",
+    "partial_reason_fr": "Errance détectée via heuristique wandering — nécessite activité continue ≥45s dans le champ"
   }
 ]

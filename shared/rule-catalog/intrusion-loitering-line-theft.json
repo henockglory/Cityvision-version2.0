@@ -6,20 +6,49 @@
     "severity": "high",
     "configSchema": {
       "fields": [
-        { "key": "camera_id", "type": "camera", "required": true, "label": "Caméra" },
-        { "key": "zone_name", "type": "zone", "required": true, "label": "Zone interdite", "hint": "Zone dessinée dans l'éditeur" }
+        {
+          "key": "camera_id",
+          "type": "camera",
+          "required": true,
+          "label": "Caméra"
+        },
+        {
+          "key": "zone_name",
+          "type": "zone",
+          "required": true,
+          "label": "Zone interdite",
+          "hint": "Zone dessinée dans l'éditeur"
+        }
       ]
     },
     "definition": {
       "condition": {
         "op": "ET",
         "children": [
-          { "op": "in_zone", "field": "zone_id", "value": "restricted" },
-          { "op": "eq", "field": "class_name", "value": "person" }
+          {
+            "op": "in_zone",
+            "field": "zone_id",
+            "value": "restricted"
+          },
+          {
+            "op": "eq",
+            "field": "class_name",
+            "value": "person"
+          }
         ]
       },
-      "actions": [{ "type": "alert", "config": { "severity": "high", "channel": "ui" } }]
-    }
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high",
+            "channel": "ui"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Alerte dès qu'une personne entre dans la zone interdite que vous avez dessinée sur la caméra.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-loitering",
@@ -28,16 +57,68 @@
     "severity": "medium",
     "configSchema": {
       "fields": [
-        { "key": "camera_id", "type": "camera", "required": true, "label": "Caméra" },
-        { "key": "duration_seconds", "type": "number", "required": true, "label": "Durée (secondes)", "min": 10, "default": 120 },
-        { "key": "window", "type": "schedule", "required": false, "label": "Plage horaire" }
+        {
+          "key": "camera_id",
+          "type": "camera",
+          "required": true,
+          "label": "Caméra"
+        },
+        {
+          "key": "duration_seconds",
+          "type": "number",
+          "required": true,
+          "label": "Durée (secondes)",
+          "min": 10,
+          "default": 120
+        },
+        {
+          "key": "window",
+          "type": "schedule",
+          "required": false,
+          "label": "Plage horaire"
+        }
       ]
     },
     "definition": {
-      "condition": { "op": "gt", "field": "duration_seconds", "value": 120 },
-      "actions": [{ "type": "alert", "config": { "severity": "medium" } }],
-      "window": { "start_hour": 6, "end_hour": 22, "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }
-    }
+      "condition": {
+        "op": "ET",
+        "children": [
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "loitering"
+          },
+          {
+            "op": "gte",
+            "field": "duration_seconds",
+            "value": 120
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ],
+      "window": {
+        "start_hour": 6,
+        "end_hour": 22,
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri",
+          "sat",
+          "sun"
+        ]
+      }
+    },
+    "role_summary_fr": "Signale une personne restée dans la zone au-delà de la durée configurée — suspect ou besoin d'assistance.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-line-cross",
@@ -46,39 +127,92 @@
     "severity": "medium",
     "configSchema": {
       "fields": [
-        { "key": "camera_id", "type": "camera", "required": true, "label": "Caméra" },
-        { "key": "line_name", "type": "line", "required": true, "label": "Ligne de comptage" }
+        {
+          "key": "camera_id",
+          "type": "camera",
+          "required": true,
+          "label": "Caméra"
+        },
+        {
+          "key": "line_name",
+          "type": "line",
+          "required": true,
+          "label": "Ligne de comptage"
+        }
       ]
     },
     "definition": {
-      "condition": { "op": "cross_line", "field": "line_id", "value": "entry-line" },
+      "condition": {
+        "op": "cross_line",
+        "field": "line_id",
+        "value": "entry-line"
+      },
       "actions": [
-        { "type": "alert", "config": { "severity": "medium" } },
-        { "type": "record", "config": { "duration_sec": 30 } }
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        },
+        {
+          "type": "record",
+          "config": {
+            "duration_sec": 30
+          }
+        }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte à chaque franchissement de la ligne virtuelle dessinée sur la caméra.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-theft-composite",
     "name": "Vol suspect (composite)",
     "category": "composite",
     "severity": "critical",
+    "supported": true,
     "definition": {
       "condition": {
         "op": "SEQUENCE",
         "window_seconds": 300,
-        "key_fields": ["camera_id", "track_id"],
+        "key_fields": [
+          "camera_id",
+          "track_id"
+        ],
         "children": [
-          { "op": "eq", "field": "event_type", "value": "zone_enter" },
-          { "op": "eq", "field": "event_type", "value": "loitering" }
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "zone_enter"
+          },
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "loitering"
+          }
         ]
       },
       "actions": [
-        { "type": "alert", "config": { "severity": "critical" } },
-        { "type": "record", "config": { "duration_sec": 60 } }
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        },
+        {
+          "type": "record",
+          "config": {
+            "duration_sec": 60
+          }
+        }
       ],
-      "dedup_key_fields": ["camera_id", "track_id"]
-    }
+      "dedup_key_fields": [
+        "camera_id",
+        "track_id"
+      ]
+    },
+    "role_summary_fr": "Règle composite : alerte si une personne entre dans une zone PUIS y traîne — séquence de vol probable.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-abandoned-object",
@@ -89,21 +223,61 @@
       "condition": {
         "op": "ET",
         "children": [
-          { "op": "eq", "field": "event_type", "value": "object_appeared" },
-          { "op": "gt", "field": "duration_seconds", "value": 60 }
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "object_appeared"
+          },
+          {
+            "op": "gt",
+            "field": "duration_seconds",
+            "value": 60
+          }
         ]
       },
-      "actions": [{ "type": "alert", "config": { "severity": "high" } }]
-    }
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Signale l'apparition d'un objet qui reste sans propriétaire dans la zone après le délai configuré.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-crowd-density",
     "name": "Densité de foule élevée",
     "category": "behavior",
     "severity": "warning",
+    "configSchema": {
+      "fields": [
+        {
+          "key": "camera_id",
+          "type": "camera",
+          "required": true,
+          "label": "Caméra"
+        }
+      ]
+    },
     "definition": {
-      "condition": { "op": "gt", "field": "metadata.density", "value": 0.005 },
-      "actions": [{ "type": "notify", "config": { "channel": "ops" } }]
-    }
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "scene_density_high"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "warning"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Alerte quand la densité de la scène est élevée — gestion des flux et sécurité en espace public.",
+    "partial_status": "full"
   }
 ]

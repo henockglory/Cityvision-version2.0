@@ -24,7 +24,15 @@
           }
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Alerte quand un visage connu de la liste de surveillance est identifié par la caméra.",
+    "partial_status": "requires_face_ai",
+    "partial_reason_fr": "Correspondance liste noire nécessite le module InsightFace + base de données de visages configurée"
   },
   {
     "id": "tpl-unknown-face",
@@ -43,7 +51,14 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Signale la présence d'un visage non reconnu dans une zone à accès contrôlé.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-face-detected",
@@ -64,7 +79,14 @@
           }
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Enregistre et alerte à chaque détection de visage — utile pour les zones à faible trafic.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-face-count",
@@ -83,7 +105,15 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Alerte si le nombre de visages détectés dépasse le seuil configuré sur une période.",
+    "partial_status": "requires_face_ai",
+    "partial_reason_fr": "Comptage des visages nécessite le module InsightFace (non installé par défaut)"
   },
   {
     "id": "tpl-blocked-plate",
@@ -104,7 +134,14 @@
           }
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Alerte immédiate si une plaque figurant sur la liste noire est reconnue par la caméra.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-unknown-plate",
@@ -123,7 +160,14 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Signale toute plaque non présente dans la liste blanche — contrôle d'accès véhicules.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-plate-whitelist",
@@ -144,7 +188,14 @@
           }
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Autorise les véhicules dont la plaque est dans la liste blanche — alerte pour toute autre plaque.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-plate-detected",
@@ -163,7 +214,14 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Enregistre et alerte à chaque détection de plaque d'immatriculation sur la scène.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-identity-correlation",
@@ -182,6 +240,13 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Corrèle détections faciales et plaques pour identifier un profil combiné.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   }
 ]

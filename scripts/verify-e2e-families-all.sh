@@ -13,11 +13,15 @@ echo "╔═══════════════════════�
 echo "║  CitéVision — Lot E2E par famille + matrice      ║"
 echo "╚══════════════════════════════════════════════════╝"
 
+bash "$ROOT/fix-sh-lf.sh" 2>/dev/null || true
+
 run "Spatial" "$ROOT/verify-e2e-family-spatial.sh"
 run "Identité" "$ROOT/verify-e2e-family-identity.sh"
 run "Routier" "$ROOT/verify-e2e-family-road.sh"
 run "SEQUENCE theft" "$ROOT/verify-e2e-sequence-theft.sh"
+run "Templates ex-Bientôt (10)" "$ROOT/verify-e2e-bientot-templates.sh"
 run "Webhook CloudEvents" "$ROOT/verify-e2e-webhook-cloudevents.sh"
+run "Pytest catalogue Disponibles" "$ROOT/verify-e2e-pytest-catalog.sh"
 
 echo ""
 echo ">>> Regénération matrice"

@@ -97,7 +97,7 @@ export default function Dashboard() {
           {alerts.isError ? (
             <ErrorState onRetry={() => void alerts.refetch()} />
           ) : recentAlerts.length === 0 ? (
-            <DenseEmpty title={t('dashboard.noAlerts')} hint="Les alertes déclenchées par vos règles s'affichent ici." />
+            <DenseEmpty title={t('dashboard.noAlerts')} hint={t('dashboard.noAlertsHint')} />
           ) : (
             <div className="space-y-2 flex-1">
               {recentAlerts.slice(0, 5).map((alert) => {
@@ -165,7 +165,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="lg:col-span-8">
+        <div id="dashboard-live" className="lg:col-span-8">
           <LiveEventStream />
         </div>
 
@@ -173,7 +173,7 @@ export default function Dashboard() {
           <h2 className="font-display text-sm font-semibold mb-3">{t('dashboard.quickActions')}</h2>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { to: '/map', label: 'Carte SIG' },
+              { to: '/map', label: t('dashboard.mapSig') },
               { to: '/live', label: t('nav.liveView') },
               { to: '/rules', label: t('nav.rules') },
               { to: '/alerts', label: t('nav.alerts') },

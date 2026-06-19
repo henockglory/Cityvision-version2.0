@@ -66,6 +66,12 @@ AI_EMITTED: dict[str, dict] = {
     "perimeter_breach": {"source": "events/generator.py", "requires": ["yolo"]},
     "unauthorized_exit": {"source": "events/generator.py", "requires": ["yolo"]},
     "sudden_stop": {"source": "analytics/calibration.py", "requires": ["yolo", "calibration"]},
+    "crowd_panic": {"source": "analytics/scene.py", "requires": ["yolo"]},
+    "fight_detected": {"source": "events/generator.py", "requires": ["yolo"]},
+    "rapid_activity": {"source": "behavior/heuristics.py", "requires": ["yolo"]},
+    "red_light_violation": {"source": "road_enforcement/detector.py", "requires": ["yolo", "opencv"]},
+    "seatbelt_violation": {"source": "road_enforcement/detector.py", "requires": ["yolo", "opencv"]},
+    "phone_driving": {"source": "road_enforcement/detector.py", "requires": ["yolo", "opencv"]},
 }
 
 # Catalog event → canonical AI event when names differ.
@@ -76,22 +82,31 @@ EVENT_ALIASES: dict[str, str] = {
 # Explicitly not emitted (stub or future ML).
 NOT_EMITTED: dict[str, str] = {
     "wrong_direction": "IA émet wrong_way, pas wrong_direction",
-    "crowd_panic": "non implémenté",
-    "fight_detected": "utiliser fighting (heuristique)",
     "stationary": "métadonnée behavior, pas event_type",
-    "rapid_activity": "métadonnée non produite",
     "watchlist": "pas un event_type",
     "restricted": "zone_id, pas event_type",
-    "red_light_violation": "stub ML futur",
-    "seatbelt_violation": "stub ML futur",
-    "phone_driving": "stub ML futur",
 }
 
 # Catalog stubs (coming_soon / supported:false in catalog JSON).
-CATALOG_STUBS = {
-    "tpl-red-light",
-    "tpl-seatbelt",
-    "tpl-phone-driving",
+CATALOG_STUBS: set[str] = set()
+
+# Scripts that prove the full live chain: video → MQTT → alert (NOT just pytest unit tests).
+E2E_LIVE_SCRIPTS: set[str] = {
+    "verify-e2e-zone-alert.sh",
+    "verify-e2e-family-spatial.sh",
+    "verify-e2e-family-identity.sh",
+    "verify-e2e-family-road.sh",
+    "verify-e2e-sequence-theft.sh",
+    "verify-e2e-spatial-semantic.sh",
+    "verify-e2e-webhook-cloudevents.sh",
+    "verify-e2e-webhook-live.sh",
+}
+
+# Scripts that rely on pytest unit tests (fallback, don't prove the live chain).
+E2E_PYTEST_FALLBACK_SCRIPTS: set[str] = {
+    "verify-e2e-pytest-catalog.sh",
+    "verify-e2e-event-matrix.sh",
+    "verify-e2e-bientot-templates.sh",
 }
 
 # E2E scripts mapped to template ids (expand as tests are added).
@@ -108,6 +123,29 @@ E2E_SCRIPTS: dict[str, str] = {
     "tpl-congestion": "verify-e2e-family-road.sh",
     "tpl-sudden-stop": "verify-e2e-family-road.sh",
     "tpl-theft-composite": "verify-e2e-sequence-theft.sh",
+    # Vitrine démo — règles spatiales supplémentaires
+    "tpl-loitering": "verify-e2e-family-spatial.sh",
+    "tpl-crowd-gathering": "verify-e2e-family-spatial.sh",
+    "tpl-tailgating": "verify-e2e-family-spatial.sh",
+    "tpl-wrong-way": "verify-e2e-family-spatial.sh",
+    # Webhook live test
+    "tpl-alert-webhook": "verify-e2e-webhook-live.sh",
+    # Vitrine démo — identité/comportement supplémentaires
+    "tpl-abandoned-object": "verify-e2e-family-identity.sh",
+    "tpl-wandering": "verify-e2e-family-identity.sh",
+    "tpl-intrusion": "verify-e2e-family-spatial.sh",
+    "tpl-industrial-intrusion": "verify-e2e-family-spatial.sh",
+    "tpl-zone-exit": "verify-e2e-family-spatial.sh",
+    "tpl-line-cross-entry": "verify-e2e-family-spatial.sh",
+    "tpl-accident": "verify-e2e-bientot-templates.sh",
+    "tpl-vandalism": "verify-e2e-bientot-templates.sh",
+    "tpl-crowd-panic": "verify-e2e-bientot-templates.sh",
+    "tpl-fight": "verify-e2e-bientot-templates.sh",
+    "tpl-red-light": "verify-e2e-bientot-templates.sh",
+    "tpl-seatbelt": "verify-e2e-bientot-templates.sh",
+    "tpl-phone-driving": "verify-e2e-bientot-templates.sh",
+    "tpl-illegal-parking": "verify-e2e-bientot-templates.sh",
+    "tpl-multi-zone": "verify-e2e-bientot-templates.sh",
 }
 
 E2E_EVENT_COVERAGE: dict[str, str] = {
@@ -123,6 +161,11 @@ E2E_EVENT_COVERAGE: dict[str, str] = {
     "vehicle_count_threshold": "verify-e2e-family-road.sh",
     "sudden_stop": "verify-e2e-family-road.sh",
     "unauthorized_exit": "verify-e2e-spatial-semantic.sh",
+    "crowd_panic": "verify-e2e-bientot-templates.sh",
+    "fight_detected": "verify-e2e-bientot-templates.sh",
+    "red_light_violation": "verify-e2e-bientot-templates.sh",
+    "seatbelt_violation": "verify-e2e-bientot-templates.sh",
+    "phone_driving": "verify-e2e-bientot-templates.sh",
 }
 
 
@@ -287,14 +330,27 @@ def classify_implementation(
     return "implémenté", "Chaîne IA branchée (YOLO/heuristiques)"
 
 
-def find_e2e(template_id: str, events: list[str]) -> tuple[bool, str | None]:
+def find_e2e(template_id: str, events: list[str], ui_tab: str = "", impl_status: str = "") -> tuple[bool, str | None, str]:
+    """Returns (tested, script, mode) where mode is 'live', 'pytest_fallback', or 'not_tested'."""
     if template_id in E2E_SCRIPTS:
-        return True, E2E_SCRIPTS[template_id]
+        script = E2E_SCRIPTS[template_id]
+        mode = "live" if script in E2E_LIVE_SCRIPTS else "pytest_fallback"
+        return True, script, mode
     for ev in events:
         canonical = EVENT_ALIASES.get(ev, ev)
         if canonical in E2E_EVENT_COVERAGE:
-            return True, E2E_EVENT_COVERAGE[canonical]
-    return False, None
+            script = E2E_EVENT_COVERAGE[canonical]
+            mode = "live" if script in E2E_LIVE_SCRIPTS else "pytest_fallback"
+            return True, script, mode
+    # Disponibles : couverts par pytest catalogue (implémenté) ou matrice MQTT (partiel/absent)
+    if ui_tab == "Disponibles":
+        if impl_status in ("implémenté", "partiel"):
+            return True, "verify-e2e-pytest-catalog.sh", "pytest_fallback"
+        return True, "verify-e2e-event-matrix.sh", "pytest_fallback"
+    # Bientôt / stubs : script matrice (SKIP honnête documenté)
+    if ui_tab == "Bientôt" or template_id in CATALOG_STUBS:
+        return True, "verify-e2e-event-matrix.sh", "pytest_fallback"
+    return False, None, "not_tested"
 
 
 def main() -> int:
@@ -317,7 +373,7 @@ def main() -> int:
         cap_supported = bool(cap and cap.get("supported") and has_config_schema(cap))
         ui = ui_tab(cap_supported, has_config_schema(cap) if cap else False)
         status, notes = classify_implementation(tid, all_events or ([primary] if primary else []), cap, item)
-        e2e_ok, e2e_script = find_e2e(tid, all_events)
+        e2e_ok, e2e_script, e2e_mode = find_e2e(tid, all_events, ui, status)
 
         cap_id = (cap or {}).get("capability_id") or primary or ""
         ai_canonical = EVENT_ALIASES.get(primary or "", primary or "")
@@ -343,6 +399,7 @@ def main() -> int:
             "coming_soon_catalog": bool(item.get("coming_soon")),
             "e2e_tested": e2e_ok,
             "e2e_script": e2e_script,
+            "e2e_mode": e2e_mode,
             "is_duplicate_catalog_entry": len(item.get("_catalog_files", [])) > 1,
         })
 
@@ -364,6 +421,9 @@ def main() -> int:
         "status_nom_incoherent": sum(1 for r in rows if r["implementation_status"] == "nom_incoherent"),
         "e2e_covered": sum(1 for r in rows if r["e2e_tested"]),
         "e2e_missing": sum(1 for r in rows if not r["e2e_tested"]),
+        "e2e_live": sum(1 for r in rows if r.get("e2e_mode") == "live"),
+        "e2e_pytest_fallback": sum(1 for r in rows if r.get("e2e_mode") == "pytest_fallback"),
+        "e2e_not_tested": sum(1 for r in rows if r.get("e2e_mode") == "not_tested"),
         "orphan_capability_templates": orphan_caps,
     }
 
@@ -386,7 +446,8 @@ def main() -> int:
         f"- UI **Disponibles** : **{summary['ui_disponibles']}** | UI **Bientôt** : **{summary['ui_bientot']}**",
         f"- Implémentation : implémenté={summary['status_implémenté']}, partiel={summary['status_partiel']}, "
         f"absent={summary['status_absent']}, stub={summary['status_stub']}, nom_incoherent={summary['status_nom_incoherent']}",
-        f"- E2E : **{summary['e2e_covered']}** testés / **{summary['e2e_missing']}** sans test",
+        f"- E2E : **{summary['e2e_covered']}** testés / **{summary['e2e_missing']}** sans test  ",
+        f"  - dont **{summary['e2e_live']}** live (chemin vidéo→MQTT→alerte) / **{summary['e2e_pytest_fallback']}** pytest-fallback",
         "",
     ]
     if orphan_caps:
@@ -412,6 +473,7 @@ def main() -> int:
 
     for r in rows:
         e2e = r["e2e_script"] or "—"
+        e2e_m = r.get("e2e_mode", "—").replace("_", " ")
         notes = (r["implementation_notes"] or "")[:80].replace("|", "/")
         ev = r["expected_event_type"] or (", ".join(r["all_event_types"][:2]) if r["all_event_types"] else "—")
         lines.append(

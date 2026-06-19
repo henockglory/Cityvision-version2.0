@@ -217,6 +217,22 @@ class EventGenerator:
                     severity=severity,
                 )
             )
+            if signal.label == BehaviorLabel.FIGHTING:
+                events.append(
+                    self.emit_behavior_event(
+                        camera_id,
+                        signal.track_id,
+                        "fight_detected",
+                        signal.confidence,
+                        {
+                            "behavior": "fight_detected",
+                            "person_count": signal.details.get("overlap_ratio", 0),
+                            **signal.details,
+                        },
+                        timestamp,
+                        severity="critical",
+                    )
+                )
         return events
 
     def _track_class_name(self, camera_id: str, track_id: int, fallback: str = "unknown") -> str:

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     yolo_iou: float = 0.45
     yolo_min_fps: float = 10.0
 
+    # GPU Elasticity — modifié dynamiquement par hardware_profile.apply()
+    # "auto" = détection automatique au démarrage
+    hardware_tier: str = "auto"
+    batch_size: int = 4
+
     mqtt_broker: str = "localhost"
     mqtt_port: int = 1884
     mqtt_user: str = ""

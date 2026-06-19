@@ -68,8 +68,10 @@
     "recentAlerts": "Alertes récentes",
     "systemStatus": "État du système",
     "quickActions": "Actions rapides",
+    "mapSig": "Carte SIG",
     "viewAll": "Voir tout",
-    "noAlerts": "Aucune alerte récente"
+    "noAlerts": "Aucune alerte récente",
+    "noAlertsHint": "Les alertes déclenchées par vos règles actives s'affichent ici."
   },
   "cameras": {
     "title": "Gestion des caméras",
@@ -96,13 +98,34 @@
       "connectionFailed": "Connexion échouée",
       "scanError": "Échec du scan réseau",
       "createError": "Échec de la création de la caméra",
-      "noDevices": "Aucun appareil détecté"
+      "noDevices": "Aucun appareil détecté sur ce sous-réseau",
+      "manualUrl": "Ou saisir l'URL RTSP directement",
+      "manualUrlHint": "Utilisez cette option si la caméra n'est pas sur le réseau local ou n'a pas été détectée par le scan.",
+      "manualUrlPlaceholder": "rtsp://192.168.1.100:554/stream",
+      "vendorLabel": "Marque de caméra",
+      "vendorHint": "Aide à optimiser le chemin de connexion. Choisissez Générique si votre marque n'est pas listée.",
+      "vendor": {
+        "auto": "Détection automatique",
+        "hikvision": "Hikvision",
+        "dahua": "Dahua",
+        "generic": "Générique (autres marques)"
+      },
+      "vendorCoverage": {
+        "hikvision": "URLs RTSP pré-configurées — connexion TCP vérifiée automatiquement",
+        "dahua": "URLs RTSP pré-configurées — connexion TCP vérifiée automatiquement",
+        "generic": "Partielle — saisissez l'URL RTSP complète si la connexion échoue"
+      },
+      "helpTitle": "Connexion de caméras",
+      "helpText": "Pour Hikvision et Dahua, le wizard construit automatiquement les URLs RTSP courantes et vérifie l'accessibilité TCP. Si la connexion échoue, utilisez le mode Manuel avec l'URL RTSP complète (disponible dans l'interface web de la caméra). Pour les autres marques (Axis, Reolink, Uniview…), saisissez l'URL RTSP directement.",
+      "scanHint": "Le scanner détecte les appareils accessibles sur les ports TCP 80 et 554 du sous-réseau. Ce n'est pas une découverte ONVIF — seules les caméras joignables par TCP apparaîtront."
     },
     "status": {
       "online": "En ligne",
       "offline": "Hors ligne",
       "recording": "Enregistrement"
-    }
+    },
+    "step3.ffprobeWarn": "Aperçu ffprobe partiel : {{msg}}",
+    "step3.ffprobeSuccess": "Flux validé par ffprobe"
   },
   "users": {
     "title": "Utilisateurs",
@@ -172,6 +195,9 @@
       "hideGuide": "Masquer l'illustration",
       "disabling": "Désactivation de « {{name}} »…"
     },
+    "catalogGroup": {
+      "variantsLabel": "Règles de ce groupe"
+    },
     "catalogCategory": {
       "security": "Sécurité & intrusion",
       "spatial": "Spatial & zones",
@@ -240,18 +266,59 @@
       "notifyEmailHint": "Une alerte par e-mail sera envoyée si le serveur mail est configuré dans Paramètres.",
       "enableWebhook": "Envoyer aussi vers une automatisation (webhook)",
       "webhookPreset": "Type d'intégration",
-      "webhookUrl": "URL du webhook"
+      "webhookUrl": "URL du webhook",
+      "scheduleLabel": "Fenêtre horaire d'activation",
+      "scheduleFrom": "De",
+      "scheduleTo": "À",
+      "scheduleHint": "La règle se déclenche uniquement dans cette plage horaire quotidienne. Laissez tel quel pour une surveillance 24h/24.",
+      "scheduleAllDay": "Actif toute la journée (24h/24)",
+      "steps": {
+        "config": "Configuration",
+        "conditions": "Conditions",
+        "actionsEvidence": "Actions & preuves",
+        "preview": "Aperçu"
+      }
+    },
+    "partial": {
+      "requires_calibration": "Calibration requise",
+      "requires_ocr": "Module OCR requis",
+      "requires_face_ai": "Module Visage requis",
+      "partial_aggregate": "Données partielles"
+    },
+    "activation": {
+      "successTitle": "Règle activée",
+      "successDesc": "Votre règle surveille {context}. La première alerte devrait arriver en moins de 30 secondes si un événement est détecté.",
+      "contextCamera": "la caméra {cameraName}",
+      "contextZone": "la zone « {zoneName} » sur {cameraName}",
+      "contextLine": "la ligne « {lineName} » sur {cameraName}",
+      "watchingTitle": "En attente du premier événement…",
+      "watchingDesc": "La règle est active. Le système vérifie le flux vidéo.",
+      "noEventTitle": "Aucun événement depuis 3 minutes",
+      "noEventDesc": "Vérifiez les points suivants :",
+      "checkZone": "Une zone ou ligne est-elle dessinée sur la caméra ?",
+      "checkCamera": "La caméra est-elle en ligne et le flux RTSP actif ?",
+      "checkAi": "Le moteur IA est-il démarré (voyant vert dans Santé système) ?",
+      "checkActivity": "Y a-t-il de l'activité dans le champ de la caméra ?",
+      "goToHealth": "Vérifier la santé du système",
+      "goToZones": "Gérer les zones"
     }
   },
   "alerts": {
     "title": "Alertes",
     "acknowledge": "Acquitter",
+    "archive": "Archiver",
+    "archiveTitle": "Archiver l'alerte",
+    "archiveHint": "La preuve actuelle sera conservée avec l'archivage.",
+    "archiveCommentPlaceholder": "Commentaire opérateur (optionnel)…",
+    "archived": "Archivée",
+    "archiveOpen": "Ouvertes",
     "severity": "Sévérité",
     "all": "Toutes",
     "active": "Actives",
     "acknowledged": "Acquittée",
     "empty": "Aucune alerte",
-    "emptyHint": "Les alertes apparaîtront ici en temps réel"
+    "emptyHint": "Les alertes déclenchées par vos règles actives s'affichent ici en temps réel.",
+    "emptyHintIncomplete": "Aucune alerte avec preuves complètes. Cochez « Tout afficher » pour voir toutes les alertes, y compris celles sans preuve attachée."
   },
   "events": {
     "title": "Chronologie des événements",
@@ -283,6 +350,10 @@
     "track": "Piste",
     "openLive": "Ouvrir live",
     "download": "Télécharger",
+    "enlarge": "Aperçu",
+    "openPreview": "Aperçu : {{label}}",
+    "bboxHint": "Cadre bleu = zone détectée",
+    "closeLightbox": "Fermer l'aperçu",
     "loadFailed": "Impossible de charger ce média",
     "loadingMedia": "Chargement des preuves…",
     "metadataOnly": "Métadonnées présentes, médias en cours de chargement",
@@ -330,7 +401,31 @@
     "save": "Enregistrer",
     "tools": "Outils",
     "empty": "Aucune zone définie",
-    "emptyHint": "Dessinez des zones de détection sur le canevas"
+    "emptyHint": "Cliquez sur la vidéo pour placer des points, puis fermez le polygone.",
+    "noLines": "Aucune ligne de franchissement dessinée.",
+    "noLinesHint": "Passez en mode Lignes et cliquez deux fois sur la vidéo (début → fin).",
+    "modeZone": "Zones",
+    "modeLine": "Lignes",
+    "finishPolygon": "Fermer polygone",
+    "newZone": "Nouvelle zone",
+    "newLine": "Nouvelle ligne",
+    "zoneLabel": "Zones",
+    "lineLabel": "Lignes",
+    "lineEmpty": "Aucune ligne",
+    "lineEmptyHint": "2 clics sur la vidéo pour tracer une ligne",
+    "zoneKind": "Type de zone (comportement IA)",
+    "zoneKindAuto": "Auto (déduit du nom)",
+    "zoneKindPerimeter": "Périmètre — déclenche intrusion",
+    "zoneKindExit": "Sortie contrôlée — déclenche sortie non autorisée",
+    "zoneKindCorridor": "Couloir / voie véhicules",
+    "zoneKindParking": "Stationnement — déclenche stationnement illicite",
+    "modeSaveError": "Dessinez au moins une zone (3 clics minimum, puis « Fermer polygone »).",
+    "lineSaveError": "Dessinez au moins une ligne (2 clics : début et fin).",
+    "instructionsZone": "Cliquez sur la vidéo pour placer les points. Minimum 3 points, puis « Fermer polygone » et Enregistrer.",
+    "instructionsLine": "Mode ligne : cliquez le point de départ puis le point d'arrivée. Enregistrez pour activer les règles de franchissement.",
+    "cameraLabel": "Caméra",
+    "noCamera": "Aucune caméra configurée",
+    "noCameraHint": "Ajoutez une caméra dans la section Caméras pour pouvoir dessiner des zones."
   },
   "settings": {
     "title": "Paramètres",
@@ -359,7 +454,14 @@
     "title": "Santé système",
     "services": "Services",
     "empty": "Aucune donnée de santé",
-    "emptyHint": "Les métriques système apparaîtront ici"
+    "emptyHint": "Les métriques système apparaîtront ici",
+    "aiModels": "Modèles IA",
+    "modelLoaded": "Chargé",
+    "modelMissing": "Non installé",
+    "modelMissingHint": "Ce modèle est nécessaire pour le fonctionnement des règles d'identité. Consultez docs/INSTALL.md pour l'installation.",
+    "faceModel": "Reconnaissance faciale",
+    "plateModel": "Lecture de plaques (OCR)",
+    "aiUnreachable": "Moteur IA non joignable — les modèles ne peuvent pas être vérifiés."
   },
   "emptyState": {
     "defaultTitle": "Rien ici pour le moment",
@@ -409,6 +511,10 @@
       "title": "Zone principale",
       "description": "Votre espace de travail pour la surveillance en temps réel."
     }
+  },
+  "pageHeader": {
+    "startTour": "Lancer le tutoriel de cette page",
+    "tourAriaLabel": "Tutoriel guidé"
   },
   "tours": {
     "labels": {
@@ -464,15 +570,19 @@
     },
     "cameras": {
       "list": "Liste caméras",
-      "listDesc": "Ajoutez et testez vos caméras ici."
+      "listDesc": "Ajoutez une caméra via le bouton « + Ajouter » puis suivez les 4 étapes : scan réseau ou URL RTSP manuelle → identifiants → test de connexion → aperçu. Pour Hikvision et Dahua, les URLs RTSP sont pré-remplies ; pour les autres marques, renseignez l'URL RTSP manuellement.",
+      "wizard": "Assistant caméra",
+      "wizardDesc": "4 étapes pour connecter n'importe quelle caméra RTSP : détection réseau, identifiants, test de flux, aperçu en direct."
     },
     "zones": {
       "canvas": "Canevas zones",
-      "canvasDesc": "Dessinez zones et lignes de détection sur le plan de la caméra."
+      "canvasDesc": "Cliquez sur la vidéo pour placer les coins de la zone (min. 3 points), puis « Fermer polygone » pour terminer. En mode Lignes, deux clics tracent une ligne de comptage. Nommez la zone avec le bon type sémantique pour activer les bonnes règles IA."
     },
     "events": {
+      "filters": "Filtres",
+      "filtersDesc": "Filtrez les détections par type d'événement et par caméra. Chaque événement peut contenir un clip vidéo et des photos de preuve.",
       "timeline": "Chronologie",
-      "timelineDesc": "Historique des événements de détection."
+      "timelineDesc": "Historique des événements de détection IA. Sélectionnez un événement pour voir les preuves (clip vidéo + photos)."
     },
     "users": {
       "table": "Utilisateurs",
@@ -480,11 +590,14 @@
     },
     "audit": {
       "log": "Journal",
-      "logDesc": "Actions enregistrées pour conformité."
+      "logDesc": "Toutes les actions opérateur sont enregistrées ici : connexions, création de règles, archivage d'alertes, modifications de configuration. Utilisé pour la conformité et la traçabilité.",
+      "emptyHint": "Les premières actions apparaîtront ici dès que vous effectuez une opération (création de règle, connexion, modification de caméra…)."
     },
     "health": {
       "services": "Services",
-      "servicesDesc": "État des microservices Citévision."
+      "servicesDesc": "État en temps réel des microservices Citévision (backend, IA, vidéo, base de données). Un voyant rouge indique un service hors ligne — cliquez sur le service pour les instructions de relance.",
+      "aiModels": "Modèles IA",
+      "aiModelsDesc": "Trois modèles IA sont nécessaires : YOLO (détection d'objets), InsightFace (reconnaissance faciale), PaddleOCR (lecture de plaques). Un modèle manquant désactive les règles correspondantes."
     },
     "settings": {
       "tabs": "Paramètres",
@@ -492,7 +605,39 @@
     },
     "demo": {
       "banner": "Mode démo",
-      "bannerDesc": "Scénario Kinshasa et données de démonstration."
+      "bannerDesc": "Scénario Kinshasa : flux vidéo benedicte.mp4 en boucle, catalogue de règles actif, alertes et preuves générées. Idéal pour présenter CitéVision à un client."
     }
+  },
+  "demoCenter": {
+    "title": "Démonstration CitéVision",
+    "subtitle": "Vidéo, zonage, règles et alertes — prêt pour présentation client.",
+    "context": "Ministère · Urbanisme & Transport · Kinshasa",
+    "refresh": "Actualiser",
+    "stepsTitle": "Parcours (4 étapes)",
+    "step1Title": "Regardez la vidéo",
+    "step1Body": "Flux benedicte.mp4 en boucle. Badge LIVE = prêt.",
+    "step2Title": "Dessinez une zone",
+    "step2Body": "3 clics sur la vidéo → Fermer polygone → Enregistrer.",
+    "step2Cta": "Éditeur de zones",
+    "step3Title": "Activez une règle",
+    "step3Body": "Catalogue ci-dessous → Configurer. La règle surveille la zone que vous venez de dessiner.",
+    "step3Cta": "Toutes les règles",
+    "step4Title": "Alertes & détections",
+    "step4Body": "Résultats en direct (30–60 s après activation). Chaque alerte inclut une preuve vidéo.",
+    "step4Cta": "Centre d'alertes",
+    "serviceOk": "✓",
+    "serviceKo": "✗",
+    "serveur": "Serveur",
+    "video": "Vidéo",
+    "analyseIA": "Analyse IA",
+    "gpuCuda": "GPU CUDA",
+    "detections": "Détections",
+    "alertes": "Alertes",
+    "detectionsLive": "Détections live",
+    "alertesLive": "Alertes live",
+    "emptyDetections": "En attente… laissez la vidéo tourner 30–60 s.",
+    "emptyAlertes": "Activez une règle du catalogue pour recevoir des alertes.",
+    "voirTout": "Tout voir",
+    "acquitter": "Acquitter"
   }
 }

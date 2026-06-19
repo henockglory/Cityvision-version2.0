@@ -21,10 +21,14 @@ echo "╔═══════════════════════�
 echo "║  CitéVision — Final premium stabilization validation     ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 
+run "E2E bootstrap (migrations, venv, stack)" "$ROOT/scripts/ensure-e2e-ready.sh"
+
 run "Rules composition" "$ROOT/scripts/verify-rules-composition.sh"
 run "Camera onboard" "$ROOT/scripts/verify-camera-onboard.sh"
 run "Stream quality" "$ROOT/scripts/verify-stream-quality.sh"
 run "Routing rules" "$ROOT/scripts/verify-routing-rules.sh"
+run "Pytest catalogue" "$ROOT/scripts/verify-e2e-pytest-catalog.sh"
+run "E2E event matrix (MQTT)" "$ROOT/scripts/verify-e2e-event-matrix.sh"
 run "E2E families (spatial+identity+road+sequence)" "$ROOT/scripts/verify-e2e-families-all.sh"
 run "Evidence quality" "$ROOT/scripts/verify-evidence-quality.sh"
 run "Evidence playback" "$ROOT/scripts/verify-evidence-playback.sh"

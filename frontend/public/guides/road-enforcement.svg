@@ -1,0 +1,28 @@
+<svg viewBox="0 0 160 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <!-- Road -->
+  <rect x="0" y="55" width="160" height="45" fill="#1a1a2e" opacity="0.9"/>
+  <!-- Lane markings -->
+  <line x1="80" y1="60" x2="80" y2="100" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <!-- Traffic light -->
+  <rect x="120" y="10" width="16" height="40" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <circle cx="128" cy="20" r="4" fill="#ef4444"/>
+  <circle cx="128" cy="32" r="4" fill="#374151"/>
+  <circle cx="128" cy="44" r="4" fill="#374151"/>
+  <!-- Vehicle crossing on red -->
+  <rect x="30" y="46" width="34" height="18" rx="3" fill="#3b82f6" stroke="#60a5fa" stroke-width="1"/>
+  <rect x="36" y="48" width="10" height="8" rx="2" fill="#93c5fd" opacity="0.7"/>
+  <rect x="49" y="48" width="10" height="8" rx="2" fill="#93c5fd" opacity="0.7"/>
+  <circle cx="36" cy="64" r="4" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+  <circle cx="55" cy="64" r="4" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+  <!-- Alert flash -->
+  <circle cx="47" cy="35" r="10" fill="#ef4444" opacity="0.15"/>
+  <circle cx="47" cy="35" r="6" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <text x="44" y="39" fill="#ef4444" font-size="9" font-weight="bold">!</text>
+  <!-- Arrow indicating direction -->
+  <path d="M20 55 L75 55" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#arr)"/>
+  <defs>
+    <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#60a5fa"/>
+    </marker>
+  </defs>
+</svg>

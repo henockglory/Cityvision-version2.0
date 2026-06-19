@@ -87,7 +87,6 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
   const thumbApiUrl = evidenceThumbnailUrl(ev, orgId);
   const thumbMedia = useEvidenceMediaUrl(thumbApiUrl);
   const displayClipSec = clipDuration > 0 ? Math.round(clipDuration) : (pkg?.clip?.duration_sec ?? 6);
-  const showBboxOverlay = false;
 
   const retryClip = useCallback(() => setClipRetry((n) => n + 1), []);
 
@@ -128,8 +127,12 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
             <EvidenceImageTile
               apiUrl={subjectUrl}
               label={subject?.label ?? t('evidence.subject')}
-              bbox={showBboxOverlay ? (subject?.bbox ?? ev.bbox) : undefined}
-              onOpen={() => openLightbox(subjectUrl, subject?.label ?? t('evidence.subject'))}
+              bbox={subject?.bbox ?? ev.bbox}
+              onOpen={() => openLightbox(
+                subjectUrl,
+                subject?.label ?? t('evidence.subject'),
+                subject?.bbox ?? ev.bbox,
+              )}
             />
           )}
         </div>

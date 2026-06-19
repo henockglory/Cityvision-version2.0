@@ -1,7 +1,15 @@
 [
   {
     "id": "tpl-speeding",
-    "redirect_to": "tpl-speeding"
+    "redirect_to": "tpl-speeding",
+    "role_summary_fr": "Alerte si un véhicule dépasse la vitesse limite configurée — nécessite calibration caméra.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Nécessite une calibration caméra (homographie) pour mesurer la vitesse en km/h"
   },
   {
     "id": "tpl-slow-vehicle",
@@ -20,7 +28,14 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Détecte les véhicules qui roulent trop lentement — gêne ou comportement suspect.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Nécessite une calibration caméra pour estimer les vitesses relatives"
   },
   {
     "id": "tpl-speed-threshold",
@@ -41,7 +56,14 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Déclenche quand un véhicule franchit un seuil de vitesse défini — configurable par voie.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Nécessite une calibration caméra (homographie) pour mesurer la vitesse en km/h"
   },
   {
     "id": "tpl-wrong-lane",
@@ -60,7 +82,13 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si un véhicule emprunte une voie interdite.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-stopped-traffic",
@@ -89,6 +117,12 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte quand le trafic s'arrête dans une zone de fluidité obligatoire.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   }
 ]

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, Camera, Circle, Calendar, Filter, ChevronRight, Film } from 'lucide-react';
-import PageHeader from '@/components/ui/PageHeader';
+import PageShell from '@/components/ui/PageShell';
 import SplitLayout from '@/components/ui/SplitLayout';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
@@ -76,6 +76,8 @@ export default function Events() {
   const { t } = useTranslation();
   const { playClick } = useSound();
   const orgId = useAuthStore((s) => s.orgId);
+  const hasRole = useAuthStore((s) => s.hasRole);
+  const isAdminOrOperator = hasRole('admin', 'operator');
   const startTour = useAutoPageTour('events');
   const { data: cameras = [] } = useCameras();
   const [eventType, setEventType] = useState('');
@@ -106,19 +108,16 @@ export default function Events() {
 
   if (isError) {
     return (
-      <div>
-        <PageHeader title={t('events.title')} onHelpTour={startTour} />
+      <PageShell title={t('events.title')} onHelpTour={startTour}>
         <ErrorState onRetry={() => void refetch()} />
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-7rem)] max-h-[calc(100dvh-7rem)] overflow-hidden gap-5">
-      <PageHeader title={t('events.title')} subtitle={t('events.timeline')} onHelpTour={startTour} />
-
+    <PageShell fillViewport title={t('events.title')} subtitle={t('events.timeline')} onHelpTour={startTour}>
       <div id="events-timeline" className="flex flex-col flex-1 min-h-0 overflow-hidden gap-4">
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
+        <div id="events-filters" className="flex flex-wrap items-center gap-3 shrink-0">
           <Filter className="w-4 h-4 text-cv-muted" />
           <select
             className="cv-input text-sm max-w-[180px]"
@@ -148,18 +147,35 @@ export default function Events() {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-          <label className="flex items-center gap-2 text-xs text-cv-muted cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showAll}
-              onChange={(e) => { playClick(); setShowAll(e.target.checked); }}
-            />
-            {t('events.showAll')}
-          </label>
+          {isAdminOrOperator && (
+            <label className="flex items-center gap-2 text-xs text-cv-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => { playClick(); setShowAll(e.target.checked); }}
+              />
+              {t('events.showAll')}
+            </label>
+          )}
         </div>
 
         {events.length === 0 ? (
-          <EmptyState title={t('events.empty')} hint={t('events.emptyHint')} icon={Calendar} />
+          <EmptyState
+            title={t('events.empty')}
+            hint={eventType || cameraId
+              ? 'Aucun événement ne correspond à ces filtres. Essayez de changer le type ou la caméra.'
+              : t('events.emptyHint')
+            }
+            icon={Calendar}
+            action={eventType || cameraId ? (
+              <button
+                className="cv-btn-secondary inline-flex items-center gap-2"
+                onClick={() => { setEventType(''); setCameraId(''); }}
+              >
+                Effacer les filtres
+              </button>
+            ) : undefined}
+          />
         ) : (
           <div className="flex-1 min-h-0 overflow-hidden">
             <SplitLayout
@@ -216,6 +232,6 @@ export default function Events() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -15,7 +15,7 @@ dependencies = [
     "pydantic-settings>=2.2",
     "numpy>=1.26",
     "opencv-python-headless>=4.9",
-    "onnxruntime-gpu>=1.17; platform_system != 'Darwin'",
+    "onnxruntime-gpu==1.19.2; platform_system != 'Darwin'",  # pinned: CUDA WSL requires 1.19.x with CUDA 11.8 compat
     "onnxruntime>=1.17; platform_system == 'Darwin'",
     "paho-mqtt>=2.0",
     "python-dotenv>=1.0",

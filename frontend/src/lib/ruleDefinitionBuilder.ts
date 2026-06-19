@@ -3,6 +3,8 @@ import type { RuleCatalogTemplate } from '@/types';
 export interface RuleActivationConfig {
   cameraId: string;
   zoneName?: string;
+  /** Second zone for multi-zone SEQUENCE templates (zone_name_2). */
+  zoneName2?: string;
   lineName?: string;
   durationSeconds?: number;
   speedLimitKmh?: number;
@@ -10,6 +12,7 @@ export interface RuleActivationConfig {
   plateListId?: string;
   classFilter?: string;
   direction?: string;
+  schedule?: { from: string; to: string; allDay?: boolean };
   actions?: Array<{ type: string; config: Record<string, unknown> }>;
 }
 
@@ -118,6 +121,7 @@ export function buildConfiguredDefinition(
     camera_id: cfg.cameraId,
   };
   if (cfg.zoneName) meta.zone_name = cfg.zoneName;
+  if (cfg.zoneName2) meta.zone_name_2 = cfg.zoneName2;
   if (cfg.lineName) meta.line_name = cfg.lineName;
   if (cfg.durationSeconds != null) meta.duration_seconds = cfg.durationSeconds;
   if (cfg.watchlistId) meta.watchlist_id = cfg.watchlistId;
@@ -125,6 +129,7 @@ export function buildConfiguredDefinition(
   if (cfg.speedLimitKmh != null) meta.speed_kmh = cfg.speedLimitKmh;
   if (cfg.classFilter) meta.class_filter = cfg.classFilter;
   if (cfg.direction) meta.direction = cfg.direction;
+  if (cfg.schedule && !cfg.schedule.allDay) meta.schedule = cfg.schedule;
 
   const actions = cfg.actions?.length
     ? cfg.actions
@@ -142,6 +147,7 @@ export function activationConfigFromValues(values: Record<string, unknown>): Rul
   return {
     cameraId: String(values.camera_id ?? ''),
     zoneName: values.zone_name ? String(values.zone_name) : undefined,
+    zoneName2: values.zone_name_2 ? String(values.zone_name_2) : undefined,
     lineName: values.line_name ? String(values.line_name) : undefined,
     durationSeconds: values.duration_seconds != null ? Number(values.duration_seconds) : undefined,
     speedLimitKmh: values.speed_kmh != null ? Number(values.speed_kmh) : undefined,
@@ -149,5 +155,6 @@ export function activationConfigFromValues(values: Record<string, unknown>): Rul
     plateListId: values.plate_list_id ? String(values.plate_list_id) : undefined,
     classFilter: values.class_filter ? String(values.class_filter) : undefined,
     direction: values.direction ? String(values.direction) : undefined,
+    schedule: values.schedule ? (values.schedule as RuleActivationConfig['schedule']) : undefined,
   };
 }

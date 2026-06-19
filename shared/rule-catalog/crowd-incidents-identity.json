@@ -5,6 +5,7 @@
     "description": "Dispersion rapide et soudaine d'un groupe",
     "category": "crowd",
     "severity": "critical",
+    "supported": true,
     "definition": {
       "condition": {
         "op": "eq",
@@ -25,7 +26,9 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Détecte une dispersion soudaine et rapide d'un groupe — signal fort de panique ou d'incident grave.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-group-formation",
@@ -38,14 +41,14 @@
         "op": "ET",
         "children": [
           {
-            "op": "gt",
-            "field": "metadata.person_count",
-            "value": 5
+            "op": "eq",
+            "field": "event_type",
+            "value": "crowd_gathering"
           },
           {
-            "op": "lt",
-            "field": "duration_seconds",
-            "value": 60
+            "op": "gte",
+            "field": "metadata.neighbor_count",
+            "value": 5
           }
         ]
       },
@@ -57,7 +60,10 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Signale la formation rapide d'un attroupement dense dépassant le seuil de personnes configuré.",
+    "partial_status": "partial_aggregate",
+    "partial_reason_fr": "Attroupement détecté via crowd_gathering — le seuil neighbor_count >= 5 peut nécessiter ajustement selon densité habituelle"
   },
   {
     "id": "tpl-fight",
@@ -65,6 +71,7 @@
     "description": "Mouvements violents multi-personnes",
     "category": "incident",
     "severity": "critical",
+    "supported": true,
     "definition": {
       "condition": {
         "op": "eq",
@@ -85,7 +92,9 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte critique si des mouvements violents multi-personnes sont détectés sur la scène.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-accident",
@@ -93,9 +102,11 @@
     "description": "Arrêt brutal + véhicules multiples + absence de mouvement",
     "category": "composite",
     "severity": "critical",
+    "supported": true,
     "definition": {
       "condition": {
-        "op": "ET",
+        "op": "SEQUENCE",
+        "window_seconds": 30,
         "children": [
           {
             "op": "eq",
@@ -103,14 +114,9 @@
             "value": "sudden_stop"
           },
           {
-            "op": "gt",
-            "field": "metadata.vehicle_count",
-            "value": 2
-          },
-          {
-            "op": "gt",
-            "field": "duration_seconds",
-            "value": 30
+            "op": "eq",
+            "field": "event_type",
+            "value": "vehicle_stopped"
           }
         ]
       },
@@ -126,7 +132,9 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Détecte un enchaînement arrêt brutal → véhicule immobilisé caractéristique d'un accident routier.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-vandalism",
@@ -134,19 +142,24 @@
     "description": "Groupe + activité rapide + dispersion",
     "category": "composite",
     "severity": "critical",
+    "supported": true,
     "definition": {
       "condition": {
-        "op": "ET",
+        "op": "SEQUENCE",
+        "window_seconds": 60,
+        "key_fields": [
+          "camera_id"
+        ],
         "children": [
           {
-            "op": "gt",
-            "field": "metadata.person_count",
-            "value": 2
+            "op": "eq",
+            "field": "event_type",
+            "value": "crowd_gathering"
           },
           {
-            "op": "contains",
-            "field": "metadata.behavior",
-            "value": "rapid_activity"
+            "op": "eq",
+            "field": "event_type",
+            "value": "running"
           }
         ]
       },
@@ -157,8 +170,13 @@
             "severity": "critical"
           }
         }
+      ],
+      "dedup_key_fields": [
+        "camera_id"
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si un attroupement suivi d'une activité rapide (dispersion) est détecté — séquence de vandalisme.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-face-watchlist",
@@ -169,8 +187,8 @@
     "definition": {
       "condition": {
         "op": "eq",
-        "field": "metadata.face_match",
-        "value": "watchlist"
+        "field": "event_type",
+        "value": "face_watchlist_match"
       },
       "actions": [
         {
@@ -186,7 +204,10 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte critique si un visage correspondant à la liste de surveillance est reconnu par la caméra.",
+    "partial_status": "requires_face_ai",
+    "partial_reason_fr": "Nécessite le module InsightFace (non installé par défaut)"
   },
   {
     "id": "tpl-plate-unknown",
@@ -194,21 +215,21 @@
     "description": "Véhicule avec plaque inconnue en zone restreinte",
     "category": "identity",
     "severity": "high",
+    "configSchema": {
+      "fields": [
+        {
+          "key": "camera_id",
+          "type": "camera",
+          "required": true,
+          "label": "Caméra"
+        }
+      ]
+    },
     "definition": {
       "condition": {
-        "op": "ET",
-        "children": [
-          {
-            "op": "eq",
-            "field": "metadata.plate_known",
-            "value": false
-          },
-          {
-            "op": "in_zone",
-            "field": "zone_id",
-            "value": "restricted"
-          }
-        ]
+        "op": "eq",
+        "field": "event_type",
+        "value": "plate_unknown"
       },
       "actions": [
         {
@@ -218,7 +239,10 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Signale un véhicule dont la plaque d'immatriculation n'est pas enregistrée dans la base.",
+    "partial_status": "requires_ocr",
+    "partial_reason_fr": "Nécessite le module PaddleOCR (non installé par défaut)"
   },
   {
     "id": "tpl-industrial-intrusion",
@@ -250,6 +274,8 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si une personne pénètre dans une zone machine ou dangereuse sur site industriel.",
+    "partial_status": "full"
   }
 ]

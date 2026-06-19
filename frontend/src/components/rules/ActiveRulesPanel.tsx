@@ -21,6 +21,8 @@ interface ActiveRulesPanelProps {
   onEnable: (ruleId: string) => void;
   onDuplicate: (rule: Rule) => void;
   onNewRule: () => void;
+  onResetAll?: () => void;
+  resetting?: boolean;
   onHighlight?: (ruleId: string) => void;
 }
 
@@ -35,6 +37,8 @@ export default function ActiveRulesPanel({
   onEnable,
   onDuplicate,
   onNewRule,
+  onResetAll,
+  resetting = false,
   onHighlight,
 }: ActiveRulesPanelProps) {
   const { t } = useTranslation();
@@ -53,28 +57,41 @@ export default function ActiveRulesPanel({
   };
 
   return (
-    <section id="rules-active-panel" className="cv-card p-5 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-display text-lg font-semibold">{t('rules.activeTitle')}</h2>
-          <p className="text-xs text-cv-muted mt-0.5">{t('rules.activeSubtitle')}</p>
+    <section id="rules-active-panel" className="cv-card p-5 cv-stack-md">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="cv-section-title">{t('rules.activeTitle')}</h2>
+          <p className="cv-section-subtitle">{t('rules.activeSubtitle')}</p>
         </div>
-        <button type="button" onClick={onNewRule} className="cv-btn-primary text-sm">
-          <Plus className="w-4 h-4" />
-          {t('rules.newRule')}
-        </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {onResetAll && rules.length > 0 && (
+            <button
+              type="button"
+              disabled={resetting}
+              onClick={onResetAll}
+              className="cv-btn-secondary text-sm text-red-400 border-red-400/30 hover:border-red-400/50"
+            >
+              <Trash2 className="w-4 h-4" />
+              {t('rules.resetAll', { defaultValue: 'Réinitialiser' })}
+            </button>
+          )}
+          <button type="button" onClick={onNewRule} className="cv-btn-primary text-sm">
+            <Plus className="w-4 h-4" />
+            {t('rules.newRule')}
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-wrap gap-2">
         {(['all', 'enabled', 'disabled'] as Filter[]).map((f) => (
           <button
             key={f}
             type="button"
             onClick={() => setFilter(f)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            className={`cv-filter-chip ${
               filter === f
                 ? 'border-cv-accent/40 bg-cv-accent/10 text-cv-accent'
-                : 'border-cv-border text-cv-muted hover:text-cv-text'
+                : 'border border-cv-border text-cv-muted hover:text-cv-text hover:border-cv-accent/20'
             }`}
           >
             {t(`rules.filter.${f}`)}
@@ -85,7 +102,7 @@ export default function ActiveRulesPanel({
       {filtered.length === 0 ? (
         <p className="text-sm text-cv-muted py-6 text-center">{t('rules.activeEmpty')}</p>
       ) : (
-        <div className="space-y-2">
+        <div className="cv-stack-sm">
           <div aria-live="polite" className="sr-only">
             {announce}
           </div>
@@ -97,7 +114,7 @@ export default function ActiveRulesPanel({
                 key={rule.id}
                 data-testid={`rule-row-${rule.id}`}
                 data-highlighted={highlightedRuleId === rule.id ? 'true' : 'false'}
-                className={`flex items-center gap-3 p-3 rounded-lg border border-cv-border/70 bg-cv-deep/30 hover:border-cv-accent/25 transition-all group ${
+                className={`flex items-start gap-4 p-4 rounded-lg border border-cv-border/70 bg-cv-deep/30 hover:border-cv-accent/25 transition-all group ${
                   highlightedRuleId === rule.id ? 'border-cv-accent/70 bg-cv-accent/10 shadow-glow' : ''
                 }`}
               >
@@ -105,27 +122,27 @@ export default function ActiveRulesPanel({
                   src={iconForTemplate(templateId, rule.category)}
                   alt=""
                   size="md"
-                  className="group-hover:shadow-glow"
+                  className="group-hover:shadow-glow shrink-0"
                 />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium text-sm truncate">{rule.name}</p>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="cv-meta-row">
+                    <p className="font-medium text-sm leading-snug truncate">{rule.name}</p>
                     <SeverityBadge severity={(rule.severity ?? 'medium') as 'low' | 'medium' | 'high' | 'critical'} />
-                    <span className={`text-[10px] uppercase font-semibold ${rule.enabled ? 'text-metric-rules' : 'text-cv-muted'}`}>
+                    <span className={`text-xs uppercase font-semibold ${rule.enabled ? 'text-metric-rules' : 'text-cv-muted'}`}>
                       {rule.enabled ? t('rules.enabled') : t('rules.disabled')}
                     </span>
                     <button
                       type="button"
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-cv-accent/10 text-cv-accent hover:bg-cv-accent/20"
+                      className="text-xs px-2 py-0.5 rounded-full bg-cv-accent/10 text-cv-accent hover:bg-cv-accent/20"
                       title="Configurer les preuves"
                       onClick={(e) => { e.stopPropagation(); (onEditEvidence ?? onEdit)(rule); }}
                     >
                       {evidencePolicyChip(evPolicy)}
                     </button>
                   </div>
-                  <p className="text-xs text-cv-muted mt-0.5 line-clamp-2">{explainRule(rule)}</p>
+                  <p className="text-xs text-cv-muted leading-relaxed line-clamp-2">{explainRule(rule)}</p>
                 </div>
-                <div className="flex gap-1 shrink-0">
+                <div className="flex gap-1 shrink-0 pt-0.5">
                   <button type="button" onClick={() => onEdit(rule)} className="cv-btn-ghost p-2" title={t('common.edit')}>
                     <Pencil className="w-4 h-4" />
                   </button>

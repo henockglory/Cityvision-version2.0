@@ -16,7 +16,14 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Signale une posture accroupie prolongée — peut indiquer une tentative de dissimulation ou de sabotage.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-climb-detected",
@@ -37,7 +44,14 @@
           }
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Alerte si quelqu'un tente d'escalader une clôture, un mur ou une infrastructure.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-carry-object",
@@ -56,7 +70,15 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Détecte une personne transportant un objet potentiellement volé ou dangereux.",
+    "partial_status": "partial_aggregate",
+    "partial_reason_fr": "Détecte le transport d'objets via l'heuristique carry_detected — fiabilité dépend de la taille des objets et de la résolution flux"
   },
   {
     "id": "tpl-intrusion-after-hours",
@@ -91,7 +113,14 @@
           }
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Alerte pour toute présence humaine détectée en dehors des horaires d'ouverture définis.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-vehicle-wrong-direction",
@@ -120,7 +149,13 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "role_summary_fr": "Signale un véhicule circulant à contresens sur une voie ou dans une zone de circulation.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-pedestrian-zone",
@@ -149,7 +184,13 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "role_summary_fr": "Alerte si un piéton est détecté dans une zone réservée aux véhicules.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-face-repeat",
@@ -168,7 +209,14 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Signale un visage vu un nombre anormalement élevé de fois sur une période — comportement récurrent.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-plate-repeat",
@@ -187,6 +235,13 @@
           "config": {}
         }
       ]
-    }
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "role_summary_fr": "Alerte si une même plaque est détectée un nombre anormal de fois — surveillance de véhicule suspect.",
+    "partial_status": "full"
   }
 ]

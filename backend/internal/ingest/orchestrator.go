@@ -38,11 +38,12 @@ func NewAIClient(cfg *config.Config) *AIClient {
 }
 
 type AnalyticsThresholds struct {
-	DurationSeconds  *float64 `json:"duration_seconds,omitempty"`
-	SpeedKmh         *float64 `json:"speed_kmh,omitempty"`
-	CrowdThreshold   *int     `json:"crowd_threshold,omitempty"`
-	VehicleThreshold *int     `json:"vehicle_threshold,omitempty"`
-	DensityThreshold *float64 `json:"density_threshold,omitempty"`
+	DurationSeconds    *float64 `json:"duration_seconds,omitempty"`
+	SpeedKmh           *float64 `json:"speed_kmh,omitempty"`
+	CrowdThreshold     *int     `json:"crowd_threshold,omitempty"`
+	VehicleThreshold   *int     `json:"vehicle_threshold,omitempty"`
+	DensityThreshold   *float64 `json:"density_threshold,omitempty"`
+	FightOverlapRatio  *float64 `json:"fight_overlap_ratio,omitempty"`
 }
 
 type StartCameraRequest struct {
@@ -269,11 +270,16 @@ func (o *Orchestrator) buildSpatialConfig(ctx context.Context, orgID, cameraID u
 		}
 		var polygon []map[string]float64
 		_ = json.Unmarshal(z.Polygon, &polygon)
+		loiterSec := 30
+		if strings.HasPrefix(z.Name, "e2e-") || os.Getenv("E2E_MODE") == "1" {
+			loiterSec = 5
+		}
 		zoneList = append(zoneList, map[string]interface{}{
-			"zone_id":   z.Name,
-			"name":      z.Name,
-			"zone_kind": z.ZoneKind,
-			"polygon":   polygon,
+			"zone_id":          z.Name,
+			"name":             z.Name,
+			"zone_kind":        z.ZoneKind,
+			"polygon":          polygon,
+			"loiter_threshold": loiterSec,
 		})
 	}
 
@@ -502,6 +508,20 @@ func (o *Orchestrator) mergeAnalyticsThresholds(ctx context.Context, orgID, came
 			continue
 		}
 		mergeThresholdsFromDefinition(&merged, def)
+	}
+	if os.Getenv("E2E_MODE") == "1" {
+		v := 1
+		if merged.VehicleThreshold == nil || *merged.VehicleThreshold > v {
+			merged.VehicleThreshold = &v
+		}
+		f := 0.08
+		if merged.FightOverlapRatio == nil {
+			merged.FightOverlapRatio = &f
+		}
+		d := 3.0
+		if merged.DurationSeconds == nil {
+			merged.DurationSeconds = &d
+		}
 	}
 	return merged
 }

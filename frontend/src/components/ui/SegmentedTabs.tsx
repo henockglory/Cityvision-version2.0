@@ -13,7 +13,7 @@ interface SegmentedTabsProps {
 export default function SegmentedTabs({ tabs, value, onChange, className = '' }: SegmentedTabsProps) {
   return (
     <div
-      className={`inline-flex p-1 rounded-lg bg-cv-deep/50 border border-cv-border/60 ${className}`}
+      className={`flex p-1 rounded-lg bg-cv-deep/50 border border-cv-border/60 gap-1 ${className}`}
       role="tablist"
     >
       {tabs.map((tab) => (
@@ -22,10 +22,10 @@ export default function SegmentedTabs({ tabs, value, onChange, className = '' }:
           type="button"
           role="tab"
           aria-selected={value === tab.id}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+          className={`flex-1 sm:flex-none px-3 py-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
             value === tab.id
               ? 'bg-cv-accent text-white shadow-sm'
-              : 'text-cv-muted hover:text-cv-text'
+              : 'text-cv-muted hover:text-cv-text hover:bg-cv-deep/40'
           }`}
           onClick={() => onChange(tab.id)}
         >

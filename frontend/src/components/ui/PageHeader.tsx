@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { HelpCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import Tooltip from '@/components/ui/Tooltip';
 
 interface PageHeaderProps {
@@ -10,6 +11,7 @@ interface PageHeaderProps {
 }
 
 export default function PageHeader({ title, subtitle, actions, onHelpTour }: PageHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
       <div className="min-w-0">
@@ -18,8 +20,13 @@ export default function PageHeader({ title, subtitle, actions, onHelpTour }: Pag
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap">
         {onHelpTour && (
-          <Tooltip content="Lancer le tutoriel de cette page">
-            <button type="button" className="cv-btn-ghost p-2" onClick={onHelpTour} aria-label="Tutoriel">
+          <Tooltip content={t('pageHeader.startTour', 'Lancer le tutoriel de cette page')}>
+            <button
+              type="button"
+              className="cv-btn-ghost p-2"
+              onClick={onHelpTour}
+              aria-label={t('pageHeader.tourAriaLabel', 'Tutoriel guidé')}
+            >
               <HelpCircle className="w-4 h-4" />
             </button>
           </Tooltip>

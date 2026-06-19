@@ -32,6 +32,7 @@ type ProbeResult struct {
 	Host       string           `json:"host"`
 	Best       *ProbeCandidate  `json:"best,omitempty"`
 	Candidates []ProbeCandidate `json:"candidates"`
+	Ffprobe    *FfprobeResult   `json:"ffprobe,omitempty"` // nil when best is nil or ffprobe not installed
 }
 
 func DefaultProbePaths(vendor string, channel int) []struct {
@@ -108,6 +109,13 @@ func ProbeCredentials(ctx context.Context, req ProbeRequest, timeout time.Durati
 		}
 	}
 	result.Best = best
+	// Run ffprobe on best candidate for deeper validation (async-safe, 7s timeout)
+	if best != nil {
+		// Reconstruct the actual URL (without masking) from request params
+		ffURL := BuildRTSPURL(best.Vendor, req.Host, req.Port, req.Channel, req.Username, req.Password, best.RTSPPath, best.Profile)
+		ffResult := ProbeStreamFfprobe(ctx, ffURL, 7*time.Second)
+		result.Ffprobe = &ffResult
+	}
 	return result
 }
 

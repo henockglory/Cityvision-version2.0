@@ -1,3 +1,13 @@
+
+# ── WSL ↔ Windows sync ────────────────────────────────────────────────────────
+.PHONY: sync-to-windows sync-from-windows
+
+sync-to-windows: ## Synchronise WSL → Windows mirror (post-édition WSL)
+	bash scripts/sync-to-windows.sh
+
+sync-from-windows: ## Synchronise Windows → WSL (urgence seulement)
+	bash scripts/sync-from-windows.sh
+
 .PHONY: help setup start-linux stop-linux doctor-linux infra-up infra-down test-ai test-go test validate build-video ai-dev
 
 help:
@@ -50,6 +60,15 @@ validate:
 
 coverage-matrix:
 	python3 scripts/generate-rule-coverage-matrix.py
+
+ensure-e2e-ready:
+	bash scripts/ensure-e2e-ready.sh
+
+validate-premium:
+	bash scripts/validate-final-premium.sh
+
+validate-battery:
+	bash scripts/run-validation-battery.sh
 
 build-video:
 	cd video-engine && mkdir -p build && cd build && cmake .. && cmake --build .

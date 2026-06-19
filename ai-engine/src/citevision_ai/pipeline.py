@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +24,7 @@ from citevision_ai.events.generator import EventGenerator
 from citevision_ai.evidence.service import EvidenceCaptureService
 from citevision_ai.identity.face import FaceIdentityEngine
 from citevision_ai.identity.plate import PlateIdentityEngine
+from citevision_ai.road_enforcement.detector import RoadEnforcementEngine
 from citevision_ai.models.schemas import BBox, Detection, DetectionFrame
 from citevision_ai.mqtt.publisher import MqttPublisher
 from citevision_ai.tracking.bytetrack import ByteTracker
@@ -52,6 +54,7 @@ class PipelineService:
         self.correlation = CorrelationEngine()
         self.face_engine = face_engine or FaceIdentityEngine()
         self.plate_engine = plate_engine or PlateIdentityEngine()
+        self.road_enforcement = RoadEnforcementEngine()
         self.evidence = EvidenceCaptureService()
         self._calibrations: dict[str, CalibrationEngine] = {}
         self._trackers: dict[str, ByteTracker] = {}
@@ -74,6 +77,17 @@ class PipelineService:
             if org := spatial_config.get("org_id"):
                 self._org_ids[camera_id] = str(org)
             self.set_spatial_config(camera_id, spatial_config)
+        if os.environ.get("E2E_MODE") == "1":
+            self._apply_e2e_sensitivity()
+
+    def _apply_e2e_sensitivity(self) -> None:
+        """Seuils assouplis pour validation E2E sur flux Benedicte (marche, loitering, véhicules)."""
+        self.behavior.speed_threshold = min(self.behavior.speed_threshold, 1.5)
+        self.behavior.fight_overlap_ratio = min(self.behavior.fight_overlap_ratio, 0.05)
+        self.state_engine.dwell_threshold_sec = min(self.state_engine.dwell_threshold_sec, 5.0)
+        self.state_engine.stop_threshold_px = max(self.state_engine.stop_threshold_px, 25.0)
+        self.scene.vehicle_threshold = 1
+        self.scene.crowd_threshold = min(self.scene.crowd_threshold, 2)
 
     def set_org_id(self, camera_id: str, org_id: str) -> None:
         if org_id:
@@ -162,6 +176,8 @@ class PipelineService:
             self.scene.vehicle_threshold = int(vehicles)
         if density := config.get("density_threshold"):
             self.scene.density_threshold = float(density)
+        if fight := config.get("fight_overlap_ratio"):
+            self.behavior.fight_overlap_ratio = float(fight)
 
     def _runtime_for(self, camera_id: str) -> dict[str, Any]:
         return self._runtime_config.get(camera_id, {})
@@ -200,6 +216,9 @@ class PipelineService:
         for zone in config.get("zones", []):
             zone_id = zone.get("zone_id", zone.get("name", "zone"))
             polygon = zone.get("polygon", [])
+            loiter_sec = float(zone.get("loiter_threshold", 30))
+            if os.environ.get("E2E_MODE") == "1":
+                loiter_sec = min(loiter_sec, 5.0)
             rules.append({
                 "camera_id": camera_id,
                 "rule_type": "zone",
@@ -217,7 +236,7 @@ class PipelineService:
                 "enabled": True,
                 "loitering": {
                     "zone_id": zone_id,
-                    "threshold_seconds": zone.get("loiter_threshold", 30),
+                    "threshold_seconds": loiter_sec,
                 },
                 "zone": {"polygon": polygon},
             })
@@ -448,17 +467,28 @@ class PipelineService:
         )
         all_events.extend(scene_events)
 
+        vehicle_count = len([
+            t for t in track_dicts
+            if t.get("class_name") in ("car", "truck", "bus", "motorcycle")
+        ])
+
         for t in track_dicts:
-            speed_evt = calib.update_track(
+            calib_result = calib.update_track(
                 camera_id, t["track_id"],
                 t["bbox"]["x"] + t["bbox"]["width"] / 2,
                 t["bbox"]["y"] + t["bbox"]["height"] / 2,
                 now_ts, t["class_name"],
-            ).get("speed_event")
+            )
+            speed_evt = calib_result.get("speed_event")
             if speed_evt:
+                meta: dict[str, Any] = {"speed_kmh": t.get("metadata", {}).get("speed_kmh", 0)}
+                if speed_evt == "sudden_stop":
+                    meta["vehicle_count"] = vehicle_count
+                    if calib_result.get("prior_speed_kmh") is not None:
+                        meta["prior_speed_kmh"] = calib_result["prior_speed_kmh"]
                 all_events.append(self.event_generator.emit_behavior_event(
                     camera_id, t["track_id"], speed_evt, 0.8,
-                    {"speed_kmh": t.get("metadata", {}).get("speed_kmh", 0)}, ts, "warning",
+                    meta, ts, "warning",
                 ))
 
         persons = [t for t in track_dicts if t.get("class_name") == "person"]
@@ -474,6 +504,11 @@ class PipelineService:
         gated_tracks = [t for t in track_dicts if self._track_in_capability_zone(camera_id, t, "plate_ocr")]
         if gated_tracks:
             all_events.extend(self.plate_engine.process_frame(camera_id, frame, gated_tracks, ts))
+
+        zones_cfg = (self._spatial_configs.get(camera_id) or {}).get("zones") or []
+        all_events.extend(
+            self.road_enforcement.process_frame(camera_id, frame, track_dicts, ts, zones_cfg)
+        )
 
         for t in track_dicts:
             if not self._track_in_capability_zone(camera_id, t, "speed_estimate"):

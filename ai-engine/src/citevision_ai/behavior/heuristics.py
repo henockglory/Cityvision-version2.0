@@ -23,6 +23,7 @@ class BehaviorLabel(str, Enum):
     WANDERING = "wandering"
     CLIMBING = "climbing"
     CARRYING = "carrying"
+    RAPID_ACTIVITY = "rapid_activity"
 
 
 BEHAVIOR_EVENT_TYPES: dict[BehaviorLabel, str] = {
@@ -39,6 +40,7 @@ BEHAVIOR_EVENT_TYPES: dict[BehaviorLabel, str] = {
     BehaviorLabel.CROUCHING: "crouch_detected",
     BehaviorLabel.CLIMBING: "climb_detected",
     BehaviorLabel.CARRYING: "carry_detected",
+    BehaviorLabel.RAPID_ACTIVITY: "running",
 }
 
 
@@ -256,6 +258,11 @@ class BehaviorHeuristics:
                 return BehaviorSignal(track_id, BehaviorLabel.WANDERING, 0.6, {"path_ratio": round(ratio, 2)})
 
         speed = self._speed(history)
+        if speed >= self.speed_threshold * 1.35 and class_name == "person":
+            return BehaviorSignal(
+                track_id, BehaviorLabel.RAPID_ACTIVITY, 0.72,
+                {"speed": speed, "behavior": "rapid_activity"},
+            )
         if speed >= self.speed_threshold and class_name == "person":
             return BehaviorSignal(track_id, BehaviorLabel.RUNNING, 0.7, {"speed": speed})
         return BehaviorSignal(track_id, BehaviorLabel.NORMAL, 0.9, {"speed": speed})

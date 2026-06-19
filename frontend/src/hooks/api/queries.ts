@@ -7,6 +7,7 @@ import {
   usersApi,
   auditApi,
   healthApi,
+  aiHealthApi,
   dashboardApi,
   setupApi,
 } from '@/api/client';
@@ -313,6 +314,40 @@ export function useDashboardSummary() {
       return data as DashboardSummary;
     },
     enabled: !!orgId,
+  });
+}
+
+export interface AiModelStatus {
+  yolo: boolean;
+  face: boolean;
+  plate: boolean;
+  provider: string;
+  cuda: boolean;
+  ffmpeg: boolean;
+  reachable: boolean;
+}
+
+export function useAiHealth() {
+  return useQuery({
+    queryKey: ['ai-health'],
+    queryFn: async (): Promise<AiModelStatus> => {
+      try {
+        const { data } = await aiHealthApi.health();
+        return {
+          yolo: data.yolo_loaded === 'true',
+          face: data.face_loaded === 'true',
+          plate: data.plate_loaded === 'true',
+          provider: data.yolo_provider ?? 'unknown',
+          cuda: data.yolo_cuda === 'true',
+          ffmpeg: data.ffmpeg_available === 'true',
+          reachable: true,
+        };
+      } catch {
+        return { yolo: false, face: false, plate: false, provider: 'unknown', cuda: false, ffmpeg: false, reachable: false };
+      }
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 }
 

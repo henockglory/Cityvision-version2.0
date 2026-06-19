@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Grid2x2, Grid3x3, LayoutGrid, Square, Grid3x3 as GridIcon } from 'lucide-react';
+import { Grid2x2, Grid3x3, LayoutGrid, Square, Grid3x3 as GridIcon, Plus } from 'lucide-react';
 import PageShell from '@/components/ui/PageShell';
 import VideoPlaceholder from '@/components/ui/VideoPlaceholder';
 import LoadingState from '@/components/ui/LoadingState';
@@ -48,7 +49,17 @@ export default function VideoWall() {
   if (allCameras.length === 0) {
     return (
       <PageShell title={t('videoWall.title')} onHelpTour={startTour}>
-        <EmptyState title={t('videoWall.empty')} hint={t('videoWall.emptyHint')} icon={GridIcon} />
+        <EmptyState
+          title={t('videoWall.empty')}
+          hint={t('videoWall.emptyHint')}
+          icon={GridIcon}
+          action={
+            <Link to="/cameras" className="cv-btn-primary inline-flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Ajouter une caméra
+            </Link>
+          }
+        />
       </PageShell>
     );
   }
@@ -57,16 +68,17 @@ export default function VideoWall() {
   const dim = gridDimension(gridSize);
   const emptySlots = Math.max(0, gridSize - cameras.length);
 
+  const gapClass = dim >= 4 ? 'gap-1' : dim === 3 ? 'gap-1.5' : 'gap-2';
+
   return (
     <PageShell
+      fillViewport
       title={t('videoWall.title')}
       onHelpTour={startTour}
-      className="flex flex-col min-h-[calc(100dvh-10rem)]"
-    >
-      <div className="flex flex-col flex-1 min-h-0 gap-3">
+      toolbar={
         <div
           id="video-wall-layout"
-          className="flex gap-1 p-1 rounded-lg bg-cv-surface border border-cv-border w-fit shrink-0"
+          className="flex gap-1 p-1 rounded-lg bg-cv-surface border border-cv-border w-fit"
         >
           {layouts.map((layout) => (
             <button
@@ -83,40 +95,40 @@ export default function VideoWall() {
             </button>
           ))}
         </div>
-
-        <div
-          id="video-wall-grid"
-          className="flex-1 min-h-[280px] grid gap-2 overflow-hidden"
-          style={{
-            gridTemplateColumns: `repeat(${dim}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${dim}, minmax(0, 1fr))`,
-          }}
-        >
-          {cameras.map((cam) => {
-            const src = go2rtcStreamSrc(cam);
-            const hasStream =
-              !!cam.streamKey ||
-              !!cam.streamUrl ||
-              cam.metadata?.virtual === true ||
-              String(cam.metadata?.source ?? '').includes('benedicte');
-            return (
-              <div key={cam.id} className="cv-wall-cell">
-                {hasStream ? (
-                  <Go2RtcPlayer src={src} label={cam.name} className="h-full w-full min-h-0" bare />
-                ) : (
-                  <VideoPlaceholder
-                    label={cam.name}
-                    live={cam.status !== 'offline'}
-                    className="h-full w-full min-h-0 cv-wall-placeholder"
-                  />
-                )}
-              </div>
-            );
-          })}
-          {Array.from({ length: emptySlots }).map((_, i) => (
-            <div key={`empty-${i}`} className="cv-wall-cell cv-wall-placeholder opacity-30" />
-          ))}
-        </div>
+      }
+    >
+      <div
+        id="video-wall-grid"
+        className={`flex-1 min-h-0 w-full grid overflow-hidden ${gapClass}`}
+        style={{
+          gridTemplateColumns: `repeat(${dim}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${dim}, minmax(0, 1fr))`,
+        }}
+      >
+        {cameras.map((cam) => {
+          const src = go2rtcStreamSrc(cam);
+          const hasStream =
+            !!cam.streamKey ||
+            !!cam.streamUrl ||
+            cam.metadata?.virtual === true ||
+            String(cam.metadata?.source ?? '').includes('benedicte');
+          return (
+            <div key={cam.id} className="cv-wall-cell">
+              {hasStream ? (
+                <Go2RtcPlayer src={src} label={cam.name} bare />
+              ) : (
+                <VideoPlaceholder
+                  label={cam.name}
+                  live={cam.status !== 'offline'}
+                  className="cv-wall-placeholder"
+                />
+              )}
+            </div>
+          );
+        })}
+        {Array.from({ length: emptySlots }).map((_, i) => (
+          <div key={`empty-${i}`} className="cv-wall-cell cv-wall-empty" />
+        ))}
       </div>
     </PageShell>
   );

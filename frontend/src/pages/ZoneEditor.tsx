@@ -7,7 +7,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 
 import { useTranslation } from 'react-i18next';
 
-import { Plus, Save, Pentagon, PenTool, Trash2, Video, Minus } from 'lucide-react';
+import { Plus, Save, Pentagon, Shapes, Trash2, Video, Minus } from 'lucide-react';
 
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -26,6 +26,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { zonesApi, type BackendZone, type BackendLine } from '@/api/client';
 
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+
+import InfoTip from '@/components/ui/InfoTip';
 
 import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
 
@@ -364,7 +366,7 @@ export default function ZoneEditor() {
 
     if (editMode === 'line' && draftLines.length === 0) {
 
-      setMessage('Dessinez au moins une ligne (2 clics : début et fin).');
+      setMessage(t('zoneEditor.lineSaveError'));
 
       return;
 
@@ -492,7 +494,7 @@ export default function ZoneEditor() {
 
           title={t('zoneEditor.noCamera')}
 
-          hint={t('zoneEditor.noCameraHint', 'Lancez bash scripts/setup-demo-kinshasa.sh')}
+          hint={t('zoneEditor.noCameraHint')}
 
           icon={Video}
 
@@ -520,7 +522,7 @@ export default function ZoneEditor() {
 
         actions={
           <div className="flex items-center gap-2">
-            <label className="text-xs text-cv-muted shrink-0">Caméra</label>
+            <label className="text-xs text-cv-muted shrink-0">{t('zoneEditor.cameraLabel')}</label>
             <select
               className="cv-input text-sm max-w-[220px]"
               value={selectedCamera?.id ?? ''}
@@ -545,7 +547,7 @@ export default function ZoneEditor() {
               className={`cv-btn-secondary text-xs ${editMode === 'zone' ? 'border-cv-accent' : ''}`}
             >
               <Pentagon className="w-3 h-3" />
-              Zones
+              {t('zoneEditor.modeZone')}
             </button>
             <button
               type="button"
@@ -553,12 +555,12 @@ export default function ZoneEditor() {
               className={`cv-btn-secondary text-xs ${editMode === 'line' ? 'border-cv-accent' : ''}`}
             >
               <Minus className="w-3 h-3" />
-              Lignes
+              {t('zoneEditor.modeLine')}
             </button>
             {editMode === 'zone' && (
               <button type="button" onClick={finishPolygon} disabled={drawing.length < 6} className="cv-btn-secondary text-xs">
                 <Pentagon className="w-3 h-3" />
-                {t('zoneEditor.finishPolygon', 'Fermer polygone')}
+                {t('zoneEditor.finishPolygon')}
               </button>
             )}
             <button
@@ -582,9 +584,9 @@ export default function ZoneEditor() {
 
         {editMode === 'zone'
 
-          ? t('zoneEditor.instructions', 'Cliquez sur la vidéo pour placer les points. Minimum 3 points, puis « Fermer polygone » et Enregistrer.')
+          ? t('zoneEditor.instructionsZone')
 
-          : 'Mode ligne : cliquez le point de départ puis le point d’arrivée. Enregistrez pour activer les règles de franchissement.'}
+          : t('zoneEditor.instructionsLine')}
 
       </p>
 
@@ -592,9 +594,9 @@ export default function ZoneEditor() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-        <div className="lg:col-span-3 cv-card p-4 overflow-hidden">
+        <div className="lg:col-span-3 cv-card p-4 overflow-x-auto">
 
-          <div id="zone-canvas" className="relative rounded-lg overflow-hidden border border-cv-border mx-auto" style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}>
+          <div id="zone-canvas" className="relative rounded-lg overflow-hidden border border-cv-border mx-auto" style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT, minWidth: STAGE_WIDTH }}>
 
             <Go2RtcPlayer src={streamSrc} bare className="absolute inset-0 w-full h-full pointer-events-none" />
 
@@ -696,7 +698,7 @@ export default function ZoneEditor() {
 
             <h3 className="font-display text-sm font-semibold">
 
-              {editMode === 'zone' ? t('zoneEditor.list', 'Zones') : 'Lignes'}
+              {editMode === 'zone' ? t('zoneEditor.zoneLabel') : t('zoneEditor.lineLabel')}
 
             </h3>
 
@@ -708,23 +710,23 @@ export default function ZoneEditor() {
 
             allZones.length === 0 && drawing.length === 0 ? (
 
-              <EmptyState title={t('zoneEditor.empty')} hint={t('zoneEditor.emptyHint')} icon={PenTool} />
+              <EmptyState title={t('zoneEditor.empty')} hint={t('zoneEditor.emptyHint')} icon={Shapes} />
 
             ) : (
 
               <SpatialList
 
-                items={allZones.map((z) => ({
-
-                  id: z.id,
-
-                  name: z.name,
-
-                  detail: `${z.points.length / 2} points${z.id.startsWith('draft-') ? ' · brouillon' : ' · enregistrée'}`,
-
-                  isDraft: z.id.startsWith('draft-'),
-
-                }))}
+                items={allZones.map((z) => {
+                  const kindLabel = z.zoneKind
+                    ? t(`zoneEditor.zoneKind${z.zoneKind.charAt(0).toUpperCase() + z.zoneKind.slice(1).replace('_', '')}` as never, z.zoneKind)
+                    : null;
+                  return {
+                    id: z.id,
+                    name: z.name,
+                    detail: `${z.points.length / 2} pts${kindLabel ? ` · ${kindLabel}` : ''}${z.id.startsWith('draft-') ? ' · brouillon' : ' · enregistrée'}`,
+                    isDraft: z.id.startsWith('draft-'),
+                  };
+                })}
 
                 selectedId={selectedId}
 
@@ -746,7 +748,7 @@ export default function ZoneEditor() {
 
           ) : allLines.length === 0 && !lineDraftStart ? (
 
-            <EmptyState title="Aucune ligne" hint="2 clics sur la vidéo pour tracer une ligne" icon={Minus} />
+            <EmptyState title={t('zoneEditor.lineEmpty')} hint={t('zoneEditor.lineEmptyHint')} icon={Minus} />
 
           ) : (
 
@@ -787,8 +789,9 @@ export default function ZoneEditor() {
             if (!draft) return null;
             return (
               <div className="mt-3 pt-3 border-t border-cv-border space-y-2">
-                <label className="text-xs text-cv-muted block">
-                  {t('zoneEditor.zoneKind', 'Type de zone (sémantique IA)')}
+                <label className="text-xs text-cv-muted flex items-center gap-1">
+                  {t('zoneEditor.zoneKind')}
+                  <InfoTip content="Le type sémantique indique à l'IA comment interpréter cette zone. « Périmètre » → intrusion. « Sortie contrôlée » → alerte sortie non autorisée. « Stationnement » → illicite si véhicule immobilisé. « Auto » = déduit du nom de la zone." />
                 </label>
                 <select
                   className="cv-input w-full text-sm"
@@ -800,11 +803,11 @@ export default function ZoneEditor() {
                     );
                   }}
                 >
-                  <option value="">{t('zoneEditor.zoneKindAuto', 'Auto (nom de zone)')}</option>
-                  <option value="perimeter">{t('zoneEditor.zoneKindPerimeter', 'Périmètre')}</option>
-                  <option value="controlled_exit">{t('zoneEditor.zoneKindExit', 'Sortie contrôlée')}</option>
-                  <option value="corridor">{t('zoneEditor.zoneKindCorridor', 'Couloir / véhicules')}</option>
-                  <option value="parking">{t('zoneEditor.zoneKindParking', 'Stationnement')}</option>
+                  <option value="">{t('zoneEditor.zoneKindAuto')}</option>
+                  <option value="perimeter">{t('zoneEditor.zoneKindPerimeter')}</option>
+                  <option value="controlled_exit">{t('zoneEditor.zoneKindExit')}</option>
+                  <option value="corridor">{t('zoneEditor.zoneKindCorridor')}</option>
+                  <option value="parking">{t('zoneEditor.zoneKindParking')}</option>
                 </select>
               </div>
             );
@@ -832,7 +835,7 @@ export default function ZoneEditor() {
 
             <Plus className="w-3 h-3" />
 
-            {editMode === 'zone' ? t('zoneEditor.newZone', 'Nouvelle zone') : 'Nouvelle ligne'}
+            {editMode === 'zone' ? t('zoneEditor.newZone') : t('zoneEditor.newLine')}
 
           </button>
 

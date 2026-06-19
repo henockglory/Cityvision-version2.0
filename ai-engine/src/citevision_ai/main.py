@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from citevision_ai.budget.resource_budget import ResourceBudgetManager
 from citevision_ai.config import settings
 from citevision_ai.detection.yolo_onnx import YoloOnnxDetector
+from citevision_ai import hardware_profile
 from citevision_ai.identity.face import FaceIdentityEngine
 from citevision_ai.identity.plate import PlateIdentityEngine
 from citevision_ai.ingest.rtsp_worker import WorkerManager
@@ -27,6 +28,10 @@ worker_manager: WorkerManager | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global pipeline, worker_manager
+    # Detect GPU tier and override settings before any model loading
+    hw_tier = hardware_profile.apply(settings)
+    logger.info("Hardware tier: %s — %s", hw_tier.tier, hw_tier.label)
+
     detector = YoloOnnxDetector(
         str(settings.resolved_yolo_path()),
         conf_threshold=settings.yolo_confidence,
@@ -124,6 +129,11 @@ def health() -> dict[str, str]:
         "yolo_cuda": str(pipeline.detector.uses_cuda if pipeline else False).lower(),
         "ffmpeg_available": str(shutil.which("ffmpeg") is not None).lower(),
     }
+
+
+@app.get("/hardware/profile")
+def hardware_profile_endpoint() -> dict:
+    return hardware_profile.get_profile_info()
 
 
 @app.get("/health/gpu")

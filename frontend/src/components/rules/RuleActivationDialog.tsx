@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Settings2, X, MapPin, GitBranch, Zap, Check } from 'lucide-react';
+import { Clock, Loader2, Settings2, X, MapPin, GitBranch, Zap, Check, AlertTriangle, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   identityApi,
@@ -45,6 +45,9 @@ import SegmentedTabs from '@/components/ui/SegmentedTabs';
 import GuideIllustration from '@/components/ui/GuideIllustration';
 import { useAuthStore } from '@/stores/authStore';
 import { useCameras } from '@/hooks/api/queries';
+import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
+import RuleActivationFeedback from '@/components/rules/RuleActivationFeedback';
+import { go2rtcStreamSrc } from '@/config/streams';
 import type { ConfigSchemaField, Rule, RuleCatalogTemplate } from '@/types';
 
 interface BackendLine {
@@ -60,7 +63,52 @@ interface RuleActivationDialogProps {
   onActivated: () => void;
 }
 
-const STEP_LABELS = ['Config', 'Conditions', 'Actions & preuves', 'Aperçu'] as const;
+const STEP_LABELS_KEYS = ['config', 'conditions', 'actionsEvidence', 'preview'] as const;
+
+function WizardStepContext({ step, template, t }: {
+  step: number;
+  template: { name: string; partial_status?: string; partial_reason_fr?: string; category?: string };
+  t: (k: string, opts?: Record<string, unknown>) => string;
+}) {
+  const ctxMap: Record<number, { why: string; what: string }> = {
+    1: {
+      why: t('rules.studio.step1Why', { defaultValue: 'Choisissez la caméra à surveiller et les paramètres spécifiques à cette règle (zone, durée, classe d\'objet…)' }),
+      what: t('rules.studio.step1What', { defaultValue: 'Ces réglages définissent précisément quand et où la règle sera active.' }),
+    },
+    2: {
+      why: t('rules.studio.step2Why', { defaultValue: 'Vérifiez la logique de déclenchement : c\'est la condition exacte que le système évaluera sur chaque événement.' }),
+      what: t('rules.studio.step2What', { defaultValue: 'Vous pouvez affiner avec des opérateurs ET / OU / SAUF pour des scénarios complexes.' }),
+    },
+    3: {
+      why: t('rules.studio.step3Why', { defaultValue: 'Définissez ce qui se passe quand la règle se déclenche : alerte, enregistrement, notification.' }),
+      what: t('rules.studio.step3What', { defaultValue: 'Vous pouvez combiner plusieurs actions et choisir le niveau de sévérité de l\'alerte.' }),
+    },
+    4: {
+      why: t('rules.studio.step4Why', { defaultValue: 'Vérifiez le résumé de votre règle avant de l\'activer.' }),
+      what: t('rules.studio.step4What', { defaultValue: 'Après activation, la règle surveillera le flux en temps réel. La première alerte devrait arriver dans ~30 secondes si un événement est détecté.' }),
+    },
+  };
+  const ctx = ctxMap[step];
+  if (!ctx) return null;
+  const hasPartial = template.partial_status && template.partial_status !== 'full';
+  return (
+    <div className="cv-stack-sm mb-5">
+      {hasPartial && (
+        <div className="cv-callout text-amber-300 bg-amber-400/5 border border-amber-400/20">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>{template.partial_reason_fr ?? t('rules.studio.partialWarning', { defaultValue: 'Cette règle nécessite une configuration ou un module supplémentaire pour être pleinement opérationnelle.' })}</span>
+        </div>
+      )}
+      <div className="cv-callout text-cv-muted bg-cv-accent/5 border border-cv-accent/15">
+        <Info className="w-4 h-4 shrink-0 text-cv-accent" />
+        <div className="space-y-1 min-w-0">
+          <p className="text-cv-text/90 leading-relaxed">{ctx.why}</p>
+          <p className="text-cv-muted/80 leading-relaxed">{ctx.what}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function RuleStudioDialog({
   template,
@@ -99,6 +147,8 @@ export default function RuleStudioDialog({
   const [plateLists, setPlateLists] = useState<SurveillanceList[]>([]);
   const [loadingSpatial, setLoadingSpatial] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackCamera, setFeedbackCamera] = useState<{id:string;name:string}|null>(null);
   const [error, setError] = useState('');
   const [step, setStep] = useState<1 | 2 | 3 | 4>(initialStep);
   const [step3Tab, setStep3Tab] = useState<'actions' | 'evidence' | 'notifications'>('actions');
@@ -125,6 +175,7 @@ export default function RuleStudioDialog({
       ...defaults,
       camera_id: bindings.camera_id ?? virtual?.id ?? '',
       zone_name: bindings.zone_name ?? '',
+      zone_name_2: bindings.zone_name_2 ?? '',
       line_name: bindings.line_name ?? '',
       duration_seconds: bindings.duration_seconds ?? defaults.duration_seconds ?? 120,
       speed_kmh: bindings.speed_kmh ?? defaults.speed_kmh ?? 50,
@@ -132,6 +183,7 @@ export default function RuleStudioDialog({
       plate_list_id: bindings.plate_list_id ?? '',
       class_filter: bindings.class_filter ?? defaults.class_filter ?? 'person',
       direction: bindings.direction ?? defaults.direction ?? 'both',
+      schedule: bindings.schedule ?? defaults.schedule,
     });
     setRuleName(existingRule?.name ?? activeTemplate.name);
     const cond = (existingRule?.definition?.condition ?? activeTemplate.definition?.condition) as ConditionNode | undefined;
@@ -298,7 +350,10 @@ export default function RuleStudioDialog({
         });
       }
       onActivated();
-      onClose();
+      // Show post-activation feedback instead of closing immediately
+      const cam = cameras.find((c) => c.id === cameraId);
+      setFeedbackCamera(cam ? { id: cam.id, name: cam.name } : { id: cameraId, name: cameraId });
+      setShowFeedback(true);
     } catch {
       setError(t('rules.studio.saveError'));
     } finally {
@@ -343,12 +398,15 @@ export default function RuleStudioDialog({
       })}
       {selectedActions.some((k) => k.startsWith('alert:')) && (
         <div>
-          <label className="cv-label">{t('rules.studio.alertSeverity')}</label>
+          <label className="cv-label flex items-center gap-1.5">
+            {t('rules.studio.alertSeverity')}
+            <InfoTip content="Faible : notification discrète. Moyenne : badge visible + son. Élevée : bandeau rouge. Critique : alerte sonore continue + notification push — à réserver aux situations urgentes." />
+          </label>
           <select className="cv-input w-full" value={actionSeverity} onChange={(e) => setActionSeverity(e.target.value)}>
-            <option value="low">{t('rules.severity.low')}</option>
-            <option value="medium">{t('rules.severity.medium')}</option>
-            <option value="high">{t('rules.severity.high')}</option>
-            <option value="critical">{t('rules.severity.critical')}</option>
+            <option value="low">{t('rules.severity.low')} — notification discrète</option>
+            <option value="medium">{t('rules.severity.medium')} — badge + son</option>
+            <option value="high">{t('rules.severity.high')} — bandeau rouge</option>
+            <option value="critical">{t('rules.severity.critical')} — alerte sonore continue</option>
           </select>
         </div>
       )}
@@ -407,12 +465,33 @@ export default function RuleStudioDialog({
     }
   };
 
+  const stepLabels = STEP_LABELS_KEYS.map((k) => t(`rules.studio.steps.${k}`, k));
   const wizardSteps = [
-    { n: 1, label: STEP_LABELS[0], icon: MapPin },
-    { n: 2, label: STEP_LABELS[1], icon: GitBranch },
-    { n: 3, label: STEP_LABELS[2], icon: Zap },
-    { n: 4, label: STEP_LABELS[3], icon: Check },
+    { n: 1, label: stepLabels[0], icon: MapPin },
+    { n: 2, label: stepLabels[1], icon: GitBranch },
+    { n: 3, label: stepLabels[2], icon: Zap },
+    { n: 4, label: stepLabels[3], icon: Check },
   ];
+
+  if (showFeedback && activeTemplate) {
+    return (
+      <Modal
+        open
+        onClose={() => { setShowFeedback(false); onClose(); }}
+        title={activeTemplate.name}
+        maxWidth="sm"
+      >
+        <RuleActivationFeedback
+          ruleName={ruleName || activeTemplate.name}
+          cameraId={feedbackCamera?.id ?? cameraId}
+          cameraName={feedbackCamera?.name}
+          zoneName={activationCfg.zoneName}
+          lineName={activationCfg.lineName}
+          onClose={() => { setShowFeedback(false); onClose(); }}
+        />
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -447,7 +526,7 @@ export default function RuleStudioDialog({
           </p>
           <h2 className="text-lg font-display font-semibold">{activeTemplate.name}</h2>
           <p className="text-xs text-cv-muted mt-1">
-            {STEP_LABELS[step - 1]} — {t('rules.studio.stepLegend', { defaultValue: 'Étape {{step}}/4 — {{label}}', step, label: STEP_LABELS[step - 1] })} · {activeTemplate.category}
+            {stepLabels[step - 1]} · {t(`rules.catalogCategory.${activeTemplate.category}`, activeTemplate.category)}
           </p>
         </div>
         <button type="button" onClick={onClose} className="cv-btn-ghost p-2 rounded-lg" aria-label={t('common.cancel')}>
@@ -456,18 +535,19 @@ export default function RuleStudioDialog({
       </div>
 
       <WizardSteps steps={wizardSteps} current={step} className="mb-4" />
+      <WizardStepContext step={step} template={activeTemplate as { name: string; partial_status?: string; partial_reason_fr?: string; category?: string }} t={t} />
 
       {activeTemplate.tutorial && step === 1 && (
         <GuideIllustration
           variant="rules"
           src={activeTemplate.illustration ?? '/guides/rules-zone-intrusion.svg'}
           title={t('rules.guide.wizardTitle')}
-          caption={activeTemplate.tutorial}
+          caption={activeTemplate.tutorial as string}
           className="mb-4"
         />
       )}
 
-      {step === 1 && activeTemplate.definition?.pipeline && (
+      {step === 1 && !!activeTemplate.definition?.pipeline && (
         <div className="mb-4 rounded-xl border border-cv-accent/30 bg-cv-accent/5 p-4 space-y-2">
           <p className="text-sm font-semibold text-cv-accent">
             {t('rules.pipeline.title', { defaultValue: 'Pipeline multi-étapes' })}
@@ -478,8 +558,8 @@ export default function RuleStudioDialog({
             })}
           </p>
           <ol className="text-xs text-cv-muted list-decimal list-inside space-y-1">
-            {(Array.isArray((activeTemplate.tutorial as { steps?: string[] })?.steps)
-              ? (activeTemplate.tutorial as { steps: string[] }).steps
+            {(Array.isArray((activeTemplate.tutorial as unknown as { steps?: string[] })?.steps)
+              ? (activeTemplate.tutorial as unknown as { steps: string[] }).steps
               : [
                   t('rules.pipeline.stepZone', { defaultValue: 'Dessinez la zone sur la voie' }),
                   t('rules.pipeline.stepClass', { defaultValue: 'Filtrez la classe véhicule' }),
@@ -533,6 +613,23 @@ export default function RuleStudioDialog({
                   {t('rules.studio.previewSummary', { details: previewSummary })}
                 </p>
               )}
+              {(() => {
+                const previewCam = cameras.find((c) => c.id === cameraId);
+                const streamSrc = previewCam ? go2rtcStreamSrc(previewCam) : undefined;
+                return streamSrc ? (
+                  <div className="rounded-xl overflow-hidden border border-cv-accent/20 bg-black/40 aspect-video w-full max-h-40 relative">
+                    <Go2RtcPlayer src={streamSrc} bare className="w-full h-full object-contain" />
+                    <span className="absolute top-2 left-2 text-[10px] bg-cv-deep/70 text-cv-accent px-2 py-0.5 rounded font-mono">
+                      {previewCam?.name}
+                    </span>
+                  </div>
+                ) : previewCam ? (
+                  <div className="rounded-xl border border-cv-border/40 bg-cv-deep/20 p-3 text-xs text-cv-muted flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-cv-muted/40 shrink-0" />
+                    {previewCam.name} — aperçu vidéo non disponible (go2rtc non actif)
+                  </div>
+                ) : null;
+              })()}
               <div className="p-3 rounded-lg border border-cv-border/60 bg-cv-deep/20 text-xs">
                 <p className="font-medium text-sm mb-1">Preuves configurées</p>
                 <p className="text-cv-muted">
@@ -691,8 +788,68 @@ function SchemaField({
       )}
 
       {field.type === 'schedule' && (
-        <p className="text-xs text-cv-muted">Plage horaire héritée du modèle (6h–22h par défaut).</p>
+        <ScheduleField value={value as ScheduleValue | undefined} onChange={onChange} />
       )}
+    </div>
+  );
+}
+
+interface ScheduleValue {
+  from: string;
+  to: string;
+  allDay?: boolean;
+}
+
+function ScheduleField({
+  value,
+  onChange,
+}: {
+  value: ScheduleValue | undefined;
+  onChange: (v: unknown) => void;
+}) {
+  const { t } = useTranslation();
+  const current = value ?? { from: '06:00', to: '22:00', allDay: false };
+
+  const update = (patch: Partial<ScheduleValue>) => {
+    onChange({ ...current, ...patch });
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="rounded"
+          checked={Boolean(current.allDay)}
+          onChange={(e) => update({ allDay: e.target.checked })}
+        />
+        <span className="text-sm">{t('rules.studio.scheduleAllDay')}</span>
+      </label>
+      {!current.allDay && (
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-cv-muted" />
+            <span className="text-xs text-cv-muted">{t('rules.studio.scheduleFrom')}</span>
+            <input
+              type="time"
+              className="cv-input py-1 w-28 text-sm"
+              value={current.from}
+              onChange={(e) => update({ from: e.target.value })}
+            />
+          </div>
+          <span className="text-cv-muted text-xs">–</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-cv-muted">{t('rules.studio.scheduleTo')}</span>
+            <input
+              type="time"
+              className="cv-input py-1 w-28 text-sm"
+              value={current.to}
+              onChange={(e) => update({ to: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-cv-muted">{t('rules.studio.scheduleHint')}</p>
     </div>
   );
 }

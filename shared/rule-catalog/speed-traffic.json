@@ -29,7 +29,14 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si un véhicule dépasse la vitesse limite configurée — nécessite calibration caméra.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Nécessite une calibration caméra (homographie) pour mesurer la vitesse en km/h"
   },
   {
     "id": "tpl-sudden-stop",
@@ -51,7 +58,14 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte quand un véhicule freine brusquement — indicateur d'accident ou de situation d'urgence.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Nécessite une calibration caméra pour détecter les variations de vitesse"
   },
   {
     "id": "tpl-running-person",
@@ -83,7 +97,13 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte quand une personne court — signal d'urgence ou de poursuite dans un espace protégé.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-traffic-jam",
@@ -120,7 +140,13 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Détecte la formation d'un embouteillage selon le nombre de véhicules immobilisés.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-illegal-parking",
@@ -128,19 +154,20 @@
     "description": "Véhicule stationnaire en zone interdite",
     "category": "traffic",
     "severity": "medium",
+    "supported": true,
     "definition": {
       "condition": {
-        "op": "ET",
+        "op": "AND",
         "children": [
           {
-            "op": "in_zone",
-            "field": "zone_id",
-            "value": "no-parking"
+            "op": "eq",
+            "field": "event_type",
+            "value": "vehicle_stopped"
           },
           {
             "op": "gt",
             "field": "duration_seconds",
-            "value": 180
+            "value": 120
           }
         ]
       },
@@ -152,6 +179,12 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si un véhicule stationne dans une zone interdite au-delà de la durée configurée.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   }
 ]

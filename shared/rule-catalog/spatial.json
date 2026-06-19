@@ -33,7 +33,14 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Déclenche une alerte dès qu'une personne ou un véhicule pénètre dans la zone dessinée. Idéal pour protéger un accès restreint ou une zone sensible.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-zone-exit",
@@ -54,7 +61,14 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte quand un objet quitte la zone surveillée. Détecte les sorties non autorisées.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-zone-occupancy",
@@ -75,16 +89,25 @@
           }
         }
       ]
-    }
+    },
+    "role_summary_fr": "Compte les personnes présentes dans la zone et alerte quand le nombre dépasse le seuil configuré.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-multi-zone",
     "name": "Présence multi-zones",
     "category": "spatial",
     "severity": "medium",
+    "supported": true,
     "definition": {
       "condition": {
-        "op": "AND",
+        "op": "SEQUENCE",
+        "window_seconds": 180,
         "children": [
           {
             "op": "eq",
@@ -92,9 +115,9 @@
             "value": "zone_enter"
           },
           {
-            "op": "in_zone",
-            "field": "zone_id",
-            "value": "entrance"
+            "op": "eq",
+            "field": "event_type",
+            "value": "zone_enter"
           }
         ]
       },
@@ -104,11 +127,24 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Suit un objet qui traverse plusieurs zones dans un ordre défini — SEQUENCE spatiale.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-line-cross",
-    "redirect_to": "tpl-line-cross"
+    "redirect_to": "tpl-line-cross",
+    "role_summary_fr": "Alerte dès qu'un objet franchit la ligne de comptage, dans n'importe quel sens.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-line-cross-bidir",
@@ -127,11 +163,25 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Compte et alerte pour chaque franchissement de ligne, dans les deux sens.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-loitering",
-    "redirect_to": "tpl-loitering"
+    "redirect_to": "tpl-loitering",
+    "role_summary_fr": "Alerte si une personne reste immobile ou erre dans la zone au-delà du temps configuré — signe suspect.",
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-dwell-exceeded",
@@ -150,6 +200,12 @@
           "config": {}
         }
       ]
-    }
+    },
+    "role_summary_fr": "Alerte si une personne reste dans la zone plus longtemps que le seuil défini. Détecte la présence prolongée ou le stationnement.",
+    "deployment_scopes": [
+      "enterprise",
+      "domestic"
+    ],
+    "partial_status": "full"
   }
 ]

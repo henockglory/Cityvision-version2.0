@@ -19,29 +19,62 @@
       "priority": 150,
       "suppress_lower": true,
       "pipeline": {
-        "trigger": { "event_type": "zone_presence", "class_filter": "car" },
+        "trigger": {
+          "event_type": "zone_presence",
+          "class_filter": "car"
+        },
         "stages": [
-          { "capability": "plate_ocr", "budget": "high" },
-          { "capability": "speed_estimate" },
-          { "capability": "evidence_capture" }
+          {
+            "capability": "plate_ocr",
+            "budget": "high"
+          },
+          {
+            "capability": "speed_estimate"
+          },
+          {
+            "capability": "evidence_capture"
+          }
         ]
       },
       "condition": {
         "op": "AND",
         "children": [
-          { "op": "eq", "field": "event_type", "value": "vehicle_corridor" },
-          { "op": "gt", "field": "speed_kmh", "value": 50 }
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "vehicle_corridor"
+          },
+          {
+            "op": "gt",
+            "field": "speed_kmh",
+            "value": 50
+          }
         ]
       },
       "actions": [
-        { "type": "alert", "config": { "severity": "high" } },
-        { "type": "record", "config": {} }
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        },
+        {
+          "type": "record",
+          "config": {}
+        }
       ],
       "bindings": {
         "template_id": "tpl-traffic-corridor",
         "class_filter": "car"
       }
-    }
+    },
+    "role_summary_fr": "Pipeline complet trafic : détection véhicule → vitesse → plaque → alerte enrichie.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Pipeline multi-étapes : nécessite calibration vitesse + module ANPR (PaddleOCR)"
   },
   {
     "id": "tpl-speeding-premium",
@@ -49,11 +82,31 @@
     "category": "road-enforcement",
     "severity": "high",
     "supported": true,
-    "prerequisites": ["calibration_vitesse"],
+    "prerequisites": [
+      "calibration_vitesse"
+    ],
     "definition": {
-      "condition": { "op": "eq", "field": "event_type", "value": "speeding" },
-      "actions": [{ "type": "alert", "config": { "severity": "high" } }]
-    }
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "speeding"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Alerte vitesse avancée avec calcul homographique précis et capture de la plaque.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Nécessite une calibration caméra (homographie) + module ANPR optionnel"
   },
   {
     "id": "tpl-wrong-way",
@@ -62,9 +115,26 @@
     "severity": "high",
     "supported": true,
     "definition": {
-      "condition": { "op": "eq", "field": "event_type", "value": "wrong_way" },
-      "actions": [{ "type": "alert", "config": { "severity": "high" } }]
-    }
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "wrong_way"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    },
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "role_summary_fr": "Alerte si une personne ou un véhicule circule dans le mauvais sens sur un axe ou dans une zone.",
+    "partial_status": "full"
   },
   {
     "id": "tpl-line-cross-forbidden",
@@ -73,9 +143,26 @@
     "severity": "medium",
     "supported": true,
     "definition": {
-      "condition": { "op": "eq", "field": "event_type", "value": "line_cross" },
-      "actions": [{ "type": "alert", "config": { "severity": "medium" } }]
-    }
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "line_cross"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Alerte uniquement si l'objet franchit la ligne dans le sens interdit.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-plate-pipeline",
@@ -84,9 +171,24 @@
     "severity": "medium",
     "supported": true,
     "definition": {
-      "condition": { "op": "eq", "field": "event_type", "value": "plate_detected" },
-      "actions": [{ "type": "alert", "config": {} }]
-    }
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "plate_detected"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {}
+        }
+      ]
+    },
+    "role_summary_fr": "Capture et lecture automatique des plaques d'immatriculation à chaque passage.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-congestion",
@@ -95,9 +197,26 @@
     "severity": "low",
     "supported": true,
     "definition": {
-      "condition": { "op": "eq", "field": "event_type", "value": "vehicle_count_threshold" },
-      "actions": [{ "type": "alert", "config": { "severity": "low" } }]
-    }
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "vehicle_count_threshold"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "low"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Surveille la densité du trafic et alerte en cas de congestion persistante.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-accident-composite",
@@ -110,47 +229,142 @@
         "op": "SEQUENCE",
         "window_seconds": 30,
         "children": [
-          { "op": "eq", "field": "event_type", "value": "sudden_stop" },
-          { "op": "eq", "field": "event_type", "value": "vehicle_stopped" }
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "sudden_stop"
+          },
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "vehicle_stopped"
+          }
         ]
       },
-      "actions": [{ "type": "alert", "config": { "severity": "critical" } }]
-    }
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "critical"
+          }
+        }
+      ]
+    },
+    "role_summary_fr": "Scénario accident composite : arrêt brusque + véhicule immobilisé + présence prolongée.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Détection composite : nécessite calibration caméra pour les métriques de vitesse"
   },
   {
     "id": "tpl-red-light",
     "name": "Feu rouge",
     "category": "road-enforcement",
     "severity": "high",
-    "supported": false,
-    "coming_soon": true,
+    "supported": true,
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "red_light_violation"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "high"
+          }
+        }
+      ]
+    },
     "tutorial": {
-      "legend": "Détection feu rouge — modèle dédié en cours d'intégration",
-      "steps": ["Définir zone feu", "Attendre modèle ML — aucune fausse détection simulée"]
-    }
+      "legend": "Détection HSV feu rouge + véhicule en zone intersection",
+      "steps": [
+        "Définir zone intersection",
+        "Calibrer ROI feu",
+        "Activer règle"
+      ]
+    },
+    "role_summary_fr": "Détecte par analyse visuelle les véhicules qui passent au rouge — IA embarquée OpenCV.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   },
   {
     "id": "tpl-seatbelt",
     "name": "Ceinture de sécurité",
     "category": "road-enforcement",
     "severity": "medium",
-    "supported": false,
-    "coming_soon": true,
+    "supported": true,
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "seatbelt_violation"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    },
     "tutorial": {
-      "legend": "Stub catalogue — hook modèle futur, pas de simulation",
-      "steps": ["Zone véhicule conducteur", "Modèle ceinture à venir"]
-    }
+      "legend": "CV cabin conducteur — absence ligne diagonale ceinture",
+      "steps": [
+        "Filtrer véhicules",
+        "Analyser habitacle conducteur",
+        "Alerter si violation"
+      ]
+    },
+    "role_summary_fr": "Détecte l'absence de ceinture de sécurité dans l'habitacle — IA embarquée OpenCV.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Détection ceinture nécessite une caméra haute résolution orientée conducteur (angle ≤45°)"
   },
   {
     "id": "tpl-phone-driving",
     "name": "Téléphone au volant",
     "category": "road-enforcement",
     "severity": "medium",
-    "supported": false,
-    "coming_soon": true,
+    "supported": true,
+    "definition": {
+      "condition": {
+        "op": "eq",
+        "field": "event_type",
+        "value": "phone_driving"
+      },
+      "actions": [
+        {
+          "type": "alert",
+          "config": {
+            "severity": "medium"
+          }
+        }
+      ]
+    },
     "tutorial": {
-      "legend": "Stub catalogue — hook modèle futur, pas de simulation",
-      "steps": ["Zone habitacle", "Modèle téléphone à venir"]
-    }
+      "legend": "Blob peau près oreille (HSV cabin)",
+      "steps": [
+        "Filtrer véhicules",
+        "ROI conducteur",
+        "Détection téléphone"
+      ]
+    },
+    "role_summary_fr": "Détecte l'utilisation d'un téléphone au volant — analyse peau + forme en zone conducteur.",
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
+    "partial_status": "full"
   }
 ]

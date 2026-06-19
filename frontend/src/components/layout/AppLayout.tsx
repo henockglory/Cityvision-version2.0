@@ -35,12 +35,15 @@ export default function AppLayout() {
           <Outlet />
         </MainContent>
         <OnboardingTour enabled />
-        <span
-          className="fixed bottom-2 right-2 z-[5] text-[10px] text-cv-muted/50 pointer-events-none select-none"
-          title="Marqueur build — hard refresh si absent après déploiement"
-        >
-          {BUILD_ID}
-        </span>
+        {/* Build marker — hidden in production, visible only in dev */}
+        {import.meta.env.DEV && (
+          <span
+            className="fixed bottom-2 right-2 z-[5] text-[10px] text-cv-muted/30 pointer-events-none select-none"
+            aria-hidden="true"
+          >
+            {BUILD_ID}
+          </span>
+        )}
       </div>
     </div>
   );

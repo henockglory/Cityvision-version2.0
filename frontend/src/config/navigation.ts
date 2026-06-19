@@ -22,7 +22,7 @@ export const navGroups: NavGroup[] = [
     id: 'security',
     labelKey: 'nav.groups.security',
     items: [
-      { path: '/zones', labelKey: 'nav.zoneEditor', icon: 'PenTool', roles: ['admin', 'operator'] },
+      { path: '/zones', labelKey: 'nav.zoneEditor', icon: 'Shapes', roles: ['admin', 'operator'] },
       { path: '/rules', labelKey: 'nav.rules', icon: 'Workflow', roles: ['admin', 'operator'] },
       { path: '/alerts', labelKey: 'nav.alerts', icon: 'Bell', roles: ['admin', 'operator', 'viewer'] },
       { path: '/events', labelKey: 'nav.events', icon: 'Clock', roles: ['admin', 'operator', 'viewer'] },

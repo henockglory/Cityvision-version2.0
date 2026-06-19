@@ -108,6 +108,8 @@ export interface RuleCatalogTemplate {
   tutorial?: string;
   prerequisites?: string[];
   unsupported_message_fr?: string;
+  partial_status?: "full" | "requires_calibration" | "requires_ocr" | "requires_face_ai" | "partial_aggregate";
+  partial_reason_fr?: string;
 }
 
 export interface RuleCondition {

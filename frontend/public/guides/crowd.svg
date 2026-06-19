@@ -1,0 +1,34 @@
+<svg viewBox="0 0 160 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <!-- Background -->
+  <rect x="0" y="0" width="160" height="100" fill="#0f172a" rx="6"/>
+  <!-- Person silhouettes - crowd -->
+  <g opacity="0.8">
+    <circle cx="25" cy="40" r="6" fill="#8b5cf6"/>
+    <rect x="19" y="47" width="12" height="18" rx="3" fill="#8b5cf6"/>
+    <circle cx="42" cy="38" r="6" fill="#8b5cf6"/>
+    <rect x="36" y="45" width="12" height="18" rx="3" fill="#8b5cf6"/>
+    <circle cx="58" cy="41" r="6" fill="#a78bfa"/>
+    <rect x="52" y="48" width="12" height="18" rx="3" fill="#a78bfa"/>
+    <circle cx="74" cy="38" r="6" fill="#8b5cf6"/>
+    <rect x="68" y="45" width="12" height="18" rx="3" fill="#8b5cf6"/>
+    <circle cx="90" cy="40" r="6" fill="#a78bfa"/>
+    <rect x="84" y="47" width="12" height="18" rx="3" fill="#a78bfa"/>
+    <circle cx="106" cy="42" r="6" fill="#8b5cf6"/>
+    <rect x="100" y="49" width="12" height="18" rx="3" fill="#8b5cf6"/>
+    <circle cx="122" cy="39" r="6" fill="#a78bfa"/>
+    <rect x="116" y="46" width="12" height="18" rx="3" fill="#a78bfa"/>
+    <circle cx="138" cy="41" r="6" fill="#8b5cf6"/>
+    <rect x="132" y="48" width="12" height="18" rx="3" fill="#8b5cf6"/>
+  </g>
+  <!-- Zone boundary -->
+  <rect x="12" y="28" width="136" height="56" rx="6" fill="none" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.6"/>
+  <!-- Counter badge -->
+  <rect x="58" y="8" width="44" height="18" rx="9" fill="#8b5cf6"/>
+  <text x="65" y="21" fill="white" font-size="10" font-weight="bold">8 / 5</text>
+  <!-- Arrow up = threshold exceeded -->
+  <path d="M114 14 L114 6 M110 10 L114 6 L118 10" stroke="#ef4444" stroke-width="1.5"/>
+  <!-- Alert pulse -->
+  <circle cx="138" cy="12" r="8" fill="#ef4444" opacity="0.2"/>
+  <circle cx="138" cy="12" r="5" fill="#ef4444" opacity="0.4"/>
+  <text x="135" y="16" fill="white" font-size="8" font-weight="bold">!</text>
+</svg>
