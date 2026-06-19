@@ -120,6 +120,29 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall-all.ps1 -KeepData -Ye
 
 Après désinstallation, relancez `setup.bat` ou `bash scripts/setup-wsl.sh` pour réinstaller.
 
+### Repartir from scratch (purge totale)
+
+```bash
+# WSL / Linux — supprime venv, node_modules, volumes Docker, logs
+bash scripts/uninstall-all.sh --yes --from-scratch
+```
+
+```powershell
+# Windows (administrateur)
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-all.ps1 -Yes -FromScratch
+```
+
+## Politique auto-fix (zéro échec local)
+
+L'installateur et les scripts `setup-wsl.sh` / `start-linux.sh` **ne se contentent plus d'afficher des WARN** : ils exécutent `scripts/ensure-ai-stack.sh` qui :
+
+1. Installe les extras Python (InsightFace + PaddleOCR) — **sans fallback pip minimal**
+2. Télécharge les modèles manquants (YOLO, buffalo_l, PaddleOCR)
+3. Redémarre l'AI engine si les clés `/health` (`yolo_loaded`, `face_loaded`, `plate_loaded`) sont incomplètes
+4. Réessaie jusqu'à validation (5–8 tentatives selon le contexte)
+
+L'étape **Lancement** de l'installateur 7315 affiche les événements `Correction automatique…` en temps réel. Aucune commande manuelle (`pip install`, `download-models.sh`) n'est requise dans le parcours normal.
+
 Diagnostic :
 
 ```bash

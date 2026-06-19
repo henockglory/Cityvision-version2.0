@@ -62,14 +62,10 @@ if ($SkipServices) {
     exit 0
 }
 
-$venvPython = Join-Path $Root 'ai-engine\.venv\Scripts\python.exe'
-if (-not (Test-Path $venvPython)) {
-    Write-Host "[INFO] Creating AI engine venv..."
-    Push-Location (Join-Path $Root 'ai-engine')
-    python -m venv .venv
-    & .\.venv\Scripts\pip.exe install -q -e . pytest pytest-asyncio httpx uvicorn
-    Pop-Location
-}
+Write-Host "[INFO] Vérification / correction AI stack…"
+& (Join-Path $PSScriptRoot 'ensure-ai-stack.ps1') -Fix -MaxAttempts 5
+if ($LASTEXITCODE -ne 0) { throw 'AI stack incomplete after auto-fix' }
+Write-Host "[OK] AI stack ready"
 
 if (-not (Test-Path (Join-Path $Root 'frontend\node_modules'))) {
     Write-Host "[INFO] npm install frontend..."
@@ -95,6 +91,13 @@ Start-BackgroundProcess -Name 'ai-engine' -WorkingDirectory (Join-Path $Root 'ai
 
 Start-BackgroundProcess -Name 'frontend' -WorkingDirectory (Join-Path $Root 'frontend') `
     -Command 'npm run dev' -LogDir $LogDir
+
+Write-Host ""
+Write-Host "[INFO] Gate IA (YOLO + InsightFace + PaddleOCR)…"
+& (Join-Path $PSScriptRoot 'ensure-ai-stack.ps1') -Fix -RestartAi -MaxAttempts 5 `
+    -HealthUrl "http://127.0.0.1:$aiPort/health"
+if ($LASTEXITCODE -ne 0) { throw 'AI gate not validated after auto-fix' }
+Write-Host "[OK] AI gate validated"
 
 Write-Host ""
 Write-Host "[INFO] Waiting for backend health..."

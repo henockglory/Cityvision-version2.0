@@ -14,6 +14,7 @@
 #>
 param(
     [switch]$KeepData,
+    [switch]$FromScratch,
     [switch]$Yes
 )
 
@@ -100,7 +101,14 @@ if ($wslOk) {
     if ($LASTEXITCODE -eq 0) { $summary.docker = 'ok' } else { $summary.docker = 'warn' }
 
     Write-Log 'Suppression sentinelles…'
-    wsl -- bash -lc "rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode" 2>$null
+    $wslRoot = (wsl -- wslpath -a $Root 2>$null)
+    if (-not $wslRoot) { $wslRoot = '/mnt/c/Users/gheno/citevision-v2' }
+    wsl -- bash -lc "cd '$wslRoot' && rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode" 2>$null
+    if ($FromScratch) {
+        Write-Log 'Purge from-scratch (venv, node_modules, logs)…'
+        wsl -- bash -lc "cd '$wslRoot' && rm -rf ai-engine/.venv frontend/node_modules && rm -f generated.env && rm -f logs/*.log logs/*.pid" 2>$null
+        $summary.from_scratch = 'ok'
+    }
 } else {
     Write-Log 'WSL non disponible — étapes Linux ignorées' 'WARN'
     if (-not $KeepData) {
@@ -108,6 +116,15 @@ if ($wslOk) {
         docker compose -f infra/docker-compose.yml down -v 2>$null
         if ($LASTEXITCODE -eq 0) { $summary.docker = 'ok' }
     }
+}
+
+if ($FromScratch -and -not $wslOk) {
+    Write-Log 'Purge from-scratch (Windows local)…'
+    Remove-Item -Recurse -Force (Join-Path $Root 'ai-engine\.venv') -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force (Join-Path $Root 'frontend\node_modules') -ErrorAction SilentlyContinue
+    Remove-Item -Force (Join-Path $Root 'generated.env') -ErrorAction SilentlyContinue
+    Get-ChildItem (Join-Path $Root 'logs') -Filter '*.log' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem (Join-Path $Root 'logs') -Filter '*.pid' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ''

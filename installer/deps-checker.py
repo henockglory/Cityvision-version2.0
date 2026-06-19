@@ -835,7 +835,29 @@ def install_stream(start_mode: str = "auto"):
         if kind == "done":
             rc = payload
             if rc == 0:
-                yield emit("done", message="Installation terminée avec succès !")
+                yield emit("step", message="Validation post-install AI stack…")
+                try:
+                    import importlib.util
+                    af_spec = importlib.util.spec_from_file_location(
+                        "auto_fix", ROOT / "installer" / "auto-fix.py"
+                    )
+                    af = importlib.util.module_from_spec(af_spec)
+                    af_spec.loader.exec_module(af)
+                    install_ok = True
+                    for evt in af.ensure_install_stack_stream(max_rounds=5):
+                        ev = evt.get("event", "info")
+                        msg = evt.get("message", "")
+                        yield emit(ev, message=msg)
+                        if ev == "error":
+                            install_ok = False
+                            break
+                    if install_ok:
+                        yield emit("done", message="Installation terminée avec succès !")
+                    else:
+                        yield emit("error", message="Installation — AI stack non validé après auto-fix")
+                except Exception as e:
+                    import traceback
+                    yield emit("error", message=f"Validation post-install échouée : {e}\n{traceback.format_exc()}")
             else:
                 yield emit("error", message=f"Erreur lors de l'installation (code {rc})")
             break
@@ -859,6 +881,8 @@ def install_stream(start_mode: str = "auto"):
             low = line.lower()
             if "[err]" in low or "error" in low or "failed" in low:
                 evt = "error"
+            elif "[fix]" in low:
+                evt = "fix"
             elif "[ok]" in low or "success" in low or "complete" in low:
                 evt = "ok"
             elif "[warn]" in low or "warning" in low or "skipped" in low:
@@ -1005,27 +1029,24 @@ def launch_stream():
 
                 yield emit("step", message="Vérification de l'AI Engine (8001)...")
                 ai_up = _poll_port(8001, timeout=120)
-                ai_models_ok = False
-                if ai_up:
-                    yield emit("ok", message="AI Engine démarré — vérification des modèles IA...")
-                    ai_models_ok, missing = _poll_all_ai_models(
-                        "http://localhost:8001/health", timeout=180
+                try:
+                    import importlib.util
+                    af_spec = importlib.util.spec_from_file_location(
+                        "auto_fix", ROOT / "installer" / "auto-fix.py"
                     )
-                    if ai_models_ok:
-                        yield emit("ai_ready", message=(
-                            "AI Engine opérationnel — YOLO, InsightFace et PaddleOCR chargés"
-                        ))
+                    af = importlib.util.module_from_spec(af_spec)
+                    af_spec.loader.exec_module(af)
+                    if ai_up:
+                        yield emit("ok", message="AI Engine démarré — correction automatique si nécessaire…")
                     else:
-                        yield emit("ai_fail", message=(
-                            f"Modèles IA incomplets après 180s : {missing}. "
-                            "Lancez : bash scripts/download-models.sh"
-                        ))
-                else:
-                    yield emit("ai_fail", message=(
-                        "AI Engine non joignable après 120s. "
-                        "Cause probable : erreur de démarrage uvicorn. "
-                        "Consultez logs/ai-engine.log"
-                    ))
+                        yield emit("fix", message="AI Engine non joignable — correction automatique…")
+                    for evt in af.ensure_launch_ai_stream(max_rounds=8):
+                        ev = evt.get("event", "info")
+                        msg = evt.get("message", "")
+                        yield emit(ev, message=msg)
+                except Exception as e:
+                    import traceback
+                    yield emit("ai_fail", message=f"Auto-fix IA échoué : {e}")
 
                 yield emit("step", message="Vérification du moteur de règles (8010)...")
                 if _poll_port(8010, timeout=30):
@@ -1051,7 +1072,9 @@ def launch_stream():
             if not line:
                 continue
             low = line.lower()
-            if "[ok]" in low or "healthy" in low or "ready" in low:
+            if "[fix]" in low:
+                evt = "fix"
+            elif "[ok]" in low or "healthy" in low or "ready" in low:
                 evt = "ok"
             elif "[warn]" in low or "warn" in low or "timeout" in low:
                 evt = "warn"

@@ -200,16 +200,22 @@ else
 fi
 
 _info "AI Engine ($AI_PORT) — YOLO + InsightFace + PaddleOCR..."
-if wait_http_ok "http://127.0.0.1:$AI_PORT/health" 120; then
-  if _wait_all_ai_models "http://127.0.0.1:$AI_PORT/health" 300; then
-    _ok "AI Engine opérationnel — yolo_loaded, face_loaded, plate_loaded"
-  else
-    _err "AI Engine up mais modèles IA incomplets — voir logs/ai-engine.log"
-    _err "Relancez : bash scripts/download-models.sh"
-    HEALTH_OK=false
+AI_MODELS_OK=false
+for _fix_round in 1 2 3 4 5; do
+  if wait_http_ok "http://127.0.0.1:$AI_PORT/health" 30; then
+    if _wait_all_ai_models "http://127.0.0.1:$AI_PORT/health" 120; then
+      AI_MODELS_OK=true
+      _ok "AI Engine opérationnel — yolo_loaded, face_loaded, plate_loaded"
+      break
+    fi
   fi
-else
-  _err "AI Engine inaccessible — voir logs/ai-engine.log"
+  _info "Correction automatique IA (round $_fix_round/5)…"
+  bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --restart-ai \
+    --health-url="http://127.0.0.1:$AI_PORT/health" --max-attempts=3 \
+    >>"$LOG_FILE" 2>&1 || true
+done
+if [[ "$AI_MODELS_OK" != "true" ]]; then
+  _err "AI Engine — modèles IA incomplets après auto-fix"
   HEALTH_OK=false
 fi
 

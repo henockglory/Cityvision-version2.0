@@ -64,54 +64,13 @@ if docker ps --format '{{.Names}}' | grep -q citevision-v2-go2rtc; then
   sleep 3
 fi
 
-if [[ ! -d ai-engine/.venv ]]; then
-  echo "[INFO] Creating AI venv..."
-  python3 -m venv ai-engine/.venv
+# ── AI stack (venv, extras, modèles) — auto-fix, jamais de fallback pip minimal ──
+echo "[INFO] Vérification / correction AI stack…"
+if ! bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --max-attempts=5; then
+  echo "[FAIL] AI stack incomplet après remédiation automatique" >&2
+  exit 1
 fi
-# shellcheck disable=SC1091
-source ai-engine/.venv/bin/activate
-if ! command -v uvicorn >/dev/null 2>&1 || ! python -c "import citevision_ai" 2>/dev/null; then
-  echo "[INFO] Installing AI engine dependencies..."
-  pip install -q -e "ai-engine/.[identity,anpr,dev]" || pip install -q -e ai-engine/. pytest pytest-asyncio httpx
-elif ! python -c "import insightface, paddleocr" 2>/dev/null; then
-  echo "[INFO] Installing InsightFace + PaddleOCR extras..."
-  pip install -q -e "ai-engine/.[identity,anpr,dev]"
-fi
-install_ai_cuda_deps "$ROOT/ai-engine/.venv/bin/pip"
-setup_cuda_library_path "$ROOT/ai-engine/.venv/bin/python3"
-
-# ── Vérifier / télécharger le modèle YOLO avant de démarrer l'AI engine ───
-mkdir -p ai-engine/models
-# Déterminer le modèle requis selon generated.env (fallback: yolov8n.onnx)
-CV_YOLO_MODEL="$(grep '^CV_YOLO_MODEL=' generated.env 2>/dev/null | cut -d= -f2 | tr -d ' \r' || true)"
-CV_YOLO_MODEL="${CV_YOLO_MODEL:-yolov8n.onnx}"
-YOLO_MODEL_PATH="$ROOT/ai-engine/models/$CV_YOLO_MODEL"
-if [[ ! -f "$YOLO_MODEL_PATH" ]]; then
-  echo "[INFO] Modèle YOLO manquant ($CV_YOLO_MODEL) — téléchargement automatique..."
-  YOLO_MODEL="$CV_YOLO_MODEL" bash "$ROOT/scripts/download-yolo-model.sh" 2>&1 \
-    && echo "[OK] Modèle $CV_YOLO_MODEL téléchargé" \
-    || echo "[WARN] Téléchargement $CV_YOLO_MODEL échoué — fallback yolov8n.onnx"
-  # Fallback ultime : tenter yolov8n si le modèle tier n'a pas pu être téléchargé
-  if [[ ! -f "$YOLO_MODEL_PATH" ]] && [[ "$CV_YOLO_MODEL" != "yolov8n.onnx" ]]; then
-    if [[ ! -f "$ROOT/ai-engine/models/yolov8n.onnx" ]]; then
-      YOLO_MODEL="yolov8n.onnx" bash "$ROOT/scripts/download-yolo-model.sh" 2>&1 || true
-    fi
-  fi
-else
-  echo "[OK] Modèle YOLO présent : $CV_YOLO_MODEL"
-fi
-
-# ── InsightFace + PaddleOCR (requis pour gate IA complète) ───
-IFACE_OK=false
-if [[ -d "$ROOT/ai-engine/models/insightface/models/buffalo_l" ]] || [[ -d "$HOME/.insightface/models/buffalo_l" ]]; then
-  IFACE_OK=true
-fi
-if [[ "$IFACE_OK" == "false" ]] || ! python -c "import paddleocr" 2>/dev/null; then
-  echo "[INFO] Téléchargement / initialisation des modèles InsightFace + PaddleOCR..."
-  bash "$ROOT/scripts/download-models.sh" --skip-yolo 2>&1 \
-    && echo "[OK] Modèles IA complémentaires prêts" \
-    || echo "[WARN] Téléchargement InsightFace/PaddleOCR échoué — voir logs ci-dessus"
-fi
+echo "[OK] AI stack prêt"
 
 if [[ ! -d frontend/node_modules ]]; then
   echo "[INFO] npm install..."
@@ -151,39 +110,18 @@ fi
 
 echo ""
 echo "[INFO] Waiting for AI Engine (first run compiles ONNX session)..."
+AI_GATE_OK=false
 if wait_http_ok "http://localhost:$AI_PORT/health" 120; then
-  echo "[OK] AI Engine healthy — http://localhost:$AI_PORT"
-  # Vérifier que YOLO est réellement chargé
-  YOLO_STATUS="$(curl -sf "http://localhost:$AI_PORT/health" 2>/dev/null \
-    | grep -o '"yolo_loaded":"[^"]*"' | cut -d'"' -f4 || echo "unknown")"
-  FACE_STATUS="$(curl -sf "http://localhost:$AI_PORT/health" 2>/dev/null \
-    | grep -o '"face_loaded":"[^"]*"' | cut -d'"' -f4 || echo "unknown")"
-  PLATE_STATUS="$(curl -sf "http://localhost:$AI_PORT/health" 2>/dev/null \
-    | grep -o '"plate_loaded":"[^"]*"' | cut -d'"' -f4 || echo "unknown")"
-  if [[ "$YOLO_STATUS" == "true" ]]; then
-    echo "[OK] YOLO model chargé et opérationnel — inférence vidéo active"
-  else
-    echo "[WARN] AI Engine up mais YOLO non chargé (yolo_loaded=$YOLO_STATUS)"
-    echo "       Tentative de téléchargement du modèle à chaud..."
-    YOLO_MODEL="${CV_YOLO_MODEL:-yolov8n.onnx}" bash "$ROOT/scripts/download-yolo-model.sh" 2>&1 | tail -3 || true
-    echo "       Redémarrez l'AI Engine si le modèle vient d'être téléchargé :"
-    echo "       pkill -f uvicorn && bash scripts/start-linux.sh"
+  echo "[OK] AI Engine reachable — http://localhost:$AI_PORT"
+  if bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --restart-ai \
+      --health-url="http://127.0.0.1:$AI_PORT/health" --max-attempts=5; then
+    AI_GATE_OK=true
+    echo "[OK] YOLO, InsightFace et PaddleOCR chargés (gate IA validée)"
   fi
-  if [[ "$FACE_STATUS" == "true" ]]; then
-    echo "[OK] InsightFace chargé — reconnaissance faciale active"
-  else
-    echo "[WARN] Reconnaissance faciale inactive (face_loaded=$FACE_STATUS)"
-    echo "       Lancez : bash scripts/download-models.sh --skip-yolo"
-  fi
-  if [[ "$PLATE_STATUS" == "true" ]]; then
-    echo "[OK] PaddleOCR chargé — lecture de plaques active"
-  else
-    echo "[WARN] Lecture de plaques inactive (plate_loaded=$PLATE_STATUS)"
-    echo "       Lancez : bash scripts/download-models.sh --skip-yolo"
-  fi
-else
-  echo "[WARN] AI Engine non joignable après 120s — vérifiez logs/ai-engine.log"
-  echo "       Règles de détection vidéo désactivées jusqu'au démarrage de l'AI Engine"
+fi
+if [[ "$AI_GATE_OK" != "true" ]]; then
+  echo "[FAIL] Gate IA non validée après remédiation automatique" >&2
+  exit 1
 fi
 
 echo ""

@@ -19,9 +19,21 @@ for arg in "$@"; do
 done
 
 PYTHON="$ROOT/ai-engine/.venv/bin/python"
+PIP="$ROOT/ai-engine/.venv/bin/pip"
 if [[ ! -x "$PYTHON" ]]; then
   PYTHON="$(command -v python3.12 || command -v python3 || echo python3)"
+  PIP="$(command -v pip3 || command -v pip || echo pip3)"
 fi
+
+_ensure_pip_extra() {
+  local module="$1"
+  local extra="$2"
+  if ! "$PYTHON" -c "import $module" 2>/dev/null; then
+    echo "[FIX] Auto-install pip extra [$extra] pour $module…"
+    "$PIP" install -e "$ROOT/ai-engine/.[identity,anpr,dev]" 2>/dev/null \
+      || "$PIP" install --no-cache-dir -e "$ROOT/ai-engine/.[identity,anpr,dev]"
+  fi
+}
 
 mkdir -p "$MODEL_DIR" "$IFACE_DIR"
 
@@ -33,13 +45,10 @@ else
 fi
 
 echo "==> Downloading InsightFace buffalo_l"
+_ensure_pip_extra insightface identity
 if [[ -d "$IFACE_DIR/models/buffalo_l" ]] || [[ -d "$HOME/.insightface/models/buffalo_l" ]]; then
   echo "[OK] InsightFace buffalo_l already present"
 else
-  if ! "$PYTHON" -c "import insightface" 2>/dev/null; then
-    echo "[ERR] insightface not installed — run: pip install -e 'ai-engine/.[identity]'" >&2
-    exit 1
-  fi
   "$PYTHON" - <<PY
 from pathlib import Path
 root = Path("${ROOT}")
@@ -54,9 +63,10 @@ PY
 fi
 
 echo "==> Initializing PaddleOCR models"
+_ensure_pip_extra paddleocr anpr
 if ! "$PYTHON" -c "import paddleocr" 2>/dev/null; then
-  echo "[ERR] paddleocr not installed — run: pip install -e 'ai-engine/.[anpr]'" >&2
-  exit 1
+  echo "[FIX] pip install anpr extras…"
+  "$PIP" install --no-cache-dir -e "$ROOT/ai-engine/.[identity,anpr,dev]"
 fi
 "$PYTHON" - <<'PY'
 try:

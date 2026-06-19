@@ -16,10 +16,12 @@ cd "$ROOT"
 
 KEEP_DATA=false
 ASSUME_YES=false
+FROM_SCRATCH=false
 
 for arg in "$@"; do
   case "$arg" in
     --keep-data) KEEP_DATA=true ;;
+    --from-scratch) FROM_SCRATCH=true ;;
     --yes) ASSUME_YES=true ;;
     --help)
       cat <<'EOF'
@@ -29,9 +31,10 @@ Désinstalle CitéVision v2 : arrêt services, suppression service système,
 Docker down (volumes supprimés par défaut).
 
 Options:
-  --keep-data   Conserve les volumes Docker
-  --yes         Sans confirmation interactive
-  --help        Afficher cette aide
+  --keep-data     Conserve les volumes Docker
+  --from-scratch  Supprime venv, node_modules, logs et sentinelles
+  --yes           Sans confirmation interactive
+  --help          Afficher cette aide
 EOF
       exit 0
       ;;
@@ -87,6 +90,15 @@ fi
 
 # 5. Sentinelles
 rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode 2>/dev/null || true
+
+# 6. Purge profonde (from scratch)
+if [[ "$FROM_SCRATCH" == "true" ]]; then
+  echo "[INFO] Purge from-scratch (venv, node_modules, logs)…"
+  rm -rf ai-engine/.venv frontend/node_modules 2>/dev/null || true
+  rm -f generated.env 2>/dev/null || true
+  rm -f logs/*.log logs/*.pid 2>/dev/null || true
+  echo "[OK]   Purge from-scratch terminée"
+fi
 
 echo ""
 echo "[OK]   Désinstallation terminée"

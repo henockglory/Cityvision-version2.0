@@ -332,6 +332,9 @@ function startInstall() {
           appendLog('  ' + text, 'ok');
         } else if (msg.event === 'warn') {
           appendLog('  ' + text, 'warn');
+        } else if (msg.event === 'fix') {
+          appendLog('  ' + text, 'fix');
+          step.textContent = text;
         } else if (msg.event === 'error') {
           appendLog('  ' + text, 'error');
         } else if (msg.event === 'info' || msg.event === 'log') {
@@ -374,6 +377,7 @@ function startLaunch() {
   let progress   = 0;
   let hbEl       = null;
   let aiOk       = false;
+  let aiFailed   = false;
   let launchReady = false;
   let appUrl     = 'http://localhost:5174';
   let bannerEl   = null;
@@ -435,12 +439,8 @@ function startLaunch() {
   }
 
   function showFallbackBtn() {
-    if (fallbackBtn) return;
-    fallbackBtn = document.createElement('button');
-    fallbackBtn.className = 'btn-fallback';
-    fallbackBtn.textContent = 'Ouvrir sans IA (mode dégradé)';
-    fallbackBtn.onclick = () => openCiteVision(appUrl);
-    btnArea.appendChild(fallbackBtn);
+    // Mode dégradé réservé — désactivé par défaut (auto-fix prioritaire)
+    return;
   }
 
   async function openCiteVision(url) {
@@ -514,6 +514,7 @@ function startLaunch() {
         appendLog('  ' + text, 'ok');
         step.textContent = 'IA active — prête à détecter';
         if (launchReady) {
+          fill.style.width = '100%'; pct.textContent = '100%';
           btn.disabled = false;
           btn.onclick = () => openCiteVision(appUrl);
         }
@@ -522,36 +523,54 @@ function startLaunch() {
 
       // ── AI échouée ───────────────────────────────────────────
       if (msg.event === 'ai_fail') {
+        aiFailed = true;
         removeAiWaiting();
         appendLog('  ' + text, 'error');
         showBanner(text, 'fail');
-        step.textContent = 'IA non disponible — détection vidéo inactive';
-        // Le bouton principal reste désactivé — proposer le mode dégradé
-        showFallbackBtn();
+        step.textContent = 'Correction IA en cours ou échec — voir logs';
+        return;
+      }
+
+      if (msg.event === 'fix') {
+        removeBanner();
+        appendLog('  ' + text, 'fix');
+        step.textContent = text;
+        return;
+      }
+
+      // ── AI échouée (legacy — remplacé par fix loop) ───────────
+      if (msg.event === 'ai_fail_legacy') {
+        aiFailed = true;
+        removeAiWaiting();
+        appendLog('  ' + text, 'error');
+        showBanner(text, 'fail');
+        step.textContent = 'IA non disponible';
         return;
       }
 
       // ── Interface prête (5174) ────────────────────────────────
       if (msg.event === 'launch_ready') {
         clearInterval(timer);
-        fill.style.width = '100%'; pct.textContent = '100%';
+        if (aiOk) {
+          fill.style.width = '100%'; pct.textContent = '100%';
+        }
         appUrl = text || appUrl;
         launchReady = true;
         appendLog('  Interface CitéVision accessible', 'ok');
 
         if (aiOk) {
-          // IA déjà confirmée avant la réception de launch_ready
           step.textContent = 'Application prête — IA active';
           removeBanner();
           removeAiWaiting();
           btn.disabled = false;
           btn.onclick = () => openCiteVision(appUrl);
+        } else if (aiFailed) {
+          step.textContent = 'Interface prête — gate IA non validée';
+          showBanner('Les corrections automatiques n\'ont pas abouti — consultez les logs', 'fail');
         } else {
-          // IA pas encore confirmée — bloquer le bouton et attendre ai_ready / ai_fail
-          step.textContent = 'Interface prête — initialisation de l\'IA…';
+          step.textContent = 'Interface prête — finalisation IA…';
           showAiWaiting();
-          showBanner('Initialisation de l\'IA en cours — veuillez patienter…', 'warn');
-          // Le bouton s'activera à la réception de ai_ready (ci-dessus)
+          showBanner('Correction automatique de l\'IA en cours…', 'warn');
         }
         es.close();
         return;
@@ -564,6 +583,7 @@ function startLaunch() {
         progress = Math.min(progress + 6, 88);
         fill.style.width = progress.toFixed(1) + '%'; pct.textContent = Math.floor(progress) + '%';
       } else if (msg.event === 'ok')    { appendLog('  ' + text, 'ok'); }
+      else if (msg.event === 'fix')     { appendLog('  ' + text, 'fix'); step.textContent = text; }
       else if (msg.event === 'warn')    { appendLog('  ' + text, 'warn'); }
       else if (msg.event === 'error')   { appendLog('  ' + text, 'error'); clearInterval(timer); }
       else if (msg.event === 'info')    { appendLog('  ' + text, 'info'); }

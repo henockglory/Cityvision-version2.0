@@ -124,26 +124,7 @@ _step "Environment file"
 ensure_env_file "$ROOT" >/dev/null
 _ok ".env file ready"
 
-# ── Python virtualenv ────────────────────────────────────────
-_step "Python virtualenv (AI Engine)"
-VENV_SENTINEL="ai-engine/.venv/.installed_ok"
-if [[ ! -d ai-engine/.venv ]]; then
-  _info "Creating Python 3.12 virtualenv…"
-  python3.12 -m venv ai-engine/.venv
-fi
-# shellcheck disable=SC1091
-source ai-engine/.venv/bin/activate
-if [[ -f "$VENV_SENTINEL" ]] && python -c "import citevision_ai, insightface, paddleocr" 2>/dev/null; then
-  _info "Python packages already installed — skipping pip install"
-else
-  _info "Installing AI engine requirements (YOLO + InsightFace + PaddleOCR)…"
-  pip install --upgrade pip -q 2>>"${LOG_FILE:-/dev/null}"
-  ( cd ai-engine && pip install -q -e '.[identity,anpr,dev]' 2>>"${LOG_FILE:-/dev/null}" )
-  touch "$VENV_SENTINEL"
-fi
-_ok "Python virtualenv ready"
-
-# ── Frontend node_modules ────────────────────────────────────
+# ── Frontend node_modules (avant profil matériel) ─────────────────
 _step "Frontend dependencies"
 if [[ ! -d frontend/node_modules ]] || [[ ! -f frontend/node_modules/.package-lock.json && ! -f frontend/node_modules/.modules.yaml ]]; then
   _info "Running npm install…"
@@ -157,7 +138,6 @@ fi
 _step "Hardware profile"
 _info "Génération du profil matériel et de generated.env..."
 
-# Chercher Python dans le venv, puis Python 3.12, puis python3
 PYTHON_CMD=""
 if [[ -f "ai-engine/.venv/bin/python" ]]; then
   PYTHON_CMD="ai-engine/.venv/bin/python"
@@ -177,44 +157,14 @@ else
   _warn "Python ou apply-hardware-profile.py introuvable — generated.env non créé"
 fi
 
-# ── YOLO model download (selon le tier GPU détecté) ──────────
-_step "YOLO model"
+# ── AI stack complet (venv + pip + modèles) — auto-fix obligatoire ──
+_step "AI Engine stack (venv + modèles IA)"
 mkdir -p ai-engine/models logs
-
-# Lire le modèle recommandé par le profil GPU, sinon yolov8n par défaut
-CV_YOLO_MODEL="$(grep '^CV_YOLO_MODEL=' generated.env 2>/dev/null | cut -d= -f2 | tr -d ' \r' || true)"
-CV_YOLO_MODEL="${CV_YOLO_MODEL:-yolov8n.onnx}"
-_info "Modèle YOLO requis selon profil GPU : $CV_YOLO_MODEL"
-
-if [[ -f "ai-engine/models/$CV_YOLO_MODEL" ]]; then
-  _ok "Modèle $CV_YOLO_MODEL déjà présent"
+if bash scripts/ensure-ai-stack.sh --fix --max-attempts=5 >>"${LOG_FILE:-/dev/null}" 2>&1; then
+  _ok "AI stack prêt (YOLO + InsightFace + PaddleOCR)"
 else
-  _info "Téléchargement de $CV_YOLO_MODEL…"
-  if [[ -f "scripts/download-yolo-model.sh" ]]; then
-    YOLO_MODEL="$CV_YOLO_MODEL" bash scripts/download-yolo-model.sh 2>>"${LOG_FILE:-/dev/null}" \
-      && _ok "$CV_YOLO_MODEL téléchargé" \
-      || _warn "Téléchargement de $CV_YOLO_MODEL échoué"
-  else
-    _warn "scripts/download-yolo-model.sh introuvable"
-  fi
-fi
-
-# Toujours s'assurer que yolov8n.onnx est présent (fallback universel)
-if [[ "$CV_YOLO_MODEL" != "yolov8n.onnx" ]] && [[ ! -f "ai-engine/models/yolov8n.onnx" ]]; then
-  _info "Téléchargement du modèle de secours yolov8n.onnx…"
-  YOLO_MODEL="yolov8n.onnx" bash scripts/download-yolo-model.sh 2>>"${LOG_FILE:-/dev/null}" \
-    && _ok "yolov8n.onnx (fallback) téléchargé" \
-    || _warn "Téléchargement yolov8n.onnx échoué — download-yolo-model.sh requis manuellement"
-fi
-
-# ── Modèles IA complémentaires (InsightFace + PaddleOCR) ─────
-_step "Modèles IA (InsightFace + PaddleOCR)"
-if [[ -f "scripts/download-models.sh" ]]; then
-  bash scripts/download-models.sh --skip-yolo 2>>"${LOG_FILE:-/dev/null}" \
-    && _ok "Modèles InsightFace et PaddleOCR prêts" \
-    || _warn "Téléchargement InsightFace/PaddleOCR échoué — voir logs"
-else
-  _warn "scripts/download-models.sh introuvable"
+  _err "AI stack incomplet après remédiation automatique — voir logs/installer.log"
+  exit 1
 fi
 
 # ── Mode de démarrage du service (enregistré au premier lancement) ──
