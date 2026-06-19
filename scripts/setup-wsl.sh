@@ -6,6 +6,7 @@
 # Options:
 #   --silent              Suppress non-essential output (still logs errors)
 #   --log-file=<path>     Redirect all output to file in addition to stdout
+#   --start-mode=auto|manual  Mode de démarrage du service systemd (défaut: auto)
 #   --help                Show this help
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -13,13 +14,15 @@ set -euo pipefail
 # ── Argument parsing ──────────────────────────────────────────
 SILENT=false
 LOG_FILE=""
+START_MODE="auto"
 
 for arg in "$@"; do
   case "$arg" in
     --silent)          SILENT=true ;;
     --log-file=*)      LOG_FILE="${arg#*=}" ;;
+    --start-mode=*)    START_MODE="${arg#*=}" ;;
     --help)
-      echo "Usage: bash scripts/setup-wsl.sh [--silent] [--log-file=<path>]"
+      echo "Usage: bash scripts/setup-wsl.sh [--silent] [--log-file=<path>] [--start-mode=auto|manual]"
       exit 0 ;;
     *)
       echo "[WARN] Unknown argument: $arg" ;;
@@ -202,6 +205,29 @@ if [[ "$CV_YOLO_MODEL" != "yolov8n.onnx" ]] && [[ ! -f "ai-engine/models/yolov8n
   YOLO_MODEL="yolov8n.onnx" bash scripts/download-yolo-model.sh 2>>"${LOG_FILE:-/dev/null}" \
     && _ok "yolov8n.onnx (fallback) téléchargé" \
     || _warn "Téléchargement yolov8n.onnx échoué — download-yolo-model.sh requis manuellement"
+fi
+
+# ── Service système (citevision.service) ─────────────────────
+_step "Service système (citevision.service)"
+if [[ "$START_MODE" != "auto" && "$START_MODE" != "manual" ]]; then
+  _warn "Mode de démarrage invalide ($START_MODE) — utilisation de 'auto'"
+  START_MODE="auto"
+fi
+
+if command -v systemctl &>/dev/null && [[ -f "installer/linux/install-service.sh" ]]; then
+  chmod +x installer/linux/install-service.sh 2>/dev/null || true
+  if sudo -n true 2>/dev/null; then
+    sudo bash installer/linux/install-service.sh \
+      --root="$ROOT" --user="$(whoami)" --start-mode="$START_MODE" \
+      2>>"${LOG_FILE:-/dev/null}" \
+      && _ok "Service citevision.service enregistré (mode: $START_MODE)" \
+      || _warn "Enregistrement service échoué — lancez: sudo bash installer/linux/install-service.sh"
+  else
+    _warn "Sudo requis pour enregistrer citevision.service"
+    _warn "Lancez: sudo bash installer/linux/install-service.sh --root=$ROOT --user=$(whoami) --start-mode=$START_MODE"
+  fi
+else
+  _warn "systemd non disponible — service citevision.service non enregistré"
 fi
 
 _log ""

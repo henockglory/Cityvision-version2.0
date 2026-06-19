@@ -663,15 +663,35 @@ def _win_path_exists(p: Path) -> bool:
 # ---------------------------------------------------------------------------
 # SSE install stream
 # ---------------------------------------------------------------------------
-def install_stream():
+def _register_windows_service(start_mode: str) -> tuple[bool, str]:
+    """Enregistre ou met à jour le service Windows CitéVision via NSSM."""
+    ps1 = ROOT / "installer" / "windows" / "install-service.ps1"
+    if not ps1.exists():
+        return False, f"Script introuvable : {ps1}"
+    rc, out, err = _run([
+        "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", str(ps1), "-StartMode", start_mode,
+    ], timeout=120)
+    msg = (out or err or "").strip()
+    if rc == 0:
+        return True, msg or f"Service Windows enregistré (mode: {start_mode})"
+    return False, msg or f"Enregistrement service Windows échoué (code {rc})"
+
+
+def install_stream(start_mode: str = "auto"):
     """
     Générateur SSE : installe les dépendances manquantes via setup-wsl.sh.
     Sur Windows, le script est exécuté via WSL avec la conversion de chemin.
     """
+    if start_mode not in ("auto", "manual"):
+        start_mode = "auto"
+
     def emit(event: str, **kw) -> str:
         return f"data: {json.dumps({'event': event, **kw}, ensure_ascii=False)}\n\n"
 
     yield emit("step", message="Démarrage de l'installation CitéVision v2…")
+    mode_label = "automatique" if start_mode == "auto" else "manuel"
+    yield emit("info", message=f"Mode de démarrage du service : {mode_label}")
 
     setup_script = ROOT / "scripts" / "setup-wsl.sh"
     log_dir = ROOT / "logs"
@@ -699,6 +719,7 @@ def install_stream():
             "bash", wsl_script,
             "--silent",
             f"--log-file={wsl_log}",
+            f"--start-mode={start_mode}",
         ]
         subprocess.run(
             ["wsl", "--", "mkdir", "-p", wsl_log_dir],
@@ -712,7 +733,10 @@ def install_stream():
         popen_kwargs["errors"] = "replace"
     else:
         yield emit("step", message="Démarrage de l'installation Linux…")
-        cmd = ["bash", str(setup_script), "--silent", f"--log-file={log_file}"]
+        cmd = [
+            "bash", str(setup_script), "--silent",
+            f"--log-file={log_file}", f"--start-mode={start_mode}",
+        ]
         popen_kwargs["text"] = True
 
     yield emit("ok", message=f"Commande : {' '.join(cmd[:4])}...")
@@ -758,6 +782,17 @@ def install_stream():
         if kind == "done":
             rc = payload
             if rc == 0:
+                if IS_WINDOWS:
+                    yield emit("step", message="Enregistrement du service Windows CitéVision…")
+                    ok, msg = _register_windows_service(start_mode)
+                    if ok:
+                        yield emit("ok", message=msg)
+                        if start_mode == "manual":
+                            yield emit("info", message="Mode manuel — démarrer via: sc start CitéVision ou services.msc")
+                    else:
+                        yield emit("warn", message=msg)
+                elif start_mode == "manual":
+                    yield emit("info", message="Mode manuel — démarrer via: sudo systemctl start citevision")
                 yield emit("done", message="Installation terminée avec succès !")
             else:
                 yield emit("error", message=f"Erreur lors de l'installation (code {rc})")

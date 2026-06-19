@@ -197,10 +197,43 @@
 
       <div class="step-content">
         <div class="step-header">
-          <h2>Installation en cours</h2>
+          <h2>Installation</h2>
           <p>Configuration automatique de l'environnement CitéVision</p>
         </div>
 
+        <div id="service-mode-panel" class="service-mode-panel">
+          <h3>Mode de démarrage du service</h3>
+          <p class="service-mode-desc">Le service système permet de démarrer et arrêter CitéVision via le panneau Services (Windows) ou systemctl (Linux).</p>
+
+          <label class="mode-opt selected" data-value="auto">
+            <input type="radio" name="service-mode" value="auto" checked hidden>
+            <div class="mode-opt-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </div>
+            <div class="mode-opt-body">
+              <strong>Automatique (recommandé)</strong>
+              <span>CitéVision démarre avec le système — redémarrage instantané après installation</span>
+            </div>
+          </label>
+
+          <label class="mode-opt" data-value="manual">
+            <input type="radio" name="service-mode" value="manual" hidden>
+            <div class="mode-opt-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+            </div>
+            <div class="mode-opt-body">
+              <strong>Manuel</strong>
+              <span>Windows : <code>sc start CitéVision</code> — Linux : <code>systemctl start citevision</code></span>
+            </div>
+          </label>
+
+          <button class="btn btn-primary" id="btn-start-install" onclick="window.app.startInstall()">
+            Lancer l'installation
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+
+        <div id="install-progress-area" style="display:none">
         <div class="install-progress">
           <div class="install-progress-bar">
             <div class="install-progress-fill" id="install-fill"></div>
@@ -218,6 +251,7 @@
             Démarrer CitéVision
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
+        </div>
         </div>
       </div>
     </div>

@@ -388,6 +388,80 @@ html, body {
 .dep-item.error     .dep-badge { background: rgba(249,115,22,.15); color: #fed7aa; }
 .dep-item.installing .dep-badge { background: rgba(59,130,246,.15); color: #93c5fd; }
 
+/* ── Service mode selector (install step) ─────────────────── */
+.service-mode-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.service-mode-panel h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.service-mode-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: -6px;
+}
+.mode-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(var(--cv-surface), 0.5);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.mode-opt:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+.mode-opt.selected {
+  border-color: rgb(var(--cv-accent));
+  background: rgba(59, 130, 246, 0.08);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.15);
+}
+.mode-opt-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.12);
+  color: rgb(var(--cv-accent));
+}
+.mode-opt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mode-opt-body strong {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.mode-opt-body span {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.mode-opt-body code {
+  font-size: 0.72rem;
+  background: rgba(0,0,0,0.25);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: rgb(var(--cv-cyan));
+}
+.service-mode-panel .btn-primary {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
 /* ── Progress install ──────────────────────────────────────── */
 .install-progress { display: flex; flex-direction: column; gap: 16px; }
 

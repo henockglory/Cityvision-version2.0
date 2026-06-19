@@ -238,7 +238,39 @@ const ICON = {
 };
 
 // ── Install ───────────────────────────────────────────────────
+function resetInstallStep() {
+  const panel = document.getElementById('service-mode-panel');
+  const area  = document.getElementById('install-progress-area');
+  const log   = document.getElementById('install-log');
+  const fill  = document.getElementById('install-fill');
+  const pct   = document.getElementById('install-pct');
+  const step  = document.getElementById('install-current-step');
+  if (panel) panel.style.display = '';
+  if (area)  area.style.display = 'none';
+  if (log)   log.innerHTML = '';
+  if (fill)  fill.style.width = '0%';
+  if (pct)   pct.textContent = '0%';
+  if (step)  step.textContent = 'Démarrage…';
+}
+
+function bindServiceModeSelector() {
+  document.querySelectorAll('.mode-opt').forEach(el => {
+    el.onclick = () => {
+      document.querySelectorAll('.mode-opt').forEach(o => o.classList.remove('selected'));
+      el.classList.add('selected');
+      const radio = el.querySelector('input[type="radio"]');
+      if (radio) radio.checked = true;
+    };
+  });
+}
+
 function startInstall() {
+  const mode = document.querySelector('.mode-opt.selected')?.dataset.value || 'auto';
+  const panel = document.getElementById('service-mode-panel');
+  const area  = document.getElementById('install-progress-area');
+  if (panel) panel.style.display = 'none';
+  if (area)  area.style.display = '';
+
   const log   = document.getElementById('install-log');
   const fill  = document.getElementById('install-fill');
   const pct   = document.getElementById('install-pct');
@@ -266,7 +298,7 @@ function startInstall() {
   }, 400);
 
   try {
-    const es = new EventSource(API + '/api/install');
+    const es = new EventSource(API + '/api/install?start_mode=' + encodeURIComponent(mode));
     es.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
@@ -487,11 +519,11 @@ function startLaunch() {
 // ── Navigation ────────────────────────────────────────────────
 function goToHardware() { showStep('hardware'); loadHardware(); }
 function goToDeps()     { showStep('deps');     loadDeps(); }
-function goToInstall()  { showStep('install');  startInstall(); }
+function goToInstall()  { showStep('install'); resetInstallStep(); bindServiceModeSelector(); }
 function goToLaunch()   { showStep('launch');   startLaunch(); }
 function goToReady()    { showStep('ready'); }
 
-window.app = { loadHardware, goToHardware, loadDeps, goToDeps, goToInstall, goToLaunch, goToReady, startInstall, startLaunch };
+window.app = { loadHardware, goToHardware, loadDeps, goToDeps, goToInstall, goToLaunch, goToReady, startInstall, startLaunch, resetInstallStep };
 
 // ── Boot ──────────────────────────────────────────────────────
 runSplash();

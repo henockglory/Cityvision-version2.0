@@ -5,11 +5,20 @@
   Télécharge NSSM si absent, puis enregistre le service "CitéVision"
   qui démarre start-linux.sh dans WSL et s'arrête proprement via stop-linux.sh.
 
+.PARAMETER StartMode
+  auto   — démarrage automatique avec Windows (SERVICE_AUTO_START)
+  manual — démarrage manuel via services.msc ou sc start (SERVICE_DEMAND_START)
+
 .NOTES
   Requiert des droits Administrateur.
-  Appelé automatiquement par setup.bat.
-  Retourne JSON sur stdout : {"service_ok": bool, "already_existed": bool, "error": string|null}
+  Appelé par install_stream() après setup-wsl.sh.
+  Retourne JSON : {"service_ok": bool, "already_existed": bool, "start_mode": string, "error": string|null}
 #>
+
+param(
+    [ValidateSet("auto", "manual")]
+    [string]$StartMode = "auto"
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -24,8 +33,20 @@ function Write-Log { param([string]$msg, [string]$level = "INFO")
     Write-Host "[$level] $msg"
 }
 
-function Out-Result { param([bool]$ok, [bool]$existed, [string]$err = "")
-    @{ service_ok = $ok; already_existed = $existed; error = $err } | ConvertTo-Json -Compress
+function Out-Result {
+    param([bool]$ok, [bool]$existed, [string]$err = "")
+    @{
+        service_ok      = $ok
+        already_existed = $existed
+        start_mode      = $StartMode
+        error           = $(if ($err) { $err } else { $null })
+    } | ConvertTo-Json -Compress
+}
+
+function Set-ServiceStartMode {
+    param([string]$Mode)
+    $nssmStart = if ($Mode -eq "auto") { "SERVICE_AUTO_START" } else { "SERVICE_DEMAND_START" }
+    & $NSSM_EXE set $SERVICE_NAME Start $nssmStart | Out-Null
 }
 
 # ── Vérifier admin ────────────────────────────────────────────────────────────
@@ -49,7 +70,6 @@ if (-not (Test-Path $NSSM_EXE)) {
         Invoke-WebRequest -Uri $NSSM_URL -OutFile $zipPath -UseBasicParsing -TimeoutSec 30
         $extractDir = "$env:TEMP\nssm-extract"
         Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-        # L'archive contient nssm-2.24/win64/nssm.exe
         $nssmBin = Get-ChildItem -Path $extractDir -Recurse -Filter "nssm.exe" |
             Where-Object { $_.FullName -match "win64" } |
             Select-Object -First 1
@@ -78,7 +98,7 @@ function ConvertTo-WslPath { param([string]$winPath)
     $rest   = $winPath.Substring(2) -replace '\\', '/'
     return "/mnt/$drive$rest"
 }
-$wslRoot      = ConvertTo-WslPath $ROOT
+$wslRoot        = ConvertTo-WslPath $ROOT
 $wslStartScript = "$wslRoot/scripts/start-linux.sh"
 $wslStopScript  = "$wslRoot/scripts/stop-linux.sh"
 
@@ -91,58 +111,58 @@ if (-not (Test-Path $wslExe)) {
     exit 1
 }
 
-# ── Vérifier si service déjà enregistré ──────────────────────────────────────
+# ── Service déjà enregistré → mettre à jour le mode de démarrage ─────────────
 $existingService = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
 if ($existingService) {
-    Write-Log "Service '$SERVICE_NAME' déjà enregistré (état : $($existingService.Status))."
-    Out-Result $true $true
-    exit 0
+    Write-Log "Service '$SERVICE_NAME' déjà enregistré — mise à jour mode: $StartMode"
+    try {
+        Set-ServiceStartMode -Mode $StartMode
+        Write-Log "Mode de démarrage mis à jour ($StartMode)."
+        Out-Result $true $true
+        exit 0
+    } catch {
+        Write-Log "Erreur mise à jour mode : $_" "ERROR"
+        Out-Result $false $true "$_"
+        exit 1
+    }
 }
 
 # ── Enregistrer le service CitéVision ────────────────────────────────────────
-Write-Log "Enregistrement du service Windows '$SERVICE_NAME'..."
+Write-Log "Enregistrement du service Windows '$SERVICE_NAME' (mode: $StartMode)..."
 
 try {
-    # Installation principale : wsl.exe "-- bash <start-linux.sh>"
     & $NSSM_EXE install $SERVICE_NAME $wslExe | Out-Null
     & $NSSM_EXE set $SERVICE_NAME AppParameters "-- bash `"$wslStartScript`"" | Out-Null
 
-    # Métadonnées
     & $NSSM_EXE set $SERVICE_NAME DisplayName "CitéVision — Surveillance IA" | Out-Null
-    & $NSSM_EXE set $SERVICE_NAME Description "Plateforme d'analyse vidéo intelligente CitéVision v2. Démarrez/arrêtez via ce panneau ou via setup.bat." | Out-Null
+    & $NSSM_EXE set $SERVICE_NAME Description "Plateforme d'analyse vidéo intelligente CitéVision v2. Démarrez/arrêtez via services.msc ou sc start/stop CitéVision." | Out-Null
 
-    # Démarrage automatique avec Windows
-    & $NSSM_EXE set $SERVICE_NAME Start SERVICE_AUTO_START | Out-Null
+    Set-ServiceStartMode -Mode $StartMode
 
-    # Répertoire de travail
     & $NSSM_EXE set $SERVICE_NAME AppDirectory $ROOT | Out-Null
-
-    # Logs service
     & $NSSM_EXE set $SERVICE_NAME AppStdout "$LOGS_DIR\service.log" | Out-Null
     & $NSSM_EXE set $SERVICE_NAME AppStderr "$LOGS_DIR\service-error.log" | Out-Null
     & $NSSM_EXE set $SERVICE_NAME AppRotateFiles 1 | Out-Null
-    & $NSSM_EXE set $SERVICE_NAME AppRotateBytes 5242880 | Out-Null  # 5 Mo
+    & $NSSM_EXE set $SERVICE_NAME AppRotateBytes 5242880 | Out-Null
 
-    # Arrêt propre : délais avant kill, pour laisser stop-linux.sh s'exécuter
-    & $NSSM_EXE set $SERVICE_NAME AppStopMethodSkip 6 | Out-Null       # skip Ctrl+C direct
+    & $NSSM_EXE set $SERVICE_NAME AppStopMethodSkip 6 | Out-Null
     & $NSSM_EXE set $SERVICE_NAME AppStopMethodConsole 5000 | Out-Null
     & $NSSM_EXE set $SERVICE_NAME AppStopMethodWindow 5000 | Out-Null
     & $NSSM_EXE set $SERVICE_NAME AppStopMethodThreads 5000 | Out-Null
 
-    # Pré-stop : exécuter stop-linux.sh avant que NSSM tue le processus
     & $NSSM_EXE set $SERVICE_NAME AppEvents "Stop/Pre" "`"$wslExe`" -- bash `"$wslStopScript`"" | Out-Null
-
-    # Redémarrage automatique en cas de crash (délai 10s)
     & $NSSM_EXE set $SERVICE_NAME AppRestartDelay 10000 | Out-Null
 
-    Write-Log "Service '$SERVICE_NAME' enregistré avec succès."
-    Write-Log "  Démarrage : sc start `"$SERVICE_NAME`"  ou via services.msc"
-    Write-Log "  Arrêt    : sc stop  `"$SERVICE_NAME`"  ou via services.msc"
+    Write-Log "Service '$SERVICE_NAME' enregistré avec succès (mode: $StartMode)."
+    if ($StartMode -eq "auto") {
+        Write-Log "  Démarrage automatique avec Windows activé."
+    } else {
+        Write-Log "  Mode manuel — démarrer via: sc start `"$SERVICE_NAME`" ou services.msc"
+    }
     Out-Result $true $false
     exit 0
 } catch {
     Write-Log "Erreur lors de l'enregistrement du service : $_" "ERROR"
-    # Nettoyage en cas d'échec partiel
     & $NSSM_EXE remove $SERVICE_NAME confirm 2>$null
     Out-Result $false $false "$_"
     exit 1

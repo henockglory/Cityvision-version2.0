@@ -29,6 +29,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 PORT = 7315
 INSTALLER_DIR = Path(__file__).resolve().parent
@@ -249,10 +250,15 @@ class InstallerHandler(BaseHTTPRequestHandler):
             return
 
         # SSE install stream — EventSource only supports GET
-        if path == "/api/install":
+        if path == "/api/install" or path.startswith("/api/install?"):
             try:
+                parsed = urlparse(self.path)
+                qs = parse_qs(parsed.query)
+                start_mode = qs.get("start_mode", ["auto"])[0]
+                if start_mode not in ("auto", "manual"):
+                    start_mode = "auto"
                 dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")
-                _send_sse_stream(self, dc.install_stream())
+                _send_sse_stream(self, dc.install_stream(start_mode=start_mode))
             except Exception as e:
                 import traceback
                 _send_sse_stream(self, iter([

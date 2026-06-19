@@ -1,0 +1,21 @@
+[Unit]
+Description=CitéVision — Surveillance IA
+Documentation=https://github.com/henockglory/Cityvision-v2
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=__USER__
+WorkingDirectory=__ROOT__
+ExecStart=/bin/bash __ROOT__/scripts/start-linux.sh
+ExecStop=/bin/bash __ROOT__/scripts/stop-linux.sh
+Restart=on-failure
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=citevision
+
+[Install]
+WantedBy=multi-user.target
