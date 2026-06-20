@@ -51,6 +51,9 @@ write_build_version 2>/dev/null || true
 
 VENV_SENTINEL="ai-engine/.venv/.installed_ok"
 LOGDIR="$ROOT/logs"
+VENV_DIR="$(resolve_venv_dir)"
+VENV_PY="${VENV_DIR}/bin/python"
+VENV_PIP="${VENV_DIR}/bin/pip"
 ENV_FILE="$(ensure_env_file "$ROOT" 2>/dev/null || echo "$ROOT/.env")"
 load_dotenv "$ENV_FILE"
 AI_PORT="${AI_ENGINE_PORT:-8001}"
@@ -59,8 +62,8 @@ AI_PORT="${AI_ENGINE_PORT:-8001}"
 _log() { echo "$1"; }
 
 _imports_ok() {
-  [[ -x ai-engine/.venv/bin/python ]] || return 1
-  ai-engine/.venv/bin/python -c "import citevision_ai, insightface, paddleocr" 2>/dev/null
+  [[ -x "$VENV_PY" ]] || return 1
+  "$VENV_PY" -c "import citevision_ai, insightface, paddleocr" 2>/dev/null
 }
 
 _yolo_file_ok() {
@@ -74,13 +77,13 @@ _models_ok() {
   [[ -d "$ROOT/ai-engine/models/insightface/models/buffalo_l" ]] \
     || [[ -d "$HOME/.insightface/models/buffalo_l" ]] \
     || return 1
-  ai-engine/.venv/bin/python -c "from paddleocr import PaddleOCR" 2>/dev/null
+  "$VENV_PY" -c "from paddleocr import PaddleOCR" 2>/dev/null
 }
 
 _health_keys_ok() {
   local url="$1"
   [[ "$url" == "none" || "$url" == "skip" ]] && return 0
-  curl -sf "$url" 2>/dev/null | ai-engine/.venv/bin/python -c "
+  curl -sf "$url" 2>/dev/null | "$VENV_PY" -c "
 import json, sys
 d = json.load(sys.stdin)
 keys = ('yolo_loaded', 'face_loaded', 'plate_loaded')
@@ -101,16 +104,16 @@ verify_stack() {
 }
 
 ensure_venv() {
-  if [[ ! -d ai-engine/.venv ]]; then
+  if [[ ! -d "$VENV_DIR" ]]; then
     _log "[FIX] Création venv Python 3.12…"
-    python3.12 -m venv ai-engine/.venv 2>/dev/null || python3 -m venv ai-engine/.venv
+    python3.12 -m venv "$VENV_DIR" 2>/dev/null || python3 -m venv "$VENV_DIR"
   fi
 }
 
 ensure_pip_extras() {
   ensure_venv
   # shellcheck disable=SC1091
-  source ai-engine/.venv/bin/activate
+  source "${VENV_DIR}/bin/activate"
   if ! _imports_ok; then
     rm -f "$VENV_SENTINEL"
     _log "[FIX] Installation pip extras (identity + anpr + dev)…"
@@ -162,10 +165,10 @@ restart_ai_engine() {
   stop_from_pid "$LOGDIR/ai-engine.pid"
   free_port "$AI_PORT"
   sleep 2
-  setup_cuda_library_path "$ROOT/ai-engine/.venv/bin/python3"
+  setup_cuda_library_path "${VENV_DIR}/bin/python3"
   mkdir -p "$LOGDIR"
   start_bg ai-engine "$ROOT/ai-engine" \
-    "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} $ROOT/ai-engine/.venv/bin/uvicorn citevision_ai.main:app --host 0.0.0.0 --port $AI_PORT" \
+    "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} ${VENV_DIR}/bin/uvicorn citevision_ai.main:app --host 0.0.0.0 --port $AI_PORT" \
     "$LOGDIR" "$ENV_FILE"
   local i=0
   while (( i < 120 )); do
@@ -180,8 +183,8 @@ restart_ai_engine() {
 
 apply_fixes() {
   ensure_pip_extras || return 1
-  install_ai_cuda_deps "$ROOT/ai-engine/.venv/bin/pip"
-  setup_cuda_library_path "$ROOT/ai-engine/.venv/bin/python3"
+  install_ai_cuda_deps "${VENV_PIP}"
+  setup_cuda_library_path "${VENV_DIR}/bin/python3"
   ensure_yolo_model || return 1
   ensure_download_models || return 1
   if [[ "$RESTART_AI" == "true" ]] || curl -sf "$HEALTH_URL" >/dev/null 2>&1; then

@@ -125,7 +125,20 @@ def ensure_install_stack_stream(max_rounds: int = 5) -> Iterator[dict]:
     for rnd in range(1, max_rounds + 1):
         yield {"event": "fix", "message": f"Vérification AI stack post-install ({rnd}/{max_rounds})…"}
         rc, out = _run_bash(
-            "scripts/ensure-ai-stack.sh", "--fix", "--max-attempts=3", timeout=900
+            "scripts/ensure-ai-stack.sh",
+            "--verify-only",
+            "--health-url=none",
+            timeout=180,
+        )
+        if rc == 0:
+            yield {"event": "ok", "message": "AI stack validé (pip + modèles)"}
+            return
+        for line in out.splitlines():
+            if "[ERR]" in line or "[FIX]" in line:
+                yield {"event": "fix", "message": line.strip()}
+        yield {"event": "fix", "message": "Correction AI stack post-install…"}
+        rc, out = _run_bash(
+            "scripts/ensure-ai-stack.sh", "--fix", "--max-attempts=3", timeout=3600
         )
         for line in out.splitlines():
             if "[FIX]" in line or "[OK]" in line or "[ERR]" in line:
