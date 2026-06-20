@@ -22,17 +22,14 @@ HEALTH_KEYS = ("yolo_loaded", "face_loaded", "plate_loaded")
 
 
 def _to_wsl_path(win_path: Path) -> str:
-    try:
-        r = subprocess.run(
-            ["wsl", "--", "wslpath", "-a", str(win_path)],
-            capture_output=True, text=True, timeout=15,
-            creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-    except Exception:
-        pass
-    return str(win_path).replace("\\", "/")
+    import re
+    p = str(win_path)
+    # Fast local conversion: C:\foo\bar → /mnt/c/foo/bar
+    m = re.match(r"^([A-Za-z]):[/\\](.*)", p)
+    if m:
+        rest = m.group(2).replace("\\", "/")
+        return f"/mnt/{m.group(1).lower()}/{rest}"
+    return p.replace("\\", "/")
 
 
 def _run_bash(script_rel: str, *args: str, timeout: int = 600) -> tuple[int, str]:
