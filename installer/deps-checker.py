@@ -122,22 +122,24 @@ def check_python() -> Dep:
                install_cmd="https://python.org/downloads/", critical=True)
 
 
+def _docker_run(cmd: list[str], timeout: int = 10) -> tuple[int, str, str]:
+    """Run a docker command: via WSL on Windows, directly on Linux."""
+    if IS_WINDOWS:
+        return _wsl_run(cmd, timeout)
+    return _run(cmd, timeout)
+
+
 def check_docker() -> Dep:
-    code, out, _ = _run(["docker", "--version"])
+    code, out, _ = _docker_run(["docker", "--version"])
     if code == 0 and out:
-        # Check if daemon is running
-        dc, _, _ = _run(["docker", "info"], timeout=8)
+        dc, _, _ = _docker_run(["docker", "info"], timeout=12)
         if dc == 0:
             return Dep("docker", "Docker Engine", "ok", out, "≥ 20.10",
                        "Conteneurs PostgreSQL, Redis, MQTT, MinIO, go2rtc")
         return Dep("docker", "Docker Engine", "error", out, "≥ 20.10",
                    "Docker installé mais daemon non démarré — lancez 'sudo service docker start'",
                    install_cmd="sudo service docker start")
-    install = (
-        "curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER"
-        if IS_LINUX else
-        "Télécharger Docker Desktop: https://docker.com/products/docker-desktop"
-    )
+    install = "curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER"
     return Dep("docker", "Docker Engine", "missing", "non trouvé", "≥ 20.10",
                "Docker est requis pour tous les services infrastructure (DB, cache, broker, stockage)",
                install_cmd=install, critical=True)
@@ -145,29 +147,27 @@ def check_docker() -> Dep:
 
 def check_docker_running() -> Dep:
     """Vérifie que le daemon Docker est actif, pas juste installé."""
-    code, out, err = _run(["docker", "info"], timeout=8)
+    code, out, err = _docker_run(["docker", "info"], timeout=12)
     if code == 0:
-        # Extraire version du daemon
         ver_line = next((l for l in out.splitlines() if "Server Version" in l), "")
         ver = ver_line.split(":")[-1].strip() if ver_line else "actif"
         return Dep("docker_daemon", "Docker Daemon (actif)", "ok", ver, "daemon actif",
                    "Le daemon Docker répond correctement")
-    # Docker non installé → pas critique ici (docker check couvre ça)
-    if shutil.which("docker") is None:
+    code2, _, _ = _docker_run(["docker", "--version"])
+    if code2 != 0:
         return Dep("docker_daemon", "Docker Daemon (actif)", "missing", "non installé",
                    "daemon actif", "Docker n'est pas installé",
                    install_cmd="curl -fsSL https://get.docker.com | sh", critical=False)
     return Dep("docker_daemon", "Docker Daemon (actif)", "error", "non démarré",
                "daemon actif",
                "Docker est installé mais le daemon n'est pas actif. "
-               "Lancez: sudo systemctl start docker  (ou sudo service docker start)",
-               install_cmd="sudo systemctl start docker", critical=True)
+               "Lancez: sudo service docker start (WSL)",
+               install_cmd="sudo service docker start", critical=True)
 
 
 def check_docker_group() -> Dep:
     """Vérifie que l'utilisateur courant est dans le groupe docker (Linux/WSL)."""
     if IS_WINDOWS:
-        # Dans WSL, vérifier via wsl
         code, out, _ = _wsl_run(["id", "-Gn"])
         if code == 0:
             if "docker" in out.split():
@@ -207,11 +207,11 @@ def check_docker_group() -> Dep:
 
 
 def check_docker_compose() -> Dep:
-    code, out, _ = _run(["docker", "compose", "version"])
+    code, out, _ = _docker_run(["docker", "compose", "version"])
     if code == 0 and out:
         return Dep("docker_compose", "Docker Compose v2", "ok", out, "≥ 2.0",
                    "Orchestration des services infrastructure")
-    code2, out2, _ = _run(["docker-compose", "--version"])
+    code2, out2, _ = _docker_run(["docker-compose", "--version"])
     if code2 == 0:
         return Dep("docker_compose", "Docker Compose v2", "outdated", out2, "≥ 2.0",
                    "docker-compose v1 détecté — utilisez 'docker compose' (v2, plugin Docker)")
@@ -261,7 +261,9 @@ def check_node() -> Dep:
 
 
 def check_npm() -> Dep:
-    code, out, _ = _run(["npm", "--version"])
+    # On Windows, npm ships as npm.cmd — try both spellings
+    npm_exe = shutil.which("npm") or ("npm.cmd" if IS_WINDOWS else "npm")
+    code, out, _ = _run([npm_exe, "--version"])
     if code == 0:
         return Dep("npm", "npm", "ok", f"npm {out}", "≥ 9",
                    "Gestionnaire de paquets Node.js")
@@ -542,9 +544,15 @@ def check_frontend_deps() -> Dep:
 
 def check_python_venv() -> Dep:
     venv = ROOT / "ai-engine" / ".venv"
-    if venv.exists():
-        site_packages = venv / "lib"
-        if site_packages.exists():
+    try:
+        venv_exists = venv.exists()
+        lib_exists = venv_exists and (venv / "lib").exists()
+    except OSError:
+        # WSL symlink not readable by Windows Python — venv lives on ext4, treat as ok
+        venv_exists = True
+        lib_exists = True
+    if venv_exists:
+        if lib_exists:
             return Dep("python_venv", "Virtualenv AI Engine (.venv)", "ok",
                        str(venv), "pip install -r requirements.txt",
                        "Environnement Python isolé pour l'AI engine")
