@@ -1,62 +1,69 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  CitéVision v2 — Suppression du service Windows CitéVision.
-  Arrête le service proprement puis le supprime du registre Windows.
+  CitevisionV2 - Remove Windows service.
+  Stops the service cleanly then removes it from the Windows registry.
 
 .NOTES
-  Requiert des droits Administrateur.
+  Requires Administrator rights.
 #>
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "SilentlyContinue"
 
-$SERVICE_NAME = "CitéVision"
-$NSSM_EXE     = "$PSScriptRoot\nssm.exe"
+# Find all Citevision-related services (handles both old accented and new ASCII names)
+$SERVICE_NAMES = @(Get-Service | Where-Object { $_.Name -like "Cit*" -and $_.Name -match "(?i)vision" } | Select-Object -ExpandProperty Name)
+if ($SERVICE_NAMES.Count -eq 0) { $SERVICE_NAMES = @("CitevisionV2") }
+$NSSM_EXE      = "$PSScriptRoot\nssm.exe"
 
 function Write-Log { param([string]$msg, [string]$level = "INFO")
     Write-Host "[$level] $msg"
 }
 
-# ── Vérifier admin ────────────────────────────────────────────────────────────
+# -- Check admin --
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]"Administrator")
 if (-not $isAdmin) {
-    Write-Log "Droits administrateur requis." "ERROR"
+    Write-Log "Administrator rights required." "ERROR"
     exit 1
 }
 
-# ── Vérifier que le service existe ───────────────────────────────────────────
-$svc = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
-if (-not $svc) {
-    Write-Log "Service '$SERVICE_NAME' non trouvé — rien à supprimer."
-    exit 0
-}
+$removed = 0
+foreach ($SERVICE_NAME in $SERVICE_NAMES) {
+    $svc = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
+    if (-not $svc) { continue }
 
-# ── Arrêter le service si en cours ───────────────────────────────────────────
-if ($svc.Status -eq "Running") {
-    Write-Log "Arrêt du service '$SERVICE_NAME'..."
-    if (Test-Path $NSSM_EXE) {
-        & $NSSM_EXE stop $SERVICE_NAME confirm | Out-Null
-    } else {
-        Stop-Service -Name $SERVICE_NAME -Force -ErrorAction SilentlyContinue
+    Write-Log "Found service: $SERVICE_NAME"
+
+    # -- Stop if running --
+    if ($svc.Status -eq "Running") {
+        Write-Log "Stopping service '$SERVICE_NAME'..."
+        if (Test-Path $NSSM_EXE) {
+            & $NSSM_EXE stop $SERVICE_NAME confirm | Out-Null
+        } else {
+            Stop-Service -Name $SERVICE_NAME -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Seconds 5
     }
-    Start-Sleep -Seconds 5
+
+    # -- Remove service --
+    Write-Log "Removing service '$SERVICE_NAME'..."
+    if (Test-Path $NSSM_EXE) {
+        & $NSSM_EXE remove $SERVICE_NAME confirm | Out-Null
+    } else {
+        sc.exe delete $SERVICE_NAME | Out-Null
+    }
+
+    $svcAfter = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
+    if (-not $svcAfter) {
+        Write-Log "Service '$SERVICE_NAME' removed successfully."
+        $removed++
+    } else {
+        Write-Log "Service '$SERVICE_NAME' removal incomplete - restart Windows if needed." "WARN"
+    }
 }
 
-# ── Supprimer le service ──────────────────────────────────────────────────────
-Write-Log "Suppression du service '$SERVICE_NAME'..."
-if (Test-Path $NSSM_EXE) {
-    & $NSSM_EXE remove $SERVICE_NAME confirm | Out-Null
-} else {
-    sc.exe delete $SERVICE_NAME | Out-Null
+if ($removed -eq 0) {
+    Write-Log "No CitevisionV2 service found - nothing to remove."
 }
-
-$svcAfter = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
-if (-not $svcAfter) {
-    Write-Log "Service '$SERVICE_NAME' supprimé avec succès."
-    exit 0
-} else {
-    Write-Log "Suppression incomplète — redémarrez Windows et relancez." "WARN"
-    exit 1
-}
+exit 0

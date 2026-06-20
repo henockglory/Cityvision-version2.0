@@ -1,13 +1,13 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-  CitéVision v2 — Windows Bootstrap Script
-  Installe les prérequis manquants sur une machine Windows 11 vierge.
+  CiteVision v2 - Windows Bootstrap Script
+  Installe les prerequis manquants sur une machine Windows 11 vierge.
   Retourne JSON: {"python_ok":bool,"wsl_ok":bool,"ubuntu_ok":bool,"reboot_required":bool}
 
 .NOTES
-  Doit être exécuté en tant qu'Administrateur pour activer WSL2.
-  Appelé automatiquement par setup.bat si nécessaire.
+  Doit etre execute en tant qu'Administrateur pour activer WSL2.
+  Appele automatiquement par setup.bat si necessaire.
 #>
 
 Set-StrictMode -Version Latest
@@ -29,7 +29,7 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 # ══════════════════════════════════════════════════════════════════════════════
 # A) Python
 # ══════════════════════════════════════════════════════════════════════════════
-Write-Log "Vérification Python..."
+Write-Log "Verification Python..."
 $pythonCmds = @("python3.12","python3","python","py")
 $pythonFound = $null
 foreach ($cmd in $pythonCmds) {
@@ -37,14 +37,14 @@ foreach ($cmd in $pythonCmds) {
         $v = & $cmd --version 2>&1
         if ($LASTEXITCODE -eq 0 -and $v -match "Python 3\.(1[0-9]|\d{2,})") {
             $pythonFound = $cmd
-            Write-Log "Python trouvé: $v ($cmd)" "OK"
+            Write-Log "Python trouve: $v ($cmd)" "OK"
             break
         }
     } catch { }
 }
 
 if (-not $pythonFound) {
-    Write-Log "Python absent — tentative d'installation..." "WARN"
+    Write-Log "Python absent - tentative d'installation..." "WARN"
 
     $installed = $false
 
@@ -60,9 +60,9 @@ if (-not $pythonFound) {
                     -Wait -PassThru -WindowStyle Hidden
                 if ($proc.ExitCode -eq 0) {
                     $installed = $true
-                    Write-Log "Python installé via winget" "OK"
+                    Write-Log "Python installe via winget" "OK"
                 } else {
-                    Write-Log "winget a retourné le code $($proc.ExitCode)" "WARN"
+                    Write-Log "winget a retourne le code $($proc.ExitCode)" "WARN"
                 }
             }
         } catch { Write-Log "winget indisponible: $_" "WARN" }
@@ -79,7 +79,7 @@ if (-not $pythonFound) {
                     -Wait -PassThru -WindowStyle Hidden
                 if ($proc.ExitCode -eq 0) {
                     $installed = $true
-                    Write-Log "Python installé via Chocolatey" "OK"
+                    Write-Log "Python installe via Chocolatey" "OK"
                 }
             }
         } catch { Write-Log "Chocolatey indisponible: $_" "WARN" }
@@ -88,7 +88,7 @@ if (-not $pythonFound) {
     # Méthode 3: téléchargement direct python.org
     if (-not $installed) {
         try {
-            Write-Log "Téléchargement Python 3.12 depuis python.org..."
+            Write-Log "Telechargement Python 3.12 depuis python.org..."
             $installer_url = "https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe"
             $tmp = "$env:TEMP\python312_setup.exe"
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -98,10 +98,10 @@ if (-not $pythonFound) {
                 -Wait -PassThru
             if ($proc.ExitCode -eq 0) {
                 $installed = $true
-                Write-Log "Python installé depuis python.org" "OK"
+                Write-Log "Python installe depuis python.org" "OK"
             }
             Remove-Item $tmp -ErrorAction SilentlyContinue
-        } catch { Write-Log "Échec téléchargement python.org: $_" "ERROR" }
+        } catch { Write-Log "echec telechargement python.org: $_" "ERROR" }
     }
 
     # Rafraîchir PATH
@@ -122,7 +122,7 @@ if (-not $pythonFound) {
 
     if ($installed -and -not $pythonFound) {
         # Besoin d'un redémarrage de session pour le PATH
-        Write-Log "Python installé mais nécessite redémarrage de session pour PATH" "WARN"
+        Write-Log "Python installe mais necessite redemarrage de session pour PATH" "WARN"
         $RESULT.reboot_required = $true
     }
 }
@@ -132,7 +132,7 @@ $RESULT.python_ok = ($null -ne $pythonFound)
 # ══════════════════════════════════════════════════════════════════════════════
 # B) WSL2
 # ══════════════════════════════════════════════════════════════════════════════
-Write-Log "Vérification WSL2..."
+Write-Log "Verification WSL2..."
 
 $wslOk = $false
 try {
@@ -142,32 +142,32 @@ try {
         Write-Log "WSL2 actif" "OK"
     } elseif ($LASTEXITCODE -eq 0) {
         # WSL installé mais peut être WSL1
-        Write-Log "WSL présent mais version incertaine: $wslStatus" "WARN"
-        $wslOk = $true  # On suppose WSL2 si la commande réussit sur Win11
+        Write-Log "WSL present mais version incertaine: $wslStatus" "WARN"
+        $wslOk = $true  # On suppose WSL2 si la commande reussit sur Win11
     }
 } catch { }
 
 if (-not $wslOk) {
-    Write-Log "WSL2 absent — tentative d'activation..." "WARN"
+    Write-Log "WSL2 absent - tentative d'activation..." "WARN"
 
     if (-not $isAdmin) {
-        Write-Log "Droits administrateur requis pour activer WSL2 — relancement en mode admin..." "WARN"
+        Write-Log "Droits administrateur requis pour activer WSL2 - relancement en mode admin..." "WARN"
         try {
             $ps1 = $MyInvocation.MyCommand.Path
             Start-Process powershell.exe `
                 -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-File","`"$ps1`"" `
                 -Verb RunAs -Wait
         } catch {
-            Write-Log "Impossible d'élever les droits: $_" "ERROR"
+            Write-Log "Impossible d'elever les droits: $_" "ERROR"
         }
     } else {
         try {
-            Write-Log "Activation de la fonctionnalité WSL (sans distribution)..."
+            Write-Log "Activation de la fonctionnalite WSL (sans distribution)..."
             $proc = Start-Process -FilePath "wsl" `
                 -ArgumentList "--install","--no-distribution" `
                 -Wait -PassThru -WindowStyle Hidden
             if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 1) {
-                Write-Log "WSL activé — un redémarrage peut être requis" "WARN"
+                Write-Log "WSL active - un redemarrage peut etre requis" "WARN"
                 $RESULT.reboot_required = $true
                 $wslOk = $true
             } else {
@@ -175,14 +175,14 @@ if (-not $wslOk) {
                 Write-Log "Essai activation via DISM..."
                 & dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart 2>&1 | Out-Null
                 & dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart 2>&1 | Out-Null
-                Write-Log "WSL activé via DISM — redémarrage REQUIS" "WARN"
+                Write-Log "WSL active via DISM - redemarrage REQUIS" "WARN"
                 $RESULT.reboot_required = $true
                 $wslOk = $true
             }
             # Forcer WSL2 par défaut
             & wsl --set-default-version 2 2>&1 | Out-Null
         } catch {
-            Write-Log "Échec activation WSL: $_" "ERROR"
+            Write-Log "echec activation WSL: $_" "ERROR"
         }
     }
 }
@@ -192,7 +192,7 @@ $RESULT.wsl_ok = $wslOk
 # ══════════════════════════════════════════════════════════════════════════════
 # C) Ubuntu dans WSL
 # ══════════════════════════════════════════════════════════════════════════════
-Write-Log "Vérification distribution Ubuntu dans WSL..."
+Write-Log "Verification distribution Ubuntu dans WSL..."
 
 $ubuntuOk = $false
 if ($wslOk -and -not $RESULT.reboot_required) {
@@ -215,40 +215,40 @@ if ($wslOk -and -not $RESULT.reboot_required) {
         if (-not ($cleanList -match 'Ubuntu')) {
             $testRc = (& wsl -- bash -c "echo ok" 2>&1)
             if ($LASTEXITCODE -eq 0 -and ($testRc -join '') -match 'ok') {
-                Write-Log "WSL répond (bash ok) — distribution considérée présente" "OK"
-                $cleanList = "Ubuntu" # forcer la détection
+                Write-Log "WSL repond (bash ok) - distribution consideree presente" "OK"
+                $cleanList = "Ubuntu" # forcer la detection
             }
         }
 
         if ($cleanList -match 'Ubuntu') {
             $ubuntuOk = $true
-            Write-Log "Ubuntu détecté dans WSL" "OK"
+            Write-Log "Ubuntu detecte dans WSL" "OK"
         } else {
-            Write-Log "Ubuntu absent — installation en cours..." "WARN"
+            Write-Log "Ubuntu absent - installation en cours..." "WARN"
             $proc = Start-Process -FilePath "wsl" `
                 -ArgumentList "--install","Ubuntu" `
                 -Wait -PassThru -WindowStyle Hidden
             if ($proc.ExitCode -eq 0) {
                 $ubuntuOk = $true
-                Write-Log "Ubuntu installé dans WSL" "OK"
+                Write-Log "Ubuntu installe dans WSL" "OK"
             } else {
                 $proc2 = Start-Process -FilePath "wsl" `
                     -ArgumentList "--install","-d","Ubuntu-24.04" `
                     -Wait -PassThru -WindowStyle Hidden
                 if ($proc2.ExitCode -eq 0) {
                     $ubuntuOk = $true
-                    Write-Log "Ubuntu 24.04 installé dans WSL" "OK"
+                    Write-Log "Ubuntu 24.04 installe dans WSL" "OK"
                 } else {
-                    Write-Log "Installation Ubuntu a retourné code: $($proc2.ExitCode)" "WARN"
+                    Write-Log "Installation Ubuntu a retourne code: $($proc2.ExitCode)" "WARN"
                     $RESULT.reboot_required = $true
                 }
             }
         }
     } catch {
-        Write-Log "Impossible de vérifier les distros WSL: $_" "WARN"
+        Write-Log "Impossible de verifier les distros WSL: $_" "WARN"
     }
 } elseif ($RESULT.reboot_required) {
-    Write-Log "Ubuntu sera installé après redémarrage" "INFO"
+    Write-Log "Ubuntu sera installe apres redemarrage" "INFO"
 }
 
 $RESULT.ubuntu_ok = $ubuntuOk
@@ -261,8 +261,8 @@ if ($RESULT.python_ok -and $RESULT.wsl_ok -and $RESULT.ubuntu_ok) {
         $sentinelDir = Split-Path $SENTINEL
         if (-not (Test-Path $sentinelDir)) { New-Item -ItemType Directory -Path $sentinelDir -Force | Out-Null }
         "Bootstrap completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Set-Content $SENTINEL -Encoding UTF8
-        Write-Log "Sentinel créé: $SENTINEL" "OK"
-    } catch { Write-Log "Impossible de créer le sentinel: $_" "WARN" }
+        Write-Log "Sentinel cree: $SENTINEL" "OK"
+    } catch { Write-Log "Impossible de creer le sentinel: $_" "WARN" }
 }
 
 # ── Sortie JSON ──────────────────────────────────────────────────────────────

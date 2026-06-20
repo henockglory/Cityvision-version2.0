@@ -1,4 +1,4 @@
-# CitéVision v2 — Ensure AI stack (Windows → WSL required for AI)
+﻿# CitéVision v2 — Ensure AI stack (Windows → WSL required for AI)
 param(
     [switch]$Fix,
     [switch]$VerifyOnly,
@@ -32,10 +32,10 @@ try { $null = wsl --status 2>$null; $wslOk = ($LASTEXITCODE -eq 0) } catch { $ws
 
 if (-not $wslOk) {
     if ($VerifyOnly -and -not $Fix) {
-        Write-Host '[ERR] WSL2 requis pour vérifier la stack IA — installez WSL2 et relancez setup.bat' -ForegroundColor Red
+        Write-Host '[ERR] WSL2 required for AI stack - install WSL2 and restart setup.bat' -ForegroundColor Red
         exit 1
     }
-    Write-Host '[ERR] WSL2 requis pour la stack IA (InsightFace / PaddleOCR). Installez WSL2 et relancez setup.bat.' -ForegroundColor Red
+    Write-Host '[ERR] WSL2 required for AI stack - install WSL2 and restart setup.bat' -ForegroundColor Red
     exit 1
 }
 

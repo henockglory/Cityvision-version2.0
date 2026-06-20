@@ -1,32 +1,32 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  CitéVision v2 — Désinstallation (5 modes).
+  CitevisionV2 - Uninstall (5 modes).
 
 .PARAMETER Mode
-  restart  : Redémarre les services uniquement (rien supprimé)
-  soft     : Arrêt + reset sentinelles (conserve volumes, venv, node_modules)
-  standard : Arrêt + suppression volumes Docker (conserve venv, node_modules)
-  full     : Suppression venv + volumes (conserve données utilisateur)
-  nuclear  : Suppression totale y compris données utilisateur
+  restart  : Restart services only (nothing removed)
+  soft     : Stop + reset sentinels (keep volumes, venv, node_modules)
+  standard : Stop + remove Docker volumes (keep venv, node_modules)
+  full     : Remove venv + volumes (keep user data)
+  nuclear  : Full removal including user data
 
 .PARAMETER KeepData
-  Conserve les volumes Docker (rétrocompat).
+  Keep Docker volumes (legacy compat).
 
 .PARAMETER FromScratch
-  Supprime venv, node_modules, logs (rétrocompat).
+  Remove venv, node_modules, logs (legacy compat).
 
 .PARAMETER KeepDeps
-  Conserve venv Python et node_modules.
+  Keep Python venv and node_modules.
 
 .PARAMETER DeleteUserData
-  Supprime data/videos et data/evidence (mode nuclear).
+  Remove data/videos and data/evidence (nuclear mode).
 
 .PARAMETER Yes
-  Mode non interactif.
+  Non-interactive mode.
 
 .NOTES
-  Requiert des droits Administrateur.
+  Requires Administrator rights.
 #>
 param(
     [ValidateSet('restart','soft','standard','full','nuclear','')]
@@ -49,14 +49,14 @@ function Write-Log { param([string]$Msg, [string]$Level = 'INFO')
     Write-Host "[$Level] $Msg"
 }
 
-# ── Résoudre les flags depuis --Mode ─────────────────────────────────────────
+# -- Resolve flags from Mode --
 if ($Mode -eq 'restart') {
-    Write-Log 'Mode restart — redémarrage des services uniquement'
-    Write-Log 'Arrêt des services…'
+    Write-Log 'Mode restart - restarting services only'
+    Write-Log 'Stopping services...'
     wsl -- bash scripts/stop-linux.sh 2>$null
-    Write-Log 'Redémarrage des services…'
+    Write-Log 'Starting services...'
     wsl -- bash scripts/start-linux.sh 2>$null
-    Write-Log 'Services redémarrés'
+    Write-Log 'Services restarted'
     Write-Host ($(@{ ok = $true; mode = 'restart' }) | ConvertTo-Json -Compress)
     exit 0
 } elseif ($Mode -eq 'soft') {
@@ -69,45 +69,45 @@ if ($Mode -eq 'restart') {
     $FromScratch = $true; $DeleteUserData = $true
 }
 
-# ── Vérifier admin ────────────────────────────────────────────────────────────
+# -- Check admin --
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]'Administrator')
 if (-not $isAdmin) {
-    Write-Log 'Droits administrateur requis pour la désinstallation.' 'ERROR'
+    Write-Log 'Administrator rights required for uninstall.' 'ERROR'
     exit 1
 }
 
 if (-not $Yes) {
     Write-Host ''
-    Write-Host '=== CitéVision v2 — Désinstallation ==='
+    Write-Host '=== CitevisionV2 - Uninstall ==='
     if ($KeepData) {
-        Write-Host 'Les volumes Docker seront CONSERVÉS.'
+        Write-Host 'Docker volumes will be KEPT.'
     } else {
-        Write-Host 'ATTENTION : les volumes Docker seront SUPPRIMÉS (données perdues).'
+        Write-Host 'WARNING: Docker volumes will be DELETED (data lost).'
     }
-    $ans = Read-Host 'Continuer ? [o/N]'
+    $ans = Read-Host 'Continue? [y/N]'
     if ($ans -notmatch '^(o|oui|y|yes)$') {
-        Write-Host 'Annulé.'
+        Write-Host 'Cancelled.'
         exit 0
     }
 }
 
 $summary = @{
-    ok             = $true
-    windows_svc    = 'skipped'
-    wsl_stop       = 'skipped'
-    wsl_svc        = 'skipped'
-    docker         = 'skipped'
-    keep_data      = [bool]$KeepData
-    keep_deps      = [bool]$KeepDeps
+    ok               = $true
+    windows_svc      = 'skipped'
+    wsl_stop         = 'skipped'
+    wsl_svc          = 'skipped'
+    docker           = 'skipped'
+    keep_data        = [bool]$KeepData
+    keep_deps        = [bool]$KeepDeps
     delete_user_data = [bool]$DeleteUserData
 }
 
 Write-Host ''
-Write-Host '=== CitéVision v2 — Désinstallation ==='
+Write-Host '=== CitevisionV2 - Uninstall ==='
 
-# 1. Service Windows
-Write-Log 'Suppression service Windows…'
+# 1. Windows service
+Write-Log 'Removing Windows service...'
 $ps1 = Join-Path $Root 'installer\windows\uninstall-service.ps1'
 if (Test-Path $ps1) {
     & $ps1
@@ -124,48 +124,48 @@ try {
 } catch { $wslOk = $false }
 
 if ($wslOk) {
-    Write-Log 'Arrêt services WSL…'
+    Write-Log 'Stopping WSL services...'
     wsl -- bash scripts/stop-linux.sh 2>$null
     if ($LASTEXITCODE -eq 0) { $summary.wsl_stop = 'ok' } else { $summary.wsl_stop = 'warn' }
 
-    Write-Log 'Suppression service systemd WSL…'
+    Write-Log 'Removing WSL systemd service...'
     wsl -- sudo bash installer/linux/uninstall-service.sh 2>$null
     if ($LASTEXITCODE -eq 0) { $summary.wsl_svc = 'ok' } else { $summary.wsl_svc = 'warn' }
 
     if ($KeepData) {
-        Write-Log 'Docker compose down (volumes conservés)…'
+        Write-Log 'Docker compose down (volumes kept)...'
         wsl -- bash -lc "cd '$($Root -replace '\\','/')' && docker compose -f infra/docker-compose.yml down" 2>$null
     } else {
-        Write-Log 'Docker compose down -v…'
+        Write-Log 'Docker compose down -v (removing volumes)...'
         $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
         wsl -- bash -lc "cd '$wslRoot' && docker compose -f infra/docker-compose.yml down -v" 2>$null
     }
     if ($LASTEXITCODE -eq 0) { $summary.docker = 'ok' } else { $summary.docker = 'warn' }
 
-    Write-Log 'Suppression sentinelles…'
+    Write-Log 'Removing sentinels...'
     $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
     wsl -- bash -lc "cd '$wslRoot' && rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode" 2>$null
     if ($FromScratch -and -not $KeepDeps) {
-        Write-Log 'Purge from-scratch (venv, node_modules, logs)…'
+        Write-Log 'Full purge (venv, node_modules, logs)...'
         wsl -- bash -lc "cd '$wslRoot' && rm -rf ai-engine/.venv frontend/node_modules && rm -f generated.env && rm -f logs/*.log logs/*.pid && rm -rf ~/.citevision-v2 2>/dev/null || true" 2>$null
         $summary.from_scratch = 'ok'
     }
     if ($DeleteUserData) {
-        Write-Log 'Suppression données utilisateur (vidéos, preuves)…'
+        Write-Log 'Removing user data (videos, evidence)...'
         wsl -- bash -lc "cd '$wslRoot' && rm -rf data/videos data/evidence 2>/dev/null || true" 2>$null
         $summary.delete_user_data = 'ok'
     }
 } else {
-    Write-Log 'WSL non disponible — étapes Linux ignorées' 'WARN'
+    Write-Log 'WSL not available - skipping Linux steps' 'WARN'
     if (-not $KeepData) {
-        Write-Log 'Docker compose down (local)…'
+        Write-Log 'Docker compose down (local)...'
         docker compose -f infra/docker-compose.yml down -v 2>$null
         if ($LASTEXITCODE -eq 0) { $summary.docker = 'ok' }
     }
 }
 
 if ($FromScratch -and -not $KeepDeps -and -not $wslOk) {
-    Write-Log 'Purge from-scratch (Windows local)…'
+    Write-Log 'Full purge (Windows local)...'
     Remove-Item -Recurse -Force (Join-Path $Root 'ai-engine\.venv') -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force (Join-Path $Root 'frontend\node_modules') -ErrorAction SilentlyContinue
     Remove-Item -Force (Join-Path $Root 'generated.env') -ErrorAction SilentlyContinue
@@ -173,14 +173,14 @@ if ($FromScratch -and -not $KeepDeps -and -not $wslOk) {
     Get-ChildItem (Join-Path $Root 'logs') -Filter '*.pid' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 }
 if ($DeleteUserData -and -not $wslOk) {
-    Write-Log 'Suppression données utilisateur (Windows local)…'
+    Write-Log 'Removing user data (Windows local)...'
     Remove-Item -Recurse -Force (Join-Path $Root 'data\videos') -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force (Join-Path $Root 'data\evidence') -ErrorAction SilentlyContinue
 }
 
 Write-Host ''
-Write-Log 'Désinstallation terminée.'
-Write-Log 'Pour réinstaller : lancez setup.bat'
+Write-Log 'Uninstall complete.'
+Write-Log 'To reinstall: run setup.bat'
 Write-Host ''
 Write-Host ($summary | ConvertTo-Json -Compress)
 exit 0

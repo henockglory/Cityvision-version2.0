@@ -1,4 +1,4 @@
-# Citevision v2 - full Windows start (Docker auto-start, no WSL)
+﻿# Citevision v2 - full Windows start (Docker auto-start, no WSL)
 param(
     [switch]$SkipServices,
     [switch]$InfraOnly
@@ -62,7 +62,7 @@ if ($SkipServices) {
     exit 0
 }
 
-Write-Host "[INFO] Vérification / correction AI stack…"
+Write-Host "[INFO] Verification / correction AI stack?"
 & (Join-Path $PSScriptRoot 'ensure-ai-stack.ps1') -Fix -MaxAttempts 5
 if ($LASTEXITCODE -ne 0) { throw 'AI stack incomplete after auto-fix' }
 Write-Host "[OK] AI stack ready"
@@ -93,7 +93,7 @@ Start-BackgroundProcess -Name 'frontend' -WorkingDirectory (Join-Path $Root 'fro
     -Command 'npm run dev' -LogDir $LogDir
 
 Write-Host ""
-Write-Host "[INFO] Gate IA (YOLO + InsightFace + PaddleOCR)…"
+Write-Host "[INFO] Gate IA (YOLO + InsightFace + PaddleOCR)?"
 & (Join-Path $PSScriptRoot 'ensure-ai-stack.ps1') -Fix -RestartAi -MaxAttempts 5 `
     -HealthUrl "http://127.0.0.1:$aiPort/health"
 if ($LASTEXITCODE -ne 0) { throw 'AI gate not validated after auto-fix' }
@@ -102,7 +102,7 @@ Write-Host "[OK] AI gate validated"
 Write-Host ""
 Write-Host "[INFO] Waiting for backend health..."
 if (-not (Wait-HttpOk "http://localhost:$backendPort/health" 45)) {
-    throw "Backend health timeout — check logs\backend.log"
+    throw "Backend health timeout - check logs\backend.log"
 }
 Write-Host "[OK] Backend healthy"
 

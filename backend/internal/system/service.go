@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 const (
-	windowsServiceName = "CitéVision"
+	// windowsServiceName is the ASCII-only service name used since the PS1 rewrite.
+	windowsServiceName = "CitevisionV2"
 	linuxServiceName   = "citevision.service"
 )
 
@@ -194,17 +196,20 @@ func UninstallStream(ctx context.Context, mode string, keepData bool) <-chan Str
 			cmd = exec.CommandContext(ctx, "bash", args...)
 		}
 		cmd.Dir = root
-		stdout, err := cmd.StdoutPipe()
+		// Merge stdout+stderr into a single pipe to avoid sequential read deadlock.
+		cmd.Stderr = nil
+		cmd.Stdout = nil
+		pr, pw, err := os.Pipe()
 		if err != nil {
 			ch <- StreamEvent{Event: "error", Message: fmt.Sprintf("pipe failed: %v", err), OK: false}
 			return
 		}
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			ch <- StreamEvent{Event: "error", Message: fmt.Sprintf("pipe failed: %v", err), OK: false}
-			return
-		}
+		cmd.Stdout = pw
+		cmd.Stderr = pw
+
 		if err := cmd.Start(); err != nil {
+			pw.Close()
+			pr.Close()
 			ch <- StreamEvent{Event: "error", Message: fmt.Sprintf("start failed: %v", err), OK: false}
 			return
 		}
@@ -213,18 +218,28 @@ func UninstallStream(ctx context.Context, mode string, keepData bool) <-chan Str
 		if modeLabel == "" {
 			modeLabel = "standard"
 		}
-		ch <- StreamEvent{Event: "step", Message: fmt.Sprintf("Démarrage de la désinstallation (mode: %s)…", modeLabel)}
-		streamLines(stdout, ch)
-		streamLines(stderr, ch)
+		ch <- StreamEvent{Event: "step", Message: fmt.Sprintf("Starting uninstall (mode: %s)...", modeLabel)}
+
+		// Read merged output in a goroutine; close the write end once the process exits.
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			streamLines(pr, ch)
+		}()
 
 		err = cmd.Wait()
+		pw.Close() // signal EOF to the reader goroutine
+		wg.Wait()
+		pr.Close()
+
 		if err != nil {
-			ch <- StreamEvent{Event: "error", Message: fmt.Sprintf("Désinstallation terminée avec erreurs: %v", err), OK: false}
+			ch <- StreamEvent{Event: "error", Message: fmt.Sprintf("Uninstall finished with errors: %v", err), OK: false}
 			return
 		}
 		ch <- StreamEvent{
 			Event:   "done",
-			Message: "Désinstallation terminée — relancez setup.bat pour réinstaller",
+			Message: "Uninstall complete - run setup.bat (Windows) or bash scripts/setup-wsl.sh (Linux) to reinstall.",
 			OK:      true,
 		}
 	}()

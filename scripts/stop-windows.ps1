@@ -4,7 +4,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 . (Join-Path $PSScriptRoot 'lib\env-utils.ps1')
 
-Write-Host "=== Citévision v2 Stop ===`n"
+Write-Host "=== CitevisionV2 Stop ==="
 
 $LogDir = Join-Path $Root 'logs'
 @('frontend', 'ai-engine', 'rules-engine', 'backend') | ForEach-Object {
