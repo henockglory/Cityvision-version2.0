@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   CitéVision v2 — Enregistrement du service Windows via NSSM.
@@ -103,8 +103,8 @@ $wslStartScript = "$wslRoot/scripts/start-linux.sh"
 $wslStopScript  = "$wslRoot/scripts/stop-linux.sh"
 
 # ── wsl.exe ───────────────────────────────────────────────────────────────────
-$wslExe = (Get-Command wsl.exe -ErrorAction SilentlyContinue)?.Source
-if (-not $wslExe) { $wslExe = "$env:SystemRoot\System32\wsl.exe" }
+$_wslCmd = Get-Command wsl.exe -ErrorAction SilentlyContinue
+$wslExe  = if ($_wslCmd) { $_wslCmd.Source } else { "$env:SystemRoot\System32\wsl.exe" }
 if (-not (Test-Path $wslExe)) {
     Write-Log "wsl.exe introuvable — WSL2 requis." "ERROR"
     Out-Result $false $false "wsl.exe introuvable"
