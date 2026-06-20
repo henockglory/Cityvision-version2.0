@@ -1,4 +1,4 @@
-﻿# CitéVision v2 — Ensure AI stack (Windows → WSL required for AI)
+# CitéVision v2 — Ensure AI stack (Windows → WSL required for AI)
 param(
     [switch]$Fix,
     [switch]$VerifyOnly,

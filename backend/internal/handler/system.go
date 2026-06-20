@@ -13,7 +13,14 @@ func (a *API) SystemStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SystemUninstallStream(w http.ResponseWriter, r *http.Request) {
-	keepData := r.URL.Query().Get("keep_data") == "true"
+	q := r.URL.Query()
+	mode := q.Get("mode")
+	// backward-compat: keep_data=true → soft mode if no explicit mode
+	keepData := q.Get("keep_data") == "true"
+	if mode != "" && !system.ValidMode(mode) {
+		writeError(w, http.StatusBadRequest, "invalid mode: must be restart|soft|standard|full|nuclear")
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -25,7 +32,7 @@ func (a *API) SystemUninstallStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for evt := range system.UninstallStream(r.Context(), keepData) {
+	for evt := range system.UninstallStream(r.Context(), mode, keepData) {
 		payload, _ := json.Marshal(evt)
 		fmt.Fprintf(w, "data: %s\n\n", payload)
 		flusher.Flush()

@@ -1,10 +1,26 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
-  CitéVision v2 — Désinstallation complète (Windows + WSL).
+  CitéVision v2 — Désinstallation (5 modes).
+
+.PARAMETER Mode
+  restart  : Redémarre les services uniquement (rien supprimé)
+  soft     : Arrêt + reset sentinelles (conserve volumes, venv, node_modules)
+  standard : Arrêt + suppression volumes Docker (conserve venv, node_modules)
+  full     : Suppression venv + volumes (conserve données utilisateur)
+  nuclear  : Suppression totale y compris données utilisateur
 
 .PARAMETER KeepData
-  Conserve les volumes Docker.
+  Conserve les volumes Docker (rétrocompat).
+
+.PARAMETER FromScratch
+  Supprime venv, node_modules, logs (rétrocompat).
+
+.PARAMETER KeepDeps
+  Conserve venv Python et node_modules.
+
+.PARAMETER DeleteUserData
+  Supprime data/videos et data/evidence (mode nuclear).
 
 .PARAMETER Yes
   Mode non interactif.
@@ -13,8 +29,12 @@
   Requiert des droits Administrateur.
 #>
 param(
+    [ValidateSet('restart','soft','standard','full','nuclear','')]
+    [string]$Mode = '',
     [switch]$KeepData,
     [switch]$FromScratch,
+    [switch]$KeepDeps,
+    [switch]$DeleteUserData,
     [switch]$Yes
 )
 
@@ -27,6 +47,26 @@ Set-Location $Root
 
 function Write-Log { param([string]$Msg, [string]$Level = 'INFO')
     Write-Host "[$Level] $Msg"
+}
+
+# ── Résoudre les flags depuis --Mode ─────────────────────────────────────────
+if ($Mode -eq 'restart') {
+    Write-Log 'Mode restart — redémarrage des services uniquement'
+    Write-Log 'Arrêt des services…'
+    wsl -- bash scripts/stop-linux.sh 2>$null
+    Write-Log 'Redémarrage des services…'
+    wsl -- bash scripts/start-linux.sh 2>$null
+    Write-Log 'Services redémarrés'
+    Write-Host ($(@{ ok = $true; mode = 'restart' }) | ConvertTo-Json -Compress)
+    exit 0
+} elseif ($Mode -eq 'soft') {
+    $KeepData  = $true; $KeepDeps = $true
+} elseif ($Mode -eq 'standard') {
+    $KeepDeps  = $true
+} elseif ($Mode -eq 'full') {
+    $FromScratch = $true
+} elseif ($Mode -eq 'nuclear') {
+    $FromScratch = $true; $DeleteUserData = $true
 }
 
 # ── Vérifier admin ────────────────────────────────────────────────────────────
@@ -53,12 +93,14 @@ if (-not $Yes) {
 }
 
 $summary = @{
-    ok           = $true
-    windows_svc  = 'skipped'
-    wsl_stop     = 'skipped'
-    wsl_svc      = 'skipped'
-    docker       = 'skipped'
-    keep_data    = [bool]$KeepData
+    ok             = $true
+    windows_svc    = 'skipped'
+    wsl_stop       = 'skipped'
+    wsl_svc        = 'skipped'
+    docker         = 'skipped'
+    keep_data      = [bool]$KeepData
+    keep_deps      = [bool]$KeepDeps
+    delete_user_data = [bool]$DeleteUserData
 }
 
 Write-Host ''
@@ -103,10 +145,15 @@ if ($wslOk) {
     Write-Log 'Suppression sentinelles…'
     $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
     wsl -- bash -lc "cd '$wslRoot' && rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode" 2>$null
-    if ($FromScratch) {
+    if ($FromScratch -and -not $KeepDeps) {
         Write-Log 'Purge from-scratch (venv, node_modules, logs)…'
-        wsl -- bash -lc "cd '$wslRoot' && rm -rf ai-engine/.venv frontend/node_modules && rm -f generated.env && rm -f logs/*.log logs/*.pid" 2>$null
+        wsl -- bash -lc "cd '$wslRoot' && rm -rf ai-engine/.venv frontend/node_modules && rm -f generated.env && rm -f logs/*.log logs/*.pid && rm -rf ~/.citevision-v2 2>/dev/null || true" 2>$null
         $summary.from_scratch = 'ok'
+    }
+    if ($DeleteUserData) {
+        Write-Log 'Suppression données utilisateur (vidéos, preuves)…'
+        wsl -- bash -lc "cd '$wslRoot' && rm -rf data/videos data/evidence 2>/dev/null || true" 2>$null
+        $summary.delete_user_data = 'ok'
     }
 } else {
     Write-Log 'WSL non disponible — étapes Linux ignorées' 'WARN'
@@ -117,13 +164,18 @@ if ($wslOk) {
     }
 }
 
-if ($FromScratch -and -not $wslOk) {
+if ($FromScratch -and -not $KeepDeps -and -not $wslOk) {
     Write-Log 'Purge from-scratch (Windows local)…'
     Remove-Item -Recurse -Force (Join-Path $Root 'ai-engine\.venv') -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force (Join-Path $Root 'frontend\node_modules') -ErrorAction SilentlyContinue
     Remove-Item -Force (Join-Path $Root 'generated.env') -ErrorAction SilentlyContinue
     Get-ChildItem (Join-Path $Root 'logs') -Filter '*.log' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     Get-ChildItem (Join-Path $Root 'logs') -Filter '*.pid' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+if ($DeleteUserData -and -not $wslOk) {
+    Write-Log 'Suppression données utilisateur (Windows local)…'
+    Remove-Item -Recurse -Force (Join-Path $Root 'data\videos') -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force (Join-Path $Root 'data\evidence') -ErrorAction SilentlyContinue
 }
 
 Write-Host ''

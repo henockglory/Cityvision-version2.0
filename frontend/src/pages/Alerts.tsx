@@ -85,9 +85,9 @@ export default function Alerts() {
   return (
     <PageShell
       fillViewport
-      title={t('alerts.title')}
+        title={t('alerts.title')}
       onHelpTour={startTour}
-      actions={
+        actions={
         <div className="flex gap-2 flex-wrap">
           {(['open', 'archived', 'all'] as const).map((f) => (
             <button
@@ -99,7 +99,7 @@ export default function Alerts() {
               {f === 'open' ? t('alerts.archiveOpen') : f === 'archived' ? t('alerts.archived') : t('alerts.all')}
             </button>
           ))}
-        </div>
+          </div>
       }
     >
       <div id="alerts-filters" className="cv-card p-4 flex flex-wrap gap-3 items-end shrink-0">
@@ -177,7 +177,7 @@ export default function Alerts() {
               <div className="relative pl-6 border-l border-cv-border/60 space-y-3 ml-2 p-2">
                 {alerts.map((alert) => (
                   <button
-                    key={alert.id}
+              key={alert.id}
                     type="button"
                     onClick={() => { playClick(); setSelectedId(alert.id); }}
                     className={`relative w-full text-left ${selected?.id === alert.id ? '' : 'opacity-90'}`}
@@ -440,7 +440,7 @@ export default function Alerts() {
                 </button>
               </div>
             </div>
-          </div>
+        </div>
         </ModalPortal>
       )}
     </PageShell>

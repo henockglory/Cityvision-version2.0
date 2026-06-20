@@ -121,25 +121,76 @@ func linuxServiceState() (registered, running bool) {
 	return registered, running
 }
 
+// ValidMode returns true if mode is a known uninstall mode.
+func ValidMode(mode string) bool {
+	switch mode {
+	case "restart", "soft", "standard", "full", "nuclear":
+		return true
+	}
+	return false
+}
+
+// modeToArgs maps an uninstall mode to script arguments.
+// keepData legacy flag is used when mode is empty (backward compat).
+func modeToArgs(mode string, keepData bool, isWindows bool) []string {
+	if isWindows {
+		switch mode {
+		case "restart":
+			return []string{"-Mode", "restart"}
+		case "soft":
+			return []string{"-Mode", "soft"}
+		case "standard":
+			return []string{"-Mode", "standard"}
+		case "full":
+			return []string{"-Mode", "full"}
+		case "nuclear":
+			return []string{"-Mode", "nuclear"}
+		default:
+			// legacy keep_data flag
+			if keepData {
+				return []string{"-KeepData"}
+			}
+			return nil
+		}
+	}
+	// Linux / bash
+	switch mode {
+	case "restart":
+		return []string{"--mode=restart"}
+	case "soft":
+		return []string{"--mode=soft"}
+	case "standard":
+		return []string{"--mode=standard"}
+	case "full":
+		return []string{"--mode=full"}
+	case "nuclear":
+		return []string{"--mode=nuclear"}
+	default:
+		if keepData {
+			return []string{"--keep-data"}
+		}
+		return nil
+	}
+}
+
 // UninstallStream runs the platform uninstall script and yields SSE events.
-func UninstallStream(ctx context.Context, keepData bool) <-chan StreamEvent {
+// mode is one of: restart, soft, standard, full, nuclear (empty = legacy keepData).
+func UninstallStream(ctx context.Context, mode string, keepData bool) <-chan StreamEvent {
 	ch := make(chan StreamEvent)
 	go func() {
 		defer close(ch)
 		root := ProjectRoot()
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
+			extraArgs := modeToArgs(mode, keepData, true)
 			args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
 				filepath.Join(root, "scripts", "uninstall-all.ps1"), "-Yes"}
-			if keepData {
-				args = append(args, "-KeepData")
-			}
+			args = append(args, extraArgs...)
 			cmd = exec.CommandContext(ctx, "powershell", args...)
 		} else {
+			extraArgs := modeToArgs(mode, keepData, false)
 			args := []string{filepath.Join(root, "scripts", "uninstall-all.sh"), "--yes"}
-			if keepData {
-				args = append(args, "--keep-data")
-			}
+			args = append(args, extraArgs...)
 			cmd = exec.CommandContext(ctx, "bash", args...)
 		}
 		cmd.Dir = root
@@ -158,7 +209,11 @@ func UninstallStream(ctx context.Context, keepData bool) <-chan StreamEvent {
 			return
 		}
 
-		ch <- StreamEvent{Event: "step", Message: "Démarrage de la désinstallation…"}
+		modeLabel := mode
+		if modeLabel == "" {
+			modeLabel = "standard"
+		}
+		ch <- StreamEvent{Event: "step", Message: fmt.Sprintf("Démarrage de la désinstallation (mode: %s)…", modeLabel)}
 		streamLines(stdout, ch)
 		streamLines(stderr, ch)
 

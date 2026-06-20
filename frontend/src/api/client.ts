@@ -408,11 +408,13 @@ export interface SystemStreamEvent {
   ok?: boolean;
 }
 
+export type UninstallMode = 'restart' | 'soft' | 'standard' | 'full' | 'nuclear';
+
 export const systemApi = {
   status: () => api.get<SystemStatus>('/system/status'),
-  async *streamUninstall(keepData: boolean, signal?: AbortSignal): AsyncGenerator<SystemStreamEvent> {
+  async *streamUninstall(mode: UninstallMode, signal?: AbortSignal): AsyncGenerator<SystemStreamEvent> {
     const { token } = getAuthCredentials();
-    const res = await fetch(`/api/v1/system/uninstall/stream?keep_data=${keepData}`, {
+    const res = await fetch(`/api/v1/system/uninstall/stream?mode=${mode}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       signal,
     });

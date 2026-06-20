@@ -854,6 +854,19 @@ def install_stream(start_mode: str = "auto"):
                             install_ok = False
                             break
                     if install_ok:
+                        # Register system service (Windows NSSM or Linux systemd)
+                        yield emit("step", message="Enregistrement du service système…")
+                        try:
+                            svc = register_system_service(start_mode)
+                            if svc.get("ok"):
+                                mode_lbl = "automatique" if svc.get("start_mode") == "auto" else "manuel"
+                                yield emit("ok", message=f"Service enregistré — démarrage {mode_lbl}")
+                            elif svc.get("skipped"):
+                                yield emit("warn", message=svc.get("message", "Service non enregistré (systemd non disponible)"))
+                            else:
+                                yield emit("warn", message=f"Service non enregistré : {svc.get('message', 'droits insuffisants')}")
+                        except Exception as _e:
+                            yield emit("warn", message=f"Enregistrement service ignoré : {_e}")
                         yield emit("done", message="Installation terminée avec succès !")
                     else:
                         yield emit("error", message="Installation — AI stack non validé après auto-fix")

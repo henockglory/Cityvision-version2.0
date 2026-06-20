@@ -7,6 +7,15 @@ title CitéVision v2 - Assistant d'installation
 set PYTHONIOENCODING=utf-8
 set PYTHONUTF8=1
 
+:: Verifier et obtenir les droits administrateur (requis pour l'enregistrement du service)
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo  [INFO] Elevation des droits administrateur requise pour l'enregistrement du service...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b 0
+)
+
 echo.
 echo  ============================================================
 echo    CitéVision v2  -  Installateur
