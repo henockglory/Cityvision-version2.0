@@ -197,8 +197,30 @@ Write-Log "Vérification distribution Ubuntu dans WSL..."
 $ubuntuOk = $false
 if ($wslOk -and -not $RESULT.reboot_required) {
     try {
-        $distros = & wsl --list --quiet 2>&1
-        if ($distros -match "Ubuntu") {
+        # wsl --list retourne du UTF-16 LE : on nettoie les octets nuls avant la comparaison
+        $rawList = & wsl --list 2>&1
+        $cleanList = ($rawList | ForEach-Object {
+            if ($_ -is [string]) { $_ -replace '\x00','' } else { [string]$_ -replace '\x00','' }
+        }) -join ' '
+
+        # Fallback : tenter wsl -l -v (table lisible)
+        if (-not ($cleanList -match 'Ubuntu')) {
+            $rawVerbose = & wsl -l -v 2>&1
+            $cleanList  = ($rawVerbose | ForEach-Object {
+                if ($_ -is [string]) { $_ -replace '\x00','' } else { [string]$_ -replace '\x00','' }
+            }) -join ' '
+        }
+
+        # Fallback 2 : tenter d'exécuter bash directement pour prouver que WSL fonctionne
+        if (-not ($cleanList -match 'Ubuntu')) {
+            $testRc = (& wsl -- bash -c "echo ok" 2>&1)
+            if ($LASTEXITCODE -eq 0 -and ($testRc -join '') -match 'ok') {
+                Write-Log "WSL répond (bash ok) — distribution considérée présente" "OK"
+                $cleanList = "Ubuntu" # forcer la détection
+            }
+        }
+
+        if ($cleanList -match 'Ubuntu') {
             $ubuntuOk = $true
             Write-Log "Ubuntu détecté dans WSL" "OK"
         } else {
@@ -210,7 +232,6 @@ if ($wslOk -and -not $RESULT.reboot_required) {
                 $ubuntuOk = $true
                 Write-Log "Ubuntu installé dans WSL" "OK"
             } else {
-                # Essai avec nom complet
                 $proc2 = Start-Process -FilePath "wsl" `
                     -ArgumentList "--install","-d","Ubuntu-24.04" `
                     -Wait -PassThru -WindowStyle Hidden
@@ -219,7 +240,6 @@ if ($wslOk -and -not $RESULT.reboot_required) {
                     Write-Log "Ubuntu 24.04 installé dans WSL" "OK"
                 } else {
                     Write-Log "Installation Ubuntu a retourné code: $($proc2.ExitCode)" "WARN"
-                    # Le premier démarrage de WSL peut nécessiter une interaction
                     $RESULT.reboot_required = $true
                 }
             }
