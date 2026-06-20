@@ -135,8 +135,11 @@ export default function UninstallDialog({ open, onClose }: Props) {
   const [logs, setLogs] = useState<SystemStreamEvent[]>([]);
   const [done, setDone] = useState(false);
   const [ok, setOk] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [reloadCountdown, setReloadCountdown] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const card = MODES.find((m) => m.id === selectedMode)!;
   const Icon = card.icon;
@@ -144,6 +147,7 @@ export default function UninstallDialog({ open, onClose }: Props) {
   function handleClose() {
     if (step === 3 && !done) return; // prevent closing while running
     abortRef.current?.abort();
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
     // reset state for next open
     setStep(1);
     setSelectedMode('soft');
@@ -151,7 +155,25 @@ export default function UninstallDialog({ open, onClose }: Props) {
     setLogs([]);
     setDone(false);
     setOk(false);
+    setReloading(false);
+    setReloadCountdown(0);
     onClose();
+  }
+
+  function scheduleReload(seconds: number) {
+    setReloading(true);
+    setReloadCountdown(seconds);
+    let remaining = seconds;
+    const tick = () => {
+      remaining--;
+      setReloadCountdown(remaining);
+      if (remaining <= 0) {
+        window.location.reload();
+      } else {
+        reloadTimerRef.current = setTimeout(tick, 1000);
+      }
+    };
+    reloadTimerRef.current = setTimeout(tick, 1000);
   }
 
   async function startUninstall() {
@@ -159,21 +181,42 @@ export default function UninstallDialog({ open, onClose }: Props) {
     setLogs([]);
     setDone(false);
     setOk(false);
+    setReloading(false);
     abortRef.current = new AbortController();
+    // Modes that stop the backend — connection drop is expected and treated as success
+    const stopsServices = true; // all modes eventually call stop-linux.sh
     try {
       for await (const evt of systemApi.streamUninstall(selectedMode, abortRef.current.signal)) {
         setLogs((prev) => [...prev, evt]);
         if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-        if (evt.event === 'done') { setDone(true); setOk(true); break; }
+        if (evt.event === 'done') {
+          setDone(true);
+          setOk(true);
+          // For restart mode: auto-reload after 35s to reconnect
+          if (selectedMode === 'restart') scheduleReload(35);
+          break;
+        }
         if (evt.event === 'error' && evt.ok === false) { setDone(true); setOk(false); break; }
       }
     } catch (err) {
-      setLogs((prev) => [
-        ...prev,
-        { event: 'error', message: err instanceof Error ? err.message : String(err) },
-      ]);
-      setDone(true);
-      setOk(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      // Connection lost = services are stopping = expected for all uninstall modes
+      if (stopsServices && (msg.includes('fetch') || msg.includes('network') || msg.includes('aborted'))) {
+        setLogs((prev) => [
+          ...prev,
+          { event: 'step', message: 'Connection perdue — les services s\'arretent. C\'est normal.' },
+        ]);
+        setDone(true);
+        setOk(true);
+        if (selectedMode === 'restart') {
+          setLogs((prev) => [...prev, { event: 'info', message: 'Rechargement automatique dans 35 secondes...' }]);
+          scheduleReload(35);
+        }
+      } else {
+        setLogs((prev) => [...prev, { event: 'error', message: msg }]);
+        setDone(true);
+        setOk(false);
+      }
     }
   }
 
@@ -427,9 +470,23 @@ export default function UninstallDialog({ open, onClose }: Props) {
                 <p className="font-semibold">
                   {ok ? 'Opération terminée avec succès' : 'L\'opération a rencontré des erreurs'}
                 </p>
+                {ok && reloading && (
+                  <p className="text-xs mt-0.5 opacity-80 font-mono">
+                    Rechargement dans {reloadCountdown}s...
+                  </p>
+                )}
+                {ok && !reloading && selectedMode === 'restart' && (
+                  <button
+                    type="button"
+                    className="text-xs mt-1 underline opacity-80 hover:opacity-100"
+                    onClick={() => window.location.reload()}
+                  >
+                    Recharger la page maintenant
+                  </button>
+                )}
                 {ok && selectedMode !== 'restart' && (
                   <p className="text-xs mt-0.5 opacity-80">
-                    Pour réinstaller, relancez setup.bat (Windows) ou bash scripts/setup-wsl.sh (Linux).
+                    Pour réinstaller : setup.bat (Windows) ou bash scripts/setup-wsl.sh (Linux).
                   </p>
                 )}
               </div>

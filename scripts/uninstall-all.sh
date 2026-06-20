@@ -69,12 +69,14 @@ done
 if [[ -n "$MODE" ]]; then
   case "$MODE" in
     restart)
-      echo "[INFO] Mode restart — redémarrage des services uniquement"
-      echo "[INFO] Arrêt des services…"
-      bash scripts/stop-linux.sh || true
-      echo "[INFO] Redémarrage des services…"
-      bash scripts/start-linux.sh || true
-      echo "[OK]   Services redémarrés"
+      echo "[INFO] Mode restart - redemarrage des services uniquement"
+      echo "[INFO] Lancement du stop+start en arriere-plan detache..."
+      # Use setsid to detach from process group so the backend can send the final SSE event
+      # before being killed by stop-linux.sh
+      RESTART_LOG="/tmp/citevision-restart.log"
+      setsid bash -c "sleep 2; bash '${ROOT}/scripts/stop-linux.sh' > '${RESTART_LOG}' 2>&1; sleep 3; bash '${ROOT}/scripts/start-linux.sh' >> '${RESTART_LOG}' 2>&1" &
+      echo "[OK]   Redemarrage programme - les services redemarreront dans ~5 secondes"
+      echo "[INFO] Log: ${RESTART_LOG}"
       exit 0
       ;;
     soft)
@@ -108,60 +110,71 @@ if [[ "$ASSUME_YES" != "true" ]]; then
 fi
 
 echo ""
-echo "=== CitéVision v2 — Désinstallation ==="
+echo "=== CitevisionV2 - Uninstall ==="
 
-# 1. Arrêt des services
-echo "[INFO] Arrêt des services…"
-bash scripts/stop-linux.sh || true
+# --- Do all non-disruptive work FIRST so backend can stream it ---
+# The backend process will be killed in the final step; by doing cleanup
+# before stopping services, we ensure the SSE stream captures all events.
 
-# 2. Service Linux (systemd)
+# 1. Sentinelles
+echo "[INFO] Removing sentinels..."
+rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode 2>/dev/null || true
+echo "[OK]   Sentinels removed"
+
+# 2. Service Linux (systemd) - non-disruptive if app isn't registered as systemd service
 if command -v systemctl &>/dev/null; then
-  echo "[INFO] Suppression service systemd…"
+  echo "[INFO] Removing systemd service..."
   sudo bash installer/linux/uninstall-service.sh 2>/dev/null || true
 fi
 
-# 3. Service Windows (WSL)
+# 3. Service Windows (WSL) - non-disruptive to the backend process
 if grep -qi microsoft /proc/version 2>/dev/null && command -v powershell.exe &>/dev/null; then
-  echo "[INFO] Suppression service Windows (NSSM)…"
+  echo "[INFO] Removing Windows service (NSSM)..."
   powershell.exe -NoProfile -ExecutionPolicy Bypass \
     -File "$ROOT/installer/windows/uninstall-service.ps1" 2>/dev/null || true
 fi
 
-# 4. Docker
-if [[ "$KEEP_DATA" == "true" ]]; then
-  echo "[INFO] Docker compose down (volumes conservés)…"
-  docker compose -f infra/docker-compose.yml down 2>/dev/null || true
-else
-  echo "[INFO] Docker compose down -v (suppression volumes)…"
-  docker compose -f infra/docker-compose.yml down -v 2>/dev/null || true
-fi
-
-# 5. Sentinelles
-rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode 2>/dev/null || true
-
-# 6. Purge dépendances (from-scratch, mais pas si keep-deps)
+# 4. Purge dependencies (from-scratch, but not if keep-deps)
 if [[ "$FROM_SCRATCH" == "true" && "$KEEP_DEPS" != "true" ]]; then
-  echo "[INFO] Purge from-scratch (venv, node_modules, logs)…"
+  echo "[INFO] Full purge (venv, node_modules, logs)..."
   rm -rf ai-engine/.venv frontend/node_modules 2>/dev/null || true
   rm -f generated.env 2>/dev/null || true
   rm -f logs/*.log logs/*.pid 2>/dev/null || true
-  # Purge venv ext4 WSL si présent
   if [[ -d "$HOME/.citevision-v2" ]]; then
-    echo "[INFO] Purge venv ext4 WSL (~/.citevision-v2)…"
+    echo "[INFO] Purging WSL ext4 venv (~/.citevision-v2)..."
     rm -rf "$HOME/.citevision-v2" 2>/dev/null || true
   fi
-  echo "[OK]   Purge from-scratch terminée"
+  echo "[OK]   Full purge done"
 fi
 
-# 7. Données utilisateur (mode nuclear)
+# 5. User data (nuclear mode)
 if [[ "$DELETE_USER_DATA" == "true" ]]; then
-  echo "[INFO] Suppression données utilisateur (vidéos, preuves)…"
+  echo "[INFO] Removing user data (videos, evidence)..."
   rm -rf data/videos data/evidence 2>/dev/null || true
-  echo "[OK]   Données utilisateur supprimées"
+  echo "[OK]   User data removed"
 fi
+
+# 6. Docker - run while backend is still alive to capture output
+if [[ "$KEEP_DATA" == "true" ]]; then
+  echo "[INFO] Docker compose down (volumes kept)..."
+  docker compose -f infra/docker-compose.yml down 2>/dev/null || true
+else
+  echo "[INFO] Docker compose down -v (removing volumes)..."
+  docker compose -f infra/docker-compose.yml down -v 2>/dev/null || true
+fi
+echo "[OK]   Docker stopped"
 
 echo ""
-echo "[OK]   Désinstallation terminée"
-echo "[INFO] Pour réinstaller : lancez setup.bat (Windows) ou bash scripts/setup-wsl.sh"
+echo "[OK]   Cleanup complete - stopping services now..."
+echo "[INFO] Connection will be lost when services stop. This is expected."
+echo ""
+
+# 7. Stop running services LAST (this kills the backend - do it detached)
+# Use setsid to detach from process group so the backend can send the final
+# SSE event before being killed. The 1s sleep gives the backend time to flush.
+setsid bash -c "sleep 1; bash '${ROOT}/scripts/stop-linux.sh'" > /tmp/citevision-stop.log 2>&1 &
+
+echo "[OK]   Uninstall complete"
+echo "[INFO] To reinstall: run setup.bat (Windows) or bash scripts/setup-wsl.sh (Linux)"
 echo ""
 exit 0
