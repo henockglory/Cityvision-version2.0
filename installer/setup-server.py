@@ -138,6 +138,7 @@ def _serve_file(handler: BaseHTTPRequestHandler, path: Path):
     handler.send_response(200)
     handler.send_header("Content-Type", mime)
     handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
     _cors_headers(handler)
     handler.end_headers()
     handler.wfile.write(body)
