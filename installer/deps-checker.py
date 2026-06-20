@@ -774,7 +774,6 @@ def install_stream(start_mode: str = "auto"):
         yield emit("step", message="Démarrage de l'installation automatique…")
         wsl_script = _to_wsl_path(setup_script)
         wsl_log = _to_wsl_path(log_file)
-        wsl_log_dir = _to_wsl_path(log_dir)
         cmd = [
             "wsl", "--",
             "bash", wsl_script,
@@ -782,12 +781,7 @@ def install_stream(start_mode: str = "auto"):
             f"--log-file={wsl_log}",
             f"--start-mode={start_mode}",
         ]
-        subprocess.run(
-            ["wsl", "--", "mkdir", "-p", wsl_log_dir],
-            capture_output=True, timeout=10,
-            stdin=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+        # log_dir already created above via Path.mkdir(); skip WSL mkdir to avoid timeout
         popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         popen_kwargs["text"] = True
         popen_kwargs["encoding"] = "utf-8"
