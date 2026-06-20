@@ -1,4 +1,4 @@
-# Citevision v2 - full Windows start (Docker auto-start, no WSL)
+﻿# Citevision v2 - full Windows start (Docker auto-start, no WSL)
 param(
     [switch]$SkipServices,
     [switch]$InfraOnly

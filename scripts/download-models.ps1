@@ -1,4 +1,4 @@
-# Download optional AI models (InsightFace, YOLO) — offline, no fake data
+﻿# Download optional AI models (InsightFace, YOLO) — offline, no fake data
 $ErrorActionPreference = 'Continue'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root

@@ -1,4 +1,4 @@
-# Citévision v2 — arrêt services Windows
+﻿# Citévision v2 — arrêt services Windows
 $ErrorActionPreference = 'Continue'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
