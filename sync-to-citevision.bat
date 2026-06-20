@@ -34,10 +34,15 @@ for %%F in (docker-compose*.yml) do (
     if exist "%SRC%\%%F" copy /Y "%SRC%\%%F" "%DST%\%%F" >nul
 )
 
-copy /Y "%SRC%\setup.bat" "%DST%\setup.bat" >nul
-powershell -NoProfile -Command "$p='%DST:\=\\%\setup.bat'; $c=[IO.File]::ReadAllText($p); $c=$c -replace \"`r`n\",\"`n\" -replace \"`n\",\"`r`n\"; [IO.File]::WriteAllText($p,$c,[Text.UTF8Encoding]::new($false))"
+:: Copier et normaliser les .bat en CRLF UTF-8 sans BOM (evite 'tle'/'cho'/'et' CMD)
+for %%F in (setup.bat sync-to-citevision.bat) do (
+    if exist "%SRC%\%%F" (
+        copy /Y "%SRC%\%%F" "%DST%\%%F" >nul 2>&1
+        powershell -NoProfile -Command ^
+            "$p='%DST:\=\\%\%%F'; $c=[IO.File]::ReadAllText($p); $c=$c -replace '`r`n','`n' -replace '`n','`r`n'; [IO.File]::WriteAllText($p,$c,[Text.UTF8Encoding]::new($false))"
+    )
+)
 copy /Y "%SRC%\setup.sh"  "%DST%\setup.sh"  >nul 2>&1
-copy /Y "%SRC%\sync-to-citevision.bat" "%DST%\sync-to-citevision.bat" >nul 2>&1
 if exist "%SRC%\installer\.bootstrap_done" (
     copy /Y "%SRC%\installer\.bootstrap_done" "%DST%\installer\.bootstrap_done" >nul 2>&1
 )
