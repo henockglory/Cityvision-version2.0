@@ -443,26 +443,29 @@ function startLaunch() {
     step.textContent = 'Enregistrement du service CitéVision…';
     try {
       const res = await fetch(API + '/api/register-service');
-      const data = await res.json();
+      // Guard: server may return non-JSON (404, plain text) if older version running
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) { /* ignore */ }
       removeServiceWaiting();
-      if (data.ok) {
+      if (data && data.ok) {
         appendLog('  ' + (data.message || 'Service enregistré'), data.skipped ? 'warn' : 'ok');
         step.textContent = data.skipped ? 'Application prête' : 'Service enregistré — ouverture…';
-        window.open(url, '_blank');
-        btn.disabled = false;
+      } else if (data && !data.ok) {
+        appendLog('  ' + (data.message || 'Service non enregistré — ouverture directe'), 'warn');
+        step.textContent = 'Ouverture de l\'application…';
       } else {
-        appendLog('  ' + (data.message || 'Échec enregistrement service'), 'error');
-        showBanner(data.message || 'Enregistrement du service échoué — réessayez', 'fail');
-        step.textContent = 'Erreur service — cliquez pour réessayer';
-        btn.disabled = false;
-        btn.onclick = () => openCiteVision(url);
+        appendLog('  Service non disponible — ouverture directe', 'warn');
+        step.textContent = 'Ouverture de l\'application…';
       }
+      window.open(url, '_blank');
+      btn.disabled = false;
     } catch (err) {
       removeServiceWaiting();
-      appendLog('  Erreur réseau : ' + err.message, 'error');
-      showBanner('Impossible de contacter l\'installateur — réessayez', 'fail');
+      appendLog('  Ouverture directe (service non joignable)', 'warn');
+      step.textContent = 'Ouverture de l\'application…';
+      window.open(url, '_blank');
       btn.disabled = false;
-      btn.onclick = () => openCiteVision(url);
     }
   }
 
