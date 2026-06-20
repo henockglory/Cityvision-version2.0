@@ -1,8 +1,9 @@
 @echo off
-:: Synchronise citevision-v2 -> C:\CiteVision (projet complet pour tests/deploiement)
+:: Synchronise citevision-v2 -> C:\Citevision (projet complet pour tests/deploiement)
+:: NOTE: pas d'accent dans le chemin DST pour eviter les corruptions CP850/UTF-8
 setlocal EnableDelayedExpansion
 set "SRC=c:\Users\gheno\citevision-v2"
-set "DST=C:\CitéVision"
+set "DST=C:\Citevision"
 
 echo [SYNC] Arret du serveur installateur (port 7315)...
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":7315" ^| findstr "LISTENING"') do (
@@ -16,7 +17,7 @@ if errorlevel 1 echo unknown> installer\.build_version
 for /f %%D in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-ddTHH:mmZ"') do echo %%D>> installer\.build_version
 popd
 
-set "ROBO=/E /XD node_modules .venv __pycache__ logs .git /XF *.pyc"
+set "ROBO=/E /XD node_modules .venv __pycache__ logs .git /XF *.pyc /XJ /R:0 /W:0"
 set "DIRS=backend frontend ai-engine rules-engine infra shared docs installer scripts"
 
 echo [SYNC] citevision-v2 -^> %DST%
