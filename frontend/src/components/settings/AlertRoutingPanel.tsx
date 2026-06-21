@@ -40,7 +40,7 @@ export default function AlertRoutingPanel() {
     setLoading(true);
     try {
       const r = await routingApi.list(orgId);
-      setRules(r.data);
+      setRules(Array.isArray(r.data) ? r.data : []);
     } finally {
       setLoading(false);
     }
@@ -106,7 +106,7 @@ export default function AlertRoutingPanel() {
     };
     await routingApi.create(orgId, {
       name: body.name,
-      priority: (rules.length + 1) * 10,
+      priority: (ruleList.length + 1) * 10,
       match: body.match,
       channels: body.channels,
     });
@@ -127,13 +127,15 @@ export default function AlertRoutingPanel() {
 
   if (loading) return <p className="text-sm text-cv-muted">Chargement…</p>;
 
+  const ruleList = rules ?? [];
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-cv-muted">
         Les alertes sont automatiquement renvoyées selon ces règles à la création (e-mail SMTP + webhook).
-        {rules.filter((r) => r.enabled).length > 0 && (
+        {ruleList.filter((r) => r.enabled).length > 0 && (
           <span className="block mt-1 text-cv-accent font-medium">
-            {rules.filter((r) => r.enabled).length} règle(s) active(s)
+            {ruleList.filter((r) => r.enabled).length} règle(s) active(s)
           </span>
         )}
       </p>
@@ -166,13 +168,13 @@ export default function AlertRoutingPanel() {
         </button>
       </div>
 
-      {rules.length === 0 ? (
+      {ruleList.length === 0 ? (
         <p className="text-sm text-cv-muted py-4 text-center border border-dashed border-cv-border rounded-lg">
           Aucune règle de routage — ajoutez un preset ou créez une règle.
         </p>
       ) : (
         <div className="space-y-3">
-          {rules.map((rule) => {
+          {ruleList.map((rule) => {
             const match = (rule.match ?? {}) as Record<string, string>;
             const channels = (rule.channels ?? {}) as Record<string, unknown>;
             const emails = (channels.emails as string[] | undefined) ?? (channels.email ? [String(channels.email)] : []);

@@ -560,7 +560,7 @@ func SetStartMode(mode string) (SetStartModeResult, error) {
 	// Persist the preference but don't try to drive a non-existent service
 	// (that would attempt a UAC-elevated registration from WSL, which fails).
 	cur := GetStatus()
-	if !cur.ServiceRegistered {
+	if effectivePlatform() != "windows" && !cur.ServiceRegistered {
 		return SetStartModeResult{
 			OK:                false,
 			StartMode:         mode,
@@ -568,7 +568,7 @@ func SetStartMode(mode string) (SetStartModeResult, error) {
 			Message:           ErrServiceNotRegistered.Error(),
 		}, ErrServiceNotRegistered
 	}
-	if cur.ServiceNeedsRepair {
+	if cur.ServiceNeedsRepair && effectivePlatform() != "windows" {
 		return SetStartModeResult{
 			OK:                false,
 			StartMode:         mode,
@@ -613,14 +613,14 @@ func ServiceAction(action string) (SetStartModeResult, error) {
 	}
 	cur := GetStatus()
 	if action == "start" {
-		if !cur.ServiceRegistered {
+		if effectivePlatform() != "windows" && !cur.ServiceRegistered {
 			return SetStartModeResult{
 				OK:                false,
 				ServiceRegistered: false,
 				Message:           ErrServiceNotRegistered.Error(),
 			}, ErrServiceNotRegistered
 		}
-		if cur.ServiceNeedsRepair {
+		if cur.ServiceNeedsRepair && effectivePlatform() != "windows" {
 			return SetStartModeResult{
 				OK:                false,
 				ServiceRegistered: true,

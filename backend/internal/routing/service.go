@@ -47,7 +47,7 @@ func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]Rule, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Rule
+	out := make([]Rule, 0)
 	for rows.Next() {
 		var r Rule
 		if err := rows.Scan(&r.ID, &r.OrgID, &r.Name, &r.Enabled, &r.Priority, &r.Match, &r.Channels, &r.CreatedAt, &r.UpdatedAt); err != nil {

@@ -129,13 +129,16 @@ export default function SystemPanel() {
     status.start_mode_effective !== status.start_mode;
 
   const appActive = Boolean(status?.app_running);
-  const svcRunning = Boolean(status?.service_running);
-  const svcRegistered = Boolean(status?.service_registered);
-  const canStart =
-    svcRegistered &&
-    !status?.service_needs_repair &&
-    !appActive;
-  const canStop = appActive || svcRunning || svcRegistered;
+  const isWindows = status?.platform === 'windows';
+  const canStart = !appActive;
+  const canStop = appActive;
+
+  const mechanismLabel =
+    status?.platform === 'windows'
+      ? t('system.mechanismWindows')
+      : status?.platform === 'linux'
+        ? t('system.mechanismLinux')
+        : status?.service_name ?? '—';
 
   return (
     <div className="space-y-6">
@@ -167,55 +170,53 @@ export default function SystemPanel() {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-cv-border/50">
               <span className="text-sm text-cv-muted">{t('system.serviceName')}</span>
-              <span className="text-sm font-medium font-mono">{status.service_name}</span>
+              <span className="text-sm font-medium font-mono">{mechanismLabel}</span>
             </div>
 
-            {status.service_registered && (
-              <div className="py-3 border-b border-cv-border/50 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm text-cv-muted">{t('system.startMode')}</span>
-                  {modeSaving && (
-                    <span className="text-xs text-cv-muted flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      {t('system.startModeApplying')}
-                    </span>
-                  )}
-                </div>
-                <div className="inline-flex rounded-lg border border-cv-border bg-cv-surface/50 p-1 gap-1">
-                  {(['auto', 'manual'] as const).map((mode) => {
-                    const selected = status.start_mode === mode;
-                    const Icon = mode === 'auto' ? Zap : Hand;
-                    return (
-                      <button
-                        key={mode}
-                        type="button"
-                        disabled={modeSaving}
-                        onClick={() => void handleStartModeChange(mode)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                          selected
-                            ? 'bg-cv-accent text-cv-deep shadow-sm'
-                            : 'text-cv-muted hover:text-cv-text hover:bg-cv-surface'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        {mode === 'auto' ? t('system.startModeAuto') : t('system.startModeManual')}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-cv-muted">{t('system.startModeHint')}</p>
-                {modeMismatch && (
-                  <p className="text-xs text-amber-400">
-                    {t('system.startModeMismatch', {
-                      configured: status.start_mode,
-                      effective: effectiveMode,
-                    })}
-                  </p>
+            <div className="py-3 border-b border-cv-border/50 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm text-cv-muted">{t('system.startMode')}</span>
+                {modeSaving && (
+                  <span className="text-xs text-cv-muted flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    {t('system.startModeApplying')}
+                  </span>
                 )}
-                {modeError && <p className="text-xs text-red-400">{modeError}</p>}
-                {modeSuccess && <p className="text-xs text-emerald-400">{modeSuccess}</p>}
               </div>
-            )}
+              <div className="inline-flex rounded-lg border border-cv-border bg-cv-surface/50 p-1 gap-1">
+                {(['auto', 'manual'] as const).map((mode) => {
+                  const selected = status.start_mode === mode;
+                  const Icon = mode === 'auto' ? Zap : Hand;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={modeSaving}
+                      onClick={() => void handleStartModeChange(mode)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                        selected
+                          ? 'bg-cv-accent text-cv-deep shadow-sm'
+                          : 'text-cv-muted hover:text-cv-text hover:bg-cv-surface'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {mode === 'auto' ? t('system.startModeAuto') : t('system.startModeManual')}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-cv-muted">{t('system.startModeHint')}</p>
+              {modeMismatch && (
+                <p className="text-xs text-amber-400">
+                  {t('system.startModeMismatch', {
+                    configured: status.start_mode,
+                    effective: effectiveMode,
+                  })}
+                </p>
+              )}
+              {modeError && <p className="text-xs text-red-400">{modeError}</p>}
+              {modeSuccess && <p className="text-xs text-emerald-400">{modeSuccess}</p>}
+            </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-cv-border/50">
               <span className="text-sm text-cv-muted">{t('system.registered')}</span>
@@ -239,7 +240,7 @@ export default function SystemPanel() {
               />
             </div>
 
-            {status.service_needs_repair && (
+            {status.service_needs_repair && !isWindows && (
               <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/5 p-4 space-y-1.5">
                 <div className="flex items-center gap-2 text-sm font-medium text-red-300">
                   <AlertTriangle className="w-4 h-4" />
@@ -259,7 +260,7 @@ export default function SystemPanel() {
               </div>
             )}
 
-            {(status.service_registered || appActive || status.service_needs_repair) && (
+            {status && (
               <div className="pt-2 space-y-2">
                 <div className="flex flex-wrap gap-2">
                   <button
