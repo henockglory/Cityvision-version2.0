@@ -66,7 +66,7 @@ func (a *API) InternalEvidenceUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) ServeEvidenceAsset(w http.ResponseWriter, r *http.Request) {
-	_, err := uuid.Parse(chi.URLParam(r, "orgID"))
+	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid org id")
 		return
@@ -85,7 +85,10 @@ func (a *API) ServeEvidenceAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid key")
 		return
 	}
-	if !strings.HasPrefix(decoded, "orgs/") {
+	// Prevent cross-tenant access (IDOR): the object key must live under the
+	// caller's org prefix. Evidence keys are "orgs/{orgID}/cameras/...".
+	wantPrefix := "orgs/" + orgID.String() + "/"
+	if !strings.HasPrefix(decoded, wantPrefix) {
 		writeError(w, http.StatusForbidden, "invalid asset key")
 		return
 	}

@@ -4,13 +4,48 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
+// allowedOrigins restricts WebSocket upgrades. Empty => same-origin/no-Origin
+// and localhost dev origins only. A single "*" allows any origin.
+var allowedOrigins []string
+
+// ConfigureOrigins sets the WebSocket origin allowlist (call once at startup).
+func ConfigureOrigins(origins []string) {
+	allowedOrigins = origins
+}
+
+func originAllowed(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	// Non-browser clients (no Origin header) are allowed; auth still applies.
+	if origin == "" {
+		return true
+	}
+	if len(allowedOrigins) == 1 && allowedOrigins[0] == "*" {
+		return true
+	}
+	candidate := strings.ToLower(strings.TrimRight(origin, "/"))
+	list := allowedOrigins
+	if len(list) == 0 {
+		list = []string{
+			"http://localhost:5174", "http://127.0.0.1:5174",
+			"http://localhost:5173", "http://127.0.0.1:5173",
+		}
+	}
+	for _, o := range list {
+		if strings.ToLower(strings.TrimRight(o, "/")) == candidate {
+			return true
+		}
+	}
+	return false
+}
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: originAllowed,
 }
 
 type Hub struct {

@@ -22,7 +22,47 @@ var (
 		prometheus.HistogramOpts{Name: "citevision_v2_http_request_duration_seconds", Help: "HTTP request duration"},
 		[]string{"method", "path"},
 	)
+
+	// Business metrics — observable KPIs for dashboards/alerting.
+	alertsCreatedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "citevision_v2_alerts_created_total", Help: "Alerts created"},
+		[]string{"severity"},
+	)
+	webhookDeliveriesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "citevision_v2_webhook_deliveries_total", Help: "Outbound webhook delivery outcomes"},
+		[]string{"preset", "result"},
+	)
+	// DLQ size gauge — alert when this grows (deliveries are failing).
+	webhookDLQSize = promauto.NewGauge(
+		prometheus.GaugeOpts{Name: "citevision_v2_webhook_dlq_size", Help: "Current webhook dead-letter queue size (entries)"},
+	)
 )
+
+// RecordAlertCreated increments the alert counter by severity.
+func RecordAlertCreated(severity string) {
+	if severity == "" {
+		severity = "unknown"
+	}
+	alertsCreatedTotal.WithLabelValues(severity).Inc()
+}
+
+// RecordWebhookDelivery records an outbound webhook outcome ("success"/"failure").
+func RecordWebhookDelivery(preset, result string) {
+	if preset == "" {
+		preset = "generic"
+	}
+	webhookDeliveriesTotal.WithLabelValues(preset, result).Inc()
+}
+
+// SetWebhookDLQSize publishes the current DLQ depth for alerting on growth.
+func SetWebhookDLQSize(n float64) {
+	webhookDLQSize.Set(n)
+}
+
+// IncWebhookDLQSize bumps the DLQ depth by one (a delivery was dead-lettered).
+func IncWebhookDLQSize() {
+	webhookDLQSize.Inc()
+}
 
 type Checker struct {
 	pool    *pgxpool.Pool

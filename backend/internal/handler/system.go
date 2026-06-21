@@ -34,6 +34,10 @@ func (a *API) SystemSetStartMode(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, res)
 		return
 	}
+	if errors.Is(err, system.ErrServiceNeedsRepair) {
+		writeJSON(w, http.StatusConflict, res)
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, res)
 		return
@@ -55,6 +59,10 @@ func (a *API) SystemServiceAction(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := system.ServiceAction(req.Action)
 	if errors.Is(err, system.ErrServiceNotRegistered) {
+		writeJSON(w, http.StatusConflict, res)
+		return
+	}
+	if errors.Is(err, system.ErrServiceNeedsRepair) {
 		writeJSON(w, http.StatusConflict, res)
 		return
 	}

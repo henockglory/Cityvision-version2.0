@@ -44,6 +44,7 @@ func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 				"bytes", ww.BytesWritten(),
 				"duration_ms", time.Since(start).Milliseconds(),
 				"remote", r.RemoteAddr,
+				"request_id", chimw.GetReqID(r.Context()),
 			)
 			health.RecordRequest(r.Method, routePattern, ww.Status(), time.Since(start))
 		})
@@ -194,15 +195,51 @@ func GetOrgRole(ctx context.Context) models.Role {
 	return role
 }
 
+// defaultDevOrigins are allowed when no explicit allowlist is configured.
+var defaultDevOrigins = []string{
+	"http://localhost:5174", "http://127.0.0.1:5174",
+	"http://localhost:5173", "http://127.0.0.1:5173",
+}
+
+// CORS keeps backward compatibility: dev-default localhost origins only.
 func CORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-Org-ID")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
+	return CORSWithConfig(nil)(next)
+}
+
+// CORSWithConfig returns a CORS middleware restricted to an origin allowlist.
+// allowed empty -> localhost dev origins. A single "*" entry allows any origin
+// (without credentials). Otherwise the request Origin is echoed only if listed.
+func CORSWithConfig(allowed []string) func(http.Handler) http.Handler {
+	allowAny := len(allowed) == 1 && allowed[0] == "*"
+	set := make(map[string]struct{}, len(allowed))
+	for _, o := range allowed {
+		set[strings.ToLower(strings.TrimRight(o, "/"))] = struct{}{}
+	}
+	if len(allowed) == 0 {
+		for _, o := range defaultDevOrigins {
+			set[o] = struct{}{}
 		}
-		next.ServeHTTP(w, r)
-	})
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			w.Header().Add("Vary", "Origin")
+			switch {
+			case allowAny:
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			case origin != "":
+				if _, ok := set[strings.ToLower(strings.TrimRight(origin, "/"))]; ok {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+				}
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-Org-ID")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

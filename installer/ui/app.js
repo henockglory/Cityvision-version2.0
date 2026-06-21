@@ -1,6 +1,9 @@
 'use strict';
 
-const API = 'http://localhost:7315';
+// Derive the API base from the page origin so it always matches the actual
+// host/port the installer is served from (the server may pick 7316+ if 7315 is
+// busy). Same-origin also guarantees the one-time setup cookie is sent.
+const API = window.location.origin;
 
 // ── Canvas particles ──────────────────────────────────────────
 (function initCanvas() {
@@ -501,98 +504,28 @@ function startLaunch() {
     btnArea.insertBefore(serviceRegEl, btn);
   }
 
-  async function registerServiceOnce() {
-    const res = await fetch(API + '/api/register-service');
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch (_) { /* ignore */ }
-    return data;
-  }
-
   async function openCiteVision(url) {
-    // Open tab synchronously (before await) to avoid popup blocker after UAC
-    // Open the premium loading tab synchronously (during the user gesture) so
-    // the popup blocker does not kick in after the UAC / credential prompts.
-    // The loading page polls the backend and redirects to /setup or /login.
     const tab = window.open(LOADING_URL, '_blank');
     if (!tab) {
       showManualOpenLink(LOADING_URL);
     }
 
-    btn.disabled = true;
-    if (serviceFailBanner) { serviceFailBanner.remove(); serviceFailBanner = null; }
-
-    showOpeningOverlay(
-      'Enregistrement du service…',
-      'Acceptez la fenêtre administrateur, puis saisissez vos identifiants Windows si demandé'
-    );
-
-    const uacHint = 'Windows va demander l\'autorisation administrateur puis votre mot de passe — acceptez pour enregistrer le service.';
-    showServiceWaiting(uacHint);
-    step.textContent = 'Enregistrement du service citevision…';
-
-    let data = null;
-    let lastErr = '';
-    let serviceOk = false;
-    const maxAttempts = 2;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        if (attempt > 1) {
-          step.textContent = `Nouvelle tentative (${attempt}/${maxAttempts}) — acceptez UAC…`;
-          setOpeningOverlay(
-            `Nouvelle tentative (${attempt}/${maxAttempts})…`,
-            'Acceptez UAC pour enregistrer le service'
-          );
-          appendLog(`  Nouvelle tentative d'enregistrement du service (${attempt}/${maxAttempts})…`, 'warn');
-        }
-        data = await registerServiceOnce();
-        if (data && data.ok) {
-          serviceOk = true;
-          break;
-        }
-        lastErr = (data && data.message) ? data.message : 'Service non enregistré';
-        if (attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-      } catch (err) {
-        lastErr = err instanceof Error ? err.message : String(err);
-        if (attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-      }
-    }
-
-    removeServiceWaiting();
-
-    if (serviceOk) {
-      appendLog('  ' + (data.message || 'Service citevision enregistré'), data.skipped ? 'warn' : 'ok');
-    } else {
-      const failMsg = lastErr || (data && data.message) || 'Enregistrement du service échoué';
-      appendLog('  ' + failMsg, 'warn');
-      showServiceFailBanner(
-        'Service non enregistré — l\'application s\'ouvre quand même. Lancez <strong>register-service.bat</strong> en administrateur si besoin.'
-      );
-    }
-
-    step.textContent = serviceOk
-      ? 'Service enregistré — ouverture de l\'application…'
-      : 'Ouverture de l\'application…';
-
-    // The loading tab is already polling and will redirect itself. If the tab
-    // was blocked, surface a manual link.
+    appendLog('  Ouverture de CitéVision…', 'ok');
+    step.textContent = 'Ouverture de l\'application…';
     removeOpeningOverlay();
+
     if (!tab) {
       showManualOpenLink(LOADING_URL);
-    } else {
-      appendLog('  Ouverture de CitéVision dans le nouvel onglet…', 'ok');
     }
+
+    appendLog(
+      '  Service Windows : lancez register-service.bat (UAC + mot de passe) pour le démarrage auto.',
+      'info',
+    );
 
     btn.disabled = false;
     btn.textContent = 'Ouvrir CitéVision';
-    if (!serviceOk) {
-      btn.onclick = () => openCiteVision(url);
-    }
+    btn.onclick = () => openCiteVision(url);
   }
 
   const timer = setInterval(() => {

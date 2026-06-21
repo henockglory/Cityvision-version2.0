@@ -143,3 +143,35 @@ wait_service_with_retry() {
   echo "[FAIL] $name not healthy after $rounds attempts — see logs/${name}.log" >&2
   return 1
 }
+
+# True when node_modules contains native Rollup bindings for this OS (WSL/Linux vs Windows).
+frontend_rollup_native_ok() {
+  local root="${1:-.}"
+  local nm="$root/frontend/node_modules"
+  [[ -d "$nm" ]] || return 1
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    [[ -d "$nm/@rollup/rollup-linux-x64-gnu" ]] || [[ -d "$nm/@rollup/rollup-linux-x64-musl" ]]
+    return
+  fi
+  [[ -d "$nm/@rollup/rollup-win32-x64-msvc" ]] || [[ -d "$nm/@rollup/rollup-win32-x64-gnu" ]]
+}
+
+# Reinstall frontend deps when node_modules was built on another OS (common: npm on Windows, Vite in WSL).
+ensure_frontend_deps() {
+  local root="${1:-.}"
+  if frontend_rollup_native_ok "$root"; then
+    return 0
+  fi
+  echo "[FIX] Frontend node_modules incompatible avec $(uname -s) — réinstallation npm…" >&2
+  rm -rf "$root/frontend/node_modules"
+  if ! (cd "$root/frontend" && npm install --silent); then
+    echo "[FAIL] npm install frontend échoué" >&2
+    return 1
+  fi
+  if frontend_rollup_native_ok "$root"; then
+    echo "[OK] Frontend dependencies ready ($(uname -s))"
+    return 0
+  fi
+  echo "[FAIL] Bindings Rollup natifs toujours absents après npm install" >&2
+  return 1
+}

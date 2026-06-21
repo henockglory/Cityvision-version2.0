@@ -41,7 +41,7 @@ _log() {
 _info()  { $SILENT && [ -n "$LOG_FILE" ] && echo "$1" >>"$LOG_FILE" || _log "[INFO] $1"; }
 _ok()    { _log "[OK]   $1"; }
 _warn()  { _log "[WARN] $1"; }
-_error() { _log "[ERR]  $1"; }
+_err()   { _log "[ERR]  $1"; }
 _step()  { _log ""; _log "=== $1 ==="; }
 
 # Initialize log file
@@ -126,13 +126,10 @@ _ok ".env file ready"
 
 # ── Frontend node_modules (avant profil matériel) ─────────────────
 _step "Frontend dependencies"
-if [[ ! -d frontend/node_modules ]] || [[ ! -f frontend/node_modules/.package-lock.json && ! -f frontend/node_modules/.modules.yaml ]]; then
-  _info "Running npm install…"
-  (cd frontend && npm install --silent 2>>"${LOG_FILE:-/dev/null}")
-  _ok "Frontend node_modules installed"
-else
-  _info "Frontend node_modules already present — skipping"
+if ! ensure_frontend_deps "$ROOT"; then
+  _error "Frontend dependencies — npm install failed (see above)"
 fi
+_ok "Frontend node_modules ready for WSL/Linux"
 
 # ── Hardware profile generation (avant YOLO pour connaître le bon modèle) ──
 _step "Hardware profile"
@@ -182,7 +179,14 @@ fi
 # ── AI stack complet (venv + pip + modèles) — auto-fix obligatoire ──
 _step "AI Engine stack (venv + modèles IA)"
 mkdir -p ai-engine/models logs
-if bash scripts/ensure-ai-stack.sh --fix --max-attempts=5 >>"${LOG_FILE:-/dev/null}" 2>&1; then
+if [[ -n "$LOG_FILE" ]]; then
+  bash scripts/ensure-ai-stack.sh --fix --max-attempts=5 2>&1 | tee -a "$LOG_FILE"
+  ai_rc=${PIPESTATUS[0]}
+else
+  bash scripts/ensure-ai-stack.sh --fix --max-attempts=5
+  ai_rc=$?
+fi
+if [[ "$ai_rc" -eq 0 ]]; then
   _ok "AI stack prêt (YOLO + InsightFace + PaddleOCR)"
 else
   _err "AI stack incomplet après remédiation automatique — voir logs/installer.log"

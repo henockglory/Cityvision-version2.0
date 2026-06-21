@@ -158,20 +158,33 @@ func main() {
 		AI:          aiClient,
 	}
 
+	ws.ConfigureOrigins(cfg.WSAllowedOrigins)
+
 	r := chi.NewRouter()
 	r.Use(chimw.RealIP)
 	r.Use(chimw.RequestID)
-	r.Use(middleware.CORS)
+	r.Use(middleware.CORSWithConfig(cfg.CORSAllowedOrigins))
 	r.Use(middleware.Logger(log))
 	r.Use(middleware.Recoverer(log))
 
+	// Rate limiters: strict on auth/setup (credential stuffing), moderate on
+	// expensive discovery/forward endpoints.
+	authLimiter := middleware.NewRateLimiter(30, 10)
+	heavyLimiter := middleware.NewRateLimiter(60, 20)
+
 	r.Get("/health", checker.Live)
 	r.Get("/health/ready", checker.Ready)
-	r.Get("/metrics", health.MetricsHandler().ServeHTTP)
+	// /metrics is sensitive (info disclosure + DoS). Require the internal key
+	// unless METRICS_PUBLIC=1 is explicitly set (e.g. behind a trusted proxy).
+	if os.Getenv("METRICS_PUBLIC") == "1" {
+		r.Get("/metrics", health.MetricsHandler().ServeHTTP)
+	} else {
+		r.With(middleware.RequireInternalKey).Get("/metrics", health.MetricsHandler().ServeHTTP)
+	}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/setup/status", api.SetupStatus)
-		r.Post("/setup/complete", api.SetupComplete)
+		r.With(authLimiter.Middleware).Post("/setup/complete", api.SetupComplete)
 
 		r.Route("/internal/orgs/{orgID}", func(r chi.Router) {
 			r.Use(middleware.RequireInternalKey)
@@ -191,8 +204,8 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireInitialized(setupSvc))
 
-			r.Post("/auth/login", api.Login)
-			r.Post("/auth/refresh", api.Refresh)
+			r.With(authLimiter.Middleware).Post("/auth/login", api.Login)
+			r.With(authLimiter.Middleware).Post("/auth/refresh", api.Refresh)
 			r.Get("/ws/alerts", api.WsAlerts)
 
 			r.Group(func(r chi.Router) {
@@ -218,6 +231,9 @@ func main() {
 					r.Get("/", api.GetOrganization)
 					r.Patch("/", api.UpdateOrganization)
 					r.Post("/integrations/smtp/test", api.TestSMTP)
+					r.Get("/integrations/presets", api.ListIntegrationPresets)
+					r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "rules:write")).Post("/integrations/webhook/test", api.TestIntegrationWebhook)
+					r.With(middleware.RequirePermission(rbacSvc, "alerts:read")).Get("/integrations/delivery-log", api.ListDeliveryLog)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/reset", api.ResetDemo)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/purge-alerts", api.PurgeAlertsDemo)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/maintenance/purge", api.PurgeOrgCommercial)
@@ -236,8 +252,8 @@ func main() {
 					r.Route("/cameras", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/", api.ListCameras)
 						r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Post("/", api.CreateCamera)
-						r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/discover", api.DiscoverCameras)
-						r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Post("/probe", api.ProbeCamera)
+						r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/discover", api.DiscoverCameras)
+						r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "cameras:write")).Post("/probe", api.ProbeCamera)
 						r.Route("/{cameraID}", func(r chi.Router) {
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/", api.GetCamera)
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Patch("/", api.UpdateCamera)
@@ -285,7 +301,7 @@ func main() {
 					r.Route("/alerts", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:read")).Get("/", api.ListAlerts)
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Post("/", api.CreateAlert)
-						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Post("/{alertID}/forward", api.ForwardAlert)
+						r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "alerts:ack")).Post("/{alertID}/forward", api.ForwardAlert)
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Patch("/{alertID}/acknowledge", api.AcknowledgeAlert)
 						r.With(middleware.RequirePermission(rbacSvc, "alerts:ack")).Patch("/{alertID}/archive", api.ArchiveAlert)
 					})
@@ -328,11 +344,18 @@ func main() {
 	<-quit
 	log.Info("shutting down")
 
+	// Stop background workers (MQTT subscribers, event ingestor, orchestrator)
+	// first so they don't process while HTTP drains.
+	mqttCancel()
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Error("shutdown error", "error", err)
 	}
+	// Give workers a brief moment to observe cancellation before exit.
+	time.Sleep(200 * time.Millisecond)
+	log.Info("shutdown complete")
 }
 
 func resolveMigrationsPath() string {

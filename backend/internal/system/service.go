@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -14,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -24,12 +26,16 @@ const (
 
 // Status describes the CitéVision system service registration and runtime state.
 type Status struct {
-	Platform            string `json:"platform"`
-	ServiceRegistered   bool   `json:"service_registered"`
-	ServiceRunning      bool   `json:"service_running"`
-	StartMode           string `json:"start_mode"`
-	StartModeEffective  string `json:"start_mode_effective"`
-	ServiceName         string `json:"service_name"`
+	Platform           string `json:"platform"`
+	ServiceRegistered  bool   `json:"service_registered"`
+	ServiceRunning     bool   `json:"service_running"`
+	AppRunning         bool   `json:"app_running"`
+	ServiceState       string `json:"service_state,omitempty"`
+	ServiceAccount     string `json:"service_account,omitempty"`
+	ServiceNeedsRepair bool   `json:"service_needs_repair"`
+	StartMode          string `json:"start_mode"`
+	StartModeEffective string `json:"start_mode_effective"`
+	ServiceName        string `json:"service_name"`
 }
 
 // SetStartModeResult is returned after changing the configured start mode.
@@ -44,9 +50,12 @@ type SetStartModeResult struct {
 var ErrInvalidStartMode = errors.New("invalid start mode: must be auto or manual")
 
 // ErrServiceNotRegistered is returned when a control action is attempted on a
-// service that has not been registered yet (registration needs UAC + password
-// and is done from the Windows-side installer / register-service.bat).
-var ErrServiceNotRegistered = errors.New("service not registered")
+// service that has not been registered yet (registration needs register-service.bat).
+var ErrServiceNotRegistered = errors.New("service not registered — run register-service.bat (Windows)")
+
+// ErrServiceNeedsRepair is returned when the Windows service runs under an account
+// incompatible with WSL (e.g. LocalSystem).
+var ErrServiceNeedsRepair = errors.New("service needs repair — run register-service.bat")
 
 // StreamEvent is emitted over SSE during uninstall.
 type StreamEvent struct {
@@ -221,11 +230,17 @@ func GetStatus() Status {
 		Platform:    platform,
 		StartMode:   configured,
 		ServiceName: linuxServiceName,
+		AppRunning:  appHealthOK(),
 	}
 	if platform == "windows" {
 		st.ServiceName = windowsServiceName
-		st.ServiceRegistered, st.ServiceRunning = windowsServiceState()
-		st.StartModeEffective = windowsEffectiveStartMode(st.ServiceRegistered)
+		reg, running, state, account := windowsServiceStateDetailed()
+		st.ServiceRegistered = reg
+		st.ServiceRunning = running
+		st.ServiceState = state
+		st.ServiceAccount = account
+		st.ServiceNeedsRepair = reg && !windowsServiceAccountOK(account)
+		st.StartModeEffective = windowsEffectiveStartMode(reg)
 		if st.StartModeEffective == "" {
 			st.StartModeEffective = configured
 		}
@@ -237,6 +252,16 @@ func GetStatus() Status {
 		st.StartModeEffective = configured
 	}
 	return st
+}
+
+func appHealthOK() bool {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:8081/health")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 500
 }
 
 func parseServicePS1Output(out string) (bool, string) {
@@ -287,6 +312,10 @@ func scDirect(args ...string) (ok bool, denied bool, out string) {
 }
 
 func applyWindowsStartMode(root, mode string) error {
+	st := GetStatus()
+	if st.ServiceNeedsRepair {
+		return ErrServiceNeedsRepair
+	}
 	scMode := "demand"
 	if mode == "auto" {
 		scMode = "auto"
@@ -305,18 +334,100 @@ func applyWindowsStartMode(root, mode string) error {
 	return runElevatedServicePS1(root, "-StartMode", mode)
 }
 
-// applyWindowsServiceAction starts or stops the citevision service. It first
-// tries sc.exe directly (no UAC) and falls back to the elevated PS1 only if the
-// SCM denies access.
-func applyWindowsServiceAction(root, action string) error {
-	if ok, denied, out := scDirect(action, windowsServiceName); ok {
+func stopAppStack(root string) error {
+	stopScript := filepath.Join(root, "scripts", "stop-linux.sh")
+	if !fileExists(stopScript) {
+		return fmt.Errorf("stop script not found: %s", stopScript)
+	}
+	if runtime.GOOS == "linux" {
+		out, err := exec.Command("bash", stopScript).CombinedOutput()
+		if err != nil {
+			text := strings.TrimSpace(string(out))
+			if text == "" {
+				text = err.Error()
+			}
+			return fmt.Errorf("%s", text)
+		}
 		return nil
-	} else if !denied {
+	}
+	wslScript := toWslPathForExec(stopScript)
+	out, err := exec.Command("wsl", "--", "bash", wslScript).CombinedOutput()
+	if err != nil {
+		text := strings.TrimSpace(string(out))
+		if text == "" {
+			text = err.Error()
+		}
+		return fmt.Errorf("%s", text)
+	}
+	return nil
+}
+
+func toWslPathForExec(p string) string {
+	if runtime.GOOS == "linux" && isWSL() {
+		return p
+	}
+	if out, err := exec.Command("wsl", "--", "wslpath", "-a", p).Output(); err == nil {
+		if s := strings.TrimSpace(string(out)); s != "" {
+			return s
+		}
+	}
+	return toWindowsPath(p)
+}
+
+// applyWindowsServiceAction starts or stops the citevision service. Stop always
+// shuts down the WSL application stack; start uses sc.exe with PAUSED recovery.
+func applyWindowsServiceAction(root, action string) error {
+	if action == "stop" {
+		if err := stopAppStack(root); err != nil {
+			return err
+		}
+		st := GetStatus()
+		if !st.ServiceRegistered || st.ServiceState == "STOPPED" {
+			return nil
+		}
+		if st.ServiceNeedsRepair {
+			return nil
+		}
+		if ok, _, out := scDirect("stop", windowsServiceName); ok {
+			return nil
+		} else if out != "" {
+			return fmt.Errorf("%s", out)
+		}
+		return nil
+	}
+
+	st := GetStatus()
+	if st.ServiceNeedsRepair {
+		return ErrServiceNeedsRepair
+	}
+	if st.ServiceState == "PAUSED" || st.ServiceState == "START_PENDING" || st.ServiceState == "STOP_PENDING" {
+		scDirect("stop", windowsServiceName)
+		time.Sleep(2 * time.Second)
+	}
+	ok, _, out := scDirect("start", windowsServiceName)
+	if !ok && (strings.Contains(out, "1056") || strings.Contains(strings.ToLower(out), "already")) {
+		scDirect("stop", windowsServiceName)
+		time.Sleep(2 * time.Second)
+		ok, _, out = scDirect("start", windowsServiceName)
+	}
+	if !ok {
 		if out != "" {
 			return fmt.Errorf("%s", out)
 		}
+		return fmt.Errorf("failed to start service %s", windowsServiceName)
 	}
-	return runElevatedServicePS1(root, "-Action", action)
+	return waitForAppHealth(120 * time.Second)
+}
+
+func waitForAppHealth(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if appHealthOK() {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("application did not become healthy within %s", timeout)
 }
 
 // runElevatedServicePS1 invokes install-service.ps1 (which self-elevates via
@@ -350,8 +461,16 @@ func runElevatedServicePS1(root string, psArgs ...string) error {
 }
 
 // applyLinuxServiceAction starts or stops citevision.service via systemd.
-func applyLinuxServiceAction(action string) error {
+func applyLinuxServiceAction(root, action string) error {
+	if action == "stop" {
+		if err := stopAppStack(root); err != nil {
+			return err
+		}
+	}
 	if _, err := exec.LookPath("systemctl"); err != nil {
+		if action == "stop" {
+			return nil
+		}
 		return fmt.Errorf("systemd not available")
 	}
 	out, err := exec.Command("sudo", "systemctl", action, linuxServiceName).CombinedOutput()
@@ -361,6 +480,9 @@ func applyLinuxServiceAction(action string) error {
 			text = err.Error()
 		}
 		return fmt.Errorf("%s", text)
+	}
+	if action == "start" {
+		return waitForAppHealth(120 * time.Second)
 	}
 	return nil
 }
@@ -414,6 +536,14 @@ func SetStartMode(mode string) (SetStartModeResult, error) {
 			Message:           ErrServiceNotRegistered.Error(),
 		}, ErrServiceNotRegistered
 	}
+	if cur.ServiceNeedsRepair {
+		return SetStartModeResult{
+			OK:                false,
+			StartMode:         mode,
+			ServiceRegistered: true,
+			Message:           ErrServiceNeedsRepair.Error(),
+		}, ErrServiceNeedsRepair
+	}
 	var applyErr error
 	if effectivePlatform() == "windows" {
 		applyErr = applyWindowsStartMode(root, mode)
@@ -449,19 +579,35 @@ func ServiceAction(action string) (SetStartModeResult, error) {
 	if !ValidServiceAction(action) {
 		return SetStartModeResult{}, fmt.Errorf("invalid action: must be start or stop")
 	}
-	if cur := GetStatus(); !cur.ServiceRegistered {
+	cur := GetStatus()
+	if action == "start" {
+		if !cur.ServiceRegistered {
+			return SetStartModeResult{
+				OK:                false,
+				ServiceRegistered: false,
+				Message:           ErrServiceNotRegistered.Error(),
+			}, ErrServiceNotRegistered
+		}
+		if cur.ServiceNeedsRepair {
+			return SetStartModeResult{
+				OK:                false,
+				ServiceRegistered: true,
+				Message:           ErrServiceNeedsRepair.Error(),
+			}, ErrServiceNeedsRepair
+		}
+	} else if !cur.ServiceRegistered && !cur.AppRunning {
 		return SetStartModeResult{
 			OK:                false,
 			ServiceRegistered: false,
-			Message:           ErrServiceNotRegistered.Error(),
-		}, ErrServiceNotRegistered
+			Message:           "application is not running",
+		}, fmt.Errorf("application is not running")
 	}
 	root := ProjectRoot()
 	var applyErr error
 	if effectivePlatform() == "windows" {
 		applyErr = applyWindowsServiceAction(root, action)
 	} else {
-		applyErr = applyLinuxServiceAction(action)
+		applyErr = applyLinuxServiceAction(root, action)
 	}
 	st := GetStatus()
 	res := SetStartModeResult{
@@ -478,22 +624,76 @@ func ServiceAction(action string) (SetStartModeResult, error) {
 	if action == "stop" {
 		verb = "stopped"
 	}
-	res.Message = fmt.Sprintf("Service %s", verb)
+	res.Message = fmt.Sprintf("Application %s", verb)
 	return res, nil
 }
 
-func windowsServiceState() (registered, running bool) {
-	out, err := exec.Command(scBinary(), "query", windowsServiceName).CombinedOutput()
-	if err != nil {
-		return false, false
+func windowsServiceAccountOK(account string) bool {
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return false
 	}
-	text := string(out)
-	if !strings.Contains(text, "SERVICE_NAME") {
-		return false, false
+	low := strings.ToLower(account)
+	bad := []string{"localsystem", "local service", "networkservice", "nt authority\\localservice", "nt authority\\networkservice"}
+	for _, b := range bad {
+		if low == b {
+			return false
+		}
+	}
+	return true
+}
+
+func parseScState(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		upper := strings.ToUpper(line)
+		if !strings.Contains(upper, "STATE") {
+			continue
+		}
+		colon := strings.Index(line, ":")
+		if colon < 0 {
+			continue
+		}
+		fields := strings.Fields(strings.TrimSpace(line[colon+1:]))
+		if len(fields) >= 2 {
+			return strings.ToUpper(fields[1])
+		}
+		if len(fields) == 1 {
+			return strings.ToUpper(fields[0])
+		}
+	}
+	return ""
+}
+
+func parseScAccount(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "SERVICE_START_NAME") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return ""
+}
+
+func windowsServiceStateDetailed() (registered, running bool, state, account string) {
+	qOut, qErr := exec.Command(scBinary(), "query", windowsServiceName).CombinedOutput()
+	qText := string(qOut)
+	if qErr != nil || !strings.Contains(qText, "SERVICE_NAME") {
+		return false, false, "", ""
 	}
 	registered = true
-	running = strings.Contains(text, "RUNNING")
-	return registered, running
+	state = parseScState(qText)
+	running = state == "RUNNING"
+
+	cOut, _ := exec.Command(scBinary(), "qc", windowsServiceName).CombinedOutput()
+	account = parseScAccount(string(cOut))
+	return registered, running, state, account
+}
+
+func windowsServiceState() (registered, running bool) {
+	reg, run, _, _ := windowsServiceStateDetailed()
+	return reg, run
 }
 
 func linuxServiceState() (registered, running bool) {

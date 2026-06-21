@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, ToggleLeft, ToggleRight, Zap } from 'lucide-react';
-import { routingApi, type RoutingRule } from '@/api/client';
+import { Plus, Trash2, ToggleLeft, ToggleRight, Zap, Send, ShieldCheck, History } from 'lucide-react';
+import {
+  routingApi,
+  integrationsApi,
+  type RoutingRule,
+  type DeliveryLogEntry,
+} from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { WEBHOOK_PRESETS } from '@/lib/evidencePolicy';
 
@@ -25,6 +30,10 @@ export default function AlertRoutingPanel() {
   const [msg, setMsg] = useState('');
   const [testPlate, setTestPlate] = useState('');
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [signingEnabled, setSigningEnabled] = useState(false);
+  const [webhookTest, setWebhookTest] = useState<Record<string, string>>({});
+  const [deliveryLog, setDeliveryLog] = useState<DeliveryLogEntry[]>([]);
+  const [showLog, setShowLog] = useState(false);
 
   const load = async () => {
     if (!orgId) return;
@@ -39,7 +48,41 @@ export default function AlertRoutingPanel() {
 
   useEffect(() => {
     void load();
+    if (orgId) {
+      integrationsApi.presets(orgId).then((r) => setSigningEnabled(r.data.signing_enabled)).catch(() => {});
+    }
   }, [orgId]);
+
+  const testWebhook = async (rule: RoutingRule) => {
+    if (!orgId) return;
+    const channels = (rule.channels ?? {}) as Record<string, unknown>;
+    const url = String(channels.webhook_url ?? '');
+    if (!url) {
+      setWebhookTest((p) => ({ ...p, [rule.id]: 'Renseignez d\'abord une URL.' }));
+      return;
+    }
+    setWebhookTest((p) => ({ ...p, [rule.id]: 'Envoi…' }));
+    try {
+      const r = await integrationsApi.testWebhook(orgId, {
+        url,
+        preset: String(channels.webhook_preset ?? ''),
+      });
+      setWebhookTest((p) => ({ ...p, [rule.id]: r.data.ok ? '✓ Webhook livré' : `✗ ${r.data.error ?? 'échec'}` }));
+    } catch (e) {
+      setWebhookTest((p) => ({ ...p, [rule.id]: `✗ ${(e as Error).message}` }));
+    }
+  };
+
+  const loadDeliveryLog = async () => {
+    if (!orgId) return;
+    setShowLog((s) => !s);
+    if (!showLog) {
+      try {
+        const r = await integrationsApi.deliveryLog(orgId, 50);
+        setDeliveryLog(r.data.entries ?? []);
+      } catch { /* ignore */ }
+    }
+  };
 
   const saveRule = async (rule: RoutingRule) => {
     if (!orgId) return;
@@ -94,6 +137,23 @@ export default function AlertRoutingPanel() {
           </span>
         )}
       </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border ${
+            signingEnabled
+              ? 'border-metric-rules/40 text-metric-rules bg-metric-rules/10'
+              : 'border-cv-border/60 text-cv-muted bg-cv-surface/30'
+          }`}
+          title="Signature HMAC-SHA256 des webhooks sortants (en-tête X-CiteVision-Signature)"
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          {signingEnabled ? 'Webhooks signés (HMAC)' : 'Signature webhook désactivée'}
+        </span>
+        <button type="button" className="cv-btn-ghost text-xs inline-flex items-center gap-1" onClick={() => void loadDeliveryLog()}>
+          <History className="w-3.5 h-3.5" /> Journal de livraison
+        </button>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         {PRESETS.map((p) => (
@@ -205,12 +265,53 @@ export default function AlertRoutingPanel() {
                     />
                   </div>
                 </div>
-                <button type="button" className="cv-btn-secondary text-xs" onClick={() => void saveRule(rule)}>
-                  Enregistrer
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button type="button" className="cv-btn-secondary text-xs" onClick={() => void saveRule(rule)}>
+                    Enregistrer
+                  </button>
+                  {String((channels.webhook_url ?? '')) !== '' && (
+                    <button
+                      type="button"
+                      className="cv-btn-ghost text-xs inline-flex items-center gap-1"
+                      onClick={() => void testWebhook(rule)}
+                      title="Envoyer une alerte de test au webhook configuré"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Tester le webhook
+                    </button>
+                  )}
+                  {webhookTest[rule.id] && (
+                    <span className={`text-xs ${webhookTest[rule.id].startsWith('✓') ? 'text-metric-rules' : 'text-cv-muted'}`}>
+                      {webhookTest[rule.id]}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {showLog && (
+        <div className="p-3 rounded-lg border border-cv-border/60 bg-cv-surface/30">
+          <p className="text-xs font-medium flex items-center gap-1 mb-2">
+            <History className="w-3.5 h-3.5 text-cv-accent" /> Journal de livraison (50 derniers)
+          </p>
+          {deliveryLog.length === 0 ? (
+            <p className="text-xs text-cv-muted">Aucune livraison enregistrée pour le moment.</p>
+          ) : (
+            <div className="space-y-1 max-h-64 overflow-auto">
+              {deliveryLog.map((e, i) => (
+                <div key={i} className="text-[11px] flex items-center gap-2 py-1 border-b border-cv-border/30 last:border-0">
+                  <span className="text-cv-muted tabular-nums">{(e.timestamp ?? '').replace('T', ' ').slice(0, 19)}</span>
+                  <span className="flex-1 truncate">{e.alert_title ?? e.alert_id}</span>
+                  {(e.channels ?? []).map((c) => (
+                    <span key={c} className="px-1.5 py-0.5 rounded bg-cv-deep/40 border border-cv-border/40">{c}{e.webhook_preset ? `:${e.webhook_preset}` : ''}</span>
+                  ))}
+                  {e.webhook_error ? <span className="text-cv-danger">✗</span> : <span className="text-metric-rules">✓</span>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -97,6 +97,90 @@ function Test-ServiceRegistered {
     return $scOut -match "SERVICE_NAME"
 }
 
+function Get-ServiceRunAccount {
+    $qc = & sc.exe qc $SERVICE_NAME 2>&1 | Out-String
+    if ($qc -match "SERVICE_START_NAME\s*:\s*(.+)") {
+        return $Matches[1].Trim()
+    }
+    return ""
+}
+
+function Test-ServiceAccountOk {
+    param([string]$Account)
+    if ([string]::IsNullOrWhiteSpace($Account)) { return $false }
+    $bad = @("LocalSystem", "LocalService", "NetworkService", "NT AUTHORITY\LocalService", "NT AUTHORITY\NetworkService")
+    foreach ($b in $bad) {
+        if ($Account -ieq $b) { return $false }
+    }
+    return $true
+}
+
+function Get-ServiceScState {
+    $scOut = & sc.exe query $SERVICE_NAME 2>&1 | Out-String
+    if ($scOut -match "STATE\s*:\s*\d+\s+(\w+)") {
+        return $Matches[1].ToUpper()
+    }
+    return "UNKNOWN"
+}
+
+function Stop-ServiceClean {
+    if (-not (Test-ServiceRegistered)) { return $true }
+    Write-Log "Stopping service '$SERVICE_NAME'..."
+    if (Test-Path $NSSM_EXE) {
+        & $NSSM_EXE stop $SERVICE_NAME confirm 2>$null | Out-Null
+    }
+    & sc.exe stop $SERVICE_NAME 2>$null | Out-Null
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $deadline) {
+        $state = Get-ServiceScState
+        if ($state -eq "STOPPED") {
+            Write-Log "Service '$SERVICE_NAME' stopped."
+            return $true
+        }
+        Start-Sleep -Seconds 1
+    }
+    Write-Log "Service stop timed out (state: $(Get-ServiceScState))." "WARN"
+    return $false
+}
+
+function Start-ServiceRobust {
+    if (-not (Test-ServiceRegistered)) {
+        throw "Service '$SERVICE_NAME' is not registered"
+    }
+    $state = Get-ServiceScState
+    if ($state -eq "RUNNING") {
+        Write-Log "Service '$SERVICE_NAME' already running."
+        return
+    }
+    if ($state -eq "PAUSED" -or $state -eq "START_PENDING" -or $state -eq "STOP_PENDING") {
+        Stop-ServiceClean | Out-Null
+        Start-Sleep -Seconds 2
+    }
+    $out = & sc.exe start $SERVICE_NAME 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        if ($out -match "1056|deja|already") {
+            Write-Log "Start conflict (1056) — resetting service state..." "WARN"
+            Stop-ServiceClean | Out-Null
+            Start-Sleep -Seconds 2
+            $out = & sc.exe start $SERVICE_NAME 2>&1 | Out-String
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw ($out.Trim())
+        }
+    }
+    Write-Log "Service '$SERVICE_NAME' start requested."
+}
+
+function Remove-ServiceRegistration {
+    Stop-ServiceClean | Out-Null
+    if (Test-Path $NSSM_EXE) {
+        & $NSSM_EXE remove $SERVICE_NAME confirm 2>$null | Out-Null
+    } else {
+        & sc.exe delete $SERVICE_NAME 2>$null | Out-Null
+    }
+    Start-Sleep -Seconds 2
+}
+
 function Get-EffectiveStartMode {
     $qc = & sc.exe qc $SERVICE_NAME 2>&1 | Out-String
     if ($qc -match "AUTO_START") { return "auto" }
@@ -197,16 +281,18 @@ if (-not $isAdmin) {
 # ============================================================================
 if ($Action -eq "start" -or $Action -eq "stop") {
     if (-not (Test-ServiceRegistered)) {
-        Emit-Result $false $false "Service '$SERVICE_NAME' is not registered" 1
+        Emit-Result $false $false "Service '$SERVICE_NAME' is not registered — run register-service.bat" 1
+    }
+    $runAs = Get-ServiceRunAccount
+    if (-not (Test-ServiceAccountOk $runAs)) {
+        Emit-Result $false $true "Service runs as '$runAs' (WSL incompatible) — run register-service.bat to repair" 1
     }
     try {
         if ($Action -eq "start") {
-            & sc.exe start $SERVICE_NAME | Out-Null
+            Start-ServiceRobust
         } else {
-            & sc.exe stop $SERVICE_NAME | Out-Null
+            Stop-ServiceClean | Out-Null
         }
-        Start-Sleep -Seconds 1
-        Write-Log "Service '$SERVICE_NAME' $Action requested."
         Emit-Result $true $true "" 0
     } catch {
         Emit-Result $false $true "$_" 1
@@ -337,23 +423,27 @@ if (-not (Test-Path $wslExe)) {
     Emit-Result $false $false "wsl.exe not found - WSL2 required" 1
 }
 
-# -- Service already registered: update start mode only (no NSSM download / credential) --
+# -- Service already registered: repair LocalSystem installs, else update mode only --
 $existingService = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
 if ($existingService) {
-    Write-Log "Service '$SERVICE_NAME' already registered - updating mode: $StartMode"
-    try {
-        Set-ServiceStartMode -Mode $StartMode
-        if (-not (Test-ServiceRegistered)) {
-            throw "Service not visible in SCM after mode update"
+    $runAs = Get-ServiceRunAccount
+    if (Test-ServiceAccountOk $runAs) {
+        Write-Log "Service '$SERVICE_NAME' already registered as '$runAs' - updating mode: $StartMode"
+        try {
+            Set-ServiceStartMode -Mode $StartMode
+            if (-not (Test-ServiceRegistered)) {
+                throw "Service not visible in SCM after mode update"
+            }
+            Grant-ServiceControl -Account (Resolve-ServiceAccount) | Out-Null
+            $effective = Get-EffectiveStartMode
+            Write-Log "Start mode updated (configured: $StartMode, effective: $effective)."
+            Emit-Result $true $true "" 0
+        } catch {
+            Emit-Result $false $true "$_" 1
         }
-        # Repair/ensure non-admin control rights for existing installs.
-        Grant-ServiceControl -Account (Resolve-ServiceAccount) | Out-Null
-        $effective = Get-EffectiveStartMode
-        Write-Log "Start mode updated (configured: $StartMode, effective: $effective)."
-        Emit-Result $true $true "" 0
-    } catch {
-        Emit-Result $false $true "$_" 1
     }
+    Write-Log "Service '$SERVICE_NAME' runs as '$runAs' (WSL incompatible) — re-registration required." "WARN"
+    Remove-ServiceRegistration
 }
 
 # -- Download NSSM only when registering a new service --
@@ -397,8 +487,8 @@ try {
     & $NSSM_EXE set $SERVICE_NAME AppStopMethodThreads 5000 | Out-Null
 
     & $NSSM_EXE set $SERVICE_NAME AppEvents "Stop/Pre" "`"$wslExe`" -- bash `"$wslStopScript`"" | Out-Null
-    & $NSSM_EXE set $SERVICE_NAME AppRestartDelay 30000 | Out-Null
-    & $NSSM_EXE set $SERVICE_NAME AppExit Default Restart | Out-Null
+    # Do not auto-restart on crash — WSL failures as LocalSystem caused PAUSED loops.
+    & $NSSM_EXE set $SERVICE_NAME AppExit Default Exit | Out-Null
 
     # Post-install verification with one retry
     if (-not (Test-ServiceRegistered)) {
@@ -412,6 +502,12 @@ try {
         throw "Service '$SERVICE_NAME' not registered in SCM after install"
     }
 
+    $runAs = Get-ServiceRunAccount
+    if (-not (Test-ServiceAccountOk $runAs)) {
+        throw "Service registered as '$runAs' — WSL requires a user account. Re-run register-service.bat."
+    }
+    Write-Log "Service account verified: $runAs"
+
     $effective = Get-EffectiveStartMode
     Write-Log "Service '$SERVICE_NAME' registered (configured: $StartMode, effective: $effective)."
 
@@ -424,7 +520,7 @@ try {
         Write-Log "  Automatic startup with Windows enabled."
         if (-not (Test-AppRunning)) {
             Write-Log "  Starting service now..."
-            try { & sc.exe start $SERVICE_NAME | Out-Null } catch { Write-Log "  Start deferred: $_" "WARN" }
+            try { Start-ServiceRobust } catch { Write-Log "  Start deferred: $_" "WARN" }
         } else {
             Write-Log "  Stack already running - service will take over on next boot."
         }

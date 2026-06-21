@@ -357,6 +357,47 @@ func (s *Service) GetByID(ctx context.Context, orgID, alertID uuid.UUID) (*Enric
 	return &ea, nil
 }
 
+// ListDeliveryLog returns recent webhook/email delivery attempts (the per-alert
+// forward_log entries) flattened across the org, newest first.
+func (s *Service) ListDeliveryLog(ctx context.Context, orgID uuid.UUID, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, title, metadata->'forward_log'
+		FROM alerts
+		WHERE org_id = $1 AND metadata ? 'forward_log'
+		ORDER BY updated_at DESC
+		LIMIT $2`, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []map[string]interface{}{}
+	for rows.Next() {
+		var alertID uuid.UUID
+		var title string
+		var raw []byte
+		if err := rows.Scan(&alertID, &title, &raw); err != nil {
+			return nil, err
+		}
+		var entries []map[string]interface{}
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			continue
+		}
+		for _, e := range entries {
+			e["alert_id"] = alertID.String()
+			e["alert_title"] = title
+			out = append(out, e)
+			if len(out) >= limit {
+				return out, nil
+			}
+		}
+	}
+	return out, rows.Err()
+}
+
 func (s *Service) AppendForwardLog(ctx context.Context, orgID, alertID uuid.UUID, entry map[string]interface{}) error {
 	b, err := json.Marshal(entry)
 	if err != nil {

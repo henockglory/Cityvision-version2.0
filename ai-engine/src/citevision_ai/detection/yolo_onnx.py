@@ -112,6 +112,41 @@ class YoloOnnxDetector:
         outputs = self._session.run(None, {self._input_name: blob})
         return self._postprocess(outputs[0], sx, sy)
 
+    def preprocess_batch(
+        self, frames: list[np.ndarray]
+    ) -> tuple[np.ndarray, list[tuple[float, float]]]:
+        """Letterbox + stack multiple frames into a single (N,3,640,640) blob."""
+        blobs = []
+        scales: list[tuple[float, float]] = []
+        for frame in frames:
+            blob, sx, sy = self.preprocess(frame)
+            blobs.append(blob)
+            scales.append((sx, sy))
+        if not blobs:
+            return np.empty((0, 3, INPUT_SIZE, INPUT_SIZE), dtype=np.float32), scales
+        return np.concatenate(blobs, axis=0), scales
+
+    def detect_batch(self, frames: list[np.ndarray]) -> list[list[dict]]:
+        """Run inference on several frames in ONE session call.
+
+        Batching amortizes the GPU launch/transfer overhead across cameras and
+        materially raises throughput on multi-stream deployments versus calling
+        ``detect`` per frame. Falls back to empty results when no model is loaded.
+        """
+        if self._session is None or not frames:
+            return [[] for _ in frames]
+
+        blob, scales = self.preprocess_batch(frames)
+        outputs = self._session.run(None, {self._input_name: blob})[0]
+        # Normalize to a per-image iterable along the batch dimension.
+        batched = outputs if outputs.ndim == 3 else outputs[np.newaxis, ...]
+        results: list[list[dict]] = []
+        for i in range(len(frames)):
+            single = batched[i] if i < len(batched) else batched[-1]
+            sx, sy = scales[i]
+            results.append(self._postprocess(single, sx, sy))
+        return results
+
     def benchmark_fps(self, frames: int = 30) -> float:
         """Measure inference FPS on synthetic frames."""
         if self._session is None:

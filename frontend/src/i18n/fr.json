@@ -73,6 +73,28 @@
     "noAlerts": "Aucune alerte récente",
     "noAlertsHint": "Les alertes déclenchées par vos règles actives s'affichent ici."
   },
+  "tutorial": {
+    "title": "Mise en route",
+    "subtitle": "Configurez CitéVision en 3 étapes guidées.",
+    "stepOf": "Étape {{n}} sur {{total}}",
+    "skip": "Masquer",
+    "next": "Suivant",
+    "prev": "Retour",
+    "go": "Ouvrir",
+    "done": "Terminé",
+    "cameras": {
+      "title": "1. Connectez vos caméras",
+      "desc": "Ajoutez des caméras IP/RTSP avec découverte réseau automatique, puis vérifiez le flux en direct."
+    },
+    "zones": {
+      "title": "2. Tracez les zones de détection",
+      "desc": "Délimitez des zones et des lignes de franchissement sur chaque caméra pour cibler l'analyse IA."
+    },
+    "rules": {
+      "title": "3. Créez des règles intelligentes",
+      "desc": "Combinez zones, horaires et détections pour déclencher alertes et automatisations (e-mail, webhooks, n8n…)."
+    }
+  },
   "cameras": {
     "title": "Gestion des caméras",
     "add": "Ajouter une caméra",
@@ -473,7 +495,8 @@
     "startModeAuto": "Automatique au boot",
     "startModeManual": "Manuel",
     "registered": "Enregistré",
-    "running": "État",
+    "appRunning": "Application",
+    "running": "Service Windows",
     "yes": "Oui",
     "no": "Non",
     "active": "Actif",
@@ -486,11 +509,15 @@
     "startModeConfirmAuto": "Activer le démarrage automatique avec le système ?",
     "startModeConfirmManual": "Passer en mode manuel ? CitéVision ne démarrera plus automatiquement au reboot.",
     "startModeMismatch": "Configuré : {{configured}} — effectif dans l'OS : {{effective}}",
-    "serviceNotRegistered": "Service non enregistré. Lancez register-service.bat ou cliquez Ouvrir CitéVision dans l'installateur (acceptez UAC).",
+    "serviceNotRegistered": "Service non enregistré. Lancez register-service.bat (UAC + mot de passe Windows).",
     "serviceNotRegisteredTitle": "Service non enregistré",
-    "serviceNotRegisteredCta": "Pour activer le démarrage automatique et le contrôle démarrer/arrêter, enregistrez le service une seule fois : cliquez « Ouvrir CitéVision » dans l'installateur (acceptez la fenêtre administrateur Windows et saisissez votre mot de passe), ou lancez register-service.bat. Ensuite, ces réglages fonctionneront sans demande administrateur.",
+    "serviceNotRegisteredCta": "Sur Windows, l'enregistrement du service se fait uniquement via register-service.bat : double-cliquez le fichier à la racine du projet, acceptez UAC et saisissez votre mot de passe Windows. Ensuite, démarrer/arrêter et le mode automatique fonctionneront depuis cette page.",
+    "serviceNeedsRepairTitle": "Service à réparer",
+    "serviceNeedsRepairCta": "Le service Windows est enregistré sous LocalSystem (incompatible WSL). Relancez register-service.bat : acceptez UAC et saisissez votre mot de passe Windows pour réenregistrer sous votre compte utilisateur.",
     "actionStart": "Démarrer",
     "actionStop": "Arrêter",
+    "actionConfirmStart": "Démarrer CitéVision ? Les services (backend, IA, interface) seront lancés.",
+    "actionConfirmStop": "Arrêter CitéVision ? Tous les services seront interrompus.",
     "actionUacHint": "Windows affichera une fenêtre administrateur — acceptez-la pour démarrer/arrêter le service.",
     "actionSaved": "Action appliquée au service",
     "actionError": "Impossible d'appliquer l'action sur le service",

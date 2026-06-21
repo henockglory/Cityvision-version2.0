@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -53,6 +55,17 @@ type API struct {
 	Evidence    *evidence.Service
 	AI          *ingest.AIClient
 	Routing     *routing.Service
+}
+
+// auditLog appends an audit entry and logs (does not silently drop) failures,
+// so a broken immutable audit chain is observable instead of invisible.
+func (a *API) auditLog(ctx context.Context, req audit.LogRequest) {
+	if a.Audit == nil {
+		return
+	}
+	if _, err := a.Audit.Append(ctx, req); err != nil {
+		slog.Error("audit append failed", "action", req.Action, "error", err)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -363,8 +376,15 @@ func (a *API) WsAlerts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "token required")
 		return
 	}
-	if _, err := a.Auth.ParseAccessToken(token); err != nil {
+	claims, err := a.Auth.ParseAccessToken(token)
+	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid token")
+		return
+	}
+	// Validate the Redis session too (parity with HTTP Auth middleware) so a
+	// revoked/expired session cannot keep a long-lived WebSocket open.
+	if err := a.Auth.ValidateSession(r.Context(), claims); err != nil {
+		writeError(w, http.StatusUnauthorized, "session expired")
 		return
 	}
 	a.Hub.ServeHTTP(w, r)

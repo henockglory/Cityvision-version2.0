@@ -2,9 +2,18 @@ interface EyeLogoProps {
   size?: number;
   className?: string;
   animated?: boolean;
+  /** Accent color. Defaults to the app's cv-accent design token so the logo
+   *  stays in sync with the active theme instead of a hard-coded cyan. */
+  color?: string;
 }
 
-export default function EyeLogo({ size = 40, className = '', animated = true }: EyeLogoProps) {
+export default function EyeLogo({
+  size = 40,
+  className = '',
+  animated = true,
+  color = 'rgb(var(--cv-accent))',
+}: EyeLogoProps) {
+  const colorDim = 'rgb(var(--cv-accent-dim))';
   return (
     <svg
       width={size}
@@ -13,12 +22,13 @@ export default function EyeLogo({ size = 40, className = '', animated = true }: 
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
-      aria-label="Citévision"
+      role="img"
+      aria-label="CitéVision"
     >
       <defs>
         <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#00D4FF" />
-          <stop offset="100%" stopColor="#0099CC" />
+          <stop offset="0%" stopColor={color} />
+          <stop offset="100%" stopColor={colorDim} />
         </linearGradient>
         <filter id="glow">
           <feGaussianBlur stdDeviation="1.5" result="blur" />
@@ -42,15 +52,16 @@ export default function EyeLogo({ size = 40, className = '', animated = true }: 
         d="M6 24 C6 24, 14 10, 24 10 C34 10, 42 24, 42 24 C42 24, 34 38, 24 38 C14 38, 6 24, 6 24 Z"
         stroke="url(#eyeGrad)"
         strokeWidth="1.5"
-        fill="rgba(0, 212, 255, 0.05)"
+        fill={color}
+        fillOpacity="0.05"
         filter="url(#glow)"
       />
-      <circle cx="24" cy="24" r="8" stroke="#00D4FF" strokeWidth="1" fill="rgba(0, 212, 255, 0.15)">
+      <circle cx="24" cy="24" r="8" stroke={color} strokeWidth="1" fill={color} fillOpacity="0.15">
         {animated && (
           <animate attributeName="r" values="8;8.5;8" dur="3s" repeatCount="indefinite" />
         )}
       </circle>
-      <circle cx="24" cy="24" r="3.5" fill="#00D4FF">
+      <circle cx="24" cy="24" r="3.5" fill={color}>
         {animated && (
           <>
             <animate attributeName="r" values="3.5;2.5;3.5" dur="4s" repeatCount="indefinite" />
@@ -59,16 +70,16 @@ export default function EyeLogo({ size = 40, className = '', animated = true }: 
         )}
       </circle>
       {animated && (
-        <line x1="10" y1="24" x2="38" y2="24" stroke="#00D4FF" strokeWidth="0.5" opacity="0.4">
+        <line x1="10" y1="24" x2="38" y2="24" stroke={color} strokeWidth="0.5" opacity="0.4">
           <animate attributeName="y1" values="14;34;14" dur="2.5s" repeatCount="indefinite" />
           <animate attributeName="y2" values="14;34;14" dur="2.5s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0;0.6;0" dur="2.5s" repeatCount="indefinite" />
         </line>
       )}
-      <path d="M4 12 L4 4 L12 4" stroke="#00D4FF" strokeWidth="1" fill="none" opacity="0.5" />
-      <path d="M44 12 L44 4 L36 4" stroke="#00D4FF" strokeWidth="1" fill="none" opacity="0.5" />
-      <path d="M4 36 L4 44 L12 44" stroke="#00D4FF" strokeWidth="1" fill="none" opacity="0.5" />
-      <path d="M44 36 L44 44 L36 44" stroke="#00D4FF" strokeWidth="1" fill="none" opacity="0.5" />
+      <path d="M4 12 L4 4 L12 4" stroke={color} strokeWidth="1" fill="none" opacity="0.5" />
+      <path d="M44 12 L44 4 L36 4" stroke={color} strokeWidth="1" fill="none" opacity="0.5" />
+      <path d="M4 36 L4 44 L12 44" stroke={color} strokeWidth="1" fill="none" opacity="0.5" />
+      <path d="M44 36 L44 44 L36 44" stroke={color} strokeWidth="1" fill="none" opacity="0.5" />
     </svg>
   );
 }

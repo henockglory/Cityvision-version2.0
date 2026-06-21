@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -14,15 +15,13 @@ type CredentialCipher struct {
 }
 
 func NewCredentialCipher(key string) (*CredentialCipher, error) {
+	// A 32-byte key is used verbatim (AES-256) for backward compatibility.
+	// Any other length is derived via SHA-256 instead of the previous weak
+	// zero-padding/truncation, which degraded entropy for short keys.
 	k := []byte(key)
 	if len(k) != 32 {
-		if len(k) < 32 {
-			padded := make([]byte, 32)
-			copy(padded, k)
-			k = padded
-		} else {
-			k = k[:32]
-		}
+		sum := sha256.Sum256(k)
+		k = sum[:]
 	}
 	block, err := aes.NewCipher(k)
 	if err != nil {

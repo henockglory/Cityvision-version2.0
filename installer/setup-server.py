@@ -21,6 +21,7 @@ import importlib.util
 import json
 import os
 import platform
+import secrets
 import socket
 import sys
 import threading
@@ -37,6 +38,42 @@ INSTALLER_DIR = Path(__file__).resolve().parent
 UI_DIR = INSTALLER_DIR / "ui"
 ROOT = INSTALLER_DIR.parent
 APP_URL = "http://localhost:5174"
+
+# One-time setup token: gates the powerful install/launch/service endpoints so
+# only the browser the installer itself opened (which receives the token via a
+# SameSite cookie) can trigger them. Prevents other local users/processes on a
+# shared machine from driving the installer.
+SETUP_TOKEN = secrets.token_urlsafe(24)
+UI_DIR_RESOLVED = UI_DIR.resolve()
+
+
+def _resolve_within(base: Path, rel: str):
+    """Resolve rel under base, returning the path only if it stays inside base.
+    Defends against path traversal (../) in static asset requests."""
+    try:
+        candidate = (base / rel.lstrip("/")).resolve()
+    except (OSError, ValueError):
+        return None
+    if candidate == base or base in candidate.parents:
+        return candidate
+    return None
+
+
+def _cookie_token(handler: BaseHTTPRequestHandler) -> str:
+    raw = handler.headers.get("Cookie", "") or ""
+    for part in raw.split(";"):
+        kv = part.strip().split("=", 1)
+        if len(kv) == 2 and kv[0] == "cv_setup":
+            return kv[1]
+    return ""
+
+
+def _authorized(handler: BaseHTTPRequestHandler) -> bool:
+    """Sensitive endpoints require the setup token (cookie or query param)."""
+    if _cookie_token(handler) == SETUP_TOKEN:
+        return True
+    qs = parse_qs(urlparse(handler.path).query)
+    return qs.get("token", [""])[0] == SETUP_TOKEN
 
 
 import subprocess as _subprocess
@@ -86,7 +123,14 @@ def _load_module(name: str, path: Path):
 
 
 def _cors_headers(handler: BaseHTTPRequestHandler):
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    # The installer is loopback-only and same-origin; echo the Origin only when
+    # it is a localhost origin instead of the permissive wildcard.
+    origin = handler.headers.get("Origin", "") or ""
+    host = urlparse(origin).hostname if origin else None
+    if host in ("localhost", "127.0.0.1"):
+        handler.send_header("Access-Control-Allow-Origin", origin)
+        handler.send_header("Access-Control-Allow-Credentials", "true")
+    handler.send_header("Vary", "Origin")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
     handler.send_header("Access-Control-Allow-Headers", "Content-Type")
 
@@ -139,6 +183,11 @@ def _serve_file(handler: BaseHTTPRequestHandler, path: Path):
     handler.send_header("Content-Type", mime)
     handler.send_header("Content-Length", str(len(body)))
     handler.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+    if getattr(handler, "_set_setup_cookie", False):
+        handler.send_header(
+            "Set-Cookie",
+            f"cv_setup={SETUP_TOKEN}; Path=/; SameSite=Strict; Max-Age=3600",
+        )
     _cors_headers(handler)
     handler.end_headers()
     handler.wfile.write(body)
@@ -156,8 +205,9 @@ class InstallerHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
 
-        # Root → index.html
+        # Root → index.html (also hands the browser the one-time setup token)
         if path in ("/", "/index.html"):
+            self._set_setup_cookie = True
             _serve_file(self, UI_DIR / "index.html")
             return
 
@@ -166,16 +216,26 @@ class InstallerHandler(BaseHTTPRequestHandler):
             _serve_file(self, UI_DIR / "loading.html")
             return
 
-        # Static assets
+        # Static assets (path-traversal safe)
         if path.startswith("/static/"):
             asset = path[len("/static/"):]
-            _serve_file(self, UI_DIR / asset)
+            target = _resolve_within(UI_DIR_RESOLVED, asset)
+            if target is None:
+                self.send_response(403)
+                self.end_headers()
+                return
+            _serve_file(self, target)
             return
 
-        # Serve CSS/JS directly from /
+        # Serve CSS/JS directly from / (path-traversal safe)
         for ext in (".css", ".js", ".svg", ".png", ".ico", ".woff2"):
             if path.endswith(ext):
-                _serve_file(self, UI_DIR / path.lstrip("/"))
+                target = _resolve_within(UI_DIR_RESOLVED, path.lstrip("/"))
+                if target is None:
+                    self.send_response(403)
+                    self.end_headers()
+                    return
+                _serve_file(self, target)
                 return
 
         if path == "/api/hardware":
@@ -266,6 +326,9 @@ class InstallerHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/register-service" or path.startswith("/api/register-service?"):
+            if not _authorized(self):
+                _send_json(self, {"ok": False, "message": "unauthorized"}, status=403)
+                return
             try:
                 dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")
                 result = dc.register_system_service()
@@ -276,6 +339,9 @@ class InstallerHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/launch":
+            if not _authorized(self):
+                _send_json(self, {"error": "unauthorized"}, status=403)
+                return
             try:
                 dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")
                 _send_sse_stream(self, dc.launch_stream())
@@ -288,6 +354,9 @@ class InstallerHandler(BaseHTTPRequestHandler):
 
         # SSE install stream — EventSource only supports GET
         if path == "/api/install" or path.startswith("/api/install?"):
+            if not _authorized(self):
+                _send_json(self, {"error": "unauthorized"}, status=403)
+                return
             try:
                 parsed = urlparse(self.path)
                 qs = parse_qs(parsed.query)
@@ -314,7 +383,7 @@ class InstallerHandler(BaseHTTPRequestHandler):
 def is_port_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.bind(("", port))
+            s.bind(("127.0.0.1", port))
             return True
         except OSError:
             return False
@@ -364,7 +433,9 @@ def main():
     class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
         daemon_threads = True
 
-    server = ThreadedHTTPServer(("", PORT), InstallerHandler)
+    # Bind to loopback only: the installer never needs to be reachable from the
+    # network, and several endpoints can install software / register services.
+    server = ThreadedHTTPServer(("127.0.0.1", PORT), InstallerHandler)
     url = f"http://localhost:{PORT}"
 
     print("=" * 60)

@@ -450,3 +450,25 @@ html.light .cv-driver-popover {
 .leaflet-popup-tip {
   background: rgb(var(--cv-surface));
 }
+
+/* Animated tutorial: gentle fade/slide when steps change */
+@keyframes cvFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cv-fade-in {
+  animation: cvFadeIn 0.45s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-fade-in {
+    animation: none;
+  }
+}

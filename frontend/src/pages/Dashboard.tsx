@@ -10,6 +10,7 @@ import { DashboardSkeleton } from '@/components/ui/Skeleton';
 import ErrorState from '@/components/ErrorState';
 import LiveEventStream from '@/components/dashboard/LiveEventStream';
 import FirstRuleWizard from '@/components/rules/FirstRuleWizard';
+import AnimatedTutorial from '@/components/onboarding/AnimatedTutorial';
 import { useAlerts, useDashboardSummary, useHealth } from '@/hooks/api/queries';
 import { useSound } from '@/hooks/useSound';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
@@ -49,6 +50,7 @@ export default function Dashboard() {
 
   return (
     <PageShell title={t('dashboard.title')} onHelpTour={startTour}>
+      <AnimatedTutorial />
       <FirstRuleWizard />
 
       <div id="dashboard-stats" className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">

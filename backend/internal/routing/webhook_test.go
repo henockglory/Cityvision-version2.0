@@ -28,6 +28,7 @@ func TestPostWebhook_CloudEventsRetry(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	t.Setenv("WEBHOOK_ALLOW_PRIVATE", "1") // httptest server runs on loopback
 	t.Setenv("WEBHOOK_CLOUDEVENTS", "1")
 	t.Setenv("WEBHOOK_MAX_ATTEMPTS", "3")
 	t.Setenv("WEBHOOK_DLQ_PATH", t.TempDir()+"/dlq.jsonl")
@@ -52,6 +53,7 @@ func TestPostWebhook_DLQOnFailure(t *testing.T) {
 	defer srv.Close()
 
 	dlq := t.TempDir() + "/dlq.jsonl"
+	t.Setenv("WEBHOOK_ALLOW_PRIVATE", "1") // httptest server runs on loopback
 	t.Setenv("WEBHOOK_MAX_ATTEMPTS", "1")
 	t.Setenv("WEBHOOK_DLQ_PATH", dlq)
 

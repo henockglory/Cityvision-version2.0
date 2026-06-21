@@ -32,6 +32,14 @@ type Config struct {
 
 	AIEngineHost string
 	AIEnginePort int
+
+	InternalAPIKey string
+	// CORSAllowedOrigins is the explicit allowlist of browser origins. Empty
+	// means "dev defaults" (localhost). A single "*" entry allows any origin.
+	CORSAllowedOrigins []string
+	// WSAllowedOrigins restricts WebSocket upgrade origins. Empty reuses
+	// CORSAllowedOrigins; "*" allows any.
+	WSAllowedOrigins []string
 }
 
 func Load() (*Config, error) {
@@ -59,6 +67,9 @@ func Load() (*Config, error) {
 	cfg.JWTSecret = os.Getenv("JWT_SECRET")
 	cfg.AuditSignKey = os.Getenv("AUDIT_SIGNING_KEY")
 	cfg.CameraCredentialKey = os.Getenv("CAMERA_CREDENTIAL_KEY")
+	cfg.InternalAPIKey = os.Getenv("INTERNAL_API_KEY")
+	cfg.CORSAllowedOrigins = splitCSV(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	cfg.WSAllowedOrigins = splitCSV(os.Getenv("WS_ALLOWED_ORIGINS"))
 
 	var missing []string
 	if cfg.PostgresURL == "" {
@@ -73,6 +84,9 @@ func Load() (*Config, error) {
 	if cfg.CameraCredentialKey == "" {
 		missing = append(missing, "CAMERA_CREDENTIAL_KEY")
 	}
+	if cfg.InternalAPIKey == "" {
+		missing = append(missing, "INTERNAL_API_KEY")
+	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("missing required environment variables: %s", strings.Join(missing, ", "))
 	}
@@ -83,8 +97,26 @@ func Load() (*Config, error) {
 	if len(cfg.CameraCredentialKey) < 32 {
 		return nil, fmt.Errorf("CAMERA_CREDENTIAL_KEY must be at least 32 characters")
 	}
+	// Reject the shipped placeholder outside development so a real key is set.
+	if cfg.AppEnv != "development" && cfg.InternalAPIKey == "changeme_internal_service_key" {
+		return nil, fmt.Errorf("INTERNAL_API_KEY must be changed from the default placeholder in %s", cfg.AppEnv)
+	}
 
 	return cfg, nil
+}
+
+func splitCSV(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func resolvePostgresURL() string {
@@ -99,8 +131,9 @@ func resolvePostgresURL() string {
 	}
 	host := getEnv("POSTGRES_HOST", "localhost")
 	port := getEnvInt("POSTGRES_PORT", 5432)
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
-		url.PathEscape(user), url.PathEscape(pass), host, port, db)
+	sslmode := getEnv("POSTGRES_SSLMODE", "disable")
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		url.PathEscape(user), url.PathEscape(pass), host, port, db, sslmode)
 }
 
 func (c *Config) Addr() string {

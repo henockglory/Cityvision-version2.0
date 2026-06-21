@@ -88,12 +88,15 @@ func (a *API) ForwardAlert(w http.ResponseWriter, r *http.Request) {
 		if req.WebhookPreset != "" {
 			payload["integration_preset"] = req.WebhookPreset
 		}
-		if err := postWebhookURL(r, req.WebhookURL, payload); err != nil {
+		if err := routing.PostWebhookPreset(req.WebhookURL, req.WebhookPreset, payload); err != nil {
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
 		logEntry["channels"] = append(logEntry["channels"].([]string), "webhook")
 		logEntry["webhook_url"] = req.WebhookURL
+		if req.WebhookPreset != "" {
+			logEntry["webhook_preset"] = req.WebhookPreset
+		}
 	}
 
 	_ = a.Alerts.AppendForwardLog(r.Context(), orgID, alertID, logEntry)
@@ -140,10 +143,6 @@ func appendEvidenceLinks(b *strings.Builder, evSnap map[string]interface{}) {
 			}
 		}
 	}
-}
-
-func postWebhookURL(r *http.Request, url string, payload map[string]interface{}) error {
-	return routing.PostWebhook(url, payload)
 }
 
 func (a *API) InternalNotificationDefaults(w http.ResponseWriter, r *http.Request) {

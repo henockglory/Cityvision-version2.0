@@ -1,12 +1,9 @@
 package handler
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -14,6 +11,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/alerts"
 	"github.com/citevision/citevision-v2/backend/internal/notify"
 	"github.com/citevision/citevision-v2/backend/internal/record"
+	"github.com/citevision/citevision-v2/backend/internal/routing"
 )
 
 func (a *API) InternalNotifyEmail(w http.ResponseWriter, r *http.Request) {
@@ -238,22 +236,13 @@ func (a *API) InternalWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "url required")
 		return
 	}
-	body, _ := json.Marshal(req.Payload)
-	httpReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid url")
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
+	// Route through the hardened delivery path: SSRF validation, signing,
+	// retries with backoff and DLQ on failure (unifies the two webhook paths).
+	if err := routing.PostWebhook(url, req.Payload); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "sent", "http_status": resp.StatusCode})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "sent"})
 }
 
 func (a *API) InternalArchiveStaleAlerts(w http.ResponseWriter, r *http.Request) {

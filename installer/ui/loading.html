@@ -233,15 +233,30 @@
     return FRONTEND + '/setup';
   }
 
-  // 2) Wait until the frontend answers.
+  // 2) Wait until the frontend answers (cross-origin — favicon probe, not no-cors fetch).
+  function probeFrontend() {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      var done = false;
+      function finish(ok) {
+        if (done) return;
+        done = true;
+        resolve(ok);
+      }
+      img.onload = function () { finish(true); };
+      img.onerror = function () { finish(false); };
+      img.src = FRONTEND + '/favicon.svg?t=' + Date.now();
+      setTimeout(function () { finish(false); }, 4000);
+    });
+  }
+
   async function waitFrontend() {
     var deadline = Date.now() + 120000;
     while (Date.now() < deadline) {
-      try {
-        await fetch(FRONTEND + '/', { mode: 'no-cors', cache: 'no-store' });
+      if (await probeFrontend()) {
         setProgress(95);
         return true;
-      } catch (e) { /* not ready */ }
+      }
       setStatus('Démarrage de l\'interface', 'Compilation et chargement de l\'application…');
       await sleep(2000);
     }

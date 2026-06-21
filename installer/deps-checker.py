@@ -533,14 +533,27 @@ def check_yolo_model() -> Dep:
 
 def check_frontend_deps() -> Dep:
     nm = ROOT / "frontend" / "node_modules"
-    if nm.exists() and (nm / ".package-lock.json").exists() or (nm / "react").exists():
+    linux_rollup = nm / "@rollup" / "rollup-linux-x64-gnu"
+
+    def _linux_rollup_ok() -> bool:
+        if IS_WINDOWS:
+            code, _, _ = _wsl_run(["test", "-d", _to_wsl_path(linux_rollup)], timeout=10)
+            return code == 0
+        return linux_rollup.exists()
+
+    if nm.exists() and (nm / "react").exists() and _linux_rollup_ok():
         return Dep("frontend_deps", "Dépendances frontend (node_modules)", "ok",
-                   "installées", "npm install",
+                   "installées (Linux/WSL)", "npm install",
                    "React, Vite, TailwindCSS et toutes les librairies UI")
+    if nm.exists() and (nm / "react").exists():
+        return Dep("frontend_deps", "Dépendances frontend (node_modules)", "missing",
+                   "incompatibles WSL (npm Windows détecté)", "npm install dans WSL",
+                   "node_modules doit être installé sous Linux/WSL pour Vite (bindings Rollup natifs)",
+                   install_cmd=f"wsl -- bash -c 'cd {_to_wsl_path(ROOT)} && source scripts/lib/env-utils.sh && ensure_frontend_deps .'")
     return Dep("frontend_deps", "Dépendances frontend (node_modules)", "missing",
                "non installées", "npm install",
                "Requis pour lancer ou builder le frontend React",
-               install_cmd="cd frontend && npm install")
+               install_cmd=f"wsl -- bash -c 'cd {_to_wsl_path(ROOT)} && source scripts/lib/env-utils.sh && ensure_frontend_deps .'")
 
 
 def check_python_venv() -> Dep:
@@ -740,29 +753,43 @@ def _predownload_nssm() -> tuple[bool, str]:
 
 
 def _register_windows_service(start_mode: str) -> tuple[bool, str]:
-    """Enregistre ou met a jour le service Windows citevision via NSSM (UAC auto).
-
-    Le service s'execute sous le compte utilisateur (WSL est par-utilisateur),
-    donc install-service.ps1 demande le mot de passe Windows via Get-Credential
-    lors d'un premier enregistrement -> timeout large.
-    """
-    ps1 = ROOT / "installer" / "windows" / "install-service.ps1"
-    if not ps1.exists():
-        return False, f"Script introuvable : {ps1}"
-    # install-service.ps1 auto-elevates via UAC when not admin and may prompt
-    # for the Windows password (credential dialog) on first registration.
+    """Lance register-service.bat (seule voie supportée sur Windows)."""
+    bat = ROOT / "register-service.bat"
+    if not bat.exists():
+        return False, f"Script introuvable : {bat}"
+    mode_file = ROOT / "installer" / ".service_start_mode"
+    try:
+        mode_file.parent.mkdir(parents=True, exist_ok=True)
+        mode_file.write_text(start_mode if start_mode in ("auto", "manual") else "auto", encoding="utf-8")
+    except OSError as e:
+        return False, f"Impossible d'écrire le mode de démarrage : {e}"
     rc, out, err = _run([
         "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-        "-File", str(ps1), "-StartMode", start_mode,
-    ], timeout=300)
+        "-Command",
+        f"Start-Process -FilePath '{bat}' -Verb RunAs -Wait",
+    ], timeout=600)
     ok, msg = _parse_service_ps1_output(out, err)
-    if ok:
-        return True, msg
-    # Verify SCM in case JSON was lost but service exists
-    rc2, sc_out, _ = _run(["sc", "query", WINDOWS_SERVICE_NAME], timeout=10)
-    if rc2 == 0:
-        return True, f"Service {WINDOWS_SERVICE_NAME} présent dans SCM (mode: {start_mode})"
-    return False, msg
+    if ok and _windows_service_account_ok():
+        return True, msg or f"Service {WINDOWS_SERVICE_NAME} enregistré (mode: {start_mode})"
+    if _windows_service_account_ok():
+        return True, f"Service {WINDOWS_SERVICE_NAME} enregistré (mode: {start_mode})"
+    if rc != 0:
+        return False, msg or err or f"register-service.bat a échoué (code {rc})"
+    return False, "Service enregistré sous un compte incompatible (LocalSystem) — relancez register-service.bat"
+
+
+def _windows_service_account_ok() -> bool:
+    """True when citevision SCM service runs under a user account (not LocalSystem)."""
+    rc, out, _ = _run(["sc", "qc", WINDOWS_SERVICE_NAME], timeout=10)
+    if rc != 0:
+        return False
+    for line in out.splitlines():
+        if "SERVICE_START_NAME" in line:
+            account = line.split(":", 1)[-1].strip().lower()
+            bad = ("localsystem", "local service", "networkservice",
+                   "nt authority\\localservice", "nt authority\\networkservice")
+            return account not in bad and account != ""
+    return False
 
 
 def read_service_start_mode() -> str:
@@ -945,29 +972,24 @@ def install_stream(start_mode: str = "auto"):
                             break
                     if install_ok:
                         if IS_WINDOWS:
-                            yield emit("step", message="Préparation NSSM (service Windows)…")
+                            yield emit("step", message="Service Windows — enregistrement manuel requis")
+                            yield emit("info", message=(
+                                "Lancez register-service.bat à la racine du projet : "
+                                "acceptez UAC et saisissez votre mot de passe Windows."
+                            ))
+                        else:
+                            yield emit("step", message="Enregistrement du service système…")
                             try:
-                                nssm_ok, nssm_msg = _predownload_nssm()
-                                if nssm_ok:
-                                    yield emit("ok", message=nssm_msg or "NSSM prêt")
+                                svc = register_system_service(start_mode)
+                                if svc.get("ok"):
+                                    mode_lbl = "automatique" if svc.get("start_mode") == "auto" else "manuel"
+                                    yield emit("ok", message=f"Service enregistré — démarrage {mode_lbl}")
+                                elif svc.get("skipped"):
+                                    yield emit("warn", message=svc.get("message", "Service non enregistré (systemd non disponible)"))
                                 else:
-                                    yield emit("warn", message=nssm_msg or "NSSM sera téléchargé au premier lancement")
-                            except Exception as _ne:
-                                yield emit("warn", message=f"Pré-téléchargement NSSM ignoré : {_ne}")
-                        # Register system service (Windows NSSM or Linux systemd)
-                        yield emit("step", message="Enregistrement du service système…")
-                        yield emit("info", message="Windows : acceptez la fenêtre UAC si elle s'affiche")
-                        try:
-                            svc = register_system_service(start_mode)
-                            if svc.get("ok"):
-                                mode_lbl = "automatique" if svc.get("start_mode") == "auto" else "manuel"
-                                yield emit("ok", message=f"Service enregistré — démarrage {mode_lbl}")
-                            elif svc.get("skipped"):
-                                yield emit("warn", message=svc.get("message", "Service non enregistré (systemd non disponible)"))
-                            else:
-                                yield emit("warn", message=f"Service non enregistré : {svc.get('message', 'droits insuffisants')}")
-                        except Exception as _e:
-                            yield emit("warn", message=f"Enregistrement service ignoré : {_e}")
+                                    yield emit("warn", message=f"Service non enregistré : {svc.get('message', 'droits insuffisants')}")
+                            except Exception as _e:
+                                yield emit("warn", message=f"Enregistrement service ignoré : {_e}")
                         yield emit("done", message="Installation terminée avec succès !")
                     else:
                         yield emit("error", message="Installation — AI stack non validé après auto-fix")
@@ -1189,12 +1211,30 @@ def launch_stream():
 
                 yield emit("step", message="Vérification de l'interface (5174)...")
                 app_url = _resolve_app_url()
-                if _poll_port(5174, timeout=60):
+                if not _poll_port(5174, timeout=120):
+                    yield emit("fix", message="Interface non joignable — réinstallation des dépendances frontend (WSL)…")
+                    try:
+                        wsl_root = _to_wsl_path(ROOT)
+                        fix_cmd = [
+                            "wsl", "--", "bash", "-lc",
+                            f"cd '{wsl_root}' && source scripts/lib/env-utils.sh && "
+                            "ensure_frontend_deps . && "
+                            "stop_from_pid logs/frontend.pid 2>/dev/null || true; "
+                            "free_port 5174; "
+                            f"start_bg frontend '{wsl_root}/frontend' "
+                            "'npm run dev -- --host 0.0.0.0 --port 5174 --strictPort' logs .env",
+                        ]
+                        subprocess.run(
+                            fix_cmd, cwd=str(ROOT), timeout=600, check=False,
+                            creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,
+                        )
+                    except Exception as e:
+                        yield emit("warn", message=f"Auto-fix frontend échoué : {e}")
+                if _poll_port(5174, timeout=90):
                     yield emit("ok", message="Interface CitéVision accessible")
                     yield emit("launch_ready", message=app_url)
                 else:
-                    yield emit("warn", message="Timeout interface — tentez d'ouvrir manuellement")
-                    yield emit("launch_ready", message=app_url)
+                    yield emit("error", message="Interface non démarrée sur le port 5174 — consultez logs/frontend.log")
             else:
                 yield emit("error", message=f"Erreur démarrage (code {rc}) — consultez logs/backend.log")
             break

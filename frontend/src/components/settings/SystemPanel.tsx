@@ -82,6 +82,12 @@ export default function SystemPanel() {
 
   async function handleServiceAction(action: 'start' | 'stop') {
     if (!status || actionSaving) return;
+    const confirmMsg =
+      action === 'start'
+        ? t('system.actionConfirmStart')
+        : t('system.actionConfirmStop');
+    if (!window.confirm(confirmMsg)) return;
+
     setActionSaving(action);
     setActionError('');
     setActionSuccess('');
@@ -93,8 +99,10 @@ export default function SystemPanel() {
       }
       setActionSuccess(data.message || t('system.actionSaved'));
       await loadStatus();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } };
+      const msg = ax.response?.data?.message
+        ?? (err instanceof Error ? err.message : String(err));
       setActionError(`${t('system.actionError')}: ${msg}`);
     } finally {
       setActionSaving(null);
@@ -119,6 +127,13 @@ export default function SystemPanel() {
     status &&
     status.start_mode_effective &&
     status.start_mode_effective !== status.start_mode;
+
+  const appActive = Boolean(status?.app_running);
+  const canStart =
+    Boolean(status?.service_registered) &&
+    !status?.service_needs_repair &&
+    !appActive;
+  const canStop = appActive || Boolean(status?.service_running);
 
   return (
     <div className="space-y-6">
@@ -207,6 +222,13 @@ export default function SystemPanel() {
                 label={status.service_registered ? t('system.yes') : t('system.no')}
               />
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-cv-border/50">
+              <span className="text-sm text-cv-muted">{t('system.appRunning')}</span>
+              <StatusBadge
+                ok={appActive}
+                label={appActive ? t('system.active') : t('system.stopped')}
+              />
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-2 py-2">
               <span className="text-sm text-cv-muted">{t('system.running')}</span>
               <StatusBadge
@@ -214,6 +236,16 @@ export default function SystemPanel() {
                 label={status.service_running ? t('system.active') : t('system.stopped')}
               />
             </div>
+
+            {status.service_needs_repair && (
+              <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/5 p-4 space-y-1.5">
+                <div className="flex items-center gap-2 text-sm font-medium text-red-300">
+                  <AlertTriangle className="w-4 h-4" />
+                  {t('system.serviceNeedsRepairTitle')}
+                </div>
+                <p className="text-xs text-cv-muted">{t('system.serviceNeedsRepairCta')}</p>
+              </div>
+            )}
 
             {!status.service_registered && (
               <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-1.5">
@@ -225,12 +257,12 @@ export default function SystemPanel() {
               </div>
             )}
 
-            {status.service_registered && (
+            {(status.service_registered || appActive) && (
               <div className="pt-2 space-y-2">
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    disabled={actionSaving !== null || status.service_running}
+                    disabled={actionSaving !== null || !canStart}
                     onClick={() => void handleServiceAction('start')}
                     className="cv-btn-secondary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -243,7 +275,7 @@ export default function SystemPanel() {
                   </button>
                   <button
                     type="button"
-                    disabled={actionSaving !== null || !status.service_running}
+                    disabled={actionSaving !== null || !canStop}
                     onClick={() => void handleServiceAction('stop')}
                     className="cv-btn-secondary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >

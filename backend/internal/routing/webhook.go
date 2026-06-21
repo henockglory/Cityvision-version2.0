@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/citevision/citevision-v2/backend/internal/health"
 )
 
 const (
@@ -90,6 +92,9 @@ func httpNewPost(url string, body []byte, deliveryID string) (*http.Request, err
 	req.Header.Set("X-CiteVision-Delivery-Id", deliveryID)
 	req.Header.Set("Ce-Specversion", "1.0")
 	req.Header.Set("Ce-Type", "com.citevision.alert.v1")
+	if sig := signBody(body); sig != "" {
+		req.Header.Set("X-CiteVision-Signature", sig)
+	}
 	return req, nil
 }
 
@@ -123,10 +128,20 @@ func appendDLQ(path string, entry map[string]interface{}) {
 
 // PostWebhook delivers payload with retries, optional CloudEvents envelope, DLQ on failure.
 func PostWebhook(url string, payload map[string]interface{}) error {
+	return PostWebhookPreset(url, PresetGeneric, payload)
+}
+
+// PostWebhookPreset adapts the payload to the destination preset (Slack/Teams/
+// Discord/n8n/Make/Zapier) before delivering with SSRF validation, HMAC signing,
+// retries and DLQ on failure.
+func PostWebhookPreset(url, preset string, payload map[string]interface{}) error {
+	if err := ValidateWebhookURL(url); err != nil {
+		return err
+	}
 	opts := defaultWebhookOptions()
-	bodyPayload := payload
-	if opts.CloudEvents {
-		bodyPayload = wrapCloudEvents(payload)
+	bodyPayload, useCloudEvents := transformForPreset(preset, payload)
+	if useCloudEvents && opts.CloudEvents {
+		bodyPayload = wrapCloudEvents(bodyPayload)
 	}
 	body, err := json.Marshal(bodyPayload)
 	if err != nil {
@@ -142,6 +157,7 @@ func PostWebhook(url string, payload map[string]interface{}) error {
 		}
 		status, err := doHTTP(req, opts.Timeout)
 		if err == nil {
+			health.RecordWebhookDelivery(preset, "success")
 			return nil
 		}
 		lastErr = err
@@ -159,9 +175,8 @@ func PostWebhook(url string, payload map[string]interface{}) error {
 		"error":       lastErr.Error(),
 		"payload":     bodyPayload,
 	})
+	health.RecordWebhookDelivery(preset, "failure")
+	health.IncWebhookDLQSize()
 	return lastErr
 }
 
-func postWebhook(url string, payload map[string]interface{}) error {
-	return PostWebhook(url, payload)
-}

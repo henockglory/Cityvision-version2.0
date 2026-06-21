@@ -67,5 +67,8 @@ export const WEBHOOK_PRESETS = [
   { id: 'n8n', label: 'n8n', hint: 'Collez l\'URL du nœud Webhook de votre workflow n8n.' },
   { id: 'make', label: 'Make (Integromat)', hint: 'URL du scénario Make — module Webhooks.' },
   { id: 'zapier', label: 'Zapier', hint: 'URL du Catch Hook Zapier.' },
+  { id: 'slack', label: 'Slack', hint: 'URL d\'un Incoming Webhook Slack (message formaté).' },
+  { id: 'teams', label: 'Microsoft Teams', hint: 'URL d\'un Incoming Webhook Teams (MessageCard).' },
+  { id: 'discord', label: 'Discord', hint: 'URL d\'un webhook de salon Discord (embed).' },
   { id: 'gmail', label: 'Gmail (via e-mail)', hint: 'Utilisez plutôt l\'action e-mail avec SMTP configuré.' },
 ] as const;

@@ -72,9 +72,9 @@ if ! bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --max-attempts=5; then
 fi
 echo "[OK] AI stack prêt"
 
-if [[ ! -d frontend/node_modules ]]; then
-  echo "[INFO] npm install..."
-  (cd frontend && npm install --silent)
+if ! ensure_frontend_deps "$ROOT"; then
+  echo "[FAIL] Frontend dependencies missing or wrong platform — run: bash scripts/setup-wsl.sh" >&2
+  exit 1
 fi
 
 BACKEND_PORT="${API_PORT:-8081}"
@@ -107,9 +107,6 @@ load_dotenv "$ENV_FILE"
 
 start_bg rules-engine "$ROOT/rules-engine" "$GO_BIN run ./cmd/rules-engine" "$LOGDIR" "$ENV_FILE"
 start_bg ai-engine "$ROOT/ai-engine" "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} $ROOT/ai-engine/.venv/bin/uvicorn citevision_ai.main:app --host 0.0.0.0 --port $AI_PORT" "$LOGDIR" "$ENV_FILE"
-free_port 5174 5175 5176 5177
-sleep 1
-start_bg frontend "$ROOT/frontend" "npm run dev -- --host 0.0.0.0 --port 5174 --strictPort" "$LOGDIR" "$ENV_FILE"
 
 echo ""
 echo "[INFO] Waiting for AI Engine (first run compiles ONNX session)..."
@@ -131,6 +128,18 @@ echo ""
 echo "[INFO] Waiting for Rules Engine..."
 if ! wait_service_with_retry rules-engine "http://localhost:$RULES_PORT/health" \
     "$LOGDIR/rules-engine.pid" "$GO_BIN run ./cmd/rules-engine" "$ROOT/rules-engine" "$LOGDIR" "$ENV_FILE" 30 2; then
+  exit 1
+fi
+
+free_port 5174 5175 5176 5177
+sleep 1
+start_bg frontend "$ROOT/frontend" "npm run dev -- --host 0.0.0.0 --port 5174 --strictPort" "$LOGDIR" "$ENV_FILE"
+
+echo ""
+echo "[INFO] Waiting for frontend (Vite dev server)..."
+if ! wait_service_with_retry frontend "http://localhost:5174/" \
+    "$LOGDIR/frontend.pid" "npm run dev -- --host 0.0.0.0 --port 5174 --strictPort" "$ROOT/frontend" "$LOGDIR" "$ENV_FILE" 90 2; then
+  echo "[FAIL] Frontend not reachable on port 5174 — see logs/frontend.log" >&2
   exit 1
 fi
 

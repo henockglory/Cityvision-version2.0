@@ -169,9 +169,14 @@ func (s *Service) DispatchAuto(ctx context.Context, orgSvc *org.Service, alertsS
 			if ch.WebhookPreset != "" {
 				payload["integration_preset"] = ch.WebhookPreset
 			}
-			if postWebhook(ch.WebhookURL, payload) == nil {
+			if err := PostWebhookPreset(ch.WebhookURL, ch.WebhookPreset, payload); err == nil {
 				logEntry["channels"] = append(logEntry["channels"].([]string), "webhook")
 				logEntry["webhook_url"] = ch.WebhookURL
+				if ch.WebhookPreset != "" {
+					logEntry["webhook_preset"] = ch.WebhookPreset
+				}
+			} else {
+				logEntry["webhook_error"] = err.Error()
 			}
 		}
 		if len(logEntry["channels"].([]string)) > 0 {

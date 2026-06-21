@@ -127,6 +127,45 @@ export const orgApi = {
   resetDemo: (orgId: string) => api.post(`/orgs/${orgId}/demo/reset`),
 };
 
+export interface IntegrationPreset {
+  id: string;
+  label: string;
+  category: 'automation' | 'chat' | string;
+  description: string;
+  docs_url: string;
+}
+
+export interface DeliveryLogEntry {
+  timestamp?: string;
+  alert_id?: string;
+  alert_title?: string;
+  channels?: string[];
+  webhook_url?: string;
+  webhook_preset?: string;
+  webhook_error?: string;
+  email?: string;
+  source?: string;
+  routing_rule_name?: string;
+  [k: string]: unknown;
+}
+
+export const integrationsApi = {
+  presets: (orgId: string) =>
+    api.get<{ presets: IntegrationPreset[]; signing_enabled: boolean }>(
+      `/orgs/${orgId}/integrations/presets`,
+    ),
+  testWebhook: (orgId: string, body: { url: string; preset?: string }) =>
+    api.post<{ ok: boolean; error?: string }>(
+      `/orgs/${orgId}/integrations/webhook/test`,
+      body,
+    ),
+  deliveryLog: (orgId: string, limit = 100) =>
+    api.get<{ entries: DeliveryLogEntry[] }>(
+      `/orgs/${orgId}/integrations/delivery-log`,
+      { params: { limit } },
+    ),
+};
+
 export interface OrganizationSettings {
   id: string;
   name: string;
@@ -398,6 +437,10 @@ export interface SystemStatus {
   platform: string;
   service_registered: boolean;
   service_running: boolean;
+  app_running: boolean;
+  service_state?: string;
+  service_account?: string;
+  service_needs_repair: boolean;
   start_mode: string;
   start_mode_effective?: string;
   service_name: string;

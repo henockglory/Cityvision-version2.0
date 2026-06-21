@@ -71,6 +71,28 @@
     "viewAll": "View all",
     "noAlerts": "No recent alerts"
   },
+  "tutorial": {
+    "title": "Getting started",
+    "subtitle": "Set up CitéVision in 3 guided steps.",
+    "stepOf": "Step {{n}} of {{total}}",
+    "skip": "Dismiss",
+    "next": "Next",
+    "prev": "Back",
+    "go": "Open",
+    "done": "Done",
+    "cameras": {
+      "title": "1. Connect your cameras",
+      "desc": "Add IP/RTSP cameras with automatic network discovery, then verify the live stream."
+    },
+    "zones": {
+      "title": "2. Draw detection zones",
+      "desc": "Outline areas and crossing lines on each camera so the AI focuses on what matters."
+    },
+    "rules": {
+      "title": "3. Create smart rules",
+      "desc": "Combine zones, schedules and detections to trigger alerts and automations (e-mail, webhooks, n8n…)."
+    }
+  },
   "cameras": {
     "title": "Camera Management",
     "add": "Add Camera",
@@ -414,7 +436,8 @@
     "startModeAuto": "Automatic on boot",
     "startModeManual": "Manual",
     "registered": "Registered",
-    "running": "Status",
+    "appRunning": "Application",
+    "running": "Windows service",
     "yes": "Yes",
     "no": "No",
     "active": "Running",
@@ -427,11 +450,15 @@
     "startModeConfirmAuto": "Enable automatic startup with the system?",
     "startModeConfirmManual": "Switch to manual startup? CitéVision will not start automatically after reboot.",
     "startModeMismatch": "Configured: {{configured}} — effective in OS: {{effective}}",
-    "serviceNotRegistered": "Service not registered. Run register-service.bat or click Open CitéVision in the installer (accept UAC).",
+    "serviceNotRegistered": "Service not registered. Run register-service.bat (UAC + Windows password).",
     "serviceNotRegisteredTitle": "Service not registered",
-    "serviceNotRegisteredCta": "To enable automatic startup and start/stop control, register the service once: click \"Open CitéVision\" in the installer (accept the Windows administrator prompt and enter your password), or run register-service.bat. After that, these settings work without any administrator prompt.",
+    "serviceNotRegisteredCta": "On Windows, register the service only via register-service.bat at the project root: accept UAC and enter your Windows password. Then start/stop and automatic mode work from this page.",
+    "serviceNeedsRepairTitle": "Service needs repair",
+    "serviceNeedsRepairCta": "The Windows service runs as LocalSystem (WSL incompatible). Re-run register-service.bat: accept UAC and enter your Windows password to re-register under your user account.",
     "actionStart": "Start",
     "actionStop": "Stop",
+    "actionConfirmStart": "Start CitéVision? All services (backend, AI, UI) will be launched.",
+    "actionConfirmStop": "Stop CitéVision? All services will be shut down.",
     "actionUacHint": "Windows will show an administrator prompt — accept it to start/stop the service.",
     "actionSaved": "Service action applied",
     "actionError": "Could not apply the service action",
