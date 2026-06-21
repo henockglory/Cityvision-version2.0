@@ -3,6 +3,7 @@
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
+#include <libavutil/rational.h>
 }
 
 #include <iostream>
@@ -50,9 +51,18 @@ bool RtspIngest::connect() {
         return false;
     }
 
-    auto* par = fmt->streams[video_stream_index_]->codecpar;
+    auto* stream = fmt->streams[video_stream_index_];
+    auto* par = stream->codecpar;
     width_ = par->width;
     height_ = par->height;
+
+    // Detect the real frame rate: prefer avg_frame_rate, fall back to
+    // r_frame_rate. Both are AVRational; guard against the 0/0 "unknown" case.
+    AVRational fr = stream->avg_frame_rate;
+    if (fr.num == 0 || fr.den == 0) {
+        fr = stream->r_frame_rate;
+    }
+    detected_fps_ = (fr.num > 0 && fr.den > 0) ? av_q2d(fr) : 0.0;
 
     const AVCodec* codec = avcodec_find_decoder(par->codec_id);
     if (!codec) {

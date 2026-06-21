@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.25"
 
       - uses: actions/setup-python@v5
         with:
@@ -24,10 +24,11 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Go test (backend)
+      - name: Go vet + test (backend)
         working-directory: backend
         run: |
           go mod tidy
+          go vet ./...
           go test ./...
 
       - name: Go test (rules-engine)
@@ -43,10 +44,11 @@ jobs:
           pip install pytest pytest-asyncio httpx
           pytest
 
-      - name: npm build (frontend)
+      - name: Typecheck + build (frontend)
         working-directory: frontend
         run: |
           npm install
+          npx tsc --noEmit
           npm run build
 
   install-smoke:

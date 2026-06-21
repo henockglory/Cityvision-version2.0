@@ -7,6 +7,14 @@ DualPipeline::DualPipeline(const PipelineConfig& config, HealthStatus& status)
     status_.current_sample_rate = sampler_.sample_rate();
 }
 
+void DualPipeline::set_source_fps(double source_fps) {
+    if (source_fps > 0) {
+        config_.source_fps = source_fps;
+        sampler_.reconfigure(source_fps);
+        status_.current_sample_rate = sampler_.sample_rate();
+    }
+}
+
 void DualPipeline::process_frame(uint64_t frame_index) {
     status_.frames_ingested = frame_index + 1;
 

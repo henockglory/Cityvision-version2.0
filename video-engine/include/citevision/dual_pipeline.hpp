@@ -13,6 +13,8 @@ public:
     void process_frame(uint64_t frame_index);
     bool should_analyze(uint64_t frame_index) const;
     bool should_record(uint64_t frame_index) const;
+    // Apply the real source FPS detected at connect time to the sampler.
+    void set_source_fps(double source_fps);
 
 private:
     PipelineConfig config_;

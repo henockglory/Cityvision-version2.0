@@ -7,9 +7,16 @@ namespace citevision {
 
 FrameSampler::FrameSampler(double source_fps, double target_fps)
     : source_fps_(source_fps), target_fps_(target_fps), interval_(1), sample_rate_(1.0) {
-    if (source_fps > 0 && target_fps > 0) {
-        interval_ = std::max(1, static_cast<int>(std::round(source_fps / target_fps)));
-        sample_rate_ = source_fps / interval_;
+    reconfigure(source_fps);
+}
+
+void FrameSampler::reconfigure(double source_fps) {
+    source_fps_ = source_fps;
+    interval_ = 1;
+    sample_rate_ = 1.0;
+    if (source_fps_ > 0 && target_fps_ > 0) {
+        interval_ = std::max(1, static_cast<int>(std::round(source_fps_ / target_fps_)));
+        sample_rate_ = source_fps_ / interval_;
     }
 }
 
