@@ -6,8 +6,9 @@
 
 Unicode True
 Name "CitéVision v2"
-OutFile "CitéVision-v2-Setup.exe"
-InstallDir "C:\CitéVision"
+OutFile "CiteVision-v2-Setup.exe"
+; ASCII install path (no accent) to avoid CP850/UTF-8 corruption in .bat scripts.
+InstallDir "C:\Citevision"
 InstallDirRegKey HKLM "Software\CitéVision" "Install_Dir"
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
@@ -30,7 +31,7 @@ SetCompress auto
 
 ; Titre des pages
 !define MUI_WELCOMEPAGE_TITLE "CitéVision v2"
-!define MUI_WELCOMEPAGE_TEXT  "Bienvenue dans l'assistant d'installation de CitéVision v2, la plateforme d'analyse vidéo intelligente.$\r$\n$\r$\nCe programme va :$\r$\n• Extraire CitéVision vers C:\CitéVision$\r$\n• Vérifier et installer WSL2 (Ubuntu 24.04)$\r$\n• Créer un raccourci sur le Bureau$\r$\n• Lancer l'assistant de configuration$\r$\n$\r$\nCliquez sur Suivant pour continuer."
+!define MUI_WELCOMEPAGE_TEXT  "Bienvenue dans l'assistant d'installation de CitéVision v2, la plateforme d'analyse vidéo intelligente.$\r$\n$\r$\nCe programme va :$\r$\n• Extraire CitéVision vers C:\Citevision$\r$\n• Vérifier et installer WSL2 (Ubuntu 24.04)$\r$\n• Créer un raccourci sur le Bureau$\r$\n• Lancer l'assistant de configuration$\r$\n$\r$\nCliquez sur Suivant pour continuer."
 
 !define MUI_FINISHPAGE_TITLE  "Installation terminée"
 !define MUI_FINISHPAGE_TEXT   "CitéVision v2 a été installé avec succès.$\r$\n$\r$\nL'assistant de configuration va maintenant s'ouvrir dans votre navigateur pour finaliser la configuration : création de l'organisation, des utilisateurs et des caméras."

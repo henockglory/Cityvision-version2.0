@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Server, CheckCircle2, XCircle, AlertTriangle, Loader2, Settings2,
+  Server, CheckCircle2, XCircle, AlertTriangle, Loader2, Settings2, Zap, Hand, Play, Square,
 } from 'lucide-react';
 import { systemApi, type SystemStatus } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
@@ -20,6 +20,8 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
+type StartMode = 'auto' | 'manual';
+
 export default function SystemPanel() {
   const { t } = useTranslation();
   const isAdmin = useAuthStore((s) => s.hasRole('admin'));
@@ -27,6 +29,12 @@ export default function SystemPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uninstallOpen, setUninstallOpen] = useState(false);
+  const [modeSaving, setModeSaving] = useState(false);
+  const [modeError, setModeError] = useState('');
+  const [modeSuccess, setModeSuccess] = useState('');
+  const [actionSaving, setActionSaving] = useState<'start' | 'stop' | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [actionSuccess, setActionSuccess] = useState('');
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -45,6 +53,54 @@ export default function SystemPanel() {
     if (isAdmin) void loadStatus();
   }, [isAdmin, loadStatus]);
 
+  async function handleStartModeChange(mode: StartMode) {
+    if (!status || mode === status.start_mode || modeSaving) return;
+    const confirmMsg =
+      mode === 'auto'
+        ? t('system.startModeConfirmAuto')
+        : t('system.startModeConfirmManual');
+    if (!window.confirm(confirmMsg)) return;
+
+    setModeSaving(true);
+    setModeError('');
+    setModeSuccess('');
+    try {
+      const { data } = await systemApi.setStartMode(mode);
+      if (!data.ok) {
+        setModeError(data.message || t('system.startModeError'));
+        return;
+      }
+      setModeSuccess(data.message || t('system.startModeSaved'));
+      await loadStatus();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setModeError(`${t('system.startModeError')}: ${msg}`);
+    } finally {
+      setModeSaving(false);
+    }
+  }
+
+  async function handleServiceAction(action: 'start' | 'stop') {
+    if (!status || actionSaving) return;
+    setActionSaving(action);
+    setActionError('');
+    setActionSuccess('');
+    try {
+      const { data } = await systemApi.serviceAction(action);
+      if (!data.ok) {
+        setActionError(data.message || t('system.actionError'));
+        return;
+      }
+      setActionSuccess(data.message || t('system.actionSaved'));
+      await loadStatus();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setActionError(`${t('system.actionError')}: ${msg}`);
+    } finally {
+      setActionSaving(null);
+    }
+  }
+
   if (!isAdmin) {
     return (
       <p className="text-sm text-cv-muted">{t('system.uninstall.adminOnly')}</p>
@@ -58,14 +114,14 @@ export default function SystemPanel() {
         ? t('system.platformLinux')
         : status?.platform ?? '—';
 
-  const modeLabel =
-    status?.start_mode === 'manual'
-      ? t('system.startModeManual')
-      : t('system.startModeAuto');
+  const effectiveMode = status?.start_mode_effective || status?.start_mode;
+  const modeMismatch =
+    status &&
+    status.start_mode_effective &&
+    status.start_mode_effective !== status.start_mode;
 
   return (
     <div className="space-y-6">
-      {/* Status card */}
       <div className="cv-card p-5">
         <div className="flex items-center gap-2 mb-4">
           <Server className="w-5 h-5 text-cv-accent" />
@@ -96,10 +152,54 @@ export default function SystemPanel() {
               <span className="text-sm text-cv-muted">{t('system.serviceName')}</span>
               <span className="text-sm font-medium font-mono">{status.service_name}</span>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-cv-border/50">
-              <span className="text-sm text-cv-muted">{t('system.startMode')}</span>
-              <span className="text-sm font-medium">{modeLabel}</span>
-            </div>
+
+            {status.service_registered && (
+              <div className="py-3 border-b border-cv-border/50 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm text-cv-muted">{t('system.startMode')}</span>
+                  {modeSaving && (
+                    <span className="text-xs text-cv-muted flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      {t('system.startModeApplying')}
+                    </span>
+                  )}
+                </div>
+                <div className="inline-flex rounded-lg border border-cv-border bg-cv-surface/50 p-1 gap-1">
+                  {(['auto', 'manual'] as const).map((mode) => {
+                    const selected = status.start_mode === mode;
+                    const Icon = mode === 'auto' ? Zap : Hand;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={modeSaving}
+                        onClick={() => void handleStartModeChange(mode)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                          selected
+                            ? 'bg-cv-accent text-cv-deep shadow-sm'
+                            : 'text-cv-muted hover:text-cv-text hover:bg-cv-surface'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {mode === 'auto' ? t('system.startModeAuto') : t('system.startModeManual')}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-cv-muted">{t('system.startModeHint')}</p>
+                {modeMismatch && (
+                  <p className="text-xs text-amber-400">
+                    {t('system.startModeMismatch', {
+                      configured: status.start_mode,
+                      effective: effectiveMode,
+                    })}
+                  </p>
+                )}
+                {modeError && <p className="text-xs text-red-400">{modeError}</p>}
+                {modeSuccess && <p className="text-xs text-emerald-400">{modeSuccess}</p>}
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-cv-border/50">
               <span className="text-sm text-cv-muted">{t('system.registered')}</span>
               <StatusBadge
@@ -114,11 +214,55 @@ export default function SystemPanel() {
                 label={status.service_running ? t('system.active') : t('system.stopped')}
               />
             </div>
+
+            {!status.service_registered && (
+              <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-1.5">
+                <div className="flex items-center gap-2 text-sm font-medium text-amber-300">
+                  <AlertTriangle className="w-4 h-4" />
+                  {t('system.serviceNotRegisteredTitle')}
+                </div>
+                <p className="text-xs text-cv-muted">{t('system.serviceNotRegisteredCta')}</p>
+              </div>
+            )}
+
+            {status.service_registered && (
+              <div className="pt-2 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={actionSaving !== null || status.service_running}
+                    onClick={() => void handleServiceAction('start')}
+                    className="cv-btn-secondary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {actionSaving === 'start' ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Play className="w-4 h-4" />
+                    )}
+                    {t('system.actionStart')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionSaving !== null || !status.service_running}
+                    onClick={() => void handleServiceAction('stop')}
+                    className="cv-btn-secondary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {actionSaving === 'stop' ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Square className="w-4 h-4" />
+                    )}
+                    {t('system.actionStop')}
+                  </button>
+                </div>
+                {actionError && <p className="text-xs text-red-400">{actionError}</p>}
+                {actionSuccess && <p className="text-xs text-emerald-400">{actionSuccess}</p>}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Gestion de l'installation */}
       <div className="cv-card p-5">
         <div className="flex items-center gap-2 mb-3">
           <Settings2 className="w-5 h-5 text-cv-accent" />

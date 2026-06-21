@@ -422,50 +422,176 @@ function startLaunch() {
   }
 
   let serviceRegEl = null;
+  let serviceFailBanner = null;
+  let openOverlayEl = null;
+
+  function removeOpeningOverlay() {
+    if (openOverlayEl) { openOverlayEl.remove(); openOverlayEl = null; }
+  }
+
+  function showOpeningOverlay(title, subtitle) {
+    removeOpeningOverlay();
+    openOverlayEl = document.createElement('div');
+    openOverlayEl.className = 'open-app-overlay';
+    openOverlayEl.innerHTML =
+      `<div class="open-app-card">` +
+      `<div class="open-app-logo">CV</div>` +
+      `<div class="ai-waiting-dots open-app-dots"><div></div><div></div><div></div></div>` +
+      `<p class="open-app-title">${title}</p>` +
+      `<p class="open-app-sub">${subtitle || ''}</p>` +
+      `</div>`;
+    document.body.appendChild(openOverlayEl);
+  }
+
+  function setOpeningOverlay(title, subtitle) {
+    if (!openOverlayEl) {
+      showOpeningOverlay(title, subtitle);
+      return;
+    }
+    const t = openOverlayEl.querySelector('.open-app-title');
+    const s = openOverlayEl.querySelector('.open-app-sub');
+    if (t) t.textContent = title;
+    if (s) s.textContent = subtitle || '';
+  }
+
+  // The premium loading page (served by the installer) handles polling the
+  // backend setup status + frontend readiness and redirects to /setup or
+  // /login on its own. We just open it synchronously during the user gesture.
+  const LOADING_URL = API + '/loading.html';
+
+  function showManualOpenLink(finalUrl) {
+    removeOpeningOverlay();
+    const linkEl = document.createElement('div');
+    linkEl.className = 'ai-fail-banner';
+    linkEl.style.borderColor = 'rgba(59,130,246,0.4)';
+    linkEl.style.background = 'rgba(59,130,246,0.08)';
+    linkEl.innerHTML =
+      `<span>Le navigateur a bloqué l'ouverture automatique. </span>` +
+      `<a href="${finalUrl}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Ouvrir CitéVision</a>`;
+    const logParent = log.parentNode;
+    if (logParent) logParent.insertBefore(linkEl, log);
+  }
 
   function removeServiceWaiting() {
     if (serviceRegEl) { serviceRegEl.remove(); serviceRegEl = null; }
   }
 
-  function showServiceWaiting() {
+  function showServiceFailBanner(msg) {
+    if (serviceFailBanner) serviceFailBanner.remove();
+    serviceFailBanner = document.createElement('div');
+    serviceFailBanner.className = 'ai-fail-banner';
+    serviceFailBanner.innerHTML =
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">` +
+      `<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>` +
+      `<span>${msg}</span>`;
+    const logParent = log.parentNode;
+    if (logParent) logParent.insertBefore(serviceFailBanner, log);
+  }
+
+  function showServiceWaiting(uacHint) {
     removeServiceWaiting();
     serviceRegEl = document.createElement('div');
     serviceRegEl.className = 'ai-waiting-indicator';
+    const hint = uacHint
+      ? `<div style="font-size:.75rem;color:var(--muted);margin-top:4px">${uacHint}</div>`
+      : '';
     serviceRegEl.innerHTML =
       `<div class="ai-waiting-dots"><div></div><div></div><div></div></div>` +
-      `<span>Enregistrement du service système…</span>`;
+      `<span>Enregistrement du service citevision…</span>${hint}`;
     btnArea.insertBefore(serviceRegEl, btn);
   }
 
+  async function registerServiceOnce() {
+    const res = await fetch(API + '/api/register-service');
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) { /* ignore */ }
+    return data;
+  }
+
   async function openCiteVision(url) {
+    // Open tab synchronously (before await) to avoid popup blocker after UAC
+    // Open the premium loading tab synchronously (during the user gesture) so
+    // the popup blocker does not kick in after the UAC / credential prompts.
+    // The loading page polls the backend and redirects to /setup or /login.
+    const tab = window.open(LOADING_URL, '_blank');
+    if (!tab) {
+      showManualOpenLink(LOADING_URL);
+    }
+
     btn.disabled = true;
-    showServiceWaiting();
-    step.textContent = 'Enregistrement du service CitéVision…';
-    try {
-      const res = await fetch(API + '/api/register-service');
-      // Guard: server may return non-JSON (404, plain text) if older version running
-      const text = await res.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch (_) { /* ignore */ }
-      removeServiceWaiting();
-      if (data && data.ok) {
-        appendLog('  ' + (data.message || 'Service enregistré'), data.skipped ? 'warn' : 'ok');
-        step.textContent = data.skipped ? 'Application prête' : 'Service enregistré — ouverture…';
-      } else if (data && !data.ok) {
-        appendLog('  ' + (data.message || 'Service non enregistré — ouverture directe'), 'warn');
-        step.textContent = 'Ouverture de l\'application…';
-      } else {
-        appendLog('  Service non disponible — ouverture directe', 'warn');
-        step.textContent = 'Ouverture de l\'application…';
+    if (serviceFailBanner) { serviceFailBanner.remove(); serviceFailBanner = null; }
+
+    showOpeningOverlay(
+      'Enregistrement du service…',
+      'Acceptez la fenêtre administrateur, puis saisissez vos identifiants Windows si demandé'
+    );
+
+    const uacHint = 'Windows va demander l\'autorisation administrateur puis votre mot de passe — acceptez pour enregistrer le service.';
+    showServiceWaiting(uacHint);
+    step.textContent = 'Enregistrement du service citevision…';
+
+    let data = null;
+    let lastErr = '';
+    let serviceOk = false;
+    const maxAttempts = 2;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          step.textContent = `Nouvelle tentative (${attempt}/${maxAttempts}) — acceptez UAC…`;
+          setOpeningOverlay(
+            `Nouvelle tentative (${attempt}/${maxAttempts})…`,
+            'Acceptez UAC pour enregistrer le service'
+          );
+          appendLog(`  Nouvelle tentative d'enregistrement du service (${attempt}/${maxAttempts})…`, 'warn');
+        }
+        data = await registerServiceOnce();
+        if (data && data.ok) {
+          serviceOk = true;
+          break;
+        }
+        lastErr = (data && data.message) ? data.message : 'Service non enregistré';
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      } catch (err) {
+        lastErr = err instanceof Error ? err.message : String(err);
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       }
-      window.open(url, '_blank');
-      btn.disabled = false;
-    } catch (err) {
-      removeServiceWaiting();
-      appendLog('  Ouverture directe (service non joignable)', 'warn');
-      step.textContent = 'Ouverture de l\'application…';
-      window.open(url, '_blank');
-      btn.disabled = false;
+    }
+
+    removeServiceWaiting();
+
+    if (serviceOk) {
+      appendLog('  ' + (data.message || 'Service citevision enregistré'), data.skipped ? 'warn' : 'ok');
+    } else {
+      const failMsg = lastErr || (data && data.message) || 'Enregistrement du service échoué';
+      appendLog('  ' + failMsg, 'warn');
+      showServiceFailBanner(
+        'Service non enregistré — l\'application s\'ouvre quand même. Lancez <strong>register-service.bat</strong> en administrateur si besoin.'
+      );
+    }
+
+    step.textContent = serviceOk
+      ? 'Service enregistré — ouverture de l\'application…'
+      : 'Ouverture de l\'application…';
+
+    // The loading tab is already polling and will redirect itself. If the tab
+    // was blocked, surface a manual link.
+    removeOpeningOverlay();
+    if (!tab) {
+      showManualOpenLink(LOADING_URL);
+    } else {
+      appendLog('  Ouverture de CitéVision dans le nouvel onglet…', 'ok');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Ouvrir CitéVision';
+    if (!serviceOk) {
+      btn.onclick = () => openCiteVision(url);
     }
   }
 

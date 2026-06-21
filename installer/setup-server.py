@@ -161,6 +161,11 @@ class InstallerHandler(BaseHTTPRequestHandler):
             _serve_file(self, UI_DIR / "index.html")
             return
 
+        # Premium loading page (opened in the new tab while CitéVision boots)
+        if path in ("/loading", "/loading.html"):
+            _serve_file(self, UI_DIR / "loading.html")
+            return
+
         # Static assets
         if path.startswith("/static/"):
             asset = path[len("/static/"):]
@@ -325,6 +330,25 @@ def open_browser_delayed(url: str, delay: float = 1.5):
     threading.Thread(target=_open, daemon=True).start()
 
 
+def _warn_stale_install_dir():
+    """Warn if a legacy accented C:\\CitéVision folder coexists with the
+    canonical ASCII C:\\Citevision, to avoid confusion between the two."""
+    if platform.system() != "Windows":
+        return
+    canonical = Path("C:/Citevision")
+    legacy = Path("C:/Cit\u00e9Vision")  # C:\CitéVision
+    try:
+        if legacy.exists() and str(legacy).lower() != str(ROOT).lower():
+            print("")
+            print("  [!] Dossier hérité détecté : C:\\CitéVision (avec accent)")
+            print("      Le dossier officiel est désormais C:\\Citevision (sans accent).")
+            print("      Après vérification, vous pouvez supprimer l'ancien C:\\CitéVision")
+            print("      pour éviter toute confusion.")
+            print("=" * 60)
+    except OSError:
+        pass
+
+
 def main():
     global PORT
     if not is_port_free(PORT):
@@ -350,6 +374,7 @@ def main():
     print(f"  Ouverture du navigateur dans 1.5s…")
     print("  Ctrl+C pour arrêter")
     print("=" * 60)
+    _warn_stale_install_dir()
 
     open_browser_delayed(url)
 

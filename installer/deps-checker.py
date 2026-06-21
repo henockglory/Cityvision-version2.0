@@ -24,6 +24,7 @@ Status = Literal["ok", "missing", "outdated", "installing", "error"]
 ROOT = Path(__file__).resolve().parent.parent
 IS_WINDOWS = platform.system() == "Windows"
 IS_LINUX = platform.system() == "Linux"
+WINDOWS_SERVICE_NAME = "citevision"
 
 # Ports requis par CitéVision v2
 REQUIRED_PORTS = {
@@ -563,16 +564,16 @@ def check_python_venv() -> Dep:
 
 
 def check_windows_service() -> Dep:
-    """Vérifie si le service Windows 'CitéVision' est enregistré (Windows uniquement)."""
-    rc, out, _ = _run(["sc", "query", "CitéVision"], timeout=8)
+    """Verifie si le service Windows citevision est enregistre (Windows uniquement)."""
+    rc, out, _ = _run(["sc", "query", WINDOWS_SERVICE_NAME], timeout=8)
     if rc == 0:
         running = "RUNNING" in out.upper()
         return Dep(
             "windows_service",
-            "Service Windows CitéVision",
+            "Service Windows citevision",
             "ok" if running else "outdated",
             "en cours d'exécution" if running else "arrêté",
-            "sc start CitéVision ou services.msc",
+            f"sc start {WINDOWS_SERVICE_NAME} ou services.msc",
             (
                 "Service Windows actif — démarrage/arrêt via services.msc ou sc start/stop"
                 if running
@@ -581,19 +582,18 @@ def check_windows_service() -> Dep:
             install_cmd=None,
             critical=False,
         )
-    # Service non enregistré
     install_ps1 = str(ROOT / "installer" / "windows" / "install-service.ps1")
     return Dep(
         "windows_service",
-        "Service Windows CitéVision",
+        "Service Windows citevision",
         "missing",
         "non enregistré",
-        "services.msc (après setup.bat)",
+        "register-service.bat ou Ouvrir CitéVision (UAC)",
         (
-            "Le service Windows CitéVision n'est pas enregistré. "
-            "Relancez setup.bat en tant qu'Administrateur pour l'enregistrer automatiquement."
+            "Le service Windows citevision n'est pas enregistré. "
+            "Cliquez Ouvrir CitéVision (acceptez UAC) ou lancez register-service.bat."
         ),
-        install_cmd=f'powershell -NoProfile -ExecutionPolicy Bypass -File "{install_ps1}"',
+        install_cmd=f'powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "{install_ps1}"',
         critical=False,
     )
 
@@ -671,19 +671,98 @@ def _win_path_exists(p: Path) -> bool:
 # ---------------------------------------------------------------------------
 # SSE install stream
 # ---------------------------------------------------------------------------
+def _parse_service_ps1_output(out: str, err: str) -> tuple[bool, str]:
+    """Parse JSON from install-service.ps1 stdout (last JSON line wins)."""
+    combined = (out or "") + "\n" + (err or "")
+    for line in reversed(combined.splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            data = json.loads(line)
+            if "service_ok" in data:
+                ok = bool(data.get("service_ok"))
+                err_msg = data.get("error") or ""
+                if ok:
+                    mode = data.get("start_mode", "auto")
+                    existed = data.get("already_existed", False)
+                    lbl = "mis à jour" if existed else "enregistré"
+                    return True, f"Service {WINDOWS_SERVICE_NAME} {lbl} (mode: {mode})"
+                return False, err_msg or "Enregistrement service échoué"
+        except json.JSONDecodeError:
+            continue
+    text = (out or err or "").strip()
+    if text:
+        return False, text[-500:]
+    return False, "Enregistrement service Windows échoué (pas de réponse)"
+
+
+def _predownload_nssm() -> tuple[bool, str]:
+    """Pre-download NSSM during install so Ouvrir CitéVision is faster."""
+    if not IS_WINDOWS:
+        return True, "skipped"
+    nssm_exe = ROOT / "installer" / "windows" / "nssm.exe"
+    if nssm_exe.exists():
+        return True, "NSSM déjà présent"
+    urls = [
+        "https://nssm.cc/release/nssm-2.24.zip",
+        "https://github.com/fawno/nssm.cc/releases/download/v2.24.1/nssm-v2.24.1-Win64.zip",
+        "https://github.com/fawno/nssm.cc/releases/download/v2.24.1/nssm-v2.24.1-Win32.zip",
+    ]
+    url_list = ",".join(f"'{u}'" for u in urls)
+    ps_cmd = (
+        f"$nssm='{nssm_exe}'; "
+        "if (Test-Path $nssm) { exit 0 }; "
+        "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; "
+        f"$urls=@({url_list}); "
+        "$zip=Join-Path $env:TEMP 'nssm-download.zip'; "
+        "$ext=Join-Path $env:TEMP 'nssm-extract'; "
+        "foreach ($url in $urls) { "
+        "  try { "
+        "    if (Test-Path $zip) { Remove-Item -Force $zip }; "
+        "    if (Test-Path $ext) { Remove-Item -Recurse -Force $ext }; "
+        "    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -TimeoutSec 90; "
+        "    Expand-Archive -Path $zip -DestinationPath $ext -Force; "
+        "    $bin=Get-ChildItem -Path $ext -Recurse -Filter nssm.exe | "
+        "      Where-Object { $_.FullName -match 'win64' } | Select-Object -First 1; "
+        "    if (-not $bin) { $bin=Get-ChildItem -Path $ext -Recurse -Filter nssm.exe | Select-Object -First 1 }; "
+        "    if ($bin) { Copy-Item $bin.FullName $nssm -Force; exit 0 } "
+        "  } catch {} "
+        "}; exit 1"
+    )
+    rc, out, err = _run([
+        "powershell", "-NoLogo", "-NonInteractive", "-NoProfile",
+        "-ExecutionPolicy", "Bypass", "-Command", ps_cmd,
+    ], timeout=120)
+    if nssm_exe.exists():
+        return True, "NSSM téléchargé"
+    return False, (out or err or "NSSM non téléchargé").strip()[:200]
+
+
 def _register_windows_service(start_mode: str) -> tuple[bool, str]:
-    """Enregistre ou met à jour le service Windows CitéVision via NSSM."""
+    """Enregistre ou met a jour le service Windows citevision via NSSM (UAC auto).
+
+    Le service s'execute sous le compte utilisateur (WSL est par-utilisateur),
+    donc install-service.ps1 demande le mot de passe Windows via Get-Credential
+    lors d'un premier enregistrement -> timeout large.
+    """
     ps1 = ROOT / "installer" / "windows" / "install-service.ps1"
     if not ps1.exists():
         return False, f"Script introuvable : {ps1}"
+    # install-service.ps1 auto-elevates via UAC when not admin and may prompt
+    # for the Windows password (credential dialog) on first registration.
     rc, out, err = _run([
-        "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
         "-File", str(ps1), "-StartMode", start_mode,
-    ], timeout=120)
-    msg = (out or err or "").strip()
-    if rc == 0:
-        return True, msg or f"Service Windows enregistré (mode: {start_mode})"
-    return False, msg or f"Enregistrement service Windows échoué (code {rc})"
+    ], timeout=300)
+    ok, msg = _parse_service_ps1_output(out, err)
+    if ok:
+        return True, msg
+    # Verify SCM in case JSON was lost but service exists
+    rc2, sc_out, _ = _run(["sc", "query", WINDOWS_SERVICE_NAME], timeout=10)
+    if rc2 == 0:
+        return True, f"Service {WINDOWS_SERVICE_NAME} présent dans SCM (mode: {start_mode})"
+    return False, msg
 
 
 def read_service_start_mode() -> str:
@@ -712,7 +791,18 @@ def _register_linux_service(start_mode: str) -> tuple[bool, str]:
     ], timeout=120)
     msg = (out or err or "").strip()
     if rc == 0:
+        for line in reversed(msg.splitlines()):
+            line = line.strip()
+            if line.startswith("{") and "service_ok" in line:
+                try:
+                    data = json.loads(line)
+                    if data.get("service_ok"):
+                        return True, f"Service citevision.service enregistré (mode: {start_mode})"
+                except json.JSONDecodeError:
+                    pass
         return True, msg or f"Service citevision.service enregistré (mode: {start_mode})"
+    if "password" in msg.lower() or "sudo" in msg.lower():
+        return False, "sudo requis — exécutez: sudo bash installer/linux/install-service.sh"
     return False, msg or f"Enregistrement service Linux échoué (code {rc})"
 
 
@@ -854,8 +944,19 @@ def install_stream(start_mode: str = "auto"):
                             install_ok = False
                             break
                     if install_ok:
+                        if IS_WINDOWS:
+                            yield emit("step", message="Préparation NSSM (service Windows)…")
+                            try:
+                                nssm_ok, nssm_msg = _predownload_nssm()
+                                if nssm_ok:
+                                    yield emit("ok", message=nssm_msg or "NSSM prêt")
+                                else:
+                                    yield emit("warn", message=nssm_msg or "NSSM sera téléchargé au premier lancement")
+                            except Exception as _ne:
+                                yield emit("warn", message=f"Pré-téléchargement NSSM ignoré : {_ne}")
                         # Register system service (Windows NSSM or Linux systemd)
                         yield emit("step", message="Enregistrement du service système…")
+                        yield emit("info", message="Windows : acceptez la fenêtre UAC si elle s'affiche")
                         try:
                             svc = register_system_service(start_mode)
                             if svc.get("ok"):
@@ -978,6 +1079,23 @@ def launch_stream():
             _time.sleep(3)
         return False, ", ".join(missing)
 
+    def _resolve_app_url(base: str = "http://localhost:5174", timeout: int = 15) -> str:
+        """Return /setup or /login based on backend setup status."""
+        import json as _json
+        origin = base.rstrip("/")
+        deadline = _time.time() + timeout
+        while _time.time() < deadline:
+            try:
+                with _urlreq.urlopen("http://localhost:8081/api/v1/setup/status", timeout=3) as r:
+                    data = _json.loads(r.read())
+                    if data.get("initialized"):
+                        return f"{origin}/login"
+                    return f"{origin}/setup"
+            except Exception:
+                pass
+            _time.sleep(2)
+        return f"{origin}/setup"
+
     line_q: _queue.Queue = _queue.Queue()
 
     def _run() -> None:
@@ -1070,12 +1188,13 @@ def launch_stream():
                     yield emit("warn", message="Moteur de règles non joignable — vérifiez logs/rules-engine.log")
 
                 yield emit("step", message="Vérification de l'interface (5174)...")
+                app_url = _resolve_app_url()
                 if _poll_port(5174, timeout=60):
                     yield emit("ok", message="Interface CitéVision accessible")
-                    yield emit("launch_ready", message="http://localhost:5174")
+                    yield emit("launch_ready", message=app_url)
                 else:
                     yield emit("warn", message="Timeout interface — tentez d'ouvrir manuellement")
-                    yield emit("launch_ready", message="http://localhost:5174")
+                    yield emit("launch_ready", message=app_url)
             else:
                 yield emit("error", message=f"Erreur démarrage (code {rc}) — consultez logs/backend.log")
             break

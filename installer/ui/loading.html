@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CitéVision — Démarrage</title>
+<style>
+  :root {
+    --cv-black: 8 14 26;
+    --cv-deep: 12 20 36;
+    --cv-navy: 18 32 56;
+    --cv-surface: 22 36 58;
+    --cv-border: 42 58 82;
+    --cv-accent: 59 130 246;
+    --cv-text: 241 245 249;
+    --cv-muted: 148 163 184;
+    --cv-cyan: 0 212 255;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: rgb(var(--cv-deep));
+    color: rgb(var(--cv-text));
+    overflow: hidden;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(59,130,246,0.18), transparent 60%),
+      radial-gradient(900px 500px at 50% 120%, rgba(0,212,255,0.10), transparent 60%),
+      linear-gradient(160deg, rgb(var(--cv-deep)), rgb(var(--cv-black)));
+  }
+  /* Subtle grid + scanline backdrop */
+  .backdrop {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(circle at 50% 40%, black, transparent 75%);
+    -webkit-mask-image: radial-gradient(circle at 50% 40%, black, transparent 75%);
+  }
+  .scan {
+    position: fixed; left: 0; right: 0; height: 180px; z-index: 0; pointer-events: none;
+    background: linear-gradient(180deg, transparent, rgba(0,212,255,0.06), transparent);
+    animation: scanMove 6s linear infinite;
+  }
+  @keyframes scanMove {
+    0% { top: -180px; } 100% { top: 100%; }
+  }
+
+  .card {
+    position: relative; z-index: 1;
+    width: min(92vw, 460px);
+    padding: 48px 40px 40px;
+    text-align: center;
+    border-radius: 20px;
+    border: 1px solid rgba(59,130,246,0.22);
+    background: linear-gradient(145deg, rgba(18,32,56,0.92), rgba(12,20,36,0.92));
+    box-shadow: 0 0 60px rgba(59,130,246,0.18), 0 24px 60px rgba(0,0,0,0.45);
+    backdrop-filter: blur(8px);
+  }
+
+  .logo-wrap {
+    position: relative;
+    width: 96px; height: 96px;
+    margin: 0 auto 22px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .eye-logo { width: 84px; height: 84px; position: relative; z-index: 2; }
+  .logo-pulse {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid rgba(0,212,255,0.4);
+    animation: pulse 2.6s ease-out infinite;
+  }
+  .logo-pulse.delay { animation-delay: 1.3s; }
+  @keyframes pulse {
+    0% { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+
+  .brand {
+    font-size: 1.7rem; font-weight: 700; letter-spacing: 0.01em;
+    background: linear-gradient(135deg, #fff, #9fd8ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tagline { margin-top: 6px; font-size: 0.82rem; color: rgb(var(--cv-muted)); }
+
+  .bar {
+    margin: 28px auto 14px;
+    height: 6px; width: 100%;
+    border-radius: 999px;
+    background: rgba(148,163,184,0.16);
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%; width: 12%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgb(var(--cv-accent)), rgb(var(--cv-cyan)));
+    box-shadow: 0 0 12px rgba(0,212,255,0.5);
+    transition: width 0.5s ease;
+  }
+
+  .status { font-size: 0.95rem; font-weight: 500; color: rgb(var(--cv-text)); min-height: 1.4em; }
+  .substatus { margin-top: 6px; font-size: 0.8rem; color: rgb(var(--cv-muted)); min-height: 1.2em; }
+
+  .dots { display: inline-flex; gap: 5px; margin-left: 6px; vertical-align: middle; }
+  .dots i {
+    width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--cv-cyan));
+    display: inline-block; animation: dot 1.2s ease-in-out infinite;
+  }
+  .dots i:nth-child(2) { animation-delay: 0.2s; }
+  .dots i:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dot {
+    0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1.1); }
+  }
+
+  .manual {
+    margin-top: 22px; font-size: 0.82rem; color: rgb(var(--cv-muted));
+    opacity: 0; transition: opacity 0.4s ease; pointer-events: none;
+  }
+  .manual.show { opacity: 1; pointer-events: auto; }
+  .manual a {
+    color: rgb(var(--cv-cyan)); font-weight: 600; text-decoration: none;
+  }
+  .manual a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="backdrop"></div>
+  <div class="scan"></div>
+
+  <div class="card">
+    <div class="logo-wrap">
+      <div class="logo-pulse"></div>
+      <div class="logo-pulse delay"></div>
+      <svg class="eye-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00D4FF" />
+            <stop offset="100%" stop-color="#0099CC" />
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="1.5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <circle cx="24" cy="24" r="20" stroke="url(#eyeGrad)" stroke-width="1.5" fill="none" opacity="0.6">
+          <animate attributeName="r" values="20;21;20" dur="3s" repeatCount="indefinite"/>
+        </circle>
+        <path d="M6 24 C6 24, 14 10, 24 10 C34 10, 42 24, 42 24 C42 24, 34 38, 24 38 C14 38, 6 24, 6 24 Z"
+              stroke="url(#eyeGrad)" stroke-width="1.5" fill="rgba(0,212,255,0.05)" filter="url(#glow)"/>
+        <circle cx="24" cy="24" r="8" stroke="#00D4FF" stroke-width="1" fill="rgba(0,212,255,0.15)">
+          <animate attributeName="r" values="8;8.5;8" dur="3s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="24" cy="24" r="3.5" fill="#00D4FF">
+          <animate attributeName="r" values="3.5;2.5;3.5" dur="4s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="1;0.7;1" dur="4s" repeatCount="indefinite"/>
+        </circle>
+        <line x1="10" y1="24" x2="38" y2="24" stroke="#00D4FF" stroke-width="0.5" opacity="0.4">
+          <animate attributeName="y1" values="14;34;14" dur="2.5s" repeatCount="indefinite"/>
+          <animate attributeName="y2" values="14;34;14" dur="2.5s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0;0.6;0" dur="2.5s" repeatCount="indefinite"/>
+        </line>
+        <path d="M4 12 L4 4 L12 4" stroke="#00D4FF" stroke-width="1" fill="none" opacity="0.5"/>
+        <path d="M44 12 L44 4 L36 4" stroke="#00D4FF" stroke-width="1" fill="none" opacity="0.5"/>
+        <path d="M4 36 L4 44 L12 44" stroke="#00D4FF" stroke-width="1" fill="none" opacity="0.5"/>
+        <path d="M44 36 L44 44 L36 44" stroke="#00D4FF" stroke-width="1" fill="none" opacity="0.5"/>
+      </svg>
+    </div>
+
+    <div class="brand">CitéVision</div>
+    <div class="tagline">Plateforme de télésurveillance intelligente</div>
+
+    <div class="bar"><div class="bar-fill" id="fill"></div></div>
+    <div class="status" id="status">Préparation de l'environnement<span class="dots"><i></i><i></i><i></i></span></div>
+    <div class="substatus" id="substatus">Connexion aux services CitéVision…</div>
+
+    <div class="manual" id="manual">
+      L'ouverture prend plus de temps que prévu.
+      <a id="manual-link" href="#">Ouvrir manuellement</a>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var BACKEND = 'http://localhost:8081';
+  var FRONTEND = 'http://localhost:5174';
+
+  var fill = document.getElementById('fill');
+  var statusEl = document.getElementById('status');
+  var subEl = document.getElementById('substatus');
+  var manual = document.getElementById('manual');
+  var manualLink = document.getElementById('manual-link');
+
+  var progress = 12;
+  function setProgress(p) {
+    progress = Math.max(progress, Math.min(p, 100));
+    fill.style.width = progress + '%';
+  }
+  function setStatus(main, sub) {
+    if (main) statusEl.innerHTML = main + '<span class="dots"><i></i><i></i><i></i></span>';
+    if (sub !== undefined) subEl.textContent = sub;
+  }
+
+  // Drift the bar slowly so it always feels alive.
+  var drift = setInterval(function () {
+    if (progress < 90) setProgress(progress + 0.4);
+  }, 600);
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  // 1) Resolve target URL (/setup first run, /login otherwise).
+  async function resolveTarget() {
+    var deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      try {
+        var res = await fetch(BACKEND + '/api/v1/setup/status', { cache: 'no-store' });
+        if (res.ok) {
+          var data = await res.json();
+          setProgress(55);
+          return data.initialized ? FRONTEND + '/login' : FRONTEND + '/setup';
+        }
+      } catch (e) { /* backend not ready yet */ }
+      setStatus('Démarrage du moteur CitéVision', 'Initialisation du backend…');
+      await sleep(2000);
+    }
+    return FRONTEND + '/setup';
+  }
+
+  // 2) Wait until the frontend answers.
+  async function waitFrontend() {
+    var deadline = Date.now() + 120000;
+    while (Date.now() < deadline) {
+      try {
+        await fetch(FRONTEND + '/', { mode: 'no-cors', cache: 'no-store' });
+        setProgress(95);
+        return true;
+      } catch (e) { /* not ready */ }
+      setStatus('Démarrage de l\'interface', 'Compilation et chargement de l\'application…');
+      await sleep(2000);
+    }
+    return false;
+  }
+
+  async function run() {
+    setStatus('Préparation de l\'environnement', 'Connexion aux services CitéVision…');
+    var target = await resolveTarget();
+    manualLink.href = target;
+
+    setStatus('Démarrage de l\'interface', 'Presque prêt…');
+    var ok = await waitFrontend();
+
+    clearInterval(drift);
+    if (ok) {
+      setProgress(100);
+      setStatus('Ouverture de CitéVision', 'Redirection en cours…');
+      await sleep(500);
+      window.location.replace(target);
+    } else {
+      setStatus('CitéVision met du temps à répondre', 'Vous pouvez ouvrir l\'application manuellement.');
+      manual.classList.add('show');
+    }
+  }
+
+  // Always offer a manual escape hatch after a while.
+  setTimeout(function () { manual.classList.add('show'); }, 45000);
+
+  run();
+})();
+</script>
+</body>
+</html>

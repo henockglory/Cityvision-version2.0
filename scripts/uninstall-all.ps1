@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  CitevisionV2 - Uninstall (5 modes).
+  citevision - Uninstall (5 modes).
 
 .PARAMETER Mode
   restart  : Restart services only (nothing removed)
@@ -41,6 +41,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
+# Emit console output as UTF-8 so accented text is not garbled upstream.
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
+try { $OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
+
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 . (Join-Path $PSScriptRoot 'lib\resolve-wsl-path.ps1')
@@ -79,7 +83,7 @@ if (-not $isAdmin) {
 
 if (-not $Yes) {
     Write-Host ''
-    Write-Host '=== CitevisionV2 - Uninstall ==='
+    Write-Host '=== citevision - Uninstall ==='
     if ($KeepData) {
         Write-Host 'Docker volumes will be KEPT.'
     } else {
@@ -104,7 +108,7 @@ $summary = @{
 }
 
 Write-Host ''
-Write-Host '=== CitevisionV2 - Uninstall ==='
+Write-Host '=== citevision - Uninstall ==='
 
 # 1. Windows service
 Write-Log 'Removing Windows service...'

@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  CitevisionV2 - Remove Windows service.
+  citevision - Remove Windows service.
   Stops the service cleanly then removes it from the Windows registry.
 
 .NOTES
@@ -11,9 +11,13 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "SilentlyContinue"
 
+# Emit console output as UTF-8 so accented text is not garbled upstream.
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
+try { $OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
+
 # Find all Citevision-related services (handles both old accented and new ASCII names)
 $SERVICE_NAMES = @(Get-Service | Where-Object { $_.Name -like "Cit*" -and $_.Name -match "(?i)vision" } | Select-Object -ExpandProperty Name)
-if ($SERVICE_NAMES.Count -eq 0) { $SERVICE_NAMES = @("CitevisionV2") }
+if ($SERVICE_NAMES.Count -eq 0) { $SERVICE_NAMES = @("citevision", "CitevisionV2") }
 $NSSM_EXE      = "$PSScriptRoot\nssm.exe"
 
 function Write-Log { param([string]$msg, [string]$level = "INFO")
@@ -64,6 +68,6 @@ foreach ($SERVICE_NAME in $SERVICE_NAMES) {
 }
 
 if ($removed -eq 0) {
-    Write-Log "No CitevisionV2 service found - nothing to remove."
+    Write-Log "No citevision service found - nothing to remove."
 }
 exit 0

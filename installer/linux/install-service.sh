@@ -61,11 +61,44 @@ if [[ "$START_MODE" == "auto" ]]; then
   if ! systemctl is-active --quiet citevision.service 2>/dev/null; then
     systemctl start citevision.service || true
   fi
-  echo "[OK]   Service citevision.service enregistré — démarrage automatique activé"
-  echo "       État: $(systemctl is-active citevision.service 2>/dev/null || echo 'inactive')"
+  if ! systemctl is-enabled --quiet citevision.service 2>/dev/null; then
+    echo "[ERR]  Service not enabled after install (expected auto start)" >&2
+    exit 1
+  fi
+  echo "[OK]   Service citevision.service registered - automatic startup enabled"
+  echo "       State: $(systemctl is-active citevision.service 2>/dev/null || echo 'inactive')"
 else
   systemctl disable citevision.service 2>/dev/null || true
-  echo "[OK]   Service citevision.service enregistré — mode manuel"
-  echo "       Démarrer: sudo systemctl start citevision"
-  echo "       Arrêter:  sudo systemctl stop citevision"
+  if systemctl is-enabled --quiet citevision.service 2>/dev/null; then
+    echo "[ERR]  Service still enabled after switching to manual mode" >&2
+    exit 1
+  fi
+  echo "[OK]   Service citevision.service registered - manual mode"
+  echo "       Start: sudo systemctl start citevision"
+  echo "       Stop:  sudo systemctl stop citevision"
 fi
+
+if [[ ! -f "$UNIT_PATH" ]]; then
+  echo "[ERR]  Unit file missing after install: $UNIT_PATH" >&2
+  exit 1
+fi
+
+# ── Sudoers drop-in: allow the app user to control the service without a
+#    password prompt (needed for start/stop and auto/manual toggle from the UI).
+SYSTEMCTL_BIN="$(command -v systemctl || echo /usr/bin/systemctl)"
+SUDOERS_FILE="/etc/sudoers.d/citevision"
+INSTALL_SCRIPT="$ROOT/installer/linux/install-service.sh"
+{
+  echo "# Managed by CitéVision install-service.sh - do not edit by hand"
+  echo "$USER_NAME ALL=(root) NOPASSWD: $SYSTEMCTL_BIN start citevision.service, $SYSTEMCTL_BIN stop citevision.service, $SYSTEMCTL_BIN restart citevision.service, $SYSTEMCTL_BIN enable citevision.service, $SYSTEMCTL_BIN disable citevision.service"
+  echo "$USER_NAME ALL=(root) NOPASSWD: /bin/bash $INSTALL_SCRIPT *"
+} > "$SUDOERS_FILE"
+chmod 440 "$SUDOERS_FILE"
+if command -v visudo &>/dev/null && ! visudo -cf "$SUDOERS_FILE" &>/dev/null; then
+  echo "[WARN] Sudoers drop-in invalid - removing $SUDOERS_FILE" >&2
+  rm -f "$SUDOERS_FILE"
+else
+  echo "[OK]   Sudoers drop-in installed - UI can start/stop without password"
+fi
+
+echo "{\"service_ok\":true,\"start_mode\":\"$START_MODE\",\"service\":\"citevision.service\"}"

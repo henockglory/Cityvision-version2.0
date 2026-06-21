@@ -89,16 +89,11 @@ free_port 8081 8001 8010
 free_port 5174 5175 5176 5177
 sleep 1
 
-bash "$ROOT/scripts/ensure-rules-sync-env.sh"
+bash "$ROOT/scripts/ensure-rules-sync-env.sh" --static-only
 load_dotenv "$ENV_FILE"
 
 start_bg backend "$ROOT/backend" "$GO_BIN run ./cmd/api" "$LOGDIR" "$ENV_FILE"
 sleep 3
-start_bg rules-engine "$ROOT/rules-engine" "$GO_BIN run ./cmd/rules-engine" "$LOGDIR" "$ENV_FILE"
-start_bg ai-engine "$ROOT/ai-engine" "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} $ROOT/ai-engine/.venv/bin/uvicorn citevision_ai.main:app --host 0.0.0.0 --port $AI_PORT" "$LOGDIR" "$ENV_FILE"
-free_port 5174 5175 5176 5177
-sleep 1
-start_bg frontend "$ROOT/frontend" "npm run dev -- --host 0.0.0.0 --port 5174 --strictPort" "$LOGDIR" "$ENV_FILE"
 
 echo ""
 echo "[INFO] Waiting for backend (first run may download Go modules)..."
@@ -106,6 +101,15 @@ if ! wait_service_with_retry backend "http://localhost:$BACKEND_PORT/health" \
     "$LOGDIR/backend.pid" "$GO_BIN run ./cmd/api" "$ROOT/backend" "$LOGDIR" "$ENV_FILE" 120 2; then
   exit 1
 fi
+
+bash "$ROOT/scripts/ensure-rules-sync-env.sh" --resolve-org
+load_dotenv "$ENV_FILE"
+
+start_bg rules-engine "$ROOT/rules-engine" "$GO_BIN run ./cmd/rules-engine" "$LOGDIR" "$ENV_FILE"
+start_bg ai-engine "$ROOT/ai-engine" "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} $ROOT/ai-engine/.venv/bin/uvicorn citevision_ai.main:app --host 0.0.0.0 --port $AI_PORT" "$LOGDIR" "$ENV_FILE"
+free_port 5174 5175 5176 5177
+sleep 1
+start_bg frontend "$ROOT/frontend" "npm run dev -- --host 0.0.0.0 --port 5174 --strictPort" "$LOGDIR" "$ENV_FILE"
 
 echo ""
 echo "[INFO] Waiting for AI Engine (first run compiles ONNX session)..."

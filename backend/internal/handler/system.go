@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -10,6 +11,58 @@ import (
 
 func (a *API) SystemStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, system.GetStatus())
+}
+
+func (a *API) SystemSetStartMode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if !system.ValidStartMode(req.Mode) {
+		writeError(w, http.StatusBadRequest, "invalid mode: must be auto or manual")
+		return
+	}
+	res, err := system.SetStartMode(req.Mode)
+	if errors.Is(err, system.ErrInvalidStartMode) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, system.ErrServiceNotRegistered) {
+		writeJSON(w, http.StatusConflict, res)
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, res)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (a *API) SystemServiceAction(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Action string `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if !system.ValidServiceAction(req.Action) {
+		writeError(w, http.StatusBadRequest, "invalid action: must be start or stop")
+		return
+	}
+	res, err := system.ServiceAction(req.Action)
+	if errors.Is(err, system.ErrServiceNotRegistered) {
+		writeJSON(w, http.StatusConflict, res)
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, res)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (a *API) SystemUninstallStream(w http.ResponseWriter, r *http.Request) {

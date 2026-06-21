@@ -35,7 +35,7 @@ for %%F in (docker-compose*.yml) do (
 )
 
 :: Copier et normaliser les .bat en CRLF UTF-8 sans BOM (evite 'tle'/'cho'/'et' CMD)
-for %%F in (setup.bat sync-to-citevision.bat) do (
+for %%F in (setup.bat sync-to-citevision.bat register-service.bat) do (
     if exist "%SRC%\%%F" (
         copy /Y "%SRC%\%%F" "%DST%\%%F" >nul 2>&1
         powershell -NoProfile -Command ^

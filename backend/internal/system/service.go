@@ -3,10 +3,13 @@ package system
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,18 +18,35 @@ import (
 
 const (
 	// windowsServiceName is the ASCII-only service name used since the PS1 rewrite.
-	windowsServiceName = "CitevisionV2"
+	windowsServiceName = "citevision"
 	linuxServiceName   = "citevision.service"
 )
 
 // Status describes the CitéVision system service registration and runtime state.
 type Status struct {
-	Platform          string `json:"platform"`
-	ServiceRegistered bool   `json:"service_registered"`
-	ServiceRunning    bool   `json:"service_running"`
-	StartMode         string `json:"start_mode"`
-	ServiceName       string `json:"service_name"`
+	Platform            string `json:"platform"`
+	ServiceRegistered   bool   `json:"service_registered"`
+	ServiceRunning      bool   `json:"service_running"`
+	StartMode           string `json:"start_mode"`
+	StartModeEffective  string `json:"start_mode_effective"`
+	ServiceName         string `json:"service_name"`
 }
+
+// SetStartModeResult is returned after changing the configured start mode.
+type SetStartModeResult struct {
+	OK                 bool   `json:"ok"`
+	StartMode          string `json:"start_mode"`
+	StartModeEffective string `json:"start_mode_effective"`
+	ServiceRegistered  bool   `json:"service_registered"`
+	Message            string `json:"message"`
+}
+
+var ErrInvalidStartMode = errors.New("invalid start mode: must be auto or manual")
+
+// ErrServiceNotRegistered is returned when a control action is attempted on a
+// service that has not been registered yet (registration needs UAC + password
+// and is done from the Windows-side installer / register-service.bat).
+var ErrServiceNotRegistered = errors.New("service not registered")
 
 // StreamEvent is emitted over SSE during uninstall.
 type StreamEvent struct {
@@ -77,25 +97,393 @@ func readStartMode(root string) string {
 	return "auto"
 }
 
+func writeStartMode(root, mode string) error {
+	if mode != "auto" && mode != "manual" {
+		return ErrInvalidStartMode
+	}
+	dir := filepath.Join(root, "installer")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, ".service_start_mode"), []byte(mode), 0o644)
+}
+
+func ValidStartMode(mode string) bool {
+	return mode == "auto" || mode == "manual"
+}
+
+// isWSL reports whether the backend runs inside WSL (a Linux process on a
+// Windows host). In that case the OS service manager is the Windows SCM
+// (NSSM service "citevision"), not systemd, and we drive it via interop.
+func isWSL() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	if os.Getenv("WSL_DISTRO_NAME") != "" || os.Getenv("WSL_INTEROP") != "" {
+		return true
+	}
+	if data, err := os.ReadFile("/proc/sys/kernel/osrelease"); err == nil {
+		s := strings.ToLower(string(data))
+		if strings.Contains(s, "microsoft") || strings.Contains(s, "wsl") {
+			return true
+		}
+	}
+	return false
+}
+
+// effectivePlatform returns "windows" for native Windows or WSL-on-Windows
+// (both controlled through the Windows SCM), otherwise the Go runtime OS.
+func effectivePlatform() string {
+	if runtime.GOOS == "windows" || isWSL() {
+		return "windows"
+	}
+	return runtime.GOOS
+}
+
+// scBinary / powershellBinary return the right executable name depending on
+// whether we call them natively (Windows) or via WSL interop.
+func scBinary() string {
+	if runtime.GOOS == "windows" {
+		return "sc"
+	}
+	return "sc.exe"
+}
+
+func powershellBinary() string {
+	if runtime.GOOS == "windows" {
+		return "powershell"
+	}
+	return "powershell.exe"
+}
+
+// toWindowsPath converts a path to its Windows form (needed when passing a
+// WSL path to powershell.exe via interop).
+func toWindowsPath(p string) string {
+	if runtime.GOOS == "windows" {
+		return p
+	}
+	if out, err := exec.Command("wslpath", "-w", p).Output(); err == nil {
+		if s := strings.TrimSpace(string(out)); s != "" {
+			return s
+		}
+	}
+	// Fallback: /mnt/c/foo/bar -> C:\foo\bar
+	if strings.HasPrefix(p, "/mnt/") && len(p) > 6 {
+		drive := strings.ToUpper(string(p[5]))
+		rest := strings.ReplaceAll(p[6:], "/", "\\")
+		return drive + ":" + rest
+	}
+	return p
+}
+
+func windowsEffectiveStartMode(registered bool) string {
+	if !registered {
+		return ""
+	}
+	out, err := exec.Command(scBinary(), "qc", windowsServiceName).CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	text := strings.ToUpper(string(out))
+	if strings.Contains(text, "AUTO_START") {
+		return "auto"
+	}
+	if strings.Contains(text, "DEMAND_START") {
+		return "manual"
+	}
+	return ""
+}
+
+func linuxEffectiveStartMode(registered bool) string {
+	if !registered {
+		return ""
+	}
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return ""
+	}
+	out, err := exec.Command("systemctl", "is-enabled", linuxServiceName).CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err == nil && text == "enabled" {
+		return "auto"
+	}
+	if text == "disabled" || text == "masked" {
+		return "manual"
+	}
+	return ""
+}
+
 // GetStatus returns current service registration and runtime information.
 func GetStatus() Status {
 	root := ProjectRoot()
+	configured := readStartMode(root)
+	platform := effectivePlatform()
 	st := Status{
-		Platform:    runtime.GOOS,
-		StartMode:   readStartMode(root),
+		Platform:    platform,
+		StartMode:   configured,
 		ServiceName: linuxServiceName,
 	}
-	if runtime.GOOS == "windows" {
+	if platform == "windows" {
 		st.ServiceName = windowsServiceName
 		st.ServiceRegistered, st.ServiceRunning = windowsServiceState()
+		st.StartModeEffective = windowsEffectiveStartMode(st.ServiceRegistered)
+		if st.StartModeEffective == "" {
+			st.StartModeEffective = configured
+		}
 		return st
 	}
 	st.ServiceRegistered, st.ServiceRunning = linuxServiceState()
+	st.StartModeEffective = linuxEffectiveStartMode(st.ServiceRegistered)
+	if st.StartModeEffective == "" {
+		st.StartModeEffective = configured
+	}
 	return st
 }
 
+func parseServicePS1Output(out string) (bool, string) {
+	lines := strings.Split(out, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &data); err != nil {
+			continue
+		}
+		if ok, exists := data["service_ok"].(bool); exists {
+			if ok {
+				return true, ""
+			}
+			if errMsg, ok := data["error"].(string); ok && errMsg != "" {
+				return false, errMsg
+			}
+			return false, "service registration failed"
+		}
+	}
+	if strings.TrimSpace(out) != "" {
+		return false, strings.TrimSpace(out)
+	}
+	return false, "no response from install script"
+}
+
+// scDirect runs an sc.exe command and reports success plus whether the failure
+// was an access-denied (so the caller can fall back to elevation).
+func scDirect(args ...string) (ok bool, denied bool, out string) {
+	raw, err := exec.Command(scBinary(), args...).CombinedOutput()
+	out = strings.TrimSpace(string(raw))
+	if err == nil {
+		return true, false, out
+	}
+	low := strings.ToLower(out)
+	// sc.exe access-denied: exit code 5 / "access is denied" / FR "acces refuse".
+	if strings.Contains(low, "denied") || strings.Contains(low, "refus") ||
+		strings.Contains(out, "OpenService FAILED 5") || strings.Contains(out, ":5") {
+		denied = true
+	}
+	if ee, isExit := err.(*exec.ExitError); isExit && ee.ExitCode() == 5 {
+		denied = true
+	}
+	return false, denied, out
+}
+
+func applyWindowsStartMode(root, mode string) error {
+	scMode := "demand"
+	if mode == "auto" {
+		scMode = "auto"
+	}
+	// Preferred path: direct sc.exe config (works without UAC thanks to the
+	// service control rights granted at registration via sc sdset).
+	if ok, denied, out := scDirect("config", windowsServiceName, "start=", scMode); ok {
+		return nil
+	} else if !denied {
+		// A non-permission failure (e.g. service missing) - report it directly.
+		if out != "" {
+			return fmt.Errorf("%s", out)
+		}
+	}
+	// Fallback: self-elevating PS1 (UAC) for older installs without granted rights.
+	return runElevatedServicePS1(root, "-StartMode", mode)
+}
+
+// applyWindowsServiceAction starts or stops the citevision service. It first
+// tries sc.exe directly (no UAC) and falls back to the elevated PS1 only if the
+// SCM denies access.
+func applyWindowsServiceAction(root, action string) error {
+	if ok, denied, out := scDirect(action, windowsServiceName); ok {
+		return nil
+	} else if !denied {
+		if out != "" {
+			return fmt.Errorf("%s", out)
+		}
+	}
+	return runElevatedServicePS1(root, "-Action", action)
+}
+
+// runElevatedServicePS1 invokes install-service.ps1 (which self-elevates via
+// UAC) as a fallback when direct sc.exe control is denied.
+func runElevatedServicePS1(root string, psArgs ...string) error {
+	ps1 := filepath.Join(root, "installer", "windows", "install-service.ps1")
+	if !fileExists(ps1) {
+		return fmt.Errorf("install script not found: %s", ps1)
+	}
+	args := append([]string{
+		"-NoLogo", "-NonInteractive", "-NoProfile", "-ExecutionPolicy", "Bypass",
+		"-File", toWindowsPath(ps1),
+	}, psArgs...)
+	out, err := exec.Command(powershellBinary(), args...).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	ok, msg := parseServicePS1Output(string(out))
+	if ok {
+		return nil
+	}
+	if scOut, scErr := exec.Command(scBinary(), "query", windowsServiceName).CombinedOutput(); scErr == nil {
+		if strings.Contains(string(scOut), "SERVICE_NAME") {
+			return nil
+		}
+	}
+	if msg != "" {
+		return fmt.Errorf("%s", msg)
+	}
+	return fmt.Errorf("windows service operation failed: %v", err)
+}
+
+// applyLinuxServiceAction starts or stops citevision.service via systemd.
+func applyLinuxServiceAction(action string) error {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return fmt.Errorf("systemd not available")
+	}
+	out, err := exec.Command("sudo", "systemctl", action, linuxServiceName).CombinedOutput()
+	if err != nil {
+		text := strings.TrimSpace(string(out))
+		if text == "" {
+			text = err.Error()
+		}
+		return fmt.Errorf("%s", text)
+	}
+	return nil
+}
+
+func applyLinuxStartMode(root, mode string) error {
+	script := filepath.Join(root, "installer", "linux", "install-service.sh")
+	if !fileExists(script) {
+		return fmt.Errorf("install script not found: %s", script)
+	}
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return fmt.Errorf("systemd not available")
+	}
+	username := os.Getenv("USER")
+	if username == "" {
+		if u, err := user.Current(); err == nil {
+			username = u.Username
+		}
+	}
+	out, err := exec.Command(
+		"sudo", "bash", script,
+		fmt.Sprintf("--root=%s", root),
+		fmt.Sprintf("--user=%s", username),
+		fmt.Sprintf("--start-mode=%s", mode),
+	).CombinedOutput()
+	if err != nil {
+		text := strings.TrimSpace(string(out))
+		if text == "" {
+			text = err.Error()
+		}
+		return fmt.Errorf("%s", text)
+	}
+	return nil
+}
+
+// SetStartMode persists the mode and applies it to the OS service manager.
+func SetStartMode(mode string) (SetStartModeResult, error) {
+	if !ValidStartMode(mode) {
+		return SetStartModeResult{}, ErrInvalidStartMode
+	}
+	root := ProjectRoot()
+	if err := writeStartMode(root, mode); err != nil {
+		return SetStartModeResult{}, err
+	}
+	// Persist the preference but don't try to drive a non-existent service
+	// (that would attempt a UAC-elevated registration from WSL, which fails).
+	if cur := GetStatus(); !cur.ServiceRegistered {
+		return SetStartModeResult{
+			OK:                false,
+			StartMode:         mode,
+			ServiceRegistered: false,
+			Message:           ErrServiceNotRegistered.Error(),
+		}, ErrServiceNotRegistered
+	}
+	var applyErr error
+	if effectivePlatform() == "windows" {
+		applyErr = applyWindowsStartMode(root, mode)
+	} else {
+		applyErr = applyLinuxStartMode(root, mode)
+	}
+	st := GetStatus()
+	res := SetStartModeResult{
+		OK:                 applyErr == nil,
+		StartMode:          mode,
+		StartModeEffective: st.StartModeEffective,
+		ServiceRegistered:  st.ServiceRegistered,
+	}
+	if applyErr != nil {
+		res.Message = applyErr.Error()
+		return res, applyErr
+	}
+	modeLbl := "automatic"
+	if mode == "manual" {
+		modeLbl = "manual"
+	}
+	res.Message = fmt.Sprintf("Start mode set to %s", modeLbl)
+	return res, nil
+}
+
+// ValidServiceAction reports whether action is a supported start/stop action.
+func ValidServiceAction(action string) bool {
+	return action == "start" || action == "stop"
+}
+
+// ServiceAction starts or stops the platform service (Windows SCM or systemd).
+func ServiceAction(action string) (SetStartModeResult, error) {
+	if !ValidServiceAction(action) {
+		return SetStartModeResult{}, fmt.Errorf("invalid action: must be start or stop")
+	}
+	if cur := GetStatus(); !cur.ServiceRegistered {
+		return SetStartModeResult{
+			OK:                false,
+			ServiceRegistered: false,
+			Message:           ErrServiceNotRegistered.Error(),
+		}, ErrServiceNotRegistered
+	}
+	root := ProjectRoot()
+	var applyErr error
+	if effectivePlatform() == "windows" {
+		applyErr = applyWindowsServiceAction(root, action)
+	} else {
+		applyErr = applyLinuxServiceAction(action)
+	}
+	st := GetStatus()
+	res := SetStartModeResult{
+		OK:                 applyErr == nil,
+		StartMode:          st.StartMode,
+		StartModeEffective: st.StartModeEffective,
+		ServiceRegistered:  st.ServiceRegistered,
+	}
+	if applyErr != nil {
+		res.Message = applyErr.Error()
+		return res, applyErr
+	}
+	verb := "started"
+	if action == "stop" {
+		verb = "stopped"
+	}
+	res.Message = fmt.Sprintf("Service %s", verb)
+	return res, nil
+}
+
 func windowsServiceState() (registered, running bool) {
-	out, err := exec.Command("sc", "query", windowsServiceName).CombinedOutput()
+	out, err := exec.Command(scBinary(), "query", windowsServiceName).CombinedOutput()
 	if err != nil {
 		return false, false
 	}
@@ -185,7 +573,7 @@ func UninstallStream(ctx context.Context, mode string, keepData bool) <-chan Str
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
 			extraArgs := modeToArgs(mode, keepData, true)
-			args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+			args := []string{"-NoLogo", "-NonInteractive", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
 				filepath.Join(root, "scripts", "uninstall-all.ps1"), "-Yes"}
 			args = append(args, extraArgs...)
 			cmd = exec.CommandContext(ctx, "powershell", args...)

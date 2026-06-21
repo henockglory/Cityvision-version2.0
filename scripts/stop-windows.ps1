@@ -1,10 +1,10 @@
-﻿# Citévision v2 — arrêt services Windows
+# Citévision v2 — arrêt services Windows
 $ErrorActionPreference = 'Continue'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 . (Join-Path $PSScriptRoot 'lib\env-utils.ps1')
 
-Write-Host "=== CitevisionV2 Stop ==="
+Write-Host "=== citevision Stop ==="
 
 $LogDir = Join-Path $Root 'logs'
 @('frontend', 'ai-engine', 'rules-engine', 'backend') | ForEach-Object {

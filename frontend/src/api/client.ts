@@ -399,7 +399,16 @@ export interface SystemStatus {
   service_registered: boolean;
   service_running: boolean;
   start_mode: string;
+  start_mode_effective?: string;
   service_name: string;
+}
+
+export interface SetStartModeResult {
+  ok: boolean;
+  start_mode: string;
+  start_mode_effective: string;
+  service_registered: boolean;
+  message: string;
 }
 
 export interface SystemStreamEvent {
@@ -412,6 +421,10 @@ export type UninstallMode = 'restart' | 'soft' | 'standard' | 'full' | 'nuclear'
 
 export const systemApi = {
   status: () => api.get<SystemStatus>('/system/status'),
+  setStartMode: (mode: 'auto' | 'manual') =>
+    api.put<SetStartModeResult>('/system/start-mode', { mode }),
+  serviceAction: (action: 'start' | 'stop') =>
+    api.post<SetStartModeResult>('/system/service-action', { action }),
   async *streamUninstall(mode: UninstallMode, signal?: AbortSignal): AsyncGenerator<SystemStreamEvent> {
     const { token } = getAuthCredentials();
     const res = await fetch(`/api/v1/system/uninstall/stream?mode=${mode}`, {

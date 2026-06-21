@@ -676,6 +676,63 @@ html, body {
   40%           { opacity: 1;   transform: scale(1.1); }
 }
 
+/* ── Overlay ouverture CitéVision ─────────────────────────── */
+.open-app-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 14, 26, 0.82);
+  backdrop-filter: blur(6px);
+  animation: fadeIn 0.25s ease;
+}
+.open-app-card {
+  text-align: center;
+  padding: 2.5rem 3rem;
+  border-radius: var(--radius);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  background: linear-gradient(145deg, rgb(var(--cv-navy)), rgb(var(--cv-deep)));
+  box-shadow: var(--shadow-glow), var(--shadow-card);
+  max-width: 420px;
+  width: 90%;
+}
+.open-app-logo {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 1rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgb(var(--cv-accent)), rgb(var(--cv-cyan)));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: rgb(var(--cv-deep));
+  letter-spacing: 0.02em;
+}
+.open-app-dots {
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+.open-app-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+.open-app-sub {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+  word-break: break-all;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 @media (min-width: 1280px) {
   .step-content { padding: 40px 48px; }
   .checks-grid  { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }

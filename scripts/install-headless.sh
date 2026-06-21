@@ -260,14 +260,25 @@ fi
 _step "Enregistrement du service système"
 START_MODE="$(cat installer/.service_start_mode 2>/dev/null || echo auto)"
 if command -v systemctl &>/dev/null; then
+  if ! sudo -n true 2>/dev/null; then
+    _warn "sudo requis pour enregistrer citevision.service — exécutez:"
+    _warn "  sudo bash installer/linux/install-service.sh --root=$ROOT --user=$INSTALL_USER --start-mode=$START_MODE"
+  fi
   if sudo bash installer/linux/install-service.sh \
       --root="$ROOT" --user="$INSTALL_USER" --start-mode="$START_MODE" >>"$LOG_FILE" 2>&1; then
-    _ok "Service citevision.service enregistré (mode: $START_MODE)"
+    if systemctl is-enabled citevision.service &>/dev/null; then
+      _ok "Service citevision.service enregistré (mode: $START_MODE, enabled)"
+    elif [[ "$START_MODE" == "manual" ]] && systemctl list-unit-files citevision.service &>/dev/null; then
+      _ok "Service citevision.service enregistré (mode: manual)"
+    else
+      _warn "Service installé mais vérification systemctl incertaine — voir $LOG_FILE"
+    fi
   else
-    _warn "Enregistrement service échoué — voir $LOG_FILE"
+    _err "Enregistrement service échoué (sudo refusé ou erreur systemd) — voir $LOG_FILE"
+    exit 1
   fi
 else
-  _warn "systemd non disponible — service non enregistré"
+  _warn "systemd non disponible — service non enregistré (WSL/dev: démarrage manuel via start-linux.sh)"
 fi
 
 _ok "Tous les services sont opérationnels"

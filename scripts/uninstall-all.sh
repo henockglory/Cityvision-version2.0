@@ -110,7 +110,7 @@ if [[ "$ASSUME_YES" != "true" ]]; then
 fi
 
 echo ""
-echo "=== CitevisionV2 - Uninstall ==="
+echo "=== citevision - Uninstall ==="
 
 # --- Do all non-disruptive work FIRST so backend can stream it ---
 # The backend process will be killed in the final step; by doing cleanup
@@ -130,7 +130,7 @@ fi
 # 3. Service Windows (WSL) - non-disruptive to the backend process
 if grep -qi microsoft /proc/version 2>/dev/null && command -v powershell.exe &>/dev/null; then
   echo "[INFO] Removing Windows service (NSSM)..."
-  powershell.exe -NoProfile -ExecutionPolicy Bypass \
+  powershell.exe -NoLogo -NonInteractive -NoProfile -ExecutionPolicy Bypass \
     -File "$ROOT/installer/windows/uninstall-service.ps1" 2>/dev/null || true
 fi
 

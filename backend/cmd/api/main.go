@@ -207,6 +207,8 @@ func main() {
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireOrgAdmin())
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/system/status", api.SystemStatus)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Put("/system/start-mode", api.SystemSetStartMode)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/system/service-action", api.SystemServiceAction)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/system/uninstall/stream", api.SystemUninstallStream)
 				})
 
