@@ -328,7 +328,7 @@ class InstallerHandler(BaseHTTPRequestHandler):
         if path == "/api/service-status":
             try:
                 dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")
-                _send_json(self, dc.windows_service_registration_status())
+                _send_json(self, dc.windows_startup_status())
             except Exception as e:
                 _send_json(self, {"registered": False, "status": "error", "message": str(e)})
             return
@@ -349,10 +349,27 @@ class InstallerHandler(BaseHTTPRequestHandler):
                 _send_json(self, {"ok": False, "message": str(e)})
             return
 
+        if path == "/api/ai-gate":
+            if not _authorized(self):
+                _send_json(self, {"ok": False, "message": "unauthorized"}, status=403)
+                return
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8001/health", timeout=3) as resp:
+                    health = json.loads(resp.read().decode("utf-8"))
+                ok = all(
+                    str(health.get(k, "")).lower() == "true"
+                    for k in ("yolo_loaded", "face_loaded", "plate_loaded")
+                )
+                _send_json(self, {"ok": ok, "health": health})
+            except Exception as e:
+                _send_json(self, {"ok": False, "error": str(e)})
+            return
+
         if path == "/api/register-service" or path.startswith("/api/register-service?"):
             if not _authorized(self):
                 _send_json(self, {"ok": False, "message": "unauthorized"}, status=403)
                 return
+            # Legacy endpoint — configures Task Scheduler startup (not services.msc).
             try:
                 dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")
                 result = dc.register_system_service()

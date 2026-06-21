@@ -380,11 +380,11 @@ function startLaunch() {
   let progress   = 0;
   let hbEl       = null;
   let aiOk       = false;
-  let aiFailed   = false;
   let launchReady = false;
   let appUrl     = 'http://localhost:5174';
   let bannerEl   = null;
   let waitingEl  = null;
+  let launchUiReady = false;
 
   function appendLog(text, cls = '') {
     const line = document.createElement('div');
@@ -424,8 +424,6 @@ function startLaunch() {
     if (waitingEl) { waitingEl.remove(); waitingEl = null; }
   }
 
-  let serviceRegEl = null;
-  let serviceFailBanner = null;
   let openOverlayEl = null;
 
   function removeOpeningOverlay() {
@@ -486,122 +484,67 @@ function startLaunch() {
     if (logParent) logParent.insertBefore(linkEl, log);
   }
 
-  function removeServiceWaiting() {
-    if (serviceRegEl) { serviceRegEl.remove(); serviceRegEl = null; }
+  function normText(text) {
+    return (text || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
   }
 
-  function showServiceFailBanner(msg) {
-    if (serviceFailBanner) serviceFailBanner.remove();
-    serviceFailBanner = document.createElement('div');
-    serviceFailBanner.className = 'ai-fail-banner';
-    serviceFailBanner.innerHTML =
-      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">` +
-      `<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>` +
-      `<span>${msg}</span>`;
-    const logParent = log.parentNode;
-    if (logParent) logParent.insertBefore(serviceFailBanner, log);
+  function isAiGateValidated(text) {
+    const low = normText(text);
+    return low.includes('gate ia valid') ||
+      (low.includes('yolo') && low.includes('insightface') && low.includes('paddleocr') &&
+        (low.includes('charge') || low.includes('loaded') || low.includes('operationnel')));
   }
 
-  function showServiceWaiting(uacHint) {
-    removeServiceWaiting();
-    serviceRegEl = document.createElement('div');
-    serviceRegEl.className = 'ai-waiting-indicator';
-    const hint = uacHint
-      ? `<div style="font-size:.75rem;color:var(--muted);margin-top:4px">${uacHint}</div>`
-      : '';
-    serviceRegEl.innerHTML =
-      `<div class="ai-waiting-dots"><div></div><div></div><div></div></div>` +
-      `<span>Enregistrement du service citevision…</span>${hint}`;
-    btnArea.insertBefore(serviceRegEl, btn);
-  }
-
-  function showServiceRetryPanel(msg, opts = {}) {
-    const showPasswordHelp = opts.showPasswordHelp === true;
-    if (serviceFailBanner) serviceFailBanner.remove();
-    serviceFailBanner = document.createElement('div');
-    serviceFailBanner.className = 'ai-warn-banner';
-    serviceFailBanner.style.flexDirection = 'column';
-    serviceFailBanner.style.alignItems = 'stretch';
-    serviceFailBanner.style.gap = '12px';
-    let actions = '';
-    if (showPasswordHelp) {
-      actions += `<button type="button" class="btn btn-secondary" id="svc-pwd-help" style="margin-right:8px">Configurer le mot de passe Windows</button>`;
+  function markAiGateReady(text) {
+    if (!isAiGateValidated(text)) return;
+    aiOk = true;
+    removeBanner();
+    removeAiWaiting();
+    step.textContent = 'IA active — prête à détecter';
+    if (launchReady) {
+      fill.style.width = '100%';
+      pct.textContent = '100%';
+      void finalizeLaunchWhenGateReady();
     }
-    actions += `<button type="button" class="btn btn-success" id="svc-retry-inline">Réessayer l'enregistrement</button>`;
-    serviceFailBanner.innerHTML =
-      `<span>${msg}</span><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">${actions}</div>`;
-    const logParent = log.parentNode;
-    if (logParent) logParent.insertBefore(serviceFailBanner, log);
-    const retryInline = document.getElementById('svc-retry-inline');
-    if (retryInline) retryInline.onclick = () => registerServiceAndOpen(appUrl);
-    const pwdHelp = document.getElementById('svc-pwd-help');
-    if (pwdHelp) pwdHelp.onclick = () => void openPasswordGuide();
   }
 
-  function isPasswordSetupHint(msg) {
-    return /1069|PIN Microsoft|PIN seul|PIN ne|pas le PIN|add-windows-password/i.test(msg || '');
-  }
-
-  let serviceRegistered = false;
-
-  async function registerServiceOnce() {
-    const res = await fetch(API + '/api/register-service');
-    const text = await res.text();
-    try { return JSON.parse(text); } catch (_) { return { ok: false, message: text }; }
-  }
-
-  async function registerServiceAndOpen(url) {
-    if (serviceRegistered) {
-      openCiteVisionTab(url);
-      return;
-    }
-    btn.disabled = true;
-    btn.textContent = 'Enregistrement du service…';
-    showServiceWaiting(
-      'Acceptez UAC, puis saisissez le mot de passe Windows de votre compte (pas le PIN de connexion)'
-    );
-    step.textContent = 'Enregistrement et démarrage du service Windows…';
-    appendLog('  Lancement register-service.bat (UAC + mot de passe + bascule vers le service)…', 'step');
-
+  async function verifyAiGateFromHealth() {
     try {
-      const data = await registerServiceOnce();
-      if (data && data.ok) {
-        serviceRegistered = true;
-        appendLog('  ' + (data.message || 'Service citevision enregistré et démarré'), 'ok');
-        step.textContent = 'Service actif — ouverture de CitéVision…';
-        removeServiceFailBanner();
-        openCiteVisionTab(url);
-        btn.textContent = 'Ouvrir CitéVision';
-        btn.onclick = () => openCiteVisionTab(url);
-      } else {
-        const msg = (data && data.message) || 'Service non enregistré';
-        appendLog('  ' + msg, 'error');
-        const pwdHint = isPasswordSetupHint(msg);
-        showServiceRetryPanel(
-          '<strong>Enregistrement du service non terminé.</strong> ' + msg +
-          (pwdHint
-            ? '<br><br>Si vous venez d\'ajouter un mot de passe, cliquez <strong>Réessayer</strong> et saisissez ce mot de passe (pas le PIN).'
-            : '<br><br>Cliquez <strong>Réessayer</strong> pour relancer l\'enregistrement.'),
-          { showPasswordHelp: pwdHint }
-        );
-        step.textContent = 'Finalisation — enregistrement du service requis';
-        btn.textContent = 'Réessayer';
-        btn.onclick = () => registerServiceAndOpen(url);
-      }
-    } catch (err) {
-      appendLog('  ' + (err instanceof Error ? err.message : String(err)), 'error');
-      showServiceRetryPanel(
-        'Enregistrement interrompu. Cliquez <strong>Réessayer</strong> pour relancer.',
-        { showPasswordHelp: false }
-      );
-      btn.textContent = 'Réessayer';
-      btn.onclick = () => registerServiceAndOpen(url);
+      const res = await fetch(API + '/api/ai-gate', { cache: 'no-store' });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data.ok === true;
+    } catch {
+      return false;
     }
-    removeServiceWaiting();
-    btn.disabled = false;
   }
 
-  let launchUiReady = false;
+  async function waitForAiGateRequired() {
+    if (aiOk) return true;
+    step.textContent = 'Gate IA — YOLO, InsightFace, PaddleOCR…';
+    showAiWaiting();
+    showBanner('Finalisation gate IA (correction automatique si nécessaire)…', 'warn');
+    for (;;) {
+      if (aiOk) return true;
+      if (await verifyAiGateFromHealth()) {
+        aiOk = true;
+        removeBanner();
+        removeAiWaiting();
+        appendLog('  Gate IA validée (YOLO, InsightFace, PaddleOCR)', 'ok');
+        step.textContent = 'IA active — prête à détecter';
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
+
+  async function finalizeLaunchWhenGateReady() {
+    const gateOk = await waitForAiGateRequired();
+    if (!gateOk || launchUiReady) return;
+    fill.style.width = '100%';
+    pct.textContent = '100%';
+    onLaunchReady(appUrl);
+  }
 
   async function onLaunchReady(url) {
     if (launchUiReady) return;
@@ -610,27 +553,13 @@ function startLaunch() {
     launchReady = true;
     appendLog('  Interface CitéVision accessible', 'ok');
     removeBanner();
-    removeServiceFailBanner();
     removeAiWaiting();
-    step.textContent = 'Application prête — dernière étape : enregistrer le service Windows';
+    step.textContent = 'Application prête — ouvrir CitéVision';
     fill.style.width = '100%';
     pct.textContent = '100%';
     btn.disabled = false;
     btn.textContent = 'Ouvrir CitéVision';
-    btn.onclick = () => registerServiceAndOpen(appUrl);
-  }
-
-  async function openPasswordGuide() {
-    try {
-      await fetch(API + '/api/password-guide');
-      appendLog('  Paramètres Windows ouverts — configurez le mot de passe puis cliquez Réessayer', 'info');
-    } catch (_) {
-      appendLog('  Ouvrez Paramètres → Comptes → Options de connexion → Mot de passe', 'info');
-    }
-  }
-
-  async function openCiteVision(url) {
-    await registerServiceAndOpen(url);
+    btn.onclick = () => openCiteVisionTab(appUrl);
   }
 
   const timer = setInterval(() => {
@@ -668,20 +597,16 @@ function startLaunch() {
         removeAiWaiting();
         appendLog('  ' + text, 'ok');
         step.textContent = 'IA active — prête à détecter';
-        if (launchReady) {
-          fill.style.width = '100%'; pct.textContent = '100%';
-          onLaunchReady(appUrl);
-        }
+        if (launchReady) void finalizeLaunchWhenGateReady();
         return;
       }
 
-      // ── AI échouée ───────────────────────────────────────────
+      // ── AI échouée → nouvelle passe de correction (pas d'abandon) ──
       if (msg.event === 'ai_fail') {
-        aiFailed = true;
-        removeAiWaiting();
-        appendLog('  ' + text, 'error');
-        showBanner(text, 'fail');
-        step.textContent = 'Correction IA en cours ou échec — voir logs';
+        appendLog('  ' + text, 'fix');
+        step.textContent = 'Correction automatique de l\'IA…';
+        showAiWaiting();
+        showBanner('Correction automatique de l\'IA en cours…', 'warn');
         return;
       }
 
@@ -695,17 +620,10 @@ function startLaunch() {
       // ── Interface prête (5174) ────────────────────────────────
       if (msg.event === 'launch_ready') {
         clearInterval(timer);
-        fill.style.width = '100%';
-        pct.textContent = '100%';
         appUrl = text || appUrl;
         launchReady = true;
-        removeAiWaiting();
-        if (aiFailed) {
-          showBanner('Gate IA incomplète — vous pouvez continuer ou consulter logs/ai-engine.log', 'warn');
-        } else {
-          removeBanner();
-        }
-        onLaunchReady(appUrl);
+        appendLog('  Interface CitéVision accessible', 'ok');
+        void finalizeLaunchWhenGateReady();
         es.close();
         return;
       }
@@ -716,12 +634,15 @@ function startLaunch() {
         step.textContent = text;
         progress = Math.min(progress + 6, 88);
         fill.style.width = progress.toFixed(1) + '%'; pct.textContent = Math.floor(progress) + '%';
-      } else if (msg.event === 'ok')    { appendLog('  ' + text, 'ok'); }
+      } else if (msg.event === 'ok') {
+        appendLog('  ' + text, 'ok');
+        markAiGateReady(text);
+      }
       else if (msg.event === 'fix')     { appendLog('  ' + text, 'fix'); step.textContent = text; }
       else if (msg.event === 'warn')    { appendLog('  ' + text, 'warn'); }
       else if (msg.event === 'error')   { appendLog('  ' + text, 'error'); clearInterval(timer); }
-      else if (msg.event === 'info')    { appendLog('  ' + text, 'info'); }
-      else                              { appendLog('  ' + text); }
+      else if (msg.event === 'info')    { appendLog('  ' + text, 'info'); markAiGateReady(text); }
+      else                              { appendLog('  ' + text); markAiGateReady(text); }
     } catch { appendLog(e.data); }
   };
   es.onerror = () => { clearInterval(timer); appendLog('  Connexion interrompue', 'error'); es.close(); };
@@ -734,17 +655,7 @@ function goToInstall()  { showStep('install'); resetInstallStep(); bindServiceMo
 function goToLaunch()   { showStep('launch');   startLaunch(); }
 function goToReady()    { showStep('ready'); }
 
-window.app = { loadHardware, goToHardware, loadDeps, goToDeps, goToInstall, goToLaunch, goToReady, startInstall, startLaunch, resetInstallStep,
-  async registerServiceManual() {
-    try {
-      const res = await fetch(API + '/api/register-service');
-      const data = await res.json();
-      alert(data.ok ? (data.message || 'Service enregistré') : (data.message || 'Échec — lancez register-service.bat'));
-    } catch (e) {
-      alert('Erreur : ' + (e.message || e));
-    }
-  },
-};
+window.app = { loadHardware, goToHardware, loadDeps, goToDeps, goToInstall, goToLaunch, goToReady, startInstall, startLaunch, resetInstallStep };
 
 async function loadVersionBanner() {
   const el = document.getElementById('install-version');

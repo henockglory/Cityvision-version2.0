@@ -45,5 +45,5 @@ docker compose -f infra/docker-compose.yml down 2>/dev/null || true
 
 echo ""
 echo "[OK] Reset terminé — conservé : modèles IA, venv, node_modules, images Docker"
-echo "     Relancez : setup.bat puis register-service.bat après le lancement"
+echo "     Relancez : setup.bat"
 echo ""

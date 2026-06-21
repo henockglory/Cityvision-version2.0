@@ -202,8 +202,8 @@
         </div>
 
         <div id="service-mode-panel" class="service-mode-panel">
-          <h3>Mode de démarrage du service</h3>
-          <p class="service-mode-desc">Le service système permet de démarrer et arrêter CitéVision via le panneau Services (Windows) ou systemctl (Linux).</p>
+          <h3>Mode de démarrage</h3>
+          <p class="service-mode-desc">Windows : démarrage à la connexion + surveillance automatique, ou via <code>start-citevision.bat</code>. Linux : service systemd <code>citevision.service</code> (modifiable dans Paramètres).</p>
 
           <label class="mode-opt selected" data-value="auto">
             <input type="radio" name="service-mode" value="auto" checked hidden>
@@ -212,7 +212,7 @@
             </div>
             <div class="mode-opt-body">
               <strong>Automatique (recommandé)</strong>
-              <span>CitéVision démarre avec le système — redémarrage instantané après installation</span>
+              <span>Windows : démarrage à la connexion + relance si arrêt détecté — Linux : démarrage au boot systemd</span>
             </div>
           </label>
 
@@ -223,7 +223,7 @@
             </div>
             <div class="mode-opt-body">
               <strong>Manuel</strong>
-              <span>Windows : <code>sc start citevision</code> — Linux : <code>systemctl start citevision</code></span>
+              <span>Windows : <code>start-citevision.bat</code> — Linux : <code>systemctl start citevision</code></span>
             </div>
           </label>
 
@@ -331,14 +331,11 @@
             <polyline class="ready-check-path" points="20,32 28,40 44,24" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <div class="ready-title">CitéVision est prêt</div>
-          <p class="ready-subtitle">Configurez votre organisation ci-dessous. Le service Windows (services.msc) a été enregistré pendant le lancement si vous avez accepté UAC et saisi votre mot de passe.</p>
+          <p class="ready-subtitle">Configurez votre organisation ci-dessous. Le mode de démarrage choisi à l'installation est actif — modifiable dans Paramètres → Système.</p>
           <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;justify-content:center">
             <button class="btn btn-primary" onclick="window.open('http://localhost:5174/setup','_blank')">
               Ouvrir la configuration
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-            <button class="btn btn-secondary" onclick="window.app.registerServiceManual()">
-              Enregistrer le service Windows
             </button>
           </div>
         </div>
@@ -350,6 +347,6 @@
 
 <footer id="install-version" class="install-version" aria-live="polite"></footer>
 
-<script src="app.js?v=20260621b"></script>
+<script src="app.js?v=20260621h"></script>
 </body>
 </html>

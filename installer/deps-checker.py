@@ -576,37 +576,47 @@ def check_python_venv() -> Dep:
                install_cmd="cd ai-engine && python3.12 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt")
 
 
-def check_windows_service() -> Dep:
-    """Verifie si le service Windows citevision est enregistre (Windows uniquement)."""
-    rc, out, _ = _run(["sc", "query", WINDOWS_SERVICE_NAME], timeout=8)
-    if rc == 0:
-        running = "RUNNING" in out.upper()
+def check_windows_startup() -> Dep:
+    """Verifie la configuration demarrage Windows (Task Scheduler, sans services.msc)."""
+    marker = ROOT / "installer" / ".startup_configured"
+    mode = read_service_start_mode()
+    rc, _, _ = _run(["schtasks", "/Query", "/TN", "CiteVision-AutoStart"], timeout=8)
+    auto_task = rc == 0
+    rc_wd, _, _ = _run(["schtasks", "/Query", "/TN", "CiteVision-Watchdog"], timeout=8)
+    watchdog_task = rc_wd == 0
+
+    if mode == "auto" and auto_task:
+        detail = "taches planifiees actives (connexion + surveillance 3 min)"
         return Dep(
-            "windows_service",
-            "Service Windows citevision",
-            "ok" if running else "outdated",
-            "en cours d'exécution" if running else "arrêté",
-            f"sc start {WINDOWS_SERVICE_NAME} ou services.msc",
-            (
-                "Service Windows actif — démarrage/arrêt via services.msc ou sc start/stop"
-                if running
-                else "Service enregistré mais arrêté — démarrez-le via services.msc ou sc start"
-            ),
+            "windows_startup",
+            "Demarrage automatique Windows",
+            "ok",
+            detail,
+            "start-citevision.bat pour demarrage manuel immediat",
+            "CiteVision demarre a la connexion et se relance si un arret est detecte.",
             install_cmd=None,
             critical=False,
         )
-    install_ps1 = str(ROOT / "installer" / "windows" / "install-service.ps1")
+    if marker.exists() or mode == "manual":
+        return Dep(
+            "windows_startup",
+            "Demarrage automatique Windows",
+            "ok" if marker.exists() else "outdated",
+            f"mode manuel ({mode})",
+            "start-citevision.bat",
+            "Demarrage manuel via start-citevision.bat a la racine du projet.",
+            install_cmd=None,
+            critical=False,
+        )
+    start_bat = str(ROOT / "start-citevision.bat")
     return Dep(
-        "windows_service",
-        "Service Windows citevision",
+        "windows_startup",
+        "Demarrage automatique Windows",
         "missing",
-        "non enregistré",
-        "register-service.bat ou Ouvrir CitéVision (UAC)",
-        (
-            "Le service Windows citevision n'est pas enregistré. "
-            "Cliquez Ouvrir CitéVision (acceptez UAC) ou lancez register-service.bat."
-        ),
-        install_cmd=f'powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "{install_ps1}"',
+        "non configure",
+        "start-citevision.bat ou reinstaller",
+        "Le demarrage automatique n'est pas encore configure — relancez l'installation ou start-citevision.bat.",
+        install_cmd=start_bat,
         critical=False,
     )
 
@@ -637,7 +647,7 @@ def run_all(mode: str = "check") -> dict:
     ]
     if IS_WINDOWS:
         deps.insert(2, check_wsl())
-        deps.append(check_windows_service())
+        deps.append(check_windows_startup())
 
     # Port checks (retourne liste)
     deps.extend(check_ports())
@@ -684,8 +694,8 @@ def _win_path_exists(p: Path) -> bool:
 # ---------------------------------------------------------------------------
 # SSE install stream
 # ---------------------------------------------------------------------------
-def _parse_service_ps1_output(out: str, err: str) -> tuple[bool, str]:
-    """Parse JSON from install-service.ps1 stdout (last JSON line wins)."""
+def _parse_startup_ps1_output(out: str, err: str) -> tuple[bool, str]:
+    """Parse JSON from install-startup.ps1 stdout (last JSON line wins)."""
     combined = (out or "") + "\n" + (err or "")
     for line in reversed(combined.splitlines()):
         line = line.strip()
@@ -693,21 +703,20 @@ def _parse_service_ps1_output(out: str, err: str) -> tuple[bool, str]:
             continue
         try:
             data = json.loads(line)
-            if "service_ok" in data:
-                ok = bool(data.get("service_ok"))
+            ok_key = "startup_ok" if "startup_ok" in data else "service_ok"
+            if ok_key in data:
+                ok = bool(data.get(ok_key))
                 err_msg = data.get("error") or ""
                 if ok:
                     mode = data.get("start_mode", "auto")
-                    existed = data.get("already_existed", False)
-                    lbl = "mis à jour" if existed else "enregistré"
-                    return True, f"Service {WINDOWS_SERVICE_NAME} {lbl} (mode: {mode})"
-                return False, err_msg or "Enregistrement service échoué"
+                    return True, f"Demarrage Windows configure (mode: {mode})"
+                return False, err_msg or "Configuration demarrage Windows echouee"
         except json.JSONDecodeError:
             continue
     text = (out or err or "").strip()
     if text:
         return False, text[-500:]
-    return False, "Enregistrement service Windows échoué (pas de réponse)"
+    return False, "Configuration demarrage Windows echouee (pas de reponse)"
 
 
 def _predownload_nssm() -> tuple[bool, str]:
@@ -797,11 +806,11 @@ def _read_register_log_tail(max_chars: int = 800) -> str:
     return "\n".join(parts).strip()[-max_chars:]
 
 
-def _register_windows_service(start_mode: str) -> tuple[bool, str]:
-    """Lance register-service.bat visible (UAC + mot de passe Windows)."""
-    bat = ROOT / "register-service.bat"
-    if not bat.exists():
-        return False, f"Script introuvable : {bat}"
+def _configure_windows_startup(start_mode: str) -> tuple[bool, str]:
+    """Configure demarrage Windows via Task Scheduler (sans services.msc)."""
+    ps1 = ROOT / "installer" / "windows" / "install-startup.ps1"
+    if not ps1.exists():
+        return False, f"Script introuvable : {ps1}"
     mode_file = ROOT / "installer" / ".service_start_mode"
     try:
         mode_file.parent.mkdir(parents=True, exist_ok=True)
@@ -810,106 +819,50 @@ def _register_windows_service(start_mode: str) -> tuple[bool, str]:
         return False, f"Impossible d'écrire le mode de démarrage : {e}"
 
     import os
-    result_path = Path(os.environ.get("TEMP", "C:/Windows/Temp")) / "citevision-svc-result.json"
+    result_path = Path(os.environ.get("TEMP", "C:/Windows/Temp")) / "citevision-startup-result.json"
     try:
         result_path.unlink(missing_ok=True)
     except OSError:
         pass
 
-    pre_status = _service_account_status()
-    bat_path = str(bat.resolve()).replace("'", "''")
-    root_path = str(ROOT.resolve()).replace("'", "''")
-    # Fenêtre visible — register-service.bat gère UAC ; -Handover bascule vers le service.
-    ps_cmd = (
-        f"$p = Start-Process -FilePath '{bat_path}' "
-        f"-ArgumentList '-Handover','-Silent' "
-        f"-WorkingDirectory '{root_path}' -Wait -PassThru; exit $p.ExitCode"
-    )
     rc, out, err = _run([
-        "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-        "-Command", ps_cmd,
-    ], timeout=600)
+        "powershell", "-NoLogo", "-NonInteractive", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", str(ps1), "-StartMode", start_mode, "-Root", str(ROOT.resolve()),
+        "-ResultFile", str(result_path),
+    ], timeout=120)
 
-    result = _read_service_result_file()
-    post_status = _service_account_status()
+    if result_path.exists():
+        try:
+            data = json.loads(result_path.read_text(encoding="utf-8"))
+            if data.get("startup_ok") or data.get("service_ok"):
+                mode = data.get("start_mode", start_mode)
+                return True, f"Demarrage Windows configure (mode: {mode})"
+            if data.get("error"):
+                return False, str(data["error"])
+        except (OSError, json.JSONDecodeError):
+            pass
 
-    if result and result.get("service_ok") and post_status == "ok":
-        mode = result.get("start_mode", start_mode)
-        if not _poll_port(8081, timeout=120) or not _poll_port(5174, timeout=60):
-            return False, (
-                "Service enregistré mais l'application ne répond pas. "
-                "Consultez logs/service.log et logs/service-error.log."
-            )
-        return True, f"Service {WINDOWS_SERVICE_NAME} enregistré et démarré (mode: {mode})"
-
-    ok, msg = _parse_service_ps1_output(out, err)
-    if ok and post_status == "ok":
-        if _poll_port(8081, timeout=120) and _poll_port(5174, timeout=60):
-            return True, msg or f"Service {WINDOWS_SERVICE_NAME} enregistré (mode: {start_mode})"
-        return False, "Service enregistré mais l'application ne répond pas après démarrage."
-
-    if result and result.get("error"):
-        err_text = str(result["error"])
-        if post_status == "bad_account":
-            return False, (
-                f"{err_text} — un service LocalSystem incompatible est encore présent. "
-                "Double-cliquez register-service.bat, acceptez UAC et saisissez votre mot de passe Windows."
-            )
-        return False, err_text
-
-    if post_status == "ok":
-        if _poll_port(8081, timeout=120) and _poll_port(5174, timeout=60):
-            return True, f"Service {WINDOWS_SERVICE_NAME} enregistré (mode: {start_mode})"
-        return False, "Service enregistré mais l'application ne répond pas après démarrage."
-
-    if post_status == "bad_account":
-        if pre_status == "bad_account" and rc != 0:
-            return False, (
-                "Enregistrement interrompu — un ancien service citevision sous LocalSystem "
-                "(incompatible WSL) est toujours présent. Double-cliquez register-service.bat, "
-                "acceptez UAC et saisissez votre mot de passe Windows."
-            )
-        return False, (
-            "Service enregistré sous LocalSystem (incompatible WSL). "
-            "Relancez register-service.bat et saisissez votre mot de passe Windows."
-        )
-
+    ok, msg = _parse_startup_ps1_output(out, err)
+    if ok:
+        return True, msg
     if rc != 0:
-        log_tail = _read_register_log_tail()
-        detail = log_tail.splitlines()[-8:] if log_tail else []
-        hint = " | ".join(detail[-3:]) if detail else ""
-        msg = "Enregistrement du service echoue (code %d)." % rc
-        if result and result.get("error"):
-            msg = str(result["error"])
-        elif hint:
-            msg = msg + " " + hint
-        else:
-            msg = msg + " Consultez logs/register-service.log"
-        return False, msg
-    log_tail = _read_register_log_tail()
-    tail_hint = (" Detail: " + " | ".join(log_tail.splitlines()[-3:])) if log_tail else ""
-    return False, (
-        "Service non enregistre - mot de passe Windows requis ou erreur d enregistrement."
-        + tail_hint
-        + " Voir logs/register-service.log ou double-cliquez register-service.bat."
-    )
+        return False, msg or f"Configuration demarrage echouee (code {rc})"
+    return False, msg or "Configuration demarrage Windows echouee"
 
 
-def windows_service_registration_status() -> dict:
-    """État du service Windows pour l'installateur (sans lancer l'enregistrement)."""
+def windows_startup_status() -> dict:
+    """Etat demarrage Windows pour l'installateur."""
     if not IS_WINDOWS:
-        return {"registered": False, "account_ok": False, "running": False, "status": "skipped"}
-    rc, out, _ = _run(["sc", "query", WINDOWS_SERVICE_NAME], timeout=8)
-    if rc != 0:
-        return {"registered": False, "account_ok": False, "running": False, "status": "missing"}
-    running = "RUNNING" in out.upper()
-    acct = _service_account_status()
+        return {"configured": False, "mode": "skipped", "auto_task": False}
+    mode = read_service_start_mode()
+    marker = (ROOT / "installer" / ".startup_configured").exists()
+    rc, _, _ = _run(["schtasks", "/Query", "/TN", "CiteVision-AutoStart"], timeout=8)
+    auto_task = rc == 0
     return {
-        "registered": True,
-        "account_ok": acct == "ok",
-        "running": running,
-        "status": acct,
-        "needs_repair": acct == "bad_account",
+        "configured": marker or auto_task,
+        "mode": mode,
+        "auto_task": auto_task,
+        "registered": marker or auto_task,  # compat
     }
 
 
@@ -956,14 +909,14 @@ def _register_linux_service(start_mode: str) -> tuple[bool, str]:
 
 def register_system_service(start_mode: str | None = None) -> dict:
     """
-    Enregistre le service système CitéVision (Windows NSSM ou Linux systemd).
+    Enregistre le demarrage systeme CitéVision (Windows Task Scheduler ou Linux systemd).
     Retourne {"ok": bool, "message": str, "start_mode": str, "skipped": bool}.
     """
     import shutil
 
     mode = start_mode if start_mode in ("auto", "manual") else read_service_start_mode()
     if IS_WINDOWS:
-        ok, msg = _register_windows_service(mode)
+        ok, msg = _configure_windows_startup(mode)
         return {"ok": ok, "message": msg, "start_mode": mode, "skipped": False, "platform": "windows"}
     if not shutil.which("systemctl"):
         return {
@@ -1093,13 +1046,16 @@ def install_stream(start_mode: str = "auto"):
                             break
                     if install_ok:
                         if IS_WINDOWS:
-                            yield emit(
-                                "info",
-                                message=(
-                                    "Service Windows : après le lancement, cliquez « Enregistrer le service Windows » "
-                                    "ou double-cliquez register-service.bat (UAC + mot de passe Windows)."
-                                ),
-                            )
+                            yield emit("step", message="Configuration du demarrage Windows…")
+                            try:
+                                svc = register_system_service(start_mode)
+                                if svc.get("ok"):
+                                    mode_lbl = "automatique" if svc.get("start_mode") == "auto" else "manuel"
+                                    yield emit("ok", message=f"Demarrage Windows configure — mode {mode_lbl}")
+                                else:
+                                    yield emit("warn", message=f"Demarrage Windows : {svc.get('message', 'echec')}")
+                            except Exception as _e:
+                                yield emit("warn", message=f"Configuration demarrage ignoree : {_e}")
                         else:
                             yield emit("step", message="Enregistrement du service système…")
                             try:
@@ -1307,6 +1263,7 @@ def launch_stream():
 
                 yield emit("step", message="Vérification de l'AI Engine (8001)...")
                 ai_up = _poll_port(8001, timeout=120)
+                af = None
                 try:
                     import importlib.util
                     af_spec = importlib.util.spec_from_file_location(
@@ -1355,6 +1312,41 @@ def launch_stream():
                         yield emit("warn", message=f"Auto-fix frontend échoué : {e}")
                 if _poll_port(5174, timeout=90):
                     yield emit("ok", message="Interface CitéVision accessible")
+                    # Gate IA obligatoire avant launch_ready (YOLO + InsightFace + PaddleOCR)
+                    while True:
+                        gate_ok, missing = _poll_all_ai_models(
+                            "http://localhost:8001/health", timeout=15
+                        )
+                        if gate_ok:
+                            yield emit(
+                                "ai_ready",
+                                message="AI Engine opérationnel — YOLO, InsightFace et PaddleOCR chargés",
+                            )
+                            break
+                        miss_txt = missing or "modèles IA"
+                        yield emit(
+                            "fix",
+                            message=f"Gate IA — correction automatique ({miss_txt})…",
+                        )
+                        try:
+                            if af is None:
+                                import importlib.util
+                                af_spec = importlib.util.spec_from_file_location(
+                                    "auto_fix_gate", ROOT / "installer" / "auto-fix.py"
+                                )
+                                af = importlib.util.module_from_spec(af_spec)
+                                af_spec.loader.exec_module(af)
+                            for evt in af.ensure_launch_ai_stream(max_rounds=1):
+                                ev = evt.get("event", "fix")
+                                msg = evt.get("message", "")
+                                if ev == "ai_ready":
+                                    gate_ok = True
+                                yield emit(ev, message=msg)
+                            if gate_ok:
+                                break
+                        except Exception:
+                            pass
+                        _time.sleep(3)
                     yield emit("launch_ready", message=app_url)
                 else:
                     yield emit("error", message="Interface non démarrée sur le port 5174 — consultez logs/frontend.log")
@@ -1372,7 +1364,12 @@ def launch_stream():
             if "[fix]" in low:
                 evt = "fix"
             elif "[ok]" in low or "healthy" in low or "ready" in low:
-                evt = "ok"
+                if "gate ia" in low or (
+                    "yolo" in low and "insightface" in low and "paddleocr" in low
+                ):
+                    evt = "ai_ready"
+                else:
+                    evt = "ok"
             elif "[warn]" in low or "warn" in low or "timeout" in low:
                 evt = "warn"
             elif "[fail]" in low or "error" in low or "fail" in low:
