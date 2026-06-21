@@ -2,9 +2,9 @@
 setlocal EnableDelayedExpansion
 :: Register citevision Windows service (auto-elevate via UAC + Windows password prompt)
 :: This is the ONLY supported way to register the Windows service.
-:: Usage: register-service.bat              (interactive, pause at end)
-::        register-service.bat -Handover     (installateur : bascule vers le service)
-::        register-service.bat -Silent       (sans pause)
+:: Usage: register-service.bat              (interactive, pause at end on error)
+::        register-service.bat -Handover     (installer: handover stack to service)
+::        register-service.bat -Silent       (no pause on error)
 
 set "SILENT=0"
 set "HANDOVER=0"
@@ -16,56 +16,36 @@ for %%A in (%*) do (
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
-:: Compte interactif (avant UAC — requis pour WSL, pas LocalSystem)
 if not exist "%ROOT%\installer" mkdir "%ROOT%\installer"
-set "SVC_ACCT=%USERDOMAIN%\%USERNAME%"
-> "%ROOT%\installer\.service_account" echo !SVC_ACCT!
+if not exist "%ROOT%\logs" mkdir "%ROOT%\logs"
 
-:: Read start mode from installer/.service_start_mode if present
+:: Compte interactif AVANT UAC (WSL requiert le compte utilisateur, pas LocalSystem)
+echo %USERDOMAIN%\%USERNAME%> "%ROOT%\installer\.service_account"
+
 set "MODE=auto"
 if exist "%ROOT%\installer\.service_start_mode" (
     set /p MODE=<"%ROOT%\installer\.service_start_mode"
 )
 
+set "LOG=%ROOT%\logs\register-service.log"
+set "RESULT=%TEMP%\citevision-svc-result.json"
+
 if not "!SILENT!"=="1" (
     echo ============================================================
-    echo   CitéVision - Enregistrement du service Windows
+    echo   CiteVision - Enregistrement du service Windows
     echo   Mode: !MODE!
     echo ============================================================
     echo.
-    echo   1. Acceptez la fenetre UAC ^(administrateur^)
+    echo   Une fenetre PowerShell va s ouvrir.
+    echo   1. Acceptez UAC ^(administrateur^)
     echo   2. Saisissez votre mot de passe Windows quand demande
-    echo      ^(obligatoire : WSL ne fonctionne pas sous LocalSystem^)
     echo.
 )
 
-:: Auto-elevate if not admin
-net session >nul 2>&1
-if !errorlevel! neq 0 (
-    if not "!SILENT!"=="1" echo [INFO] Elevation administrateur requise - fenetre UAC...
-    set "ELEV_ARGS="
-    if "!SILENT!"=="1" set "ELEV_ARGS=-Silent"
-    if "!HANDOVER!"=="1" set "ELEV_ARGS=!ELEV_ARGS! -Handover"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '!ELEV_ARGS!' -Verb RunAs -Wait"
-    exit /b !errorlevel!
-)
-
-set "PS_ARGS=-StartMode !MODE! -Elevated"
+set "PS_ARGS=-Root "!ROOT!" -StartMode "!MODE!" -LogFile "!LOG!" -ResultFile "!RESULT!""
+if "!SILENT!"=="1" set "PS_ARGS=!PS_ARGS! -Silent"
 if "!HANDOVER!"=="1" set "PS_ARGS=!PS_ARGS! -Handover"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\installer\windows\install-service.ps1" !PS_ARGS!
-set "RC=!errorlevel!"
 
-if not "!SILENT!"=="1" (
-    echo.
-    if !RC! equ 0 (
-        echo [OK] Service citevision enregistre.
-        echo      Nom affiche : CiteVision - AI Video Surveillance
-        echo      Verifiez dans services.msc
-    ) else (
-        echo [ERR] Enregistrement echoue - code !RC!
-        echo       Consultez les messages ci-dessus.
-    )
-    echo.
-    pause
-)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\installer\windows\register-elevated.ps1" !PS_ARGS!
+set "RC=!errorlevel!"
 exit /b !RC!

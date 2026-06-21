@@ -784,6 +784,17 @@ def _windows_service_account_ok() -> bool:
     return _service_account_status() == "ok"
 
 
+def _read_register_log_tail(max_chars: int = 800) -> str:
+    log_path = ROOT / "logs" / "register-service.log"
+    if not log_path.exists():
+        return ""
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+        return text[-max_chars:].strip()
+    except OSError:
+        return ""
+
+
 def _register_windows_service(start_mode: str) -> tuple[bool, str]:
     """Lance register-service.bat visible (UAC + mot de passe Windows)."""
     bat = ROOT / "register-service.bat"
@@ -862,14 +873,23 @@ def _register_windows_service(start_mode: str) -> tuple[bool, str]:
         )
 
     if rc != 0:
-        return False, (
-            "Enregistrement annulé ou refusé (UAC). "
-            "Double-cliquez register-service.bat à la racine, acceptez UAC "
-            "et saisissez votre mot de passe Windows."
-        )
+        log_tail = _read_register_log_tail()
+        detail = log_tail.splitlines()[-8:] if log_tail else []
+        hint = " | ".join(detail[-3:]) if detail else ""
+        msg = "Enregistrement du service echoue (code %d)." % rc
+        if result and result.get("error"):
+            msg = str(result["error"])
+        elif hint:
+            msg = msg + " " + hint
+        else:
+            msg = msg + " Consultez logs/register-service.log"
+        return False, msg
+    log_tail = _read_register_log_tail()
+    tail_hint = (" Detail: " + " | ".join(log_tail.splitlines()[-3:])) if log_tail else ""
     return False, (
-        "Service non enregistré — la fenêtre UAC ou le mot de passe Windows a été annulé. "
-        "Double-cliquez register-service.bat à la racine du projet."
+        "Service non enregistre - mot de passe Windows requis ou erreur d enregistrement."
+        + tail_hint
+        + " Voir logs/register-service.log ou double-cliquez register-service.bat."
     )
 
 

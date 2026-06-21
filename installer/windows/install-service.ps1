@@ -160,7 +160,7 @@ function Start-ServiceRobust {
     $out = & sc.exe start $SERVICE_NAME 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         if ($out -match "1056|deja|already") {
-            Write-Log "Start conflict (1056) — resetting service state..." "WARN"
+            Write-Log "Start conflict (1056) - resetting service state..." "WARN"
             Stop-ServiceClean | Out-Null
             Start-Sleep -Seconds 2
             $out = & sc.exe start $SERVICE_NAME 2>&1 | Out-String
@@ -209,7 +209,7 @@ function Wait-AppHealthy {
 }
 
 function Invoke-ServiceHandover {
-    Write-Log "Handover: arrêt stack installateur, démarrage service Windows..."
+    Write-Log "Handover: arret stack installateur, demarrage service Windows..."
     try {
         & $wslExe -- bash $wslStopScript 2>$null | Out-Null
     } catch {
@@ -218,9 +218,9 @@ function Invoke-ServiceHandover {
     Start-Sleep -Seconds 4
     Start-ServiceRobust
     if (-not (Wait-AppHealthy -TimeoutSec 120)) {
-        throw "Le service a démarré mais l'application ne répond pas sur le port 8081"
+        throw "Le service a demarre mais l application ne repond pas sur le port 8081"
     }
-    Write-Log "Handover terminé — application opérationnelle sous le service Windows."
+    Write-Log "Handover termine - application operationnelle sous le service Windows."
 }
 
 function Grant-ServiceControl {
@@ -274,15 +274,15 @@ if (-not $isAdmin -and -not $Elevated) {
     # Do NOT add -NonInteractive here: first-time registration needs Get-Credential.
     $argList = @(
         "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-        "-File", "`"$PSCommandPath`"",
+        "-File", $PSCommandPath,
         "-StartMode", $StartMode,
         "-Action", $Action,
         "-Elevated",
-        "-ResultFile", "`"$outFile`""
+        "-ResultFile", $outFile
     )
+    if ($Handover) { $argList += "-Handover" }
     try {
-        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList ($argList -join " ") `
-            -Verb RunAs -Wait -PassThru
+        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $argList -Verb RunAs -Wait -PassThru
         if (Test-Path $outFile) {
             $content = Get-Content -Path $outFile -Raw -Encoding UTF8
             Write-Host $content.Trim()
@@ -306,11 +306,11 @@ if (-not $isAdmin) {
 # ============================================================================
 if ($Action -eq "start" -or $Action -eq "stop") {
     if (-not (Test-ServiceRegistered)) {
-        Emit-Result $false $false "Service '$SERVICE_NAME' is not registered — run register-service.bat" 1
+        Emit-Result $false $false "Service '$SERVICE_NAME' is not registered - run register-service.bat" 1
     }
     $runAs = Get-ServiceRunAccount
     if (-not (Test-ServiceAccountOk $runAs)) {
-        Emit-Result $false $true "Service runs as '$runAs' (WSL incompatible) — run register-service.bat to repair" 1
+        Emit-Result $false $true "Service runs as '$runAs' (WSL incompatible) - run register-service.bat to repair" 1
     }
     try {
         if ($Action -eq "start") {
@@ -419,9 +419,9 @@ function Get-ValidatedServiceCredential {
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
         [void][System.Windows.Forms.MessageBox]::Show(
-            "CitéVision va s'exécuter sous votre compte Windows (requis pour WSL).`n`n" +
-            "Saisissez le mot de passe de votre session Windows dans la fenêtre suivante.",
-            "CitéVision — Service Windows",
+            "CiteVision va s executer sous votre compte Windows (requis pour WSL)." + [Environment]::NewLine + [Environment]::NewLine +
+            "Saisissez le mot de passe de votre session Windows dans la fenetre suivante.",
+            "CiteVision - Service Windows",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information
         )
@@ -476,7 +476,7 @@ $existingService = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
 if ($existingService) {
     $state = Get-ServiceScState
     if ($state -eq "PAUSED") {
-        Write-Log "Service '$SERVICE_NAME' en état PAUSED — suppression et ré-enregistrement." "WARN"
+        Write-Log "Service '$SERVICE_NAME' en etat PAUSED - suppression et re-enregistrement." "WARN"
         Remove-ServiceRegistration
         $existingService = $null
     }
@@ -498,7 +498,7 @@ if ($existingService) {
             Emit-Result $false $true "$_" 1
         }
     }
-    Write-Log "Service '$SERVICE_NAME' runs as '$runAs' (WSL incompatible) — re-registration required." "WARN"
+    Write-Log "Service '$SERVICE_NAME' runs as '$runAs' (WSL incompatible) - re-registration required." "WARN"
     Remove-ServiceRegistration
 }
 
@@ -560,7 +560,7 @@ try {
 
     $runAs = Get-ServiceRunAccount
     if (-not (Test-ServiceAccountOk $runAs)) {
-        throw "Service registered as '$runAs' — WSL requires a user account. Re-run register-service.bat."
+        throw "Service registered as '$runAs' - WSL requires a user account. Re-run register-service.bat."
     }
     Write-Log "Service account verified: $runAs"
 
@@ -575,7 +575,7 @@ try {
         try {
             Invoke-ServiceHandover
         } catch {
-            throw "Handover échoué: $_"
+            throw "Handover echoue: $_"
         }
     } elseif ($StartMode -eq "auto") {
         Write-Log "  Automatic startup with Windows enabled."
