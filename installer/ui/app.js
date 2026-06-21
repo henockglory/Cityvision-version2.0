@@ -515,6 +515,33 @@ function startLaunch() {
     btnArea.insertBefore(serviceRegEl, btn);
   }
 
+  function showServiceRetryPanel(msg, opts = {}) {
+    const showPasswordHelp = opts.showPasswordHelp === true;
+    if (serviceFailBanner) serviceFailBanner.remove();
+    serviceFailBanner = document.createElement('div');
+    serviceFailBanner.className = 'ai-warn-banner';
+    serviceFailBanner.style.flexDirection = 'column';
+    serviceFailBanner.style.alignItems = 'stretch';
+    serviceFailBanner.style.gap = '12px';
+    let actions = '';
+    if (showPasswordHelp) {
+      actions += `<button type="button" class="btn btn-secondary" id="svc-pwd-help" style="margin-right:8px">Configurer le mot de passe Windows</button>`;
+    }
+    actions += `<button type="button" class="btn btn-success" id="svc-retry-inline">Réessayer l'enregistrement</button>`;
+    serviceFailBanner.innerHTML =
+      `<span>${msg}</span><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">${actions}</div>`;
+    const logParent = log.parentNode;
+    if (logParent) logParent.insertBefore(serviceFailBanner, log);
+    const retryInline = document.getElementById('svc-retry-inline');
+    if (retryInline) retryInline.onclick = () => registerServiceAndOpen(appUrl);
+    const pwdHelp = document.getElementById('svc-pwd-help');
+    if (pwdHelp) pwdHelp.onclick = () => void openPasswordGuide();
+  }
+
+  function isPasswordSetupHint(msg) {
+    return /1069|PIN Microsoft|PIN seul|PIN ne|pas le PIN|add-windows-password/i.test(msg || '');
+  }
+
   let serviceRegistered = false;
 
   async function registerServiceOnce() {
@@ -531,7 +558,7 @@ function startLaunch() {
     btn.disabled = true;
     btn.textContent = 'Enregistrement du service…';
     showServiceWaiting(
-      'Acceptez UAC (administrateur), puis saisissez votre mot de passe Windows dans la fenêtre qui s\'ouvre'
+      'Acceptez UAC, puis saisissez le mot de passe Windows de votre compte (pas le PIN de connexion)'
     );
     step.textContent = 'Enregistrement et démarrage du service Windows…';
     appendLog('  Lancement register-service.bat (UAC + mot de passe + bascule vers le service)…', 'step');
@@ -549,25 +576,23 @@ function startLaunch() {
       } else {
         const msg = (data && data.message) || 'Service non enregistré';
         appendLog('  ' + msg, 'error');
-        const pinHint = /1069|PIN|mot de passe/i.test(msg);
-        showServiceFailBanner(
-          '<strong>Impossible d\'ouvrir CitéVision sans service enregistré.</strong> ' + msg +
-          (pinHint
-            ? '<br><br><strong>PIN seul :</strong> ajoutez un mot de passe via <strong>add-windows-password.bat</strong> ' +
-              '(<a href="#" id="pin-guide-link" style="color:var(--accent)">ouvrir le guide</a>), puis Réessayez.'
-            : '<br><br>Double-cliquez <strong>register-service.bat</strong> ou cliquez Réessayer.')
+        const pwdHint = isPasswordSetupHint(msg);
+        showServiceRetryPanel(
+          '<strong>Enregistrement du service non terminé.</strong> ' + msg +
+          (pwdHint
+            ? '<br><br>Si vous venez d\'ajouter un mot de passe, cliquez <strong>Réessayer</strong> et saisissez ce mot de passe (pas le PIN).'
+            : '<br><br>Cliquez <strong>Réessayer</strong> pour relancer l\'enregistrement.'),
+          { showPasswordHelp: pwdHint }
         );
-        const link = document.getElementById('pin-guide-link');
-        if (link) link.onclick = (e) => { e.preventDefault(); void openPasswordGuide(); };
-        if (pinHint) void openPasswordGuide();
-        step.textContent = 'Service Windows requis — enregistrement échoué';
+        step.textContent = 'Finalisation — enregistrement du service requis';
         btn.textContent = 'Réessayer';
         btn.onclick = () => registerServiceAndOpen(url);
       }
     } catch (err) {
       appendLog('  ' + (err instanceof Error ? err.message : String(err)), 'error');
-      showServiceFailBanner(
-        'Enregistrement échoué — double-cliquez register-service.bat ou réessayez.'
+      showServiceRetryPanel(
+        'Enregistrement interrompu. Cliquez <strong>Réessayer</strong> pour relancer.',
+        { showPasswordHelp: false }
       );
       btn.textContent = 'Réessayer';
       btn.onclick = () => registerServiceAndOpen(url);
@@ -576,17 +601,18 @@ function startLaunch() {
     btn.disabled = false;
   }
 
+  let launchUiReady = false;
+
   async function onLaunchReady(url) {
+    if (launchUiReady) return;
+    launchUiReady = true;
     appUrl = url || appUrl;
     launchReady = true;
     appendLog('  Interface CitéVision accessible', 'ok');
     removeBanner();
+    removeServiceFailBanner();
     removeAiWaiting();
-    step.textContent = 'Application prête — enregistrement du service requis pour ouvrir';
-    showServiceFailBanner(
-      '<strong>Connexion par PIN seul ?</strong> Windows exige un <strong>mot de passe</strong> pour le service (le PIN ne fonctionne pas). ' +
-      'Double-cliquez <strong>add-windows-password.bat</strong> à la racine pour ajouter un mot de passe, puis cliquez Ouvrir CitéVision.'
-    );
+    step.textContent = 'Application prête — dernière étape : enregistrer le service Windows';
     fill.style.width = '100%';
     pct.textContent = '100%';
     btn.disabled = false;
@@ -597,8 +623,9 @@ function startLaunch() {
   async function openPasswordGuide() {
     try {
       await fetch(API + '/api/password-guide');
+      appendLog('  Paramètres Windows ouverts — configurez le mot de passe puis cliquez Réessayer', 'info');
     } catch (_) {
-      appendLog('  Ouvrez add-windows-password.bat à la racine du projet', 'warn');
+      appendLog('  Ouvrez Paramètres → Comptes → Options de connexion → Mot de passe', 'info');
     }
   }
 
@@ -668,24 +695,17 @@ function startLaunch() {
       // ── Interface prête (5174) ────────────────────────────────
       if (msg.event === 'launch_ready') {
         clearInterval(timer);
-        if (aiOk) {
-          fill.style.width = '100%'; pct.textContent = '100%';
-        }
+        fill.style.width = '100%';
+        pct.textContent = '100%';
         appUrl = text || appUrl;
         launchReady = true;
-
-        if (aiOk) {
-          onLaunchReady(appUrl);
-        } else if (aiFailed) {
-          appendLog('  Interface CitéVision accessible', 'ok');
-          step.textContent = 'Interface prête — gate IA non validée';
-          showBanner('Les corrections automatiques n\'ont pas abouti — consultez les logs', 'fail');
+        removeAiWaiting();
+        if (aiFailed) {
+          showBanner('Gate IA incomplète — vous pouvez continuer ou consulter logs/ai-engine.log', 'warn');
         } else {
-          appendLog('  Interface CitéVision accessible', 'ok');
-          step.textContent = 'Interface prête — finalisation IA…';
-          showAiWaiting();
-          showBanner('Correction automatique de l\'IA en cours…', 'warn');
+          removeBanner();
         }
+        onLaunchReady(appUrl);
         es.close();
         return;
       }

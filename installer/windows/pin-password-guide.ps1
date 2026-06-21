@@ -36,8 +36,7 @@ Compte concerne : $account
 Vous gardez votre PIN pour vous connecter au quotidien.
 Le mot de passe sert uniquement au service CitéVision en arriere-plan.
 
-Ensuite : relancez register-service.bat ou cliquez
-"Reessayer" dans l installateur.
+Ensuite : cliquez Reessayer dans l installateur CitéVision.
 
 Aide en ligne :
 https://account.microsoft.com/security

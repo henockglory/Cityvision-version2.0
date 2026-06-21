@@ -51,5 +51,5 @@ if ($ok) {
 }
 $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
 Write-Host "[ECHEC] Win32=$err - PIN ou mot de passe incorrect pour un service." -ForegroundColor Red
-Write-Host "Lancez add-windows-password.bat si vous n avez qu un PIN."
+Write-Host "Configurez un mot de passe Windows (Parametres - Options de connexion), puis reessayez depuis l installateur."
 exit 1

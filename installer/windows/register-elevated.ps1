@@ -53,10 +53,22 @@ try {
         $exitCode = $LASTEXITCODE
     } else {
         Write-Step "UAC elevation required - accept the prompt..."
+        try {
+            Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+            [void][System.Windows.Forms.MessageBox]::Show(
+                "CiteVision va demander les droits administrateur (UAC)." + [Environment]::NewLine + [Environment]::NewLine +
+                "1. Cliquez Oui sur UAC" + [Environment]::NewLine +
+                "2. Saisissez le mot de passe de votre compte Microsoft (PAS le PIN)",
+                "CiteVision - Enregistrement du service",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+        } catch {}
+        # RunAs cannot be combined with -RedirectStandardOutput/-RedirectStandardError (PS 5.1).
+        # install-service.ps1 writes to logs/register-service-install.log independently.
         $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $innerArgs `
-            -Verb RunAs -Wait -PassThru `
-            -RedirectStandardOutput $LogFile -RedirectStandardError $LogFile
-        $exitCode = $proc.ExitCode
+            -Verb RunAs -Wait -PassThru
+        $exitCode = if ($null -ne $proc -and $null -ne $proc.ExitCode) { $proc.ExitCode } else { 1 }
     }
 } catch {
     Write-Step "ERROR: $_"

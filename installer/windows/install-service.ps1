@@ -241,6 +241,15 @@ function Test-LogonUserForService {
         $u = ($Account -split '\\')[-1]
         $candidates += ".\$u", "$env:COMPUTERNAME\$u", "$env:USERDOMAIN\$u"
     }
+    try {
+        $upn = (& whoami.exe /upn 2>$null | Out-String).Trim()
+        if ($upn -and $upn -notmatch 'erreur|error|unable') {
+            $candidates += $upn
+            if ($upn -match '@') {
+                $candidates += ($upn -split '@')[0]
+            }
+        }
+    } catch {}
     foreach ($acct in ($candidates | Select-Object -Unique)) {
         $parts = Split-ServiceAccount $acct
         $token = [IntPtr]::Zero
@@ -543,11 +552,11 @@ if (-not $isAdmin) {
 # ============================================================================
 if ($Action -eq "start" -or $Action -eq "stop") {
     if (-not (Test-ServiceRegistered)) {
-        Emit-Result $false $false "Service '$SERVICE_NAME' is not registered - run register-service.bat" 1
+        Emit-Result $false $false "Service '$SERVICE_NAME' is not registered - reessayez depuis l installateur." 1
     }
     $runAs = Get-ServiceRunAccount
     if (-not (Test-ServiceAccountOk $runAs)) {
-        Emit-Result $false $true "Service runs as '$runAs' (WSL incompatible) - run register-service.bat to repair" 1
+        Emit-Result $false $true "Service runs as '$runAs' (WSL incompatible) - reessayez depuis l installateur." 1
     }
     try {
         if ($Action -eq "start") {
@@ -657,6 +666,97 @@ function Invoke-PinPasswordGuide {
     }
 }
 
+function Get-LocalAccountPrincipalSource {
+    param([string]$Account)
+    $name = ($Account -split '\\')[-1]
+    try {
+        $u = Get-LocalUser -Name $name -ErrorAction Stop
+        return [string]$u.PrincipalSource
+    } catch {
+        return 'Unknown'
+    }
+}
+
+function Get-MicrosoftAccountEmail {
+    try {
+        $base = 'HKCU:\Software\Microsoft\IdentityCRL\UserExtendedProperties'
+        foreach ($key in Get-ChildItem $base -ErrorAction Stop) {
+            if ($key.PSChildName -match '@') {
+                return $key.PSChildName
+            }
+        }
+    } catch {}
+    return $null
+}
+
+function Test-ServiceCredentialAccepted {
+    param(
+        [Parameter(Mandatory = $true)][string]$Account,
+        [Parameter(Mandatory = $true)][string]$Password,
+        [Parameter(Mandatory = $true)][string]$ValidateName
+    )
+    $principalSource = Get-LocalAccountPrincipalSource $Account
+    $logon = Test-LogonUserForService -Account $Account -Password $Password
+    if ($logon.Ok) {
+        return @{ Ok = $true; Account = $logon.Account; Method = 'LogonUserService' }
+    }
+
+    $parts = Split-ServiceAccount $Account
+    foreach ($logonType in @(
+            [CvLogon]::LOGON32_LOGON_NETWORK,
+            [CvLogon]::LOGON32_LOGON_INTERACTIVE,
+            [CvLogon]::LOGON32_LOGON_BATCH
+        )) {
+        $token = [IntPtr]::Zero
+        try {
+            $ok = [CvLogon]::LogonUser(
+                $parts.User, $parts.Domain, $Password,
+                $logonType,
+                [CvLogon]::LOGON32_PROVIDER_DEFAULT,
+                [ref]$token)
+            if ($ok) {
+                Write-Log "LogonUser type=$logonType OK for '$Account'"
+                $acct = if ($logon.Account) { $logon.Account } else { $Account }
+                return @{ Ok = $true; Account = $acct; Method = "LogonUser$logonType" }
+            }
+        } finally {
+            if ($token -ne [IntPtr]::Zero) {
+                [CvLogon]::CloseHandle($token) | Out-Null
+            }
+        }
+    }
+
+    try {
+        Add-Type -AssemblyName System.DirectoryServices.AccountManagement -ErrorAction SilentlyContinue
+        $ctx = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('Machine')
+        foreach ($userTry in @($ValidateName, ($Account -split '\\')[-1], (Get-MicrosoftAccountEmail))) {
+            if ([string]::IsNullOrWhiteSpace($userTry)) { continue }
+            if ($ctx.ValidateCredentials($userTry, $Password)) {
+                Write-Log "ValidateCredentials OK for '$userTry' (PrincipalSource=$principalSource)"
+                $acct = if ($Account -match '\\') { $Account } else { ".\$ValidateName" }
+                return @{ Ok = $true; Account = $acct; Method = 'ValidateCredentials' }
+            }
+        }
+        $email = Get-MicrosoftAccountEmail
+        if ($email) {
+            $token = [IntPtr]::Zero
+            try {
+                $ok = [CvLogon]::LogonUser($email, "", $Password, [CvLogon]::LOGON32_LOGON_NETWORK, 0, [ref]$token)
+                if ($ok) {
+                    Write-Log "LogonUser NETWORK OK for MSA email"
+                    return @{ Ok = $true; Account = $Account; Method = 'LogonUserMsaEmail' }
+                }
+            } finally {
+                if ($token -ne [IntPtr]::Zero) { [CvLogon]::CloseHandle($token) | Out-Null }
+            }
+        }
+    } catch {
+        Write-Log "ValidateCredentials error: $_" "WARN"
+    }
+
+    return @{ Ok = $false; Account = $Account }
+}
+
 # -- Capture and validate the Windows password for the service account --
 function Get-ValidatedServiceCredential {
     param([string]$DefaultUser)
@@ -666,21 +766,24 @@ function Get-ValidatedServiceCredential {
     } else {
         $promptUser = $expectedAccount
     }
+    $principalSource = Get-LocalAccountPrincipalSource $expectedAccount
+    $pwdHint = if ($principalSource -eq 'MicrosoftAccount') {
+        "Compte Microsoft lie a ce PC : saisissez le mot de passe de ce compte (pas le PIN)."
+    } else {
+        "Saisissez le mot de passe Windows (Parametres - Options de connexion - Mot de passe). Pas le PIN."
+    }
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
         [void][System.Windows.Forms.MessageBox]::Show(
-            "CiteVision va s executer sous votre compte Windows (requis pour WSL)." + [Environment]::NewLine + [Environment]::NewLine +
-            "Saisissez le MOT DE PASSE Windows local du compte $expectedAccount." + [Environment]::NewLine +
-            "Le PIN Microsoft ne fonctionne pas pour les services Windows.",
+            "CiteVision va s executer sous votre compte $expectedAccount." + [Environment]::NewLine + [Environment]::NewLine + $pwdHint,
             "CiteVision - Service Windows",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information
         )
     } catch { }
-    Add-Type -AssemblyName System.DirectoryServices.AccountManagement -ErrorAction SilentlyContinue
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $cred = Get-Credential -UserName $promptUser `
-            -Message "Mot de passe Windows pour le service CiteVision (compte $expectedAccount)"
+            -Message "Mot de passe pour le service CiteVision (compte $expectedAccount)"
         if (-not $cred) { return $null }
         $plain = $cred.GetNetworkCredential().Password
         if ([string]::IsNullOrEmpty($plain)) {
@@ -688,22 +791,14 @@ function Get-ValidatedServiceCredential {
             continue
         }
         $validateName = $cred.GetNetworkCredential().UserName
-        $logon = Test-LogonUserForService -Account $expectedAccount -Password $plain
-        if (-not $logon.Ok) {
-            Write-Log "Mot de passe refuse pour ouverture de session service (1069). Utilisez le mot de passe Windows local, pas le PIN." "WARN"
-            Invoke-PinPasswordGuide
+        $accepted = Test-ServiceCredentialAccepted -Account $expectedAccount -Password $plain -ValidateName $validateName
+        if (-not $accepted.Ok) {
+            Write-Log "Mot de passe refuse (PrincipalSource=$principalSource)." "WARN"
+            if ($attempt -ge 3) { Invoke-PinPasswordGuide }
             continue
         }
-        try {
-            $ctx = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('Machine')
-            if ($ctx.ValidateCredentials($validateName, $plain)) {
-                return [pscustomobject]@{ Account = $logon.Account; Password = $plain }
-            }
-            Write-Log "ValidateCredentials failed but LogonUser OK - using $($logon.Account)" "WARN"
-            return [pscustomobject]@{ Account = $logon.Account; Password = $plain }
-        } catch {
-            return [pscustomobject]@{ Account = $logon.Account; Password = $plain }
-        }
+        Write-Log "Credential accepted via $($accepted.Method) for $($accepted.Account)"
+        return [pscustomobject]@{ Account = $accepted.Account; Password = $plain }
     }
     return $null
 }
@@ -776,7 +871,7 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
 
     $svcCred = Get-ValidatedServiceCredential -DefaultUser $svcAccount
     if (-not $svcCred) {
-        Emit-Result $false $false "Identifiants Windows requis pour executer le service (annule). Relancez register-service.bat." 1
+        Emit-Result $false $false "Identifiants Windows requis (annule). Reessayez depuis l installateur." 1
     }
 
     Write-Log "Registering Windows service '$SERVICE_NAME' (mode: $StartMode, account: $($svcCred.Account))..."
@@ -800,7 +895,7 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
         & $NSSM_EXE set $SERVICE_NAME AppExit Default Exit | Out-Null
 
         if (-not (Set-ServiceLogonAccount -ServiceName $SERVICE_NAME -Account $svcCred.Account -Password $svcCred.Password)) {
-            throw "Impossible de configurer le compte '$($svcCred.Account)' - verifiez le mot de passe Windows local (pas le PIN)."
+            throw "Impossible de configurer le compte '$($svcCred.Account)' - verifiez le mot de passe saisi et reessayez."
         }
 
         if (-not (Test-ServiceRegistered)) {
@@ -809,7 +904,7 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
 
         $runAs = Get-ServiceRunAccount
         if (-not (Test-ServiceAccountOk $runAs)) {
-            throw "Service registered as '$runAs' - WSL requires a user account. Re-run register-service.bat."
+            throw "Service registered as '$runAs' - WSL requires a user account. Reessayez depuis l installateur."
         }
         Write-Log "Service account verified: $runAs"
 
@@ -818,7 +913,7 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
             if ($logonTest.Error -eq '1069') {
                 Write-Log "Test demarrage service: erreur 1069 (mot de passe ou droits service)" "WARN"
                 if ($credAttempt -lt 3) { continue }
-                throw "Erreur 1069: ajoutez un mot de passe Windows (le PIN ne suffit pas). Lancez add-windows-password.bat a la racine du projet."
+                throw "Erreur 1069: le mot de passe saisi ne permet pas de demarrer le service. Utilisez le mot de passe Windows (pas le PIN) puis reessayez depuis l installateur."
             }
             throw "Test demarrage service echoue: $($logonTest.Message)"
         }

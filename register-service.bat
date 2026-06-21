@@ -39,7 +39,7 @@ if not "!SILENT!"=="1" (
     echo   Une fenetre PowerShell va s ouvrir.
     echo   1. Acceptez UAC ^(administrateur^)
     echo   2. Saisissez votre MOT DE PASSE Windows ^(pas le PIN^)
-    echo      Si vous n en avez pas : add-windows-password.bat
+    echo      Parametres - Comptes - Options de connexion - Mot de passe
     echo.
 )
 
