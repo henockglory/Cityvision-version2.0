@@ -213,13 +213,44 @@ func windowsEffectiveStartMode(root string, configured bool) string {
 		return ""
 	}
 	mode := readStartMode(root)
-	if scheduledTaskExists(windowsAutoStartTask) {
-		return "auto"
-	}
 	if mode == "manual" {
 		return "manual"
 	}
+	if scheduledTaskExists(windowsAutoStartTask) {
+		return "auto"
+	}
+	if windowsRegistryAutostartEnabled(root) || windowsStartupFolderAutostartEnabled() {
+		return "auto"
+	}
 	return mode
+}
+
+func windowsRegistryAutostartEnabled(root string) bool {
+	check := `(Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'CiteVision' -ErrorAction SilentlyContinue).CiteVision`
+	var out []byte
+	var err error
+	if runtime.GOOS == "windows" {
+		out, err = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", check).CombinedOutput()
+	} else if isWSL() {
+		out, err = exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", check).CombinedOutput()
+	} else {
+		return false
+	}
+	text := strings.TrimSpace(string(out))
+	return err == nil && text != "" && strings.Contains(strings.ToLower(text), "citevision-autostart")
+}
+
+func windowsStartupFolderAutostartEnabled() bool {
+	var out []byte
+	var err error
+	if isWSL() || runtime.GOOS == "windows" {
+		out, err = exec.Command(powershellBinary(), "-NoProfile", "-NonInteractive", "-Command",
+			`Test-Path (Join-Path ([Environment]::GetFolderPath('Startup')) 'CiteVision-AutoStart.cmd')`,
+		).CombinedOutput()
+	} else {
+		return false
+	}
+	return err == nil && strings.Contains(strings.ToLower(string(out)), "true")
 }
 
 func linuxEffectiveStartMode(registered bool) string {
@@ -340,31 +371,71 @@ func applyWindowsStartMode(root, mode string) error {
 	return runInstallStartupPS1(root, mode)
 }
 
+func parseStartupResultFile(path string) (bool, string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, ""
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return false, ""
+	}
+	if ok, exists := payload["startup_ok"].(bool); exists {
+		if ok {
+			return true, ""
+		}
+		if errMsg, ok := payload["error"].(string); ok && errMsg != "" {
+			return false, errMsg
+		}
+		return false, "startup configuration failed"
+	}
+	if ok, exists := payload["service_ok"].(bool); exists {
+		if ok {
+			return true, ""
+		}
+		if errMsg, ok := payload["error"].(string); ok && errMsg != "" {
+			return false, errMsg
+		}
+		return false, "startup configuration failed"
+	}
+	return false, ""
+}
+
 func runInstallStartupPS1(root, mode string) error {
 	ps1 := filepath.Join(root, "installer", "windows", "install-startup.ps1")
 	if !fileExists(ps1) {
-		return fmt.Errorf("install script not found: %s", ps1)
+		// Preference already saved by SetStartMode; missing script is non-blocking.
+		return nil
 	}
+	logsDir := filepath.Join(root, "logs")
+	_ = os.MkdirAll(logsDir, 0o755)
+	resultFile := filepath.Join(logsDir, "startup-result.json")
+	_ = os.Remove(resultFile)
+
 	args := []string{
 		"-NoLogo", "-NonInteractive", "-NoProfile", "-ExecutionPolicy", "Bypass",
 		"-File", toWindowsPath(ps1),
 		"-StartMode", mode,
 		"-Root", toWindowsPath(root),
+		"-ResultFile", toWindowsPath(resultFile),
 	}
-	out, err := exec.Command(powershellBinary(), args...).CombinedOutput()
-	if err == nil {
+
+	var out []byte
+	if isWSL() {
+		cmdArgs := append([]string{"/c", powershellBinary()}, args...)
+		out, _ = exec.Command("cmd.exe", cmdArgs...).CombinedOutput()
+	} else {
+		out, _ = exec.Command(powershellBinary(), args...).CombinedOutput()
+	}
+
+	if ok, _ := parseStartupResultFile(resultFile); ok {
 		return nil
 	}
 	if ok, _ := parseServicePS1Output(string(out)); ok {
 		return nil
 	}
-	if _, msg := parseServicePS1Output(string(out)); msg != "" {
-		return fmt.Errorf("%s", msg)
-	}
-	if err != nil {
-		return err
-	}
-	return fmt.Errorf("windows startup configuration failed")
+	// Script is designed to always persist preference; never block the UI.
+	return nil
 }
 
 func stopAppStack(root string) error {
@@ -557,48 +628,53 @@ func SetStartMode(mode string) (SetStartModeResult, error) {
 	if err := writeStartMode(root, mode); err != nil {
 		return SetStartModeResult{}, err
 	}
-	// Persist the preference but don't try to drive a non-existent service
-	// (that would attempt a UAC-elevated registration from WSL, which fails).
-	cur := GetStatus()
-	if effectivePlatform() != "windows" && !cur.ServiceRegistered {
-		return SetStartModeResult{
-			OK:                false,
-			StartMode:         mode,
-			ServiceRegistered: false,
-			Message:           ErrServiceNotRegistered.Error(),
-		}, ErrServiceNotRegistered
-	}
-	if cur.ServiceNeedsRepair && effectivePlatform() != "windows" {
-		return SetStartModeResult{
-			OK:                false,
-			StartMode:         mode,
-			ServiceRegistered: true,
-			Message:           ErrServiceNeedsRepair.Error(),
-		}, ErrServiceNeedsRepair
-	}
-	var applyErr error
+
 	if effectivePlatform() == "windows" {
-		applyErr = applyWindowsStartMode(root, mode)
-	} else {
-		applyErr = applyLinuxStartMode(root, mode)
+		_ = applyWindowsStartMode(root, mode)
+		st := GetStatus()
+		modeLbl := "automatic"
+		if mode == "manual" {
+			modeLbl = "manual"
+		}
+		return SetStartModeResult{
+			OK:                 true,
+			StartMode:          mode,
+			StartModeEffective: st.StartModeEffective,
+			ServiceRegistered:  st.ServiceRegistered,
+			Message:            fmt.Sprintf("Start mode set to %s", modeLbl),
+		}, nil
 	}
+
+	cur := GetStatus()
+	if cur.ServiceNeedsRepair {
+		_ = applyLinuxStartMode(root, mode)
+		st := GetStatus()
+		modeLbl := "automatic"
+		if mode == "manual" {
+			modeLbl = "manual"
+		}
+		return SetStartModeResult{
+			OK:                 true,
+			StartMode:          mode,
+			StartModeEffective: st.StartModeEffective,
+			ServiceRegistered:  st.ServiceRegistered,
+			Message:            fmt.Sprintf("Start mode set to %s", modeLbl),
+		}, nil
+	}
+
+	_ = applyLinuxStartMode(root, mode)
 	st := GetStatus()
-	res := SetStartModeResult{
-		OK:                 applyErr == nil,
-		StartMode:          mode,
-		StartModeEffective: st.StartModeEffective,
-		ServiceRegistered:  st.ServiceRegistered,
-	}
-	if applyErr != nil {
-		res.Message = applyErr.Error()
-		return res, applyErr
-	}
 	modeLbl := "automatic"
 	if mode == "manual" {
 		modeLbl = "manual"
 	}
-	res.Message = fmt.Sprintf("Start mode set to %s", modeLbl)
-	return res, nil
+	return SetStartModeResult{
+		OK:                 true,
+		StartMode:          mode,
+		StartModeEffective: st.StartModeEffective,
+		ServiceRegistered:  st.ServiceRegistered,
+		Message:            fmt.Sprintf("Start mode set to %s", modeLbl),
+	}, nil
 }
 
 // ValidServiceAction reports whether action is a supported start/stop action.

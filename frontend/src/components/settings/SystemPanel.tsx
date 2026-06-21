@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Server, CheckCircle2, XCircle, AlertTriangle, Loader2, Settings2, Zap, Hand, Play, Square,
+  Server, CheckCircle2, XCircle, AlertTriangle, Loader2, Settings2, Zap, Hand, Play, Square, Info,
 } from 'lucide-react';
 import { systemApi, type SystemStatus } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
@@ -72,8 +72,10 @@ export default function SystemPanel() {
       }
       setModeSuccess(data.message || t('system.startModeSaved'));
       await loadStatus();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } };
+      const msg = ax.response?.data?.message
+        ?? (err instanceof Error ? err.message : String(err));
       setModeError(`${t('system.startModeError')}: ${msg}`);
     } finally {
       setModeSaving(false);
@@ -216,6 +218,25 @@ export default function SystemPanel() {
               )}
               {modeError && <p className="text-xs text-red-400">{modeError}</p>}
               {modeSuccess && <p className="text-xs text-emerald-400">{modeSuccess}</p>}
+
+              <div className="rounded-lg border border-cv-border bg-cv-surface/30 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-cv-text">
+                  <Info className="w-4 h-4 text-cv-accent shrink-0" />
+                  {t('system.startModeGuideTitle')}
+                </div>
+                <div className="space-y-2.5 text-xs text-cv-muted">
+                  <div>
+                    <p className="font-medium text-cv-text mb-0.5">{t('system.startModeGuideAutoTitle')}</p>
+                    <p>{t('system.startModeGuideAutoBody')}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-cv-text mb-0.5">{t('system.startModeGuideManualTitle')}</p>
+                    <p>{t('system.startModeGuideManualBody')}</p>
+                  </div>
+                  <p>{isWindows ? t('system.startModeGuideWindowsNote') : t('system.startModeGuideLinuxNote')}</p>
+                  <p className="text-cv-muted/80 border-t border-cv-border/40 pt-2">{t('system.startModeGuideStatusNote')}</p>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-cv-border/50">
@@ -247,16 +268,6 @@ export default function SystemPanel() {
                   {t('system.serviceNeedsRepairTitle')}
                 </div>
                 <p className="text-xs text-cv-muted">{t('system.serviceNeedsRepairCta')}</p>
-              </div>
-            )}
-
-            {!status.service_registered && (
-              <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-1.5">
-                <div className="flex items-center gap-2 text-sm font-medium text-amber-300">
-                  <AlertTriangle className="w-4 h-4" />
-                  {t('system.serviceNotRegisteredTitle')}
-                </div>
-                <p className="text-xs text-cv-muted">{t('system.serviceNotRegisteredCta')}</p>
               </div>
             )}
 
