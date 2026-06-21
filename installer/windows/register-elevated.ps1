@@ -49,7 +49,7 @@ $exitCode = 1
 try {
     if ($isAdmin) {
         Write-Step "Running as Administrator..."
-        & powershell.exe @innerArgs
+        & powershell.exe @innerArgs *>&1 | Tee-Object -FilePath $LogFile -Append
         $exitCode = $LASTEXITCODE
     } else {
         Write-Step "UAC elevation required - accept the prompt..."

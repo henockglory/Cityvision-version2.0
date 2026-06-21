@@ -116,6 +116,112 @@ function Test-ServiceAccountOk {
     return $true
 }
 
+function Normalize-ServiceAccount {
+    param([string]$Account)
+    if ([string]::IsNullOrWhiteSpace($Account)) { return $Account }
+    if ($Account -like '.\*') { return $Account }
+    if ($Account -notmatch '\\') { return ".\$Account" }
+    $dom, $user = $Account -split '\\', 2
+    if ($dom -eq '.' -or $dom -ieq $env:COMPUTERNAME) { return ".\$user" }
+    return $Account
+}
+
+function Grant-LogonAsServiceRight {
+    param([Parameter(Mandatory = $true)][string]$Account)
+    try {
+        $sid = (New-Object System.Security.Principal.NTAccount($Account)).Translate(
+            [System.Security.Principal.SecurityIdentifier]).Value
+    } catch {
+        Write-Log "Could not resolve SID for '$Account': $_" "WARN"
+        return $false
+    }
+    $inf = Join-Path $env:TEMP "cv-svc-logon.inf"
+    $sdb = Join-Path $env:TEMP "cv-svc-logon.sdb"
+    try {
+        @"
+[Unicode]
+Unicode=yes
+[Privilege Rights]
+SeServiceLogonRight = *$sid
+"@ | Set-Content -Path $inf -Encoding Unicode
+        $p = Start-Process -FilePath "secedit.exe" -ArgumentList @(
+            "/configure", "/db", $sdb, "/cfg", $inf, "/areas", "USER_RIGHTS", "/quiet"
+        ) -Wait -PassThru -WindowStyle Hidden
+        if ($p.ExitCode -ne 0) {
+            Write-Log "secedit SeServiceLogonRight exit $($p.ExitCode) for '$Account'" "WARN"
+            return $false
+        }
+        Write-Log "Granted SeServiceLogonRight to '$Account'."
+        return $true
+    } finally {
+        Remove-Item $inf, $sdb -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Set-ServiceLogonAccount {
+    param(
+        [Parameter(Mandatory = $true)][string]$ServiceName,
+        [Parameter(Mandatory = $true)][string]$Account,
+        [Parameter(Mandatory = $true)][string]$Password
+    )
+    $candidates = @($Account, (Normalize-ServiceAccount $Account)) | Select-Object -Unique
+    Write-Log "Configuring service logon (candidates: $($candidates -join ', '))..."
+
+    foreach ($acct in $candidates) {
+        Grant-LogonAsServiceRight -Account $acct | Out-Null
+
+        $svc = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+        if ($svc) {
+            try {
+                $r = Invoke-CimMethod -InputObject $svc -MethodName Change -Arguments @{
+                    StartName     = $acct
+                    StartPassword = $Password
+                }
+                $code = [int]$r.ReturnValue
+                Write-Log "WMI Change StartName='$acct' ReturnValue=$code"
+                if ($code -eq 0) {
+                    Start-Sleep -Seconds 1
+                    $runAs = Get-ServiceRunAccount
+                    if (Test-ServiceAccountOk $runAs) {
+                        Write-Log "Service logon OK via WMI: $runAs"
+                        return $true
+                    }
+                }
+            } catch {
+                Write-Log "WMI Change failed for '$acct': $_" "WARN"
+            }
+        }
+
+        $scOut = & sc.exe config $ServiceName obj= $acct password= $Password 2>&1 | Out-String
+        Write-Log "sc.exe config obj='$acct' exit=$LASTEXITCODE out=$($scOut.Trim())"
+        if ($LASTEXITCODE -eq 0) {
+            Start-Sleep -Seconds 1
+            $runAs = Get-ServiceRunAccount
+            if (Test-ServiceAccountOk $runAs) {
+                Write-Log "Service logon OK via sc.exe: $runAs"
+                return $true
+            }
+        }
+
+        if (Test-Path $NSSM_EXE) {
+            $nssmOut = & $NSSM_EXE set $ServiceName ObjectName $acct $Password 2>&1 | Out-String
+            Write-Log "NSSM ObjectName '$acct' exit=$LASTEXITCODE out=$($nssmOut.Trim())"
+            if ($LASTEXITCODE -eq 0) {
+                Start-Sleep -Seconds 1
+                $runAs = Get-ServiceRunAccount
+                if (Test-ServiceAccountOk $runAs) {
+                    Write-Log "Service logon OK via NSSM: $runAs"
+                    return $true
+                }
+            }
+        }
+    }
+
+    $final = Get-ServiceRunAccount
+    Write-Log "Service logon failed - still '$final'" "ERROR"
+    return $false
+}
+
 function Get-ServiceScState {
     $scOut = & sc.exe query $SERVICE_NAME 2>&1 | Out-String
     if ($scOut -match "STATE\s*:\s*\d+\s+(\w+)") {
@@ -416,11 +522,17 @@ function Resolve-ServiceAccount {
 # -- Capture and validate the Windows password for the service account --
 function Get-ValidatedServiceCredential {
     param([string]$DefaultUser)
+    $expectedAccount = $DefaultUser
+    if ($expectedAccount -match '\\') {
+        $promptUser = ($expectedAccount -split '\\')[-1]
+    } else {
+        $promptUser = $expectedAccount
+    }
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
         [void][System.Windows.Forms.MessageBox]::Show(
             "CiteVision va s executer sous votre compte Windows (requis pour WSL)." + [Environment]::NewLine + [Environment]::NewLine +
-            "Saisissez le mot de passe de votre session Windows dans la fenetre suivante.",
+            "Saisissez le mot de passe du compte $expectedAccount dans la fenetre suivante.",
             "CiteVision - Service Windows",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information
@@ -428,27 +540,23 @@ function Get-ValidatedServiceCredential {
     } catch { }
     Add-Type -AssemblyName System.DirectoryServices.AccountManagement -ErrorAction SilentlyContinue
     for ($attempt = 1; $attempt -le 3; $attempt++) {
-        $cred = Get-Credential -UserName $DefaultUser `
-            -Message "Mot de passe Windows pour executer le service CiteVision (compte $DefaultUser)"
+        $cred = Get-Credential -UserName $promptUser `
+            -Message "Mot de passe Windows pour le service CiteVision (compte $expectedAccount)"
         if (-not $cred) { return $null }
         $plain = $cred.GetNetworkCredential().Password
         if ([string]::IsNullOrEmpty($plain)) {
             Write-Log "Empty password not allowed for a service account." "WARN"
             continue
         }
-        $userName = $cred.UserName
-        if ($userName -notmatch '\\') {
-            $userName = "$env:USERDOMAIN\$userName"
-        }
+        $validateName = $cred.GetNetworkCredential().UserName
         try {
             $ctx = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('Machine')
-            if ($ctx.ValidateCredentials($cred.GetNetworkCredential().UserName, $plain)) {
-                return [pscustomobject]@{ Account = $userName; Password = $plain }
+            if ($ctx.ValidateCredentials($validateName, $plain)) {
+                return [pscustomobject]@{ Account = $expectedAccount; Password = $plain }
             }
             Write-Log "Invalid Windows credentials (attempt $attempt/3)." "WARN"
         } catch {
-            # Domain account or validation unavailable: trust the input, NSSM will verify.
-            return [pscustomobject]@{ Account = $userName; Password = $plain }
+            return [pscustomobject]@{ Account = $expectedAccount; Password = $plain }
         }
     }
     return $null
@@ -526,9 +634,6 @@ try {
     & $NSSM_EXE set $SERVICE_NAME DisplayName $DISPLAY_NAME | Out-Null
     & $NSSM_EXE set $SERVICE_NAME Description "CiteVision intelligent video surveillance platform. Start/stop via services.msc or sc start/stop citevision." | Out-Null
 
-    # Run as the interactive user so WSL (per-user distro) is available.
-    & $NSSM_EXE set $SERVICE_NAME ObjectName $svcCred.Account $svcCred.Password | Out-Null
-
     Set-ServiceStartMode -Mode $StartMode
 
     & $NSSM_EXE set $SERVICE_NAME AppDirectory $ROOT | Out-Null
@@ -546,12 +651,18 @@ try {
     # Do not auto-restart on crash — WSL failures as LocalSystem caused PAUSED loops.
     & $NSSM_EXE set $SERVICE_NAME AppExit Default Exit | Out-Null
 
+    if (-not (Set-ServiceLogonAccount -ServiceName $SERVICE_NAME -Account $svcCred.Account -Password $svcCred.Password)) {
+        throw "Impossible de configurer le compte '$($svcCred.Account)' - verifiez le mot de passe Windows de session (pas le PIN Microsoft)."
+    }
+
     # Post-install verification with one retry
     if (-not (Test-ServiceRegistered)) {
         Write-Log "Service not found after install - retrying NSSM install..." "WARN"
         Start-Sleep -Seconds 2
         & $NSSM_EXE install $SERVICE_NAME $wslExe | Out-Null
-        & $NSSM_EXE set $SERVICE_NAME ObjectName $svcCred.Account $svcCred.Password | Out-Null
+        if (-not (Set-ServiceLogonAccount -ServiceName $SERVICE_NAME -Account $svcCred.Account -Password $svcCred.Password)) {
+            throw "Retry logon configuration failed for '$($svcCred.Account)'"
+        }
         Set-ServiceStartMode -Mode $StartMode
     }
     if (-not (Test-ServiceRegistered)) {
