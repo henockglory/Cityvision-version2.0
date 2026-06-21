@@ -752,8 +752,40 @@ def _predownload_nssm() -> tuple[bool, str]:
     return False, (out or err or "NSSM non téléchargé").strip()[:200]
 
 
+def _read_service_result_file() -> dict | None:
+    """Read JSON written by install-service.ps1 (Emit-Result)."""
+    import os
+    path = Path(os.environ.get("TEMP", "C:/Windows/Temp")) / "citevision-svc-result.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _service_account_status() -> str:
+    """Return 'ok', 'bad_account', or 'missing'."""
+    rc, out, _ = _run(["sc", "qc", WINDOWS_SERVICE_NAME], timeout=10)
+    if rc != 0:
+        return "missing"
+    for line in out.splitlines():
+        if "SERVICE_START_NAME" in line:
+            account = line.split(":", 1)[-1].strip().lower()
+            bad = ("localsystem", "local service", "networkservice",
+                   "nt authority\\localservice", "nt authority\\networkservice")
+            if account in bad or not account:
+                return "bad_account"
+            return "ok"
+    return "missing"
+
+
+def _windows_service_account_ok() -> bool:
+    return _service_account_status() == "ok"
+
+
 def _register_windows_service(start_mode: str) -> tuple[bool, str]:
-    """Lance register-service.bat (seule voie supportée sur Windows)."""
+    """Lance register-service.bat visible (UAC + mot de passe Windows)."""
     bat = ROOT / "register-service.bat"
     if not bat.exists():
         return False, f"Script introuvable : {bat}"
@@ -763,33 +795,100 @@ def _register_windows_service(start_mode: str) -> tuple[bool, str]:
         mode_file.write_text(start_mode if start_mode in ("auto", "manual") else "auto", encoding="utf-8")
     except OSError as e:
         return False, f"Impossible d'écrire le mode de démarrage : {e}"
+
+    import os
+    result_path = Path(os.environ.get("TEMP", "C:/Windows/Temp")) / "citevision-svc-result.json"
+    try:
+        result_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    pre_status = _service_account_status()
+    bat_path = str(bat.resolve()).replace("'", "''")
+    root_path = str(ROOT.resolve()).replace("'", "''")
+    # Fenêtre visible — register-service.bat gère UAC ; -Handover bascule vers le service.
+    ps_cmd = (
+        f"$p = Start-Process -FilePath '{bat_path}' "
+        f"-ArgumentList '-Handover','-Silent' "
+        f"-WorkingDirectory '{root_path}' -Wait -PassThru; exit $p.ExitCode"
+    )
     rc, out, err = _run([
         "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-        "-Command",
-        f"Start-Process -FilePath '{bat}' -ArgumentList '-Silent' -Verb RunAs -Wait",
+        "-Command", ps_cmd,
     ], timeout=600)
+
+    result = _read_service_result_file()
+    post_status = _service_account_status()
+
+    if result and result.get("service_ok") and post_status == "ok":
+        mode = result.get("start_mode", start_mode)
+        if not _poll_port(8081, timeout=120) or not _poll_port(5174, timeout=60):
+            return False, (
+                "Service enregistré mais l'application ne répond pas. "
+                "Consultez logs/service.log et logs/service-error.log."
+            )
+        return True, f"Service {WINDOWS_SERVICE_NAME} enregistré et démarré (mode: {mode})"
+
     ok, msg = _parse_service_ps1_output(out, err)
-    if ok and _windows_service_account_ok():
-        return True, msg or f"Service {WINDOWS_SERVICE_NAME} enregistré (mode: {start_mode})"
-    if _windows_service_account_ok():
-        return True, f"Service {WINDOWS_SERVICE_NAME} enregistré (mode: {start_mode})"
+    if ok and post_status == "ok":
+        if _poll_port(8081, timeout=120) and _poll_port(5174, timeout=60):
+            return True, msg or f"Service {WINDOWS_SERVICE_NAME} enregistré (mode: {start_mode})"
+        return False, "Service enregistré mais l'application ne répond pas après démarrage."
+
+    if result and result.get("error"):
+        err_text = str(result["error"])
+        if post_status == "bad_account":
+            return False, (
+                f"{err_text} — un service LocalSystem incompatible est encore présent. "
+                "Double-cliquez register-service.bat, acceptez UAC et saisissez votre mot de passe Windows."
+            )
+        return False, err_text
+
+    if post_status == "ok":
+        if _poll_port(8081, timeout=120) and _poll_port(5174, timeout=60):
+            return True, f"Service {WINDOWS_SERVICE_NAME} enregistré (mode: {start_mode})"
+        return False, "Service enregistré mais l'application ne répond pas après démarrage."
+
+    if post_status == "bad_account":
+        if pre_status == "bad_account" and rc != 0:
+            return False, (
+                "Enregistrement interrompu — un ancien service citevision sous LocalSystem "
+                "(incompatible WSL) est toujours présent. Double-cliquez register-service.bat, "
+                "acceptez UAC et saisissez votre mot de passe Windows."
+            )
+        return False, (
+            "Service enregistré sous LocalSystem (incompatible WSL). "
+            "Relancez register-service.bat et saisissez votre mot de passe Windows."
+        )
+
     if rc != 0:
-        return False, msg or err or f"register-service.bat a échoué (code {rc})"
-    return False, "Service enregistré sous un compte incompatible (LocalSystem) — relancez register-service.bat"
+        return False, (
+            "Enregistrement annulé ou refusé (UAC). "
+            "Double-cliquez register-service.bat à la racine, acceptez UAC "
+            "et saisissez votre mot de passe Windows."
+        )
+    return False, (
+        "Service non enregistré — la fenêtre UAC ou le mot de passe Windows a été annulé. "
+        "Double-cliquez register-service.bat à la racine du projet."
+    )
 
 
-def _windows_service_account_ok() -> bool:
-    """True when citevision SCM service runs under a user account (not LocalSystem)."""
-    rc, out, _ = _run(["sc", "qc", WINDOWS_SERVICE_NAME], timeout=10)
+def windows_service_registration_status() -> dict:
+    """État du service Windows pour l'installateur (sans lancer l'enregistrement)."""
+    if not IS_WINDOWS:
+        return {"registered": False, "account_ok": False, "running": False, "status": "skipped"}
+    rc, out, _ = _run(["sc", "query", WINDOWS_SERVICE_NAME], timeout=8)
     if rc != 0:
-        return False
-    for line in out.splitlines():
-        if "SERVICE_START_NAME" in line:
-            account = line.split(":", 1)[-1].strip().lower()
-            bad = ("localsystem", "local service", "networkservice",
-                   "nt authority\\localservice", "nt authority\\networkservice")
-            return account not in bad and account != ""
-    return False
+        return {"registered": False, "account_ok": False, "running": False, "status": "missing"}
+    running = "RUNNING" in out.upper()
+    acct = _service_account_status()
+    return {
+        "registered": True,
+        "account_ok": acct == "ok",
+        "running": running,
+        "status": acct,
+        "needs_repair": acct == "bad_account",
+    }
 
 
 def read_service_start_mode() -> str:
@@ -972,17 +1071,13 @@ def install_stream(start_mode: str = "auto"):
                             break
                     if install_ok:
                         if IS_WINDOWS:
-                            yield emit("step", message="Enregistrement du service Windows (UAC + mot de passe)…")
-                            yield emit("info", message="Acceptez UAC puis saisissez votre mot de passe Windows")
-                            try:
-                                svc = register_system_service(start_mode)
-                                if svc.get("ok"):
-                                    mode_lbl = "automatique" if svc.get("start_mode") == "auto" else "manuel"
-                                    yield emit("ok", message=f"Service Windows enregistré — démarrage {mode_lbl}")
-                                else:
-                                    yield emit("warn", message=svc.get("message", "Service non enregistré — relancez register-service.bat"))
-                            except Exception as _e:
-                                yield emit("warn", message=f"Enregistrement service : {_e}")
+                            yield emit(
+                                "info",
+                                message=(
+                                    "Service Windows : après le lancement, cliquez « Enregistrer le service Windows » "
+                                    "ou double-cliquez register-service.bat (UAC + mot de passe Windows)."
+                                ),
+                            )
                         else:
                             yield emit("step", message="Enregistrement du service système…")
                             try:

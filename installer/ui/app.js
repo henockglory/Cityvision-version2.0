@@ -462,6 +462,17 @@ function startLaunch() {
   // /login on its own. We just open it synchronously during the user gesture.
   const LOADING_URL = API + '/loading.html';
 
+  function openCiteVisionTab(url) {
+    showOpeningOverlay('Ouverture de CitéVision', 'Connexion aux services…');
+    const opened = window.open(LOADING_URL, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      removeOpeningOverlay();
+      showManualOpenLink(url || LOADING_URL);
+      return;
+    }
+    removeOpeningOverlay();
+  }
+
   function showManualOpenLink(finalUrl) {
     removeOpeningOverlay();
     const linkEl = document.createElement('div');
@@ -504,6 +515,8 @@ function startLaunch() {
     btnArea.insertBefore(serviceRegEl, btn);
   }
 
+  let serviceRegistered = false;
+
   async function registerServiceOnce() {
     const res = await fetch(API + '/api/register-service');
     const text = await res.text();
@@ -511,44 +524,63 @@ function startLaunch() {
   }
 
   async function registerServiceAndOpen(url) {
+    if (serviceRegistered) {
+      openCiteVisionTab(url);
+      return;
+    }
     btn.disabled = true;
     btn.textContent = 'Enregistrement du service…';
-    showServiceWaiting('Acceptez UAC (administrateur), puis saisissez votre mot de passe Windows');
-    step.textContent = 'Enregistrement du service Windows…';
-    appendLog('  Lancement de register-service.bat (UAC + mot de passe Windows)…', 'step');
+    showServiceWaiting(
+      'Acceptez UAC (administrateur), puis saisissez votre mot de passe Windows dans la fenêtre qui s\'ouvre'
+    );
+    step.textContent = 'Enregistrement et démarrage du service Windows…';
+    appendLog('  Lancement register-service.bat (UAC + mot de passe + bascule vers le service)…', 'step');
 
-    let data = null;
     try {
-      data = await registerServiceOnce();
+      const data = await registerServiceOnce();
       if (data && data.ok) {
-        appendLog('  ' + (data.message || 'Service citevision enregistré'), 'ok');
-        step.textContent = 'Service enregistré — ouverture de l\'application…';
+        serviceRegistered = true;
+        appendLog('  ' + (data.message || 'Service citevision enregistré et démarré'), 'ok');
+        step.textContent = 'Service actif — ouverture de CitéVision…';
+        removeServiceFailBanner();
+        openCiteVisionTab(url);
+        btn.textContent = 'Ouvrir CitéVision';
+        btn.onclick = () => openCiteVisionTab(url);
       } else {
-        appendLog('  ' + ((data && data.message) || 'Service non enregistré'), 'warn');
+        const msg = (data && data.message) || 'Service non enregistré';
+        appendLog('  ' + msg, 'error');
         showServiceFailBanner(
-          'Service non enregistré. Double-cliquez <strong>register-service.bat</strong> à la racine du projet, puis rouvrez l\'application.'
+          '<strong>Impossible d\'ouvrir CitéVision sans service enregistré.</strong> ' + msg +
+          '<br><br>Double-cliquez <strong>register-service.bat</strong> à la racine du projet, ou cliquez Réessayer.'
         );
-        step.textContent = 'Application prête — service Windows non enregistré';
+        step.textContent = 'Service Windows requis — enregistrement échoué';
+        btn.textContent = 'Réessayer';
+        btn.onclick = () => registerServiceAndOpen(url);
       }
     } catch (err) {
       appendLog('  ' + (err instanceof Error ? err.message : String(err)), 'error');
-      showServiceFailBanner('Enregistrement du service échoué — lancez register-service.bat manuellement.');
+      showServiceFailBanner(
+        'Enregistrement échoué — double-cliquez register-service.bat ou réessayez.'
+      );
+      btn.textContent = 'Réessayer';
+      btn.onclick = () => registerServiceAndOpen(url);
     }
     removeServiceWaiting();
-
-    openCiteVisionTab(url);
     btn.disabled = false;
-    btn.textContent = 'Ouvrir CitéVision';
-    btn.onclick = () => registerServiceAndOpen(url);
   }
 
-  function openCiteVisionTab(url) {
-    const tab = window.open(LOADING_URL, '_blank');
-    if (!tab) {
-      showManualOpenLink(LOADING_URL);
-    } else {
-      appendLog('  Ouverture de CitéVision dans le nouvel onglet…', 'ok');
-    }
+  async function onLaunchReady(url) {
+    appUrl = url || appUrl;
+    launchReady = true;
+    appendLog('  Interface CitéVision accessible', 'ok');
+    removeBanner();
+    removeAiWaiting();
+    step.textContent = 'Application prête — enregistrement du service requis pour ouvrir';
+    fill.style.width = '100%';
+    pct.textContent = '100%';
+    btn.disabled = false;
+    btn.textContent = 'Ouvrir CitéVision';
+    btn.onclick = () => registerServiceAndOpen(appUrl);
   }
 
   async function openCiteVision(url) {
@@ -592,8 +624,7 @@ function startLaunch() {
         step.textContent = 'IA active — prête à détecter';
         if (launchReady) {
           fill.style.width = '100%'; pct.textContent = '100%';
-          btn.disabled = true;
-          registerServiceAndOpen(appUrl);
+          onLaunchReady(appUrl);
         }
         return;
       }
@@ -623,19 +654,15 @@ function startLaunch() {
         }
         appUrl = text || appUrl;
         launchReady = true;
-        appendLog('  Interface CitéVision accessible', 'ok');
 
         if (aiOk) {
-          step.textContent = 'Application prête — enregistrement du service Windows…';
-          removeBanner();
-          removeAiWaiting();
-          btn.disabled = true;
-          btn.textContent = 'Préparation…';
-          registerServiceAndOpen(appUrl);
+          onLaunchReady(appUrl);
         } else if (aiFailed) {
+          appendLog('  Interface CitéVision accessible', 'ok');
           step.textContent = 'Interface prête — gate IA non validée';
           showBanner('Les corrections automatiques n\'ont pas abouti — consultez les logs', 'fail');
         } else {
+          appendLog('  Interface CitéVision accessible', 'ok');
           step.textContent = 'Interface prête — finalisation IA…';
           showAiWaiting();
           showBanner('Correction automatique de l\'IA en cours…', 'warn');

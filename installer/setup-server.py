@@ -325,6 +325,14 @@ class InstallerHandler(BaseHTTPRequestHandler):
             _send_json(self, {"running": app_running, "url": APP_URL})
             return
 
+        if path == "/api/service-status":
+            try:
+                dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")
+                _send_json(self, dc.windows_service_registration_status())
+            except Exception as e:
+                _send_json(self, {"registered": False, "status": "error", "message": str(e)})
+            return
+
         if path == "/api/register-service" or path.startswith("/api/register-service?"):
             if not _authorized(self):
                 _send_json(self, {"ok": False, "message": "unauthorized"}, status=403)

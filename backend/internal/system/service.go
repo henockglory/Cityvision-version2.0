@@ -239,7 +239,7 @@ func GetStatus() Status {
 		st.ServiceRunning = running
 		st.ServiceState = state
 		st.ServiceAccount = account
-		st.ServiceNeedsRepair = reg && !windowsServiceAccountOK(account)
+		st.ServiceNeedsRepair = reg && (!windowsServiceAccountOK(account) || state == "PAUSED")
 		st.StartModeEffective = windowsEffectiveStartMode(reg)
 		if st.StartModeEffective == "" {
 			st.StartModeEffective = configured
@@ -603,6 +603,7 @@ func ServiceAction(action string) (SetStartModeResult, error) {
 			Message:           "application is not running",
 		}, fmt.Errorf("application is not running")
 	}
+	// Stop always allowed when service exists (including LocalSystem repair) or app is up.
 	root := ProjectRoot()
 	var applyErr error
 	if effectivePlatform() == "windows" {

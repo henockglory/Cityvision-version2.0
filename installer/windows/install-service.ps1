@@ -31,6 +31,7 @@ param(
     [ValidateSet("register", "start", "stop")]
     [string]$Action = "register",
     [switch]$Elevated,
+    [switch]$Handover,
     [string]$ResultFile = ""
 )
 
@@ -189,13 +190,37 @@ function Get-EffectiveStartMode {
 }
 
 function Test-AppRunning {
-    # Backend health on 8081 means the stack is already up (installer started it).
     try {
         $r = Invoke-WebRequest -Uri "http://localhost:8081/health" -UseBasicParsing -TimeoutSec 3
         return $r.StatusCode -ge 200 -and $r.StatusCode -lt 500
     } catch {
         return $false
     }
+}
+
+function Wait-AppHealthy {
+    param([int]$TimeoutSec = 120)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-AppRunning) { return $true }
+        Start-Sleep -Seconds 2
+    }
+    return $false
+}
+
+function Invoke-ServiceHandover {
+    Write-Log "Handover: arrêt stack installateur, démarrage service Windows..."
+    try {
+        & $wslExe -- bash $wslStopScript 2>$null | Out-Null
+    } catch {
+        Write-Log "WSL stop script: $_" "WARN"
+    }
+    Start-Sleep -Seconds 4
+    Start-ServiceRobust
+    if (-not (Wait-AppHealthy -TimeoutSec 120)) {
+        throw "Le service a démarré mais l'application ne répond pas sur le port 8081"
+    }
+    Write-Log "Handover terminé — application opérationnelle sous le service Windows."
 }
 
 function Grant-ServiceControl {
@@ -362,6 +387,13 @@ function Remove-LegacyServices {
 
 # -- Resolve the user account that owns the WSL distro --
 function Resolve-ServiceAccount {
+    $accountFile = Join-Path $ROOT "installer\.service_account"
+    if (Test-Path $accountFile) {
+        $fromFile = (Get-Content -Path $accountFile -Raw -Encoding UTF8).Trim()
+        if ($fromFile -and (Test-ServiceAccountOk $fromFile)) {
+            return $fromFile
+        }
+    }
     # Prefer the user who invoked the original (non-elevated) process.
     $candidate = $env:USERNAME
     try {
@@ -369,15 +401,31 @@ function Resolve-ServiceAccount {
             Select-Object -First 1
         if ($explorer) {
             $owner = Invoke-CimMethod -InputObject $explorer -MethodName GetOwner -ErrorAction SilentlyContinue
-            if ($owner -and $owner.User) { $candidate = $owner.User }
+            if ($owner -and $owner.User) {
+                $dom = if ($owner.Domain) { $owner.Domain } else { $env:USERDOMAIN }
+                $candidate = "$dom\$($owner.User)"
+            }
         }
     } catch {}
+    if ($candidate -notmatch '\\') {
+        $candidate = "$env:USERDOMAIN\$candidate"
+    }
     return $candidate
 }
 
 # -- Capture and validate the Windows password for the service account --
 function Get-ValidatedServiceCredential {
     param([string]$DefaultUser)
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        [void][System.Windows.Forms.MessageBox]::Show(
+            "CitéVision va s'exécuter sous votre compte Windows (requis pour WSL).`n`n" +
+            "Saisissez le mot de passe de votre session Windows dans la fenêtre suivante.",
+            "CitéVision — Service Windows",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        )
+    } catch { }
     Add-Type -AssemblyName System.DirectoryServices.AccountManagement -ErrorAction SilentlyContinue
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $cred = Get-Credential -UserName $DefaultUser `
@@ -423,8 +471,16 @@ if (-not (Test-Path $wslExe)) {
     Emit-Result $false $false "wsl.exe not found - WSL2 required" 1
 }
 
-# -- Service already registered: repair LocalSystem installs, else update mode only --
+# -- Service already registered: repair LocalSystem / PAUSED, else update mode only --
 $existingService = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
+if ($existingService) {
+    $state = Get-ServiceScState
+    if ($state -eq "PAUSED") {
+        Write-Log "Service '$SERVICE_NAME' en état PAUSED — suppression et ré-enregistrement." "WARN"
+        Remove-ServiceRegistration
+        $existingService = $null
+    }
+}
 if ($existingService) {
     $runAs = Get-ServiceRunAccount
     if (Test-ServiceAccountOk $runAs) {
@@ -515,8 +571,13 @@ try {
     # mode later without UAC.
     Grant-ServiceControl -Account $svcCred.Account | Out-Null
 
-    # Do not start now if the stack is already running (installer launched it).
-    if ($StartMode -eq "auto") {
+    if ($Handover) {
+        try {
+            Invoke-ServiceHandover
+        } catch {
+            throw "Handover échoué: $_"
+        }
+    } elseif ($StartMode -eq "auto") {
         Write-Log "  Automatic startup with Windows enabled."
         if (-not (Test-AppRunning)) {
             Write-Log "  Starting service now..."
@@ -526,6 +587,10 @@ try {
         }
     } else {
         Write-Log "  Manual mode - start via: sc start $SERVICE_NAME or services.msc"
+        if (-not (Test-AppRunning)) {
+            Write-Log "  First launch: starting service once..."
+            try { Start-ServiceRobust } catch { Write-Log "  Start: $_" "WARN" }
+        }
     }
     Emit-Result $true $false "" 0
 } catch {

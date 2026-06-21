@@ -129,11 +129,13 @@ export default function SystemPanel() {
     status.start_mode_effective !== status.start_mode;
 
   const appActive = Boolean(status?.app_running);
+  const svcRunning = Boolean(status?.service_running);
+  const svcRegistered = Boolean(status?.service_registered);
   const canStart =
-    Boolean(status?.service_registered) &&
+    svcRegistered &&
     !status?.service_needs_repair &&
     !appActive;
-  const canStop = appActive || Boolean(status?.service_running);
+  const canStop = appActive || svcRunning || svcRegistered;
 
   return (
     <div className="space-y-6">
@@ -257,7 +259,7 @@ export default function SystemPanel() {
               </div>
             )}
 
-            {(status.service_registered || appActive) && (
+            {(status.service_registered || appActive || status.service_needs_repair) && (
               <div className="pt-2 space-y-2">
                 <div className="flex flex-wrap gap-2">
                   <button
