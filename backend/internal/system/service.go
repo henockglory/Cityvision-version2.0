@@ -528,7 +528,8 @@ func SetStartMode(mode string) (SetStartModeResult, error) {
 	}
 	// Persist the preference but don't try to drive a non-existent service
 	// (that would attempt a UAC-elevated registration from WSL, which fails).
-	if cur := GetStatus(); !cur.ServiceRegistered {
+	cur := GetStatus()
+	if !cur.ServiceRegistered {
 		return SetStartModeResult{
 			OK:                false,
 			StartMode:         mode,
