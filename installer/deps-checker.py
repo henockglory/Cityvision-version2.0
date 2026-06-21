@@ -785,14 +785,16 @@ def _windows_service_account_ok() -> bool:
 
 
 def _read_register_log_tail(max_chars: int = 800) -> str:
-    log_path = ROOT / "logs" / "register-service.log"
-    if not log_path.exists():
-        return ""
-    try:
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-        return text[-max_chars:].strip()
-    except OSError:
-        return ""
+    parts: list[str] = []
+    for name in ("register-service-install.log", "register-service.log"):
+        log_path = ROOT / "logs" / name
+        if not log_path.exists():
+            continue
+        try:
+            parts.append(log_path.read_text(encoding="utf-8", errors="replace")[-max_chars:])
+        except OSError:
+            pass
+    return "\n".join(parts).strip()[-max_chars:]
 
 
 def _register_windows_service(start_mode: str) -> tuple[bool, str]:

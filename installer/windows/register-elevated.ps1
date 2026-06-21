@@ -53,7 +53,9 @@ try {
         $exitCode = $LASTEXITCODE
     } else {
         Write-Step "UAC elevation required - accept the prompt..."
-        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $innerArgs -Verb RunAs -Wait -PassThru
+        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $innerArgs `
+            -Verb RunAs -Wait -PassThru `
+            -RedirectStandardOutput $LogFile -RedirectStandardError $LogFile
         $exitCode = $proc.ExitCode
     }
 } catch {
