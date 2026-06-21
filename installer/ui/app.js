@@ -549,10 +549,17 @@ function startLaunch() {
       } else {
         const msg = (data && data.message) || 'Service non enregistré';
         appendLog('  ' + msg, 'error');
+        const pinHint = /1069|PIN|mot de passe/i.test(msg);
         showServiceFailBanner(
           '<strong>Impossible d\'ouvrir CitéVision sans service enregistré.</strong> ' + msg +
-          '<br><br>Double-cliquez <strong>register-service.bat</strong> à la racine du projet, ou cliquez Réessayer.'
+          (pinHint
+            ? '<br><br><strong>PIN seul :</strong> ajoutez un mot de passe via <strong>add-windows-password.bat</strong> ' +
+              '(<a href="#" id="pin-guide-link" style="color:var(--accent)">ouvrir le guide</a>), puis Réessayez.'
+            : '<br><br>Double-cliquez <strong>register-service.bat</strong> ou cliquez Réessayer.')
         );
+        const link = document.getElementById('pin-guide-link');
+        if (link) link.onclick = (e) => { e.preventDefault(); void openPasswordGuide(); };
+        if (pinHint) void openPasswordGuide();
         step.textContent = 'Service Windows requis — enregistrement échoué';
         btn.textContent = 'Réessayer';
         btn.onclick = () => registerServiceAndOpen(url);
@@ -576,11 +583,23 @@ function startLaunch() {
     removeBanner();
     removeAiWaiting();
     step.textContent = 'Application prête — enregistrement du service requis pour ouvrir';
+    showServiceFailBanner(
+      '<strong>Connexion par PIN seul ?</strong> Windows exige un <strong>mot de passe</strong> pour le service (le PIN ne fonctionne pas). ' +
+      'Double-cliquez <strong>add-windows-password.bat</strong> à la racine pour ajouter un mot de passe, puis cliquez Ouvrir CitéVision.'
+    );
     fill.style.width = '100%';
     pct.textContent = '100%';
     btn.disabled = false;
     btn.textContent = 'Ouvrir CitéVision';
     btn.onclick = () => registerServiceAndOpen(appUrl);
+  }
+
+  async function openPasswordGuide() {
+    try {
+      await fetch(API + '/api/password-guide');
+    } catch (_) {
+      appendLog('  Ouvrez add-windows-password.bat à la racine du projet', 'warn');
+    }
   }
 
   async function openCiteVision(url) {

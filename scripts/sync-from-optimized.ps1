@@ -54,6 +54,7 @@ $RootFiles = @(
     'README.md',
     'WORKSPACE.md',
     'register-service.bat',
+    'add-windows-password.bat',
     'setup.bat',
     'setup.sh',
     'sync-to-citevision.bat'

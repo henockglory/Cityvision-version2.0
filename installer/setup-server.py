@@ -333,6 +333,22 @@ class InstallerHandler(BaseHTTPRequestHandler):
                 _send_json(self, {"registered": False, "status": "error", "message": str(e)})
             return
 
+        if path == "/api/password-guide":
+            if not _authorized(self):
+                _send_json(self, {"ok": False, "message": "unauthorized"}, status=403)
+                return
+            guide = INSTALLER_DIR / "windows" / "pin-password-guide.ps1"
+            try:
+                import subprocess
+                subprocess.Popen([
+                    "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                    "-File", str(guide),
+                ], cwd=str(ROOT))
+                _send_json(self, {"ok": True, "message": "Guide mot de passe ouvert"})
+            except Exception as e:
+                _send_json(self, {"ok": False, "message": str(e)})
+            return
+
         if path == "/api/register-service" or path.startswith("/api/register-service?"):
             if not _authorized(self):
                 _send_json(self, {"ok": False, "message": "unauthorized"}, status=403)

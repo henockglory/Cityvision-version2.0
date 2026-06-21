@@ -650,6 +650,13 @@ function Resolve-ServiceAccount {
     return $candidate
 }
 
+function Invoke-PinPasswordGuide {
+    $guide = Join-Path $PSScriptRoot "pin-password-guide.ps1"
+    if (Test-Path $guide) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $guide | Out-Null
+    }
+}
+
 # -- Capture and validate the Windows password for the service account --
 function Get-ValidatedServiceCredential {
     param([string]$DefaultUser)
@@ -684,15 +691,7 @@ function Get-ValidatedServiceCredential {
         $logon = Test-LogonUserForService -Account $expectedAccount -Password $plain
         if (-not $logon.Ok) {
             Write-Log "Mot de passe refuse pour ouverture de session service (1069). Utilisez le mot de passe Windows local, pas le PIN." "WARN"
-            try {
-                [void][System.Windows.Forms.MessageBox]::Show(
-                    "Mot de passe incorrect pour le service Windows (erreur 1069)." + [Environment]::NewLine +
-                    "Utilisez le mot de passe de connexion Windows de $expectedAccount, pas le PIN.",
-                    "CiteVision - Mot de passe incorrect",
-                    [System.Windows.Forms.MessageBoxButtons]::OK,
-                    [System.Windows.Forms.MessageBoxIcon]::Warning
-                )
-            } catch {}
+            Invoke-PinPasswordGuide
             continue
         }
         try {
@@ -819,7 +818,7 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
             if ($logonTest.Error -eq '1069') {
                 Write-Log "Test demarrage service: erreur 1069 (mot de passe ou droits service)" "WARN"
                 if ($credAttempt -lt 3) { continue }
-                throw "Erreur 1069: le mot de passe Windows local de $($svcCred.Account) est incorrect ou le compte n a pas le droit 'Ouvrir une session en tant que service'."
+                throw "Erreur 1069: ajoutez un mot de passe Windows (le PIN ne suffit pas). Lancez add-windows-password.bat a la racine du projet."
             }
             throw "Test demarrage service echoue: $($logonTest.Message)"
         }
