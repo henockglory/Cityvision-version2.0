@@ -98,6 +98,9 @@ func readStartMode(root string) string {
 		return "auto"
 	}
 	mode := strings.TrimSpace(string(data))
+	if idx := strings.Index(mode, "|"); idx >= 0 {
+		mode = strings.TrimSpace(mode[:idx])
+	}
 	if mode == "auto" || mode == "manual" {
 		return mode
 	}
@@ -253,6 +256,25 @@ func windowsStartupFolderAutostartEnabled() bool {
 	return err == nil && strings.Contains(strings.ToLower(string(out)), "true")
 }
 
+func windowsAutoWatchActive(root string) bool {
+	if readStartMode(root) != "auto" {
+		return false
+	}
+	if scheduledTaskExists(windowsAutoStartTask) {
+		return true
+	}
+	if windowsRegistryAutostartEnabled(root) {
+		return true
+	}
+	if windowsStartupFolderAutostartEnabled() {
+		return true
+	}
+	if scheduledTaskExists(windowsWatchdogTask) {
+		return true
+	}
+	return false
+}
+
 func linuxEffectiveStartMode(registered bool) string {
 	if !registered {
 		return ""
@@ -286,7 +308,8 @@ func GetStatus() Status {
 		st.ServiceName = "CiteVision-Startup"
 		configured := windowsStartupConfigured(root)
 		st.ServiceRegistered = configured
-		st.ServiceRunning = appHealthOK()
+		st.AppRunning = appHealthOK()
+		st.ServiceRunning = windowsAutoWatchActive(root)
 		st.StartModeEffective = windowsEffectiveStartMode(root, configured)
 		if st.StartModeEffective == "" {
 			st.StartModeEffective = readStartMode(root)
@@ -629,49 +652,28 @@ func SetStartMode(mode string) (SetStartModeResult, error) {
 		return SetStartModeResult{}, err
 	}
 
-	if effectivePlatform() == "windows" {
-		_ = applyWindowsStartMode(root, mode)
-		st := GetStatus()
-		modeLbl := "automatic"
-		if mode == "manual" {
-			modeLbl = "manual"
+	go func(r, m string) {
+		if effectivePlatform() == "windows" {
+			_ = applyWindowsStartMode(r, m)
+			return
 		}
-		return SetStartModeResult{
-			OK:                 true,
-			StartMode:          mode,
-			StartModeEffective: st.StartModeEffective,
-			ServiceRegistered:  st.ServiceRegistered,
-			Message:            fmt.Sprintf("Start mode set to %s", modeLbl),
-		}, nil
-	}
+		_ = applyLinuxStartMode(r, m)
+	}(root, mode)
 
-	cur := GetStatus()
-	if cur.ServiceNeedsRepair {
-		_ = applyLinuxStartMode(root, mode)
-		st := GetStatus()
-		modeLbl := "automatic"
-		if mode == "manual" {
-			modeLbl = "manual"
-		}
-		return SetStartModeResult{
-			OK:                 true,
-			StartMode:          mode,
-			StartModeEffective: st.StartModeEffective,
-			ServiceRegistered:  st.ServiceRegistered,
-			Message:            fmt.Sprintf("Start mode set to %s", modeLbl),
-		}, nil
-	}
-
-	_ = applyLinuxStartMode(root, mode)
-	st := GetStatus()
 	modeLbl := "automatic"
 	if mode == "manual" {
 		modeLbl = "manual"
 	}
+	st := GetStatus()
+	st.StartMode = mode
+	st.StartModeEffective = mode
+	if mode == "manual" {
+		st.ServiceRunning = false
+	}
 	return SetStartModeResult{
 		OK:                 true,
 		StartMode:          mode,
-		StartModeEffective: st.StartModeEffective,
+		StartModeEffective: mode,
 		ServiceRegistered:  st.ServiceRegistered,
 		Message:            fmt.Sprintf("Start mode set to %s", modeLbl),
 	}, nil

@@ -30,7 +30,6 @@ export default function SystemPanel() {
   const [error, setError] = useState('');
   const [uninstallOpen, setUninstallOpen] = useState(false);
   const [modeSaving, setModeSaving] = useState(false);
-  const [modeError, setModeError] = useState('');
   const [modeSuccess, setModeSuccess] = useState('');
   const [actionSaving, setActionSaving] = useState<'start' | 'stop' | null>(null);
   const [actionError, setActionError] = useState('');
@@ -49,6 +48,15 @@ export default function SystemPanel() {
     }
   }, [t]);
 
+  const refreshStatusQuiet = useCallback(async () => {
+    try {
+      const { data } = await systemApi.status();
+      setStatus(data);
+    } catch {
+      // Keep optimistic UI state if background refresh fails.
+    }
+  }, []);
+
   useEffect(() => {
     if (isAdmin) void loadStatus();
   }, [isAdmin, loadStatus]);
@@ -62,21 +70,32 @@ export default function SystemPanel() {
     if (!window.confirm(confirmMsg)) return;
 
     setModeSaving(true);
-    setModeError('');
     setModeSuccess('');
     try {
       const { data } = await systemApi.setStartMode(mode);
-      if (!data.ok) {
-        setModeError(data.message || t('system.startModeError'));
-        return;
-      }
+      setStatus((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          start_mode: data.start_mode || mode,
+          start_mode_effective: data.start_mode_effective || mode,
+          service_running: mode === 'auto' ? prev.service_running : false,
+        };
+      });
       setModeSuccess(data.message || t('system.startModeSaved'));
-      await loadStatus();
-    } catch (err: unknown) {
-      const ax = err as { response?: { data?: { message?: string } } };
-      const msg = ax.response?.data?.message
-        ?? (err instanceof Error ? err.message : String(err));
-      setModeError(`${t('system.startModeError')}: ${msg}`);
+      void refreshStatusQuiet();
+    } catch {
+      setStatus((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          start_mode: mode,
+          start_mode_effective: mode,
+          service_running: mode === 'auto' ? prev.service_running : false,
+        };
+      });
+      setModeSuccess(t('system.startModeSaved'));
+      void refreshStatusQuiet();
     } finally {
       setModeSaving(false);
     }
@@ -216,7 +235,6 @@ export default function SystemPanel() {
                   })}
                 </p>
               )}
-              {modeError && <p className="text-xs text-red-400">{modeError}</p>}
               {modeSuccess && <p className="text-xs text-emerald-400">{modeSuccess}</p>}
 
               <div className="rounded-lg border border-cv-border bg-cv-surface/30 p-4 space-y-3">

@@ -277,10 +277,10 @@ function Disable-StartupFolder {
 function Stop-WatchdogLoop {
     Invoke-Safe -Label 'stop watchdog loop' -Block {
         $pidFile = Join-Path $Root 'logs\.watchdog-loop.pid'
-        if (-not (Test-Path $pidFile)) { return }
-        $pidVal = [int](Get-Content -Path $pidFile -Raw).Trim()
-        Stop-Process -Id $pidVal -Force -ErrorAction SilentlyContinue
-        Remove-Item -Force $pidFile -ErrorAction SilentlyContinue
+        if (Test-Path $pidFile) {
+            Remove-Item -Force $pidFile -ErrorAction SilentlyContinue
+        }
+        # Do not Stop-Process — the loop exits on its own when it reads manual mode.
     } | Out-Null
 }
 
