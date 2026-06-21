@@ -504,28 +504,55 @@ function startLaunch() {
     btnArea.insertBefore(serviceRegEl, btn);
   }
 
-  async function openCiteVision(url) {
+  async function registerServiceOnce() {
+    const res = await fetch(API + '/api/register-service');
+    const text = await res.text();
+    try { return JSON.parse(text); } catch (_) { return { ok: false, message: text }; }
+  }
+
+  async function registerServiceAndOpen(url) {
+    btn.disabled = true;
+    btn.textContent = 'Enregistrement du service…';
+    showServiceWaiting('Acceptez UAC (administrateur), puis saisissez votre mot de passe Windows');
+    step.textContent = 'Enregistrement du service Windows…';
+    appendLog('  Lancement de register-service.bat (UAC + mot de passe Windows)…', 'step');
+
+    let data = null;
+    try {
+      data = await registerServiceOnce();
+      if (data && data.ok) {
+        appendLog('  ' + (data.message || 'Service citevision enregistré'), 'ok');
+        step.textContent = 'Service enregistré — ouverture de l\'application…';
+      } else {
+        appendLog('  ' + ((data && data.message) || 'Service non enregistré'), 'warn');
+        showServiceFailBanner(
+          'Service non enregistré. Double-cliquez <strong>register-service.bat</strong> à la racine du projet, puis rouvrez l\'application.'
+        );
+        step.textContent = 'Application prête — service Windows non enregistré';
+      }
+    } catch (err) {
+      appendLog('  ' + (err instanceof Error ? err.message : String(err)), 'error');
+      showServiceFailBanner('Enregistrement du service échoué — lancez register-service.bat manuellement.');
+    }
+    removeServiceWaiting();
+
+    openCiteVisionTab(url);
+    btn.disabled = false;
+    btn.textContent = 'Ouvrir CitéVision';
+    btn.onclick = () => registerServiceAndOpen(url);
+  }
+
+  function openCiteVisionTab(url) {
     const tab = window.open(LOADING_URL, '_blank');
     if (!tab) {
       showManualOpenLink(LOADING_URL);
+    } else {
+      appendLog('  Ouverture de CitéVision dans le nouvel onglet…', 'ok');
     }
+  }
 
-    appendLog('  Ouverture de CitéVision…', 'ok');
-    step.textContent = 'Ouverture de l\'application…';
-    removeOpeningOverlay();
-
-    if (!tab) {
-      showManualOpenLink(LOADING_URL);
-    }
-
-    appendLog(
-      '  Service Windows : lancez register-service.bat (UAC + mot de passe) pour le démarrage auto.',
-      'info',
-    );
-
-    btn.disabled = false;
-    btn.textContent = 'Ouvrir CitéVision';
-    btn.onclick = () => openCiteVision(url);
+  async function openCiteVision(url) {
+    await registerServiceAndOpen(url);
   }
 
   const timer = setInterval(() => {
@@ -565,8 +592,8 @@ function startLaunch() {
         step.textContent = 'IA active — prête à détecter';
         if (launchReady) {
           fill.style.width = '100%'; pct.textContent = '100%';
-          btn.disabled = false;
-          btn.onclick = () => openCiteVision(appUrl);
+          btn.disabled = true;
+          registerServiceAndOpen(appUrl);
         }
         return;
       }
@@ -599,11 +626,12 @@ function startLaunch() {
         appendLog('  Interface CitéVision accessible', 'ok');
 
         if (aiOk) {
-          step.textContent = 'Application prête — IA active';
+          step.textContent = 'Application prête — enregistrement du service Windows…';
           removeBanner();
           removeAiWaiting();
-          btn.disabled = false;
-          btn.onclick = () => openCiteVision(appUrl);
+          btn.disabled = true;
+          btn.textContent = 'Préparation…';
+          registerServiceAndOpen(appUrl);
         } else if (aiFailed) {
           step.textContent = 'Interface prête — gate IA non validée';
           showBanner('Les corrections automatiques n\'ont pas abouti — consultez les logs', 'fail');
@@ -640,7 +668,17 @@ function goToInstall()  { showStep('install'); resetInstallStep(); bindServiceMo
 function goToLaunch()   { showStep('launch');   startLaunch(); }
 function goToReady()    { showStep('ready'); }
 
-window.app = { loadHardware, goToHardware, loadDeps, goToDeps, goToInstall, goToLaunch, goToReady, startInstall, startLaunch, resetInstallStep };
+window.app = { loadHardware, goToHardware, loadDeps, goToDeps, goToInstall, goToLaunch, goToReady, startInstall, startLaunch, resetInstallStep,
+  async registerServiceManual() {
+    try {
+      const res = await fetch(API + '/api/register-service');
+      const data = await res.json();
+      alert(data.ok ? (data.message || 'Service enregistré') : (data.message || 'Échec — lancez register-service.bat'));
+    } catch (e) {
+      alert('Erreur : ' + (e.message || e));
+    }
+  },
+};
 
 async function loadVersionBanner() {
   const el = document.getElementById('install-version');

@@ -766,7 +766,7 @@ def _register_windows_service(start_mode: str) -> tuple[bool, str]:
     rc, out, err = _run([
         "powershell", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
         "-Command",
-        f"Start-Process -FilePath '{bat}' -Verb RunAs -Wait",
+        f"Start-Process -FilePath '{bat}' -ArgumentList '-Silent' -Verb RunAs -Wait",
     ], timeout=600)
     ok, msg = _parse_service_ps1_output(out, err)
     if ok and _windows_service_account_ok():
@@ -972,11 +972,17 @@ def install_stream(start_mode: str = "auto"):
                             break
                     if install_ok:
                         if IS_WINDOWS:
-                            yield emit("step", message="Service Windows — enregistrement manuel requis")
-                            yield emit("info", message=(
-                                "Lancez register-service.bat à la racine du projet : "
-                                "acceptez UAC et saisissez votre mot de passe Windows."
-                            ))
+                            yield emit("step", message="Enregistrement du service Windows (UAC + mot de passe)…")
+                            yield emit("info", message="Acceptez UAC puis saisissez votre mot de passe Windows")
+                            try:
+                                svc = register_system_service(start_mode)
+                                if svc.get("ok"):
+                                    mode_lbl = "automatique" if svc.get("start_mode") == "auto" else "manuel"
+                                    yield emit("ok", message=f"Service Windows enregistré — démarrage {mode_lbl}")
+                                else:
+                                    yield emit("warn", message=svc.get("message", "Service non enregistré — relancez register-service.bat"))
+                            except Exception as _e:
+                                yield emit("warn", message=f"Enregistrement service : {_e}")
                         else:
                             yield emit("step", message="Enregistrement du service système…")
                             try:
