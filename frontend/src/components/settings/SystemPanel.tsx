@@ -48,10 +48,18 @@ export default function SystemPanel() {
     }
   }, [t]);
 
-  const refreshStatusQuiet = useCallback(async () => {
+  const refreshStatusQuiet = useCallback(async (preserveMode?: StartMode) => {
     try {
       const { data } = await systemApi.status();
-      setStatus(data);
+      setStatus((prev) => {
+        if (!preserveMode) return data;
+        return {
+          ...data,
+          start_mode: preserveMode,
+          start_mode_effective: preserveMode,
+          service_running: preserveMode === 'auto' ? data.service_running : false,
+        };
+      });
     } catch {
       // Keep optimistic UI state if background refresh fails.
     }
@@ -77,13 +85,13 @@ export default function SystemPanel() {
         if (!prev) return prev;
         return {
           ...prev,
-          start_mode: data.start_mode || mode,
-          start_mode_effective: data.start_mode_effective || mode,
+          start_mode: mode,
+          start_mode_effective: mode,
           service_running: mode === 'auto' ? prev.service_running : false,
         };
       });
       setModeSuccess(data.message || t('system.startModeSaved'));
-      void refreshStatusQuiet();
+      void refreshStatusQuiet(mode);
     } catch {
       setStatus((prev) => {
         if (!prev) return prev;
@@ -95,7 +103,7 @@ export default function SystemPanel() {
         };
       });
       setModeSuccess(t('system.startModeSaved'));
-      void refreshStatusQuiet();
+      void refreshStatusQuiet(mode);
     } finally {
       setModeSaving(false);
     }

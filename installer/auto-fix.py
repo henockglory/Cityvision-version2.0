@@ -148,8 +148,10 @@ def ensure_install_stack_stream(max_rounds: int = 5) -> Iterator[dict]:
 
 
 def ensure_launch_ai_stream(max_rounds: int = MAX_ROUNDS) -> Iterator[dict]:
-    """Poll AI health and auto-fix until all models loaded or rounds exhausted."""
-    for rnd in range(1, max_rounds + 1):
+    """Poll AI health and auto-fix until all models loaded (no terminal ai_fail)."""
+    rnd = 0
+    while True:
+        rnd += 1
         health = fetch_ai_health()
         missing = diagnose(health)
         if not missing:
@@ -166,15 +168,20 @@ def ensure_launch_ai_stream(max_rounds: int = MAX_ROUNDS) -> Iterator[dict]:
             "ai_down": "AI Engine",
         }
         miss_txt = ", ".join(labels.get(m, m) for m in missing)
+        round_label = f"{((rnd - 1) % max_rounds) + 1}/{max_rounds}"
+        if rnd > max_rounds and (rnd - 1) % max_rounds == 0:
+            yield {
+                "event": "fix",
+                "message": f"Nouvelle passe de correction IA (cycle {(rnd - 1) // max_rounds + 1})…",
+            }
         yield {
             "event": "fix",
-            "message": f"Correction automatique IA ({rnd}/{max_rounds}) — manquant : {miss_txt}",
+            "message": f"Correction automatique IA ({round_label}) — manquant : {miss_txt}",
         }
 
         for line in remediate_stream(missing):
             yield {"event": "fix", "message": line}
 
-        # Wait for models after fix
         deadline = time.time() + 90
         while time.time() < deadline:
             health = fetch_ai_health()
@@ -185,20 +192,3 @@ def ensure_launch_ai_stream(max_rounds: int = MAX_ROUNDS) -> Iterator[dict]:
                 }
                 return
             time.sleep(3)
-
-    health = fetch_ai_health()
-    missing = diagnose(health)
-    labels = {
-        "yolo_loaded": "YOLO",
-        "face_loaded": "Reconnaissance faciale (InsightFace)",
-        "plate_loaded": "Lecture de plaques (PaddleOCR)",
-        "ai_down": "AI Engine non joignable",
-    }
-    miss_txt = ", ".join(labels.get(m, m) for m in missing) if missing else "inconnu"
-    yield {
-        "event": "ai_fail",
-        "message": (
-            f"Modèles IA incomplets après {max_rounds} rounds de correction : {miss_txt}. "
-            "Consultez logs/ai-engine.log"
-        ),
-    }

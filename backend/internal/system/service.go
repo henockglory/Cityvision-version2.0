@@ -24,6 +24,8 @@ const (
 	linuxServiceName   = "citevision.service"
 )
 
+var startModeApplyMu sync.Mutex
+
 // Status describes the CitéVision system service registration and runtime state.
 type Status struct {
 	Platform           string `json:"platform"`
@@ -98,6 +100,7 @@ func readStartMode(root string) string {
 		return "auto"
 	}
 	mode := strings.TrimSpace(string(data))
+	mode = strings.TrimPrefix(mode, "\ufeff")
 	if idx := strings.Index(mode, "|"); idx >= 0 {
 		mode = strings.TrimSpace(mode[:idx])
 	}
@@ -653,6 +656,11 @@ func SetStartMode(mode string) (SetStartModeResult, error) {
 	}
 
 	go func(r, m string) {
+		startModeApplyMu.Lock()
+		defer startModeApplyMu.Unlock()
+		if readStartMode(r) != m {
+			return
+		}
 		if effectivePlatform() == "windows" {
 			_ = applyWindowsStartMode(r, m)
 			return

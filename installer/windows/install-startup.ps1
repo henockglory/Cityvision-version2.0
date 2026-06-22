@@ -343,7 +343,7 @@ try {
     $modeFile = Join-Path $Root 'installer\.service_start_mode'
     $installerDir = Join-Path $Root 'installer'
     if (-not (Test-Path $installerDir)) { New-Item -ItemType Directory -Force -Path $installerDir | Out-Null }
-    Set-Content -Path $modeFile -Value $StartMode -Encoding UTF8 -NoNewline
+    Set-Content -Path $modeFile -Value $StartMode -Encoding ascii -NoNewline
 
     $mechanism = ''
     if ($StartMode -eq 'manual') {
