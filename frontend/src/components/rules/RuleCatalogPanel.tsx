@@ -1,9 +1,10 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, Check, CheckCircle2, ChevronDown, FlaskConical, Layers, Loader2, PowerOff, Search, Wrench, XCircle } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AlertTriangle, Check, CheckCircle2, FlaskConical, Layers, Loader2, PowerOff, Search, Wrench, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { mapRuleCatalogItem } from '@/api/mappers';
 import { resolveConfigSchema } from '@/lib/ruleConfigSchema';
 import { iconForTemplate } from '@/lib/iconMap';
+import { buildCatalogTree, catalogSearchHaystack, defaultOpenGroups } from '@/lib/catalogNavigation';
 import IconBadge from '@/components/ui/IconBadge';
 import GuideIllustration from '@/components/ui/GuideIllustration';
 import InfoTip from '@/components/ui/InfoTip';
@@ -21,6 +22,30 @@ interface RuleCatalogPanelProps {
   compact?: boolean;
   catalogOnly?: boolean;
   deploymentScope?: 'all' | 'national' | 'enterprise' | 'domestic';
+}
+
+const MEGA_ICON_CATEGORY: Record<string, string> = {
+  places: 'spatial',
+  people: 'crowd',
+  road: 'road-enforcement',
+  identity: 'identity',
+  objects: 'incident',
+  camera: 'quality',
+};
+
+const TILE_BASE =
+  'relative flex w-full items-start gap-3 rounded-xl border p-3.5 text-left transition-all duration-200 hover:border-cv-accent/35 hover:bg-cv-surface/40';
+const TILE_IDLE = `${TILE_BASE} border-cv-border/55 bg-cv-surface/25`;
+const TILE_ACTIVE =
+  `${TILE_BASE} border-cv-accent/50 bg-gradient-to-br from-cv-accent/12 via-cv-surface/35 to-cv-deep/20 ring-1 ring-cv-accent/25 shadow-lg shadow-cv-accent/10`;
+
+function pillClass(active: boolean): string {
+  return [
+    'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
+    active
+      ? 'border-cv-accent/45 bg-cv-accent/15 text-cv-text shadow-sm'
+      : 'border-cv-border/55 bg-cv-surface/30 text-cv-muted hover:border-cv-accent/30 hover:text-cv-text',
+  ].join(' ');
 }
 
 function hasConfigSchema(tpl: RuleCatalogTemplate): boolean {
@@ -76,15 +101,16 @@ function FilterChip({
   );
 }
 
-function StatusChip({ tpl }: { tpl: RuleCatalogTemplate }) {
+function StatusChip({ tpl, subtle = false }: { tpl: RuleCatalogTemplate; subtle?: boolean }) {
   const { t } = useTranslation();
   const ps = tpl.partial_status;
 
   if (!ps || ps === 'full') {
+    if (subtle) return null;
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-metric-rules/40 text-metric-rules bg-metric-rules/10">
         <CheckCircle2 className="w-3 h-3 shrink-0" />
-        {t('rules.status.operational', { defaultValue: 'Opérationnel' })}
+        {t('rules.status.operational')}
       </span>
     );
   }
@@ -231,6 +257,9 @@ function RuleCard({
   };
   const illustration = tpl.illustration ?? CATEGORY_GUIDE[tpl.category ?? ''] ?? '/guides/rules-banner.svg';
 
+  const compactCatalog = catalogOnly && nested;
+  const blurb = summary || tpl.human_description || '';
+
   return (
     <article
       className={`rounded-lg border transition-colors ${
@@ -246,50 +275,56 @@ function RuleCard({
             'border-cv-border/70 bg-cv-deep/30 hover:border-cv-accent/20'
       }`}
     >
-      <div className="flex items-start gap-4 p-4">
-        <IconBadge src={iconForTemplate(tpl.id, tpl.category)} alt="" size="md" category={tpl.category} className="shrink-0" />
-        <div className="min-w-0 flex-1 space-y-2">
+      <div className={`flex items-start gap-3 ${compactCatalog ? 'p-3' : 'p-4 gap-4'}`}>
+        <IconBadge src={iconForTemplate(tpl.id, tpl.category)} alt="" size={compactCatalog ? 'sm' : 'md'} category={tpl.category} className="shrink-0" />
+        <div className="min-w-0 flex-1 space-y-1.5">
           <div className="cv-meta-row">
-            <p className="font-medium text-sm leading-snug">{tpl.name}</p>
+            <p className={`font-medium leading-snug ${compactCatalog ? 'text-sm' : 'text-sm'}`}>{tpl.name}</p>
             {isActive && <span className="cv-badge-online text-xs">{t('rules.enabled')}</span>}
             {isOccupied && !isActive && <span className="text-xs text-metric-alerts font-semibold">{t('rules.disabled')}</span>}
-            <StatusChip tpl={tpl} />
+            {!compactCatalog && <StatusChip tpl={tpl} subtle={nested} />}
+            {compactCatalog && !operational && <StatusChip tpl={tpl} />}
           </div>
 
-          {tpl.human_description && (
-            <p className="text-xs text-cv-muted leading-relaxed line-clamp-2">{tpl.human_description}</p>
+          {blurb && (
+            <p className="text-xs text-cv-muted leading-relaxed line-clamp-2">{blurb}</p>
           )}
 
-          {!operational && tpl.partial_reason_fr && (
+          {!compactCatalog && !operational && tpl.partial_reason_fr && (
             <p className="cv-callout text-amber-300/90 bg-amber-400/5 border border-amber-400/20 !p-2.5">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
               <span>{tpl.partial_reason_fr}</span>
             </p>
           )}
 
-          {(summary || !operational) && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5">
-              {summary && (
-                <button
-                  type="button"
-                  onClick={() => setExpanded((v) => !v)}
-                  className="text-xs text-cv-accent hover:underline"
-                >
-                  {expanded ? t('rules.catalogCard.hideGuide') : t('rules.catalogCard.showGuide')}
-                </button>
-              )}
-              {!operational && (
-                <button
-                  type="button"
-                  onClick={() => setShowPrereqs((v) => !v)}
-                  className="text-xs text-amber-400/90 hover:underline"
-                >
-                  {showPrereqs
-                    ? t('rules.catalogCard.hidePrereqs', { defaultValue: 'Masquer les prérequis' })
-                    : t('rules.catalogCard.showPrereqs', { defaultValue: 'Voir ce qu\'il faut' })}
-                </button>
-              )}
-            </div>
+          {!compactCatalog && summary && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="text-xs text-cv-accent hover:underline"
+            >
+              {expanded ? t('rules.catalogCard.hideGuide') : t('rules.catalogCard.showGuide')}
+            </button>
+          )}
+
+          {compactCatalog && !operational && (
+            <button
+              type="button"
+              onClick={() => setShowPrereqs((v) => !v)}
+              className="text-xs text-amber-400/90 hover:underline"
+            >
+              {showPrereqs ? t('rules.catalogCard.hidePrereqs') : t('rules.catalogCard.showPrereqs')}
+            </button>
+          )}
+
+          {!compactCatalog && !operational && (
+            <button
+              type="button"
+              onClick={() => setShowPrereqs((v) => !v)}
+              className="text-xs text-amber-400/90 hover:underline"
+            >
+              {showPrereqs ? t('rules.catalogCard.hidePrereqs') : t('rules.catalogCard.showPrereqs')}
+            </button>
           )}
         </div>
 
@@ -374,10 +409,21 @@ export default function RuleCatalogPanel({
   deploymentScope = 'all',
 }: RuleCatalogPanelProps) {
   const { t } = useTranslation();
+  const tr = (key: string, frDefault: string) => {
+    const value = t(key);
+    return value === key ? frDefault : value;
+  };
   const [message, setMessage] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'operational' | 'partial'>('all');
-  const [openCats, setOpenCats] = useState<Set<string>>(() => new Set());
+  const [activeMegaId, setActiveMegaId] = useState<string | null>(null);
+  const [activeSubId, setActiveSubId] = useState<string | null>(null);
+
+  const labelForMega = (id: string) => t(`rules.catalogMega.${id}`);
+  const labelForSub = (id: string) => t(`rules.catalogSub.${id}`);
+  const hintForMega = (id: string) => t(`rules.catalogMega.${id}Hint`);
+  const hintForSub = (id: string) => t(`rules.catalogSub.${id}Hint`);
+  const countLabel = (n: number) => t('rules.catalogGroup.rulesCount', { count: n });
 
   const scopedTemplates = useMemo(() => {
     if (!deploymentScope || deploymentScope === 'all') return templates;
@@ -399,43 +445,63 @@ export default function RuleCatalogPanel({
     if (filter === 'partial') base = base.filter((tpl) => !isFullyOperational(tpl));
     const q = query.trim().toLowerCase();
     if (!q) return base;
-    return base.filter(
-      (tpl) =>
-        tpl.name.toLowerCase().includes(q) ||
-        (tpl.category ?? '').toLowerCase().includes(q) ||
-        (tpl.capability_id ?? '').toLowerCase().includes(q) ||
-        (tpl.human_description ?? '').toLowerCase().includes(q),
-    );
-  }, [sorted, filter, query]);
+    return base.filter((tpl) => catalogSearchHaystack(tpl, labelForMega, labelForSub).includes(q));
+  }, [sorted, filter, query, t]);
 
-  const byCategory = useMemo(() => {
-    const m = new Map<string, RuleCatalogTemplate[]>();
-    for (const tpl of filtered) {
-      const cat = tpl.category ?? 'other';
-      if (!m.has(cat)) m.set(cat, []);
-      m.get(cat)!.push(tpl);
+  const scopeTree = useMemo(
+    () => buildCatalogTree(sorted, deploymentScope),
+    [sorted, deploymentScope],
+  );
+
+  const catalogTree = useMemo(
+    () => buildCatalogTree(filtered, deploymentScope),
+    [filtered, deploymentScope],
+  );
+
+  useEffect(() => {
+    const def = defaultOpenGroups(scopeTree, isFullyOperational);
+    if (def) {
+      setActiveMegaId(def.megaId);
+      setActiveSubId(def.subId);
+    } else if (scopeTree[0]) {
+      setActiveMegaId(scopeTree[0].id);
+      setActiveSubId(scopeTree[0].subGroups[0]?.id ?? null);
+    } else {
+      setActiveMegaId(null);
+      setActiveSubId(null);
     }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [filtered]);
+  }, [deploymentScope, scopeTree]);
 
-  const toggleCat = (cat: string) => {
-    setOpenCats((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
+  const activeMega = catalogTree.find((m) => m.id === activeMegaId) ?? null;
+  const activeSub = activeMega?.subGroups.find((s) => s.id === activeSubId) ?? activeMega?.subGroups[0] ?? null;
+
+  useEffect(() => {
+    if (!activeMega) return;
+    if (!activeMega.subGroups.some((s) => s.id === activeSubId)) {
+      setActiveSubId(activeMega.subGroups[0]?.id ?? null);
+    }
+  }, [activeMega, activeSubId]);
+
+  const primaryTree = useMemo(() => catalogTree.filter((m) => !m.muted), [catalogTree]);
+  const maintenanceTree = useMemo(() => catalogTree.filter((m) => m.muted), [catalogTree]);
+  const isSearching = query.trim().length > 0;
+
+  const selectMega = (megaId: string) => {
+    setActiveMegaId(megaId);
+    const mega = catalogTree.find((m) => m.id === megaId);
+    const def = mega ? defaultOpenGroups([mega], isFullyOperational) : null;
+    setActiveSubId(def?.subId ?? mega?.subGroups[0]?.id ?? null);
   };
 
   return (
-    <div className={compact ? 'cv-stack-sm' : 'space-y-4'}>
+    <div className={compact ? 'cv-stack-sm' : 'space-y-5'}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <FilterChip
             active={filter === 'all'}
             tone="accent"
             icon={<Layers className="w-3.5 h-3.5" />}
-            label={t('rules.catalogFilter.all', { defaultValue: 'Tout' })}
+            label={tr('rules.catalogFilter.all', 'Toutes')}
             count={allCount}
             onClick={() => setFilter('all')}
           />
@@ -443,7 +509,7 @@ export default function RuleCatalogPanel({
             active={filter === 'operational'}
             tone="rules"
             icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-            label={t('rules.catalogFilter.operational', { defaultValue: 'Opérationnels' })}
+            label={tr('rules.catalogFilter.operational', 'Prêtes à activer')}
             count={operationalCount}
             onClick={() => setFilter('operational')}
           />
@@ -451,13 +517,13 @@ export default function RuleCatalogPanel({
             active={filter === 'partial'}
             tone="amber"
             icon={<Wrench className="w-3.5 h-3.5" />}
-            label={t('rules.catalogFilter.partial', { defaultValue: 'Module requis' })}
+            label={tr('rules.catalogFilter.partial', 'Réglage avancé')}
             count={partialCount}
             onClick={() => setFilter('partial')}
           />
         </div>
 
-        <div className="relative w-full lg:w-72 lg:shrink-0">
+        <div className="relative w-full lg:w-80 lg:shrink-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-cv-muted pointer-events-none" />
           <input
             type="search"
@@ -472,53 +538,171 @@ export default function RuleCatalogPanel({
       {filter === 'partial' && (
         <div className="cv-callout text-amber-300/90 bg-amber-400/5 border border-amber-400/20">
           <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-          <span>
-            {t('rules.catalogFilter.partialExplain', {
-              defaultValue: "Ces règles nécessitent un module ou une configuration supplémentaire. Cliquez sur « Voir ce qu'il faut » pour comprendre les étapes à suivre.",
-            })}
-          </span>
+          <span>{tr('rules.catalogFilter.partialExplain', 'Ces règles demandent une étape supplémentaire.')}</span>
         </div>
       )}
 
       {message && <p className="text-xs text-cv-accent font-medium px-1">{message}</p>}
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-cv-muted py-8 text-center">{t('rules.catalogTab.emptyFilter')}</p>
+        <p className="text-sm text-cv-muted py-10 text-center">{t('rules.catalogTab.emptyFilter')}</p>
+      ) : isSearching ? (
+        <div className="cv-catalog-search-results cv-stack-sm">
+          {catalogTree.map((mega) =>
+            mega.subGroups.map((sub) => (
+              <section key={`${mega.id}:${sub.id}`} className="cv-stack-sm">
+                <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1">
+                  <p className="text-sm font-semibold text-cv-text">{labelForSub(sub.id)}</p>
+                  <span className="text-xs text-cv-muted">{labelForMega(mega.id)} · {countLabel(sub.templates.length)}</span>
+                </header>
+                <div className="cv-stack-sm">
+                  {sub.templates.map((tpl) => (
+                    <RuleCard
+                      key={tpl.id}
+                      tpl={tpl}
+                      nested
+                      isActive={activeTemplateIds.includes(tpl.id)}
+                      isOccupied={occupiedTemplateIds.includes(tpl.id)}
+                      onConfigure={onConfigure}
+                      onDisable={onDisable ?? (() => undefined)}
+                      onEnable={onEnable}
+                      setMessage={setMessage}
+                      catalogOnly={catalogOnly}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              </section>
+            )),
+          )}
+        </div>
       ) : (
-        <div className="cv-stack-sm">
-          {byCategory.map(([cat, items]) => {
-            const catPartial = items.filter((tpl) => !isFullyOperational(tpl)).length;
-            const isOpen = openCats.has(cat);
-            return (
-              <div key={cat} className="cv-catalog-group" data-open={isOpen ? 'true' : 'false'}>
+        <>
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-cv-text tracking-tight">
+              {tr('rules.catalogNav.lead', 'Que souhaitez-vous surveiller ?')}
+            </p>
+            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+              {primaryTree.map((mega) => (
                 <button
+                  key={mega.id}
                   type="button"
-                  onClick={() => toggleCat(cat)}
-                  className="cv-catalog-group-trigger"
-                  aria-expanded={isOpen}
+                  className={activeMegaId === mega.id ? TILE_ACTIVE : TILE_IDLE}
+                  aria-pressed={activeMegaId === mega.id}
+                  onClick={() => selectMega(mega.id)}
                 >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <IconBadge src={iconForTemplate(undefined, cat)} alt="" size="lg" category={cat} className="shrink-0" />
-                    <div className="min-w-0 text-left">
-                      <span className="text-sm font-medium leading-snug block truncate">
-                        {t(`rules.catalogCategory.${cat}`, { defaultValue: cat })}
-                      </span>
-                      <span className="text-xs text-cv-muted leading-relaxed block mt-0.5">
-                        {items.length} {items.length > 1 ? 'règles' : 'règle'}
-                        {catPartial > 0 && (
-                          <span className="text-amber-400/80"> · {catPartial} module{catPartial > 1 ? 's' : ''} requis</span>
-                        )}
-                      </span>
-                    </div>
+                  <IconBadge
+                    src={iconForTemplate(undefined, MEGA_ICON_CATEGORY[mega.id])}
+                    alt=""
+                    size="md"
+                    category={MEGA_ICON_CATEGORY[mega.id]}
+                    className="shrink-0"
+                  />
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-sm font-semibold leading-snug text-cv-text">{labelForMega(mega.id)}</p>
+                    <p className="text-xs text-cv-muted leading-relaxed mt-1 line-clamp-2">{hintForMega(mega.id)}</p>
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-cv-muted shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  <span className="shrink-0 min-w-[1.75rem] h-7 px-2 inline-flex items-center justify-center rounded-full text-xs font-semibold tabular-nums bg-cv-deep/50 text-cv-muted border border-cv-border/50">
+                    {mega.templateCount}
+                  </span>
                 </button>
-                {isOpen && (
-                  <div className="cv-catalog-group-body">
-                    <p className="cv-catalog-group-body-label">
-                      {t('rules.catalogGroup.variantsLabel', { defaultValue: 'Règles de ce groupe' })}
-                    </p>
-                    {items.map((tpl) => (
+              ))}
+            </div>
+          </div>
+
+          {activeMega && activeSub && !activeMega.muted && (
+            <div className="rounded-xl border border-cv-border/50 bg-cv-deep/25 p-4 space-y-3">
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label={labelForMega(activeMega.id)}>
+                {activeMega.subGroups.map((sub) => (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeSub.id === sub.id}
+                    className={pillClass(activeSub.id === sub.id)}
+                    onClick={() => setActiveSubId(sub.id)}
+                  >
+                    <span>{labelForSub(sub.id)}</span>
+                    <span className="inline-flex min-w-[1.25rem] h-5 px-1.5 items-center justify-center rounded-full bg-cv-deep/60 text-[10px] font-semibold tabular-nums">
+                      {sub.templates.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-cv-muted leading-relaxed">{hintForSub(activeSub.id)}</p>
+              <div className="cv-stack-sm pt-1">
+                {activeSub.templates.map((tpl) => (
+                  <RuleCard
+                    key={tpl.id}
+                    tpl={tpl}
+                    nested
+                    isActive={activeTemplateIds.includes(tpl.id)}
+                    isOccupied={occupiedTemplateIds.includes(tpl.id)}
+                    onConfigure={onConfigure}
+                    onDisable={onDisable ?? (() => undefined)}
+                    onEnable={onEnable}
+                    setMessage={setMessage}
+                    catalogOnly={catalogOnly}
+                    t={t}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {maintenanceTree.length > 0 && (
+            <div className="pt-3 border-t border-cv-border/35 space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-cv-muted/80">
+                {tr('rules.catalogNav.maintenance', 'Entretien caméra')}
+              </p>
+              <div className="grid gap-2.5 sm:grid-cols-1 xl:grid-cols-2">
+                {maintenanceTree.map((mega) => (
+                  <button
+                    key={mega.id}
+                    type="button"
+                    className={`${activeMegaId === mega.id ? TILE_ACTIVE : TILE_IDLE} opacity-95`}
+                    aria-pressed={activeMegaId === mega.id}
+                    onClick={() => selectMega(mega.id)}
+                  >
+                    <IconBadge
+                      src={iconForTemplate(undefined, MEGA_ICON_CATEGORY[mega.id])}
+                      alt=""
+                      size="sm"
+                      category={MEGA_ICON_CATEGORY[mega.id]}
+                      className="shrink-0"
+                    />
+                    <div className="min-w-0 flex-1 text-left">
+                      <p className="text-sm font-semibold leading-snug text-cv-text">{labelForMega(mega.id)}</p>
+                      <p className="text-xs text-cv-muted leading-relaxed mt-1 line-clamp-2">{hintForMega(mega.id)}</p>
+                    </div>
+                    <span className="shrink-0 min-w-[1.75rem] h-7 px-2 inline-flex items-center justify-center rounded-full text-xs font-semibold tabular-nums bg-cv-deep/50 text-cv-muted border border-cv-border/50">
+                      {mega.templateCount}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {activeMega?.muted && activeSub && (
+                <div className="rounded-xl border border-cv-border/40 bg-cv-deep/15 p-4 space-y-3">
+                  <div className="flex flex-wrap gap-2" role="tablist">
+                    {activeMega.subGroups.map((sub) => (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeSub.id === sub.id}
+                        className={pillClass(activeSub.id === sub.id)}
+                        onClick={() => setActiveSubId(sub.id)}
+                      >
+                        <span>{labelForSub(sub.id)}</span>
+                        <span className="inline-flex min-w-[1.25rem] h-5 px-1.5 items-center justify-center rounded-full bg-cv-deep/60 text-[10px] font-semibold tabular-nums">
+                          {sub.templates.length}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-cv-muted leading-relaxed">{hintForSub(activeSub.id)}</p>
+                  <div className="cv-stack-sm pt-1">
+                    {activeSub.templates.map((tpl) => (
                       <RuleCard
                         key={tpl.id}
                         tpl={tpl}
@@ -534,20 +718,20 @@ export default function RuleCatalogPanel({
                       />
                     ))}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
-      {!compact && filter === 'all' && (
-        <p className="text-xs text-cv-muted/70 text-center pt-2 leading-relaxed">
+      {!compact && filter === 'all' && !isSearching && (
+        <p className="text-xs text-cv-muted/70 text-center pt-1 leading-relaxed">
           {t('rules.catalogFooter', {
             total: allCount,
             operational: operationalCount,
             partial: partialCount,
-            defaultValue: `${allCount} règles · ${operationalCount} opérationnelles immédiatement · ${partialCount} nécessitent un module ou réglage`,
+            defaultValue: `${allCount} règles · ${operationalCount} prêtes · ${partialCount} réglage avancé`,
           })}
         </p>
       )}

@@ -222,8 +222,25 @@
     "catalogTab": {
       "available": "Disponibles ({{count}})",
       "extended": "Bientôt ({{count}})",
-      "search": "Rechercher une règle…",
-      "emptyFilter": "Aucune règle ne correspond."
+      "search": "Rechercher… foule, vitesse, intrusion",
+      "emptyFilter": "Aucune règle ne correspond à votre recherche."
+    },
+    "catalogFilter": {
+      "all": "Toutes",
+      "operational": "Prêtes à activer",
+      "partial": "Réglage avancé",
+      "partialExplain": "Ces règles demandent une étape supplémentaire (module ou calibration). Ouvrez « Voir ce qu'il faut » sur la carte concernée.",
+      "partialBadge_one": "{{count}} à configurer",
+      "partialBadge_other": "{{count}} à configurer"
+    },
+    "catalogNav": {
+      "lead": "Que souhaitez-vous surveiller ?",
+      "maintenance": "Entretien caméra"
+    },
+    "catalogFooter": "{{total}} règles · {{operational}} prêtes immédiatement · {{partial}} avec réglage avancé",
+    "status": {
+      "operational": "Prête",
+      "ready": "Prête à activer"
     },
     "catalogCard": {
       "configure": "Configurer",
@@ -232,10 +249,62 @@
       "soonBadge": "Bientôt",
       "showGuide": "Voir le rôle illustré",
       "hideGuide": "Masquer l'illustration",
+      "showPrereqs": "Voir ce qu'il faut",
+      "hidePrereqs": "Masquer les prérequis",
       "disabling": "Désactivation de « {{name}} »…"
     },
     "catalogGroup": {
-      "variantsLabel": "Règles de ce groupe"
+      "variantsLabel": "Règles de ce groupe",
+      "rulesCount_one": "{{count}} règle",
+      "rulesCount_other": "{{count}} règles"
+    },
+    "catalogMega": {
+      "places": "Protéger un lieu",
+      "placesHint": "Entrée interdite, sortie non autorisée, périmètre à surveiller.",
+      "people": "Surveiller des personnes",
+      "peopleHint": "Présence, comportement inhabituel, foule ou attroupement.",
+      "road": "Surveiller la circulation",
+      "roadHint": "Excès de vitesse, bouchons, feux rouges et infractions.",
+      "identity": "Reconnaître une personne ou un véhicule",
+      "identityHint": "Visage connu, personne recherchée ou plaque mémorisée.",
+      "objects": "Objets oubliés et incidents",
+      "objectsHint": "Sac laissé, objet disparu, accident ou situation grave.",
+      "camera": "Caméra et horaires",
+      "cameraHint": "La caméra filme-t-elle correctement ? À quelles heures activer les règles ?"
+    },
+    "catalogSub": {
+      "intrusion": "Entrée sans autorisation",
+      "intrusionHint": "Quelqu'un pénètre un lieu protégé ou rôde près d'une porte.",
+      "zones": "Zones sur la caméra",
+      "zonesHint": "Entrer, sortir ou rester dans une zone que vous avez dessinée.",
+      "passages": "Passages interdits",
+      "passagesHint": "Franchir une ligne, prendre le mauvais sens ou accès refusé.",
+      "presence": "Présence prolongée",
+      "presenceHint": "Quelqu'un reste trop longtemps, erre ou ne bouge plus.",
+      "gestures": "Gestes et comportements",
+      "gesturesHint": "Course, chute, bagarre, escalade ou geste suspect.",
+      "crowd": "Foule et attroupements",
+      "crowdHint": "Trop de monde, file d'attente, panique ou rassemblement.",
+      "speed": "Vitesse",
+      "speedHint": "Véhicule trop rapide ou arrêt brusque.",
+      "traffic": "Circulation",
+      "trafficHint": "Embouteillage, véhicule à l'arrêt ou mauvaise voie.",
+      "road_infractions": "Infractions routières",
+      "road_infractionsHint": "Feu rouge griller, ceinture, téléphone au volant…",
+      "faces": "Visages",
+      "facesHint": "Personne reconnue ou présente sur une liste de surveillance.",
+      "plates": "Plaques d'immatriculation",
+      "platesHint": "Lecture automatique des plaques autorisées ou interdites.",
+      "objects_scene": "Objets dans l'image",
+      "objectsHint": "Objet abandonné, disparu ou apparu dans le champ.",
+      "emergencies": "Accidents et urgences",
+      "emergenciesHint": "Accident, bagarre, vandalisme ou situation critique.",
+      "image_quality": "Qualité de l'image",
+      "image_qualityHint": "Image floue ou trop sombre — la caméra fonctionne-t-elle bien ?",
+      "schedules": "Horaires",
+      "schedulesHint": "Activer la règle à certaines heures ou après un délai.",
+      "industrial_site": "Sites industriels",
+      "industrial_siteHint": "Surveillance adaptée aux sites industriels."
     },
     "catalogCategory": {
       "security": "Sécurité & intrusion",
@@ -460,10 +529,10 @@
       }
     },
     "partial": {
-      "requires_calibration": "Calibration requise",
-      "requires_ocr": "Module OCR requis",
-      "requires_face_ai": "Module Visage requis",
-      "partial_aggregate": "Données partielles"
+      "requires_calibration": "Réglage caméra",
+      "requires_ocr": "Lecture de plaques",
+      "requires_face_ai": "Reconnaissance faciale",
+      "partial_aggregate": "À vérifier sur site"
     },
     "activation": {
       "successTitle": "Règle activée",

@@ -1,0 +1,1035 @@
+{
+  "version": 1,
+  "megaGroups": [
+    {
+      "id": "places",
+      "order": 1,
+      "scopeOrder": {
+        "all": 1,
+        "enterprise": 1,
+        "domestic": 1,
+        "national": 2
+      }
+    },
+    {
+      "id": "people",
+      "order": 2,
+      "scopeOrder": {
+        "all": 2,
+        "enterprise": 2,
+        "domestic": 2,
+        "national": 3
+      }
+    },
+    {
+      "id": "road",
+      "order": 3,
+      "scopeOrder": {
+        "all": 3,
+        "enterprise": 4,
+        "domestic": 6,
+        "national": 1
+      }
+    },
+    {
+      "id": "identity",
+      "order": 4,
+      "scopeOrder": {
+        "all": 4,
+        "enterprise": 3,
+        "domestic": 4,
+        "national": 4
+      }
+    },
+    {
+      "id": "objects",
+      "order": 5,
+      "scopeOrder": {
+        "all": 5,
+        "enterprise": 5,
+        "domestic": 3,
+        "national": 5
+      }
+    },
+    {
+      "id": "camera",
+      "order": 6,
+      "scopeOrder": {
+        "all": 6,
+        "enterprise": 6,
+        "domestic": 5,
+        "national": 6
+      },
+      "muted": true
+    }
+  ],
+  "subGroups": [
+    {
+      "id": "intrusion",
+      "megaId": "places",
+      "order": 1
+    },
+    {
+      "id": "zones",
+      "megaId": "places",
+      "order": 2
+    },
+    {
+      "id": "passages",
+      "megaId": "places",
+      "order": 3
+    },
+    {
+      "id": "presence",
+      "megaId": "people",
+      "order": 1
+    },
+    {
+      "id": "gestures",
+      "megaId": "people",
+      "order": 2
+    },
+    {
+      "id": "crowd",
+      "megaId": "people",
+      "order": 3
+    },
+    {
+      "id": "speed",
+      "megaId": "road",
+      "order": 1
+    },
+    {
+      "id": "traffic",
+      "megaId": "road",
+      "order": 2
+    },
+    {
+      "id": "road_infractions",
+      "megaId": "road",
+      "order": 3
+    },
+    {
+      "id": "faces",
+      "megaId": "identity",
+      "order": 1
+    },
+    {
+      "id": "plates",
+      "megaId": "identity",
+      "order": 2
+    },
+    {
+      "id": "objects_scene",
+      "megaId": "objects",
+      "order": 1
+    },
+    {
+      "id": "emergencies",
+      "megaId": "objects",
+      "order": 2
+    },
+    {
+      "id": "image_quality",
+      "megaId": "camera",
+      "order": 1
+    },
+    {
+      "id": "schedules",
+      "megaId": "camera",
+      "order": 2
+    },
+    {
+      "id": "industrial_site",
+      "megaId": "camera",
+      "order": 3
+    }
+  ],
+  "templates": {
+    "tpl-running": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "comportement",
+        "geste",
+        "personne",
+        "course"
+      ]
+    },
+    "tpl-crowd-gathering": {
+      "megaId": "people",
+      "subId": "crowd",
+      "searchTags": [
+        "foule",
+        "attroupement",
+        "rassemblement"
+      ]
+    },
+    "tpl-crowd-density": {
+      "megaId": "people",
+      "subId": "crowd",
+      "searchTags": [
+        "foule",
+        "attroupement",
+        "densite",
+        "elevee"
+      ]
+    },
+    "tpl-vehicle-count": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "véhicules",
+        "comptage",
+        "trafic"
+      ]
+    },
+    "tpl-scene-occupancy": {
+      "megaId": "people",
+      "subId": "presence",
+      "searchTags": [
+        "occupation",
+        "scène"
+      ]
+    },
+    "tpl-person-stopped": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "comportement",
+        "geste",
+        "personne",
+        "immobile",
+        "prolongee"
+      ]
+    },
+    "tpl-vehicle-stopped": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "véhicule arrêté",
+        "stationné"
+      ]
+    },
+    "tpl-wrong-way": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "sens interdit",
+        "contre-sens"
+      ]
+    },
+    "tpl-tailgating": {
+      "megaId": "places",
+      "subId": "passages",
+      "searchTags": [
+        "tailgating",
+        "suivi",
+        "accès"
+      ]
+    },
+    "tpl-falling": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "comportement",
+        "geste",
+        "chute",
+        "detectee"
+      ]
+    },
+    "tpl-fighting": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "bagarre",
+        "violence"
+      ]
+    },
+    "tpl-queue-forming": {
+      "megaId": "people",
+      "subId": "crowd",
+      "searchTags": [
+        "foule",
+        "attroupement",
+        "formation",
+        "file"
+      ]
+    },
+    "tpl-bottleneck": {
+      "megaId": "people",
+      "subId": "crowd",
+      "searchTags": [
+        "foule",
+        "attroupement",
+        "goulot",
+        "etranglement"
+      ]
+    },
+    "tpl-flow-rate": {
+      "megaId": "people",
+      "subId": "crowd",
+      "searchTags": [
+        "foule",
+        "attroupement",
+        "debit",
+        "pietons",
+        "eleve"
+      ]
+    },
+    "tpl-crowd-panic": {
+      "megaId": "people",
+      "subId": "crowd",
+      "searchTags": [
+        "foule",
+        "attroupement",
+        "panique"
+      ]
+    },
+    "tpl-group-formation": {
+      "megaId": "people",
+      "subId": "crowd",
+      "searchTags": [
+        "foule",
+        "attroupement",
+        "suspect"
+      ]
+    },
+    "tpl-fight": {
+      "megaId": "objects",
+      "subId": "emergencies",
+      "searchTags": [
+        "bagarre",
+        "violence"
+      ]
+    },
+    "tpl-accident": {
+      "megaId": "objects",
+      "subId": "emergencies",
+      "searchTags": [
+        "accident",
+        "collision"
+      ]
+    },
+    "tpl-vandalism": {
+      "megaId": "objects",
+      "subId": "emergencies",
+      "searchTags": [
+        "urgence",
+        "incident",
+        "vandalisme",
+        "suspect"
+      ]
+    },
+    "tpl-face-watchlist": {
+      "megaId": "identity",
+      "subId": "faces",
+      "searchTags": [
+        "visage",
+        "identité",
+        "personne",
+        "liste",
+        "noire"
+      ]
+    },
+    "tpl-plate-unknown": {
+      "megaId": "identity",
+      "subId": "plates",
+      "searchTags": [
+        "plaque",
+        "ANPR",
+        "non",
+        "enregistree"
+      ]
+    },
+    "tpl-industrial-intrusion": {
+      "megaId": "camera",
+      "subId": "industrial_site",
+      "searchTags": [
+        "industriel",
+        "usine",
+        "site"
+      ]
+    },
+    "tpl-crouch-detected": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "comportement",
+        "geste",
+        "position",
+        "accroupie"
+      ]
+    },
+    "tpl-climb-detected": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "comportement",
+        "geste",
+        "escalade",
+        "detectee"
+      ]
+    },
+    "tpl-carry-object": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "comportement",
+        "geste",
+        "transport",
+        "objet"
+      ]
+    },
+    "tpl-intrusion-after-hours": {
+      "megaId": "places",
+      "subId": "intrusion",
+      "searchTags": [
+        "intrusion",
+        "sécurité",
+        "accès",
+        "hors",
+        "horaires"
+      ]
+    },
+    "tpl-vehicle-wrong-direction": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "trafic",
+        "circulation",
+        "véhicule",
+        "vehicule",
+        "sens",
+        "interdit"
+      ]
+    },
+    "tpl-pedestrian-zone": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "trafic",
+        "circulation",
+        "véhicule",
+        "pieton",
+        "zone",
+        "vehicules"
+      ]
+    },
+    "tpl-face-repeat": {
+      "megaId": "identity",
+      "subId": "faces",
+      "searchTags": [
+        "visage",
+        "identité",
+        "recurrent"
+      ]
+    },
+    "tpl-plate-repeat": {
+      "megaId": "identity",
+      "subId": "plates",
+      "searchTags": [
+        "plaque",
+        "ANPR",
+        "recurrente"
+      ]
+    },
+    "tpl-watchlist-match": {
+      "megaId": "identity",
+      "subId": "faces",
+      "searchTags": [
+        "visage",
+        "identité",
+        "liste",
+        "surveillance"
+      ]
+    },
+    "tpl-unknown-face": {
+      "megaId": "identity",
+      "subId": "faces",
+      "searchTags": [
+        "visage",
+        "identité",
+        "inconnu"
+      ]
+    },
+    "tpl-face-detected": {
+      "megaId": "identity",
+      "subId": "faces",
+      "searchTags": [
+        "visage",
+        "identité",
+        "detecte"
+      ]
+    },
+    "tpl-face-count": {
+      "megaId": "identity",
+      "subId": "faces",
+      "searchTags": [
+        "visage",
+        "identité",
+        "comptage",
+        "visages"
+      ]
+    },
+    "tpl-blocked-plate": {
+      "megaId": "identity",
+      "subId": "plates",
+      "searchTags": [
+        "plaque",
+        "ANPR",
+        "bloquee"
+      ]
+    },
+    "tpl-unknown-plate": {
+      "megaId": "identity",
+      "subId": "plates",
+      "searchTags": [
+        "plaque",
+        "ANPR",
+        "inconnue"
+      ]
+    },
+    "tpl-plate-whitelist": {
+      "megaId": "identity",
+      "subId": "plates",
+      "searchTags": [
+        "plaque",
+        "ANPR",
+        "autorisee"
+      ]
+    },
+    "tpl-plate-detected": {
+      "megaId": "identity",
+      "subId": "plates",
+      "searchTags": [
+        "plaque",
+        "ANPR",
+        "detectee"
+      ]
+    },
+    "tpl-identity-correlation": {
+      "megaId": "identity",
+      "subId": "faces",
+      "searchTags": [
+        "visage",
+        "identité",
+        "correlation",
+        "identite"
+      ]
+    },
+    "tpl-intrusion": {
+      "megaId": "places",
+      "subId": "intrusion",
+      "searchTags": [
+        "intrusion",
+        "sécurité",
+        "accès",
+        "zone",
+        "interdite"
+      ]
+    },
+    "tpl-loitering": {
+      "megaId": "camera",
+      "subId": "schedules",
+      "searchTags": [
+        "loitering",
+        " présence prolongée",
+        "durée"
+      ]
+    },
+    "tpl-line-cross": {
+      "megaId": "places",
+      "subId": "passages",
+      "searchTags": [
+        "ligne",
+        "franchissement",
+        "passage"
+      ]
+    },
+    "tpl-theft-composite": {
+      "megaId": "objects",
+      "subId": "emergencies",
+      "searchTags": [
+        "urgence",
+        "incident",
+        "vol",
+        "suspect",
+        "composite"
+      ]
+    },
+    "tpl-abandoned-object": {
+      "megaId": "objects",
+      "subId": "objects_scene",
+      "searchTags": [
+        "objet",
+        "abandonné",
+        "abandonne"
+      ]
+    },
+    "tpl-object-appeared": {
+      "megaId": "people",
+      "subId": "presence",
+      "searchTags": [
+        "présence",
+        "zone",
+        "errance",
+        "apparition",
+        "objet"
+      ]
+    },
+    "tpl-object-disappeared": {
+      "megaId": "people",
+      "subId": "presence",
+      "searchTags": [
+        "présence",
+        "zone",
+        "errance",
+        "disparition",
+        "objet"
+      ]
+    },
+    "tpl-zone-presence": {
+      "megaId": "people",
+      "subId": "presence",
+      "searchTags": [
+        "présence",
+        "zone",
+        "errance",
+        "presence",
+        "dans",
+        "une"
+      ]
+    },
+    "tpl-zone-absence": {
+      "megaId": "people",
+      "subId": "presence",
+      "searchTags": [
+        "présence",
+        "zone",
+        "errance",
+        "absence",
+        "prolongee",
+        "dans",
+        "une"
+      ]
+    },
+    "tpl-immobility": {
+      "megaId": "people",
+      "subId": "presence",
+      "searchTags": [
+        "présence",
+        "zone",
+        "errance",
+        "immobilite",
+        "prolongee"
+      ]
+    },
+    "tpl-erratic-motion": {
+      "megaId": "people",
+      "subId": "presence",
+      "searchTags": [
+        "présence",
+        "zone",
+        "errance",
+        "mouvement",
+        "erratique"
+      ]
+    },
+    "tpl-wandering": {
+      "megaId": "people",
+      "subId": "presence",
+      "searchTags": [
+        "présence",
+        "zone",
+        "errance",
+        "prolongee"
+      ]
+    },
+    "tpl-traffic-pipeline": {
+      "megaId": "road",
+      "subId": "road_infractions",
+      "searchTags": [
+        "infraction",
+        "route",
+        "feu",
+        "pipeline",
+        "voiture",
+        "plaque",
+        "vitesse"
+      ]
+    },
+    "tpl-speeding-premium": {
+      "megaId": "road",
+      "subId": "road_infractions",
+      "searchTags": [
+        "infraction",
+        "route",
+        "feu",
+        "exces",
+        "vitesse"
+      ]
+    },
+    "tpl-line-cross-forbidden": {
+      "megaId": "road",
+      "subId": "road_infractions",
+      "searchTags": [
+        "infraction",
+        "route",
+        "feu",
+        "franchissement",
+        "ligne",
+        "continue"
+      ]
+    },
+    "tpl-plate-pipeline": {
+      "megaId": "road",
+      "subId": "road_infractions",
+      "searchTags": [
+        "infraction",
+        "route",
+        "feu",
+        "plaque",
+        "detectee",
+        "ocr"
+      ]
+    },
+    "tpl-congestion": {
+      "megaId": "road",
+      "subId": "road_infractions",
+      "searchTags": [
+        "infraction",
+        "route",
+        "feu",
+        "embouteillage"
+      ]
+    },
+    "tpl-accident-composite": {
+      "megaId": "objects",
+      "subId": "emergencies",
+      "searchTags": [
+        "accident",
+        "collision"
+      ]
+    },
+    "tpl-red-light": {
+      "megaId": "road",
+      "subId": "road_infractions",
+      "searchTags": [
+        "infraction",
+        "route",
+        "feu",
+        "rouge"
+      ]
+    },
+    "tpl-seatbelt": {
+      "megaId": "road",
+      "subId": "road_infractions",
+      "searchTags": [
+        "infraction",
+        "route",
+        "feu",
+        "ceinture",
+        "securite"
+      ]
+    },
+    "tpl-phone-driving": {
+      "megaId": "road",
+      "subId": "road_infractions",
+      "searchTags": [
+        "infraction",
+        "route",
+        "feu",
+        "telephone",
+        "volant"
+      ]
+    },
+    "tpl-object-removed": {
+      "megaId": "objects",
+      "subId": "objects_scene",
+      "searchTags": [
+        "objet",
+        "abandonné",
+        "retire"
+      ]
+    },
+    "tpl-proximity-alert": {
+      "megaId": "places",
+      "subId": "intrusion",
+      "searchTags": [
+        "intrusion",
+        "sécurité",
+        "accès",
+        "proximite",
+        "personne",
+        "vehicule"
+      ]
+    },
+    "tpl-multi-person-vehicle": {
+      "megaId": "places",
+      "subId": "intrusion",
+      "searchTags": [
+        "intrusion",
+        "sécurité",
+        "accès",
+        "plusieurs",
+        "personnes",
+        "vehicule"
+      ]
+    },
+    "tpl-loitering-entrance": {
+      "megaId": "places",
+      "subId": "intrusion",
+      "searchTags": [
+        "entrée",
+        "flânerie"
+      ]
+    },
+    "tpl-video-blur": {
+      "megaId": "camera",
+      "subId": "image_quality",
+      "searchTags": [
+        "caméra",
+        "image",
+        "video",
+        "floue"
+      ]
+    },
+    "tpl-video-darkness": {
+      "megaId": "camera",
+      "subId": "image_quality",
+      "searchTags": [
+        "caméra",
+        "image",
+        "video",
+        "sombre"
+      ]
+    },
+    "tpl-behavior-anomaly": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "comportement",
+        "geste",
+        "anomalie",
+        "comportementale"
+      ]
+    },
+    "tpl-crowd-count": {
+      "megaId": "people",
+      "subId": "crowd",
+      "searchTags": [
+        "foule",
+        "attroupement",
+        "seuil",
+        "atteint"
+      ]
+    },
+    "tpl-zone-enter": {
+      "megaId": "places",
+      "subId": "zones",
+      "searchTags": [
+        "zone",
+        "périmètre",
+        "spatial",
+        "entree",
+        "dans",
+        "une"
+      ]
+    },
+    "tpl-zone-exit": {
+      "megaId": "places",
+      "subId": "zones",
+      "searchTags": [
+        "zone",
+        "périmètre",
+        "spatial",
+        "sortie",
+        "une"
+      ]
+    },
+    "tpl-wrong-direction": {
+      "megaId": "places",
+      "subId": "passages",
+      "searchTags": [
+        "ligne",
+        "franchissement",
+        "passage",
+        "sens",
+        "interdit"
+      ]
+    },
+    "tpl-perimeter-breach": {
+      "megaId": "places",
+      "subId": "zones",
+      "searchTags": [
+        "zone",
+        "périmètre",
+        "spatial",
+        "intrusion",
+        "perimetrique"
+      ]
+    },
+    "tpl-unauthorized-exit": {
+      "megaId": "places",
+      "subId": "passages",
+      "searchTags": [
+        "ligne",
+        "franchissement",
+        "passage",
+        "sortie",
+        "non",
+        "autorisee"
+      ]
+    },
+    "tpl-intrusion-zone": {
+      "megaId": "places",
+      "subId": "intrusion",
+      "searchTags": [
+        "intrusion",
+        "sécurité",
+        "accès",
+        "zone",
+        "interdite"
+      ]
+    },
+    "tpl-zone-occupancy": {
+      "megaId": "places",
+      "subId": "zones",
+      "searchTags": [
+        "zone",
+        "périmètre",
+        "spatial",
+        "occupation",
+        "elevee"
+      ]
+    },
+    "tpl-multi-zone": {
+      "megaId": "places",
+      "subId": "zones",
+      "searchTags": [
+        "zone",
+        "périmètre",
+        "spatial",
+        "presence",
+        "multi",
+        "zones"
+      ]
+    },
+    "tpl-line-cross-bidir": {
+      "megaId": "places",
+      "subId": "passages",
+      "searchTags": [
+        "ligne",
+        "franchissement",
+        "passage",
+        "bidirectionnel"
+      ]
+    },
+    "tpl-dwell-exceeded": {
+      "megaId": "camera",
+      "subId": "schedules",
+      "searchTags": [
+        "durée",
+        "temps",
+        "présence"
+      ]
+    },
+    "tpl-speeding": {
+      "megaId": "road",
+      "subId": "speed",
+      "searchTags": [
+        "vitesse",
+        "km/h",
+        "exces",
+        "vehicule"
+      ]
+    },
+    "tpl-sudden-stop": {
+      "megaId": "road",
+      "subId": "speed",
+      "searchTags": [
+        "vitesse",
+        "km/h",
+        "arret",
+        "brusque"
+      ]
+    },
+    "tpl-running-person": {
+      "megaId": "people",
+      "subId": "gestures",
+      "searchTags": [
+        "course",
+        "fuite"
+      ]
+    },
+    "tpl-traffic-jam": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "trafic",
+        "circulation",
+        "véhicule",
+        "embouteillage"
+      ]
+    },
+    "tpl-illegal-parking": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "trafic",
+        "circulation",
+        "véhicule",
+        "stationnement",
+        "illegal"
+      ]
+    },
+    "tpl-slow-vehicle": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "trafic",
+        "circulation",
+        "véhicule",
+        "vehicule",
+        "trop",
+        "lent"
+      ]
+    },
+    "tpl-speed-threshold": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "trafic",
+        "circulation",
+        "véhicule",
+        "vitesse",
+        "seuil"
+      ]
+    },
+    "tpl-wrong-lane": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "trafic",
+        "circulation",
+        "véhicule",
+        "mauvaise",
+        "voie"
+      ]
+    },
+    "tpl-stopped-traffic": {
+      "megaId": "road",
+      "subId": "traffic",
+      "searchTags": [
+        "trafic",
+        "circulation",
+        "véhicule",
+        "vehicule",
+        "arrete",
+        "sur",
+        "voie"
+      ]
+    }
+  }
+}

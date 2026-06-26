@@ -246,38 +246,5 @@
     },
     "role_summary_fr": "Signale l'apparition d'un objet qui reste sans propriétaire dans la zone après le délai configuré.",
     "partial_status": "full"
-  },
-  {
-    "id": "tpl-crowd-density",
-    "name": "Densité de foule élevée",
-    "category": "behavior",
-    "severity": "warning",
-    "configSchema": {
-      "fields": [
-        {
-          "key": "camera_id",
-          "type": "camera",
-          "required": true,
-          "label": "Caméra"
-        }
-      ]
-    },
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "scene_density_high"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "warning"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Alerte quand la densité de la scène est élevée — gestion des flux et sécurité en espace public.",
-    "partial_status": "full"
   }
 ]

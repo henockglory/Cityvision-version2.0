@@ -56,7 +56,11 @@ test-go:
 test: test-ai test-go
 
 validate:
+	@node scripts/validate-catalog-navigation.mjs
 	@for i in 1 2 3 4 5 6 7 8; do bash scripts/validate-phase$$i.sh; done
+
+validate-catalog-nav:
+	node scripts/validate-catalog-navigation.mjs
 
 coverage-matrix:
 	python3 scripts/generate-rule-coverage-matrix.py

@@ -11,6 +11,7 @@ i18n.use(initReactI18next).init({
   lng: 'fr',
   fallbackLng: 'fr',
   interpolation: { escapeValue: false },
+  pluralSeparator: '_',
 });
 
 export { loadRuleGuides } from './loadRuleGuides';

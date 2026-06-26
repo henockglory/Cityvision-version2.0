@@ -226,8 +226,25 @@
     "catalogTab": {
       "available": "Available ({{count}})",
       "extended": "Coming soon ({{count}})",
-      "search": "Search rules…",
-      "emptyFilter": "No rules match."
+      "search": "Search… crowd, speed, intrusion",
+      "emptyFilter": "No rules match your search."
+    },
+    "catalogFilter": {
+      "all": "All",
+      "operational": "Ready to enable",
+      "partial": "Extra setup",
+      "partialExplain": "These rules need one extra step (module or calibration). Tap « What's needed » on the card.",
+      "partialBadge_one": "{{count}} to configure",
+      "partialBadge_other": "{{count}} to configure"
+    },
+    "catalogNav": {
+      "lead": "What do you want to watch?",
+      "maintenance": "Camera care"
+    },
+    "catalogFooter": "{{total}} rules · {{operational}} ready now · {{partial}} need extra setup",
+    "status": {
+      "operational": "Ready",
+      "ready": "Ready to enable"
     },
     "catalogCard": {
       "configure": "Configure",
@@ -236,10 +253,62 @@
       "soonBadge": "Soon",
       "showGuide": "Show illustrated guide",
       "hideGuide": "Hide illustration",
+      "showPrereqs": "What's needed",
+      "hidePrereqs": "Hide requirements",
       "disabling": "Disabling « {{name}} »…"
     },
     "catalogGroup": {
-      "variantsLabel": "Rules in this group"
+      "variantsLabel": "Rules in this group",
+      "rulesCount_one": "{{count}} rule",
+      "rulesCount_other": "{{count}} rules"
+    },
+    "catalogMega": {
+      "places": "Protect a place",
+      "placesHint": "Unauthorized entry, exit, or crossing a restricted area.",
+      "people": "Watch people",
+      "peopleHint": "Presence, unusual behavior, crowds or gatherings.",
+      "road": "Watch traffic",
+      "roadHint": "Speeding, congestion, red lights and violations.",
+      "identity": "Recognize someone or a vehicle",
+      "identityHint": "Known face, person of interest, or saved license plate.",
+      "objects": "Left objects and incidents",
+      "objectsHint": "Bag left behind, missing object, accident or emergency.",
+      "camera": "Camera and schedules",
+      "cameraHint": "Is the camera filming well? When should rules be active?"
+    },
+    "catalogSub": {
+      "intrusion": "Unauthorized entry",
+      "intrusionHint": "Someone enters a protected area or loiters near a door.",
+      "zones": "Zones on camera",
+      "zonesHint": "Enter, exit or stay in a zone you drew.",
+      "passages": "Forbidden crossings",
+      "passagesHint": "Cross a line, wrong way, or blocked access.",
+      "presence": "Extended presence",
+      "presenceHint": "Someone stays too long, wanders or stops moving.",
+      "gestures": "Gestures and behavior",
+      "gesturesHint": "Running, falling, fighting, climbing or suspicious gesture.",
+      "crowd": "Crowds and gatherings",
+      "crowdHint": "Too many people, queue, panic or gathering.",
+      "speed": "Speed",
+      "speedHint": "Vehicle too fast or sudden stop.",
+      "traffic": "Traffic flow",
+      "trafficHint": "Congestion, stopped vehicle or wrong lane.",
+      "road_infractions": "Road violations",
+      "road_infractionsHint": "Red light, seatbelt, phone while driving…",
+      "faces": "Faces",
+      "facesHint": "Recognized person or watchlist match.",
+      "plates": "License plates",
+      "platesHint": "Automatic plate reading for allow/block lists.",
+      "objects_scene": "Objects in view",
+      "objectsHint": "Abandoned, removed or new object in the scene.",
+      "emergencies": "Accidents and emergencies",
+      "emergenciesHint": "Accident, fight, vandalism or critical situation.",
+      "image_quality": "Image quality",
+      "image_qualityHint": "Blurry or dark image — is the camera working?",
+      "schedules": "Schedules",
+      "schedulesHint": "Activate the rule at set times or after a delay.",
+      "industrial_site": "Industrial sites",
+      "industrial_siteHint": "Monitoring tailored to industrial facilities."
     },
     "catalogCategory": {
       "security": "Security & intrusion",
