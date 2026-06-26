@@ -156,3 +156,9 @@ echo "  MinIO UI:     http://localhost:${MINIO_CONSOLE_PORT:-9004}"
 echo ""
 echo "Stop: bash scripts/stop-linux.sh"
 echo "Doctor: bash scripts/doctor-linux.sh"
+
+if [[ "${WATCH_BACKEND:-1}" != "0" ]]; then
+  stop_from_pid "$LOGDIR/watch-backend.pid"
+  start_bg watch-backend "$ROOT" "bash scripts/watch-backend.sh" "$LOGDIR" "$ENV_FILE"
+  echo "[OK] Backend watchdog (auto-restart on crash)"
+fi

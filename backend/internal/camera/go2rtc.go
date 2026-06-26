@@ -35,7 +35,7 @@ type StreamRegistration struct {
 
 func (g *Go2RTCClient) RegisterStream(ctx context.Context, name, rtspURL string) (*StreamRegistration, error) {
 	q := url.Values{}
-	q.Set("dst", name)
+	q.Set("name", name)
 	q.Set("src", rtspURL)
 	reqURL := g.baseURL + "/api/streams?" + q.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, nil)
@@ -59,6 +59,35 @@ func (g *Go2RTCClient) RegisterStream(ctx context.Context, name, rtspURL string)
 		PreviewHLS:    fmt.Sprintf("%s/api/stream.m3u8?src=%s", g.baseURL, url.QueryEscape(name)),
 		PreviewWebRTC: fmt.Sprintf("%s/stream.html?src=%s&mode=webrtc", g.baseURL, url.QueryEscape(name)),
 	}, nil
+}
+
+func (g *Go2RTCClient) PreviewForStream(name string) *StreamRegistration {
+	return &StreamRegistration{
+		Name:          name,
+		PreviewHLS:    fmt.Sprintf("%s/api/stream.m3u8?src=%s", g.baseURL, url.QueryEscape(name)),
+		PreviewWebRTC: fmt.Sprintf("%s/stream.html?src=%s&mode=webrtc", g.baseURL, url.QueryEscape(name)),
+	}
+}
+
+// UnregisterStream removes a stream from go2rtc (best-effort; offline cameras may leave stale entries).
+func (g *Go2RTCClient) UnregisterStream(ctx context.Context, name string) error {
+	q := url.Values{}
+	q.Set("src", name)
+	reqURL := g.baseURL + "/api/streams?" + q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode != http.StatusNotFound {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("go2rtc delete stream: %s", string(b))
+	}
+	return nil
 }
 
 func (g *Go2RTCClient) Health(ctx context.Context) error {

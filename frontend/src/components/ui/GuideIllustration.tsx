@@ -1,24 +1,20 @@
+import {
+  RULES_CATALOG_BANNER_IMAGE,
+  RULES_EMPTY_STATE_IMAGE,
+  STUDIO_GUIDE_IMAGE,
+  STUDIO_HOW_IT_WORKS_IMAGE,
+} from '@/components/rules/RuleGuideImage';
+
 interface GuideIllustrationProps {
   title: string;
   caption: string;
   variant?: 'rules' | 'spatial' | 'alerts' | 'live' | 'road-enforcement' | 'crowd' | 'identity' | 'composite' | 'incident' | 'default';
   src?: string;
+  /** guide = rail Guide; howItWorks = « Comment ça marche »; catalog = bannière page Règles; empty = état vide */
+  imageRole?: 'guide' | 'howItWorks' | 'catalog' | 'empty';
   compact?: boolean;
   className?: string;
 }
-
-const VARIANT_SRC: Record<string, string> = {
-  rules: '/guides/rules-banner.svg',
-  spatial: '/guides/spatial.svg',
-  alerts: '/guides/alerts.svg',
-  live: '/guides/live.svg',
-  'road-enforcement': '/guides/road-enforcement.svg',
-  crowd: '/guides/crowd.svg',
-  identity: '/guides/identity.svg',
-  composite: '/guides/composite.svg',
-  incident: '/guides/composite.svg',
-  default: '/guides/rules-banner.svg',
-};
 
 const VARIANT_ACCENT: Record<string, string> = {
   rules: '#10b981',
@@ -33,17 +29,37 @@ const VARIANT_ACCENT: Record<string, string> = {
   default: '#3b82f6',
 };
 
-/** Neutral inline guide — camera + zone + alert metaphor, no heavy text. */
+function resolveImageSrc(
+  imageRole: GuideIllustrationProps['imageRole'],
+  src?: string,
+): string | undefined {
+  if (src) return src;
+  if (imageRole === 'guide') return STUDIO_GUIDE_IMAGE;
+  if (imageRole === 'howItWorks') return STUDIO_HOW_IT_WORKS_IMAGE;
+  if (imageRole === 'catalog') return RULES_CATALOG_BANNER_IMAGE;
+  if (imageRole === 'empty') return RULES_EMPTY_STATE_IMAGE;
+  return undefined;
+}
+
 export default function GuideIllustration({
   title,
   caption,
   variant = 'default',
   src,
+  imageRole,
   compact = false,
   className = '',
 }: GuideIllustrationProps) {
   const accent = VARIANT_ACCENT[variant] ?? VARIANT_ACCENT.default;
-  const imageSrc = src ?? VARIANT_SRC[variant] ?? VARIANT_SRC.default;
+  const imageSrc = resolveImageSrc(imageRole, src);
+  const frameSize = compact ? 'w-20 h-20' : imageRole === 'empty' ? 'w-32 h-32' : 'w-28 h-28';
+  const usesTransparentPng = imageRole === 'catalog' || imageRole === 'guide' || imageRole === 'empty';
+  const imageFrameClass =
+    imageRole === 'howItWorks'
+      ? `${frameSize} bg-white/95`
+      : usesTransparentPng
+        ? `${frameSize} bg-transparent`
+        : `${frameSize} bg-cv-deep/60`;
 
   return (
     <div
@@ -52,13 +68,17 @@ export default function GuideIllustration({
       } ${className}`}
     >
       {imageSrc ? (
-        <img
-          src={imageSrc}
-          alt=""
-          className={`shrink-0 motion-safe:animate-fade-in object-contain ${
-            compact ? 'w-20 h-14' : 'w-28 h-20'
-          }`}
-        />
+        <div
+          className={`cv-studio-guide-image-frame shrink-0 rounded-lg ${imageFrameClass}`}
+        >
+          <img
+            src={imageSrc}
+            alt=""
+            className={`cv-studio-guide-image w-full h-full motion-safe:animate-fade-in object-contain ${
+              usesTransparentPng ? 'p-0' : imageRole === 'howItWorks' ? 'p-1' : 'p-1.5'
+            }`}
+          />
+        </div>
       ) : (
         <svg
           viewBox="0 0 120 80"

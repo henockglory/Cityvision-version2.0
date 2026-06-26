@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Inbox } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import GuideIllustration from '@/components/ui/GuideIllustration';
+import { RULES_EMPTY_STATE_IMAGE } from '@/components/rules/RuleGuideImage';
 
 interface EmptyStateProps {
   title?: string;
@@ -19,6 +20,27 @@ export default function EmptyState({
   guideVariant,
 }: EmptyStateProps) {
   const { t } = useTranslation();
+
+  if (guideVariant === 'rules') {
+    return (
+      <div className="py-10 px-6 animate-fade-in">
+        <div className="max-w-lg mx-auto flex gap-4 items-center rounded-xl border border-cv-border/60 bg-cv-deep/30 p-4">
+          <div className="cv-studio-guide-image-frame shrink-0 w-36 h-36 bg-transparent rounded-lg">
+            <img
+              src={RULES_EMPTY_STATE_IMAGE}
+              alt=""
+              className="cv-studio-guide-image w-full h-full object-contain motion-safe:animate-fade-in"
+            />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-cv-text text-sm">{title ?? t('emptyState.defaultTitle')}</p>
+            <p className="text-cv-muted mt-1 text-xs leading-relaxed">{hint ?? t('emptyState.defaultHint')}</p>
+          </div>
+        </div>
+        {action && <div className="mt-6 flex justify-center">{action}</div>}
+      </div>
+    );
+  }
 
   if (guideVariant) {
     return (

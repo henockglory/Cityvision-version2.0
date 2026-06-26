@@ -41,6 +41,18 @@ func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool}
 }
 
+// DefaultSiteID returns the first site for an organization (setup wizard creates one).
+func (s *Service) DefaultSiteID(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		SELECT id FROM sites WHERE org_id = $1 ORDER BY created_at ASC LIMIT 1`, orgID,
+	).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, ErrNotFound
+	}
+	return id, err
+}
+
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Organization, error) {
 	var o Organization
 	err := s.pool.QueryRow(ctx, `

@@ -54,8 +54,8 @@ export async function apiLogin(
   const orgId = me.data.org_id ?? null;
   syncAuthSession(data.access_token, orgId, data.refresh_token, data.expires_in);
 
-  let siteId: string | null = null;
-  if (orgId) {
+  let siteId: string | null = me.data.site_id ?? null;
+  if (!siteId && orgId) {
     try {
       const { data: cams } = await camerasApi.list(orgId);
       const first = cams?.[0] as { site_id?: string } | undefined;

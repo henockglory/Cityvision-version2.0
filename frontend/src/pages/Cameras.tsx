@@ -1,21 +1,25 @@
-import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isAxiosError } from 'axios';
 import {
   Plus, Wifi, KeyRound, MonitorPlay, ChevronRight, ChevronLeft,
-  Check, Loader2, MoreVertical, Camera as CameraIcon, MapPin, Shapes,
-  AlertCircle, Info, Radio,
+  Check, Loader2, Camera as CameraIcon,
+  AlertCircle, Info,
 } from 'lucide-react';
-import { camerasApi } from '@/api/client';
 import PageHeader from '@/components/ui/PageHeader';
 import VideoPlaceholder from '@/components/ui/VideoPlaceholder';
+import CameraCard from '@/components/camera/CameraCard';
+import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
+import { go2rtcStreamSrc } from '@/config/streams';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
-import DropdownPortal from '@/components/ui/DropdownPortal';
+import ConfirmDialog, { ToastStack } from '@/components/ui/ConfirmDialog';
 import {
   useCameras,
   useCreateCamera,
+  useDeleteCamera,
+  useUpdateCamera,
   useDiscoverCameras,
   useTestCameraStream,
   useProbeCamera,
@@ -28,6 +32,10 @@ import type { Camera, DiscoveredDevice } from '@/types';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
+function normalizeCameraHost(host: string): string {
+  return host.split('/')[0].trim().toLowerCase();
+}
+
 export default function Cameras() {
   const { t } = useTranslation();
   const { playClick } = useSound();
@@ -37,6 +45,8 @@ export default function Cameras() {
   const { data: cameras = [], isLoading, isError, refetch } = useCameras();
   const discoverMutation = useDiscoverCameras();
   const createMutation = useCreateCamera();
+  const updateMutation = useUpdateCamera();
+  const deleteMutation = useDeleteCamera();
   const testMutation = useTestCameraStream();
   const probeMutation = useProbeCamera();
   const previewMutation = useCameraPreview();
@@ -58,23 +68,71 @@ export default function Cameras() {
   const [testOk, setTestOk] = useState(false);
   const [detectedVendor, setDetectedVendor] = useState('generic');
   const [ffprobeInfo, setFfprobeInfo] = useState<{ video_codec?: string; width?: number; height?: number; fps?: number; error?: string; available?: boolean } | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewOk, setPreviewOk] = useState(false);
   const [wizardError, setWizardError] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<Camera | null>(null);
+  const [testingStreamId, setTestingStreamId] = useState<string | null>(null);
+  const [streamVersion, setStreamVersion] = useState<Record<string, number>>({});
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([]);
+
+  useEffect(() => {
+    if (deleteConfirm) {
+      setMenuOpen(null);
+      setMenuAnchorEl(null);
+    }
+  }, [deleteConfirm]);
+
+  const pushToast = (message: string) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, message }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  };
+
+  const findExistingCameraId = (host: string): string | null => {
+    const needle = normalizeCameraHost(host);
+    const match = cameras.find((c) => normalizeCameraHost(c.ip) === needle);
+    return createdCameraId ?? match?.id ?? null;
+  };
 
   const handleScan = async () => {
     playClick();
     setWizardError('');
     setDevices([]);
     setSelectedDevice(null);
+    const cidr = subnet.trim();
+    if (!cidr) {
+      setWizardError(t('cameras.wizard.scanInvalidCidr'));
+      return;
+    }
     try {
-      const { data } = await discoverMutation.mutateAsync(subnet);
+      const { data } = await discoverMutation.mutateAsync(cidr);
       const list = Array.isArray(data) ? data : [];
+      list.sort((a, b) => {
+        const score = (d: DiscoveredDevice) => (d.has_rtsp || d.rtsp_port ? 2 : 1);
+        const diff = score(b) - score(a);
+        return diff !== 0 ? diff : a.ip.localeCompare(b.ip);
+      });
       setDevices(list);
       if (list.length === 0) {
         setWizardError(t('cameras.wizard.noDevices'));
       }
-    } catch {
-      setWizardError(t('cameras.wizard.scanError'));
+    } catch (err) {
+      if (err instanceof Error && err.message === 'No organization') {
+        setWizardError(t('cameras.wizard.scanAuthError'));
+      } else if (isAxiosError(err) && err.code === 'ECONNABORTED') {
+        setWizardError(t('cameras.wizard.scanTimeout'));
+      } else if (isAxiosError(err) && err.response?.status === 429) {
+        setWizardError(t('cameras.wizard.scanRateLimit'));
+      } else if (isAxiosError(err) && err.response?.status === 400) {
+        const msg = typeof err.response.data === 'object' && err.response.data && 'error' in err.response.data
+          ? String((err.response.data as { error?: string }).error)
+          : '';
+        setWizardError(msg || t('cameras.wizard.scanInvalidCidr'));
+      } else {
+        setWizardError(t('cameras.wizard.scanError'));
+      }
     }
   };
 
@@ -82,7 +140,7 @@ export default function Cameras() {
     playClick();
     setWizardError('');
     setTestOk(false);
-    setPreviewUrl(null);
+    setPreviewOk(false);
 
     const useManual = Boolean(manualRtspUrl.trim());
     const host = useManual
@@ -96,7 +154,7 @@ export default function Cameras() {
       : undefined;
 
     if (!siteId || (!selectedDevice && !useManual)) {
-      setWizardError(t('cameras.wizard.noDevices'));
+      setWizardError(siteId ? t('cameras.wizard.noDevices') : t('cameras.wizard.missingSite'));
       return;
     }
 
@@ -113,14 +171,21 @@ export default function Cameras() {
           vendor: selectedVendor === 'auto' ? undefined : selectedVendor,
         });
         const best = probe.data.best;
-        vendor = (best?.vendor as 'hikvision' | 'dahua' | 'generic') ?? vendor;
-        detectedRtspPath = best?.rtsp_path ?? detectedRtspPath;
-        if ((probe.data as Record<string, unknown>).ffprobe) setFfprobeInfo((probe.data as Record<string, unknown>).ffprobe as typeof ffprobeInfo);
+        if (!best?.ok) {
+          setWizardError(t('cameras.wizard.connectionFailed'));
+          return;
+        }
+        vendor = (best.vendor as 'hikvision' | 'dahua' | 'generic') ?? vendor;
+        detectedRtspPath = best.rtsp_path ?? detectedRtspPath;
+        if ((probe.data as Record<string, unknown>).ffprobe) {
+          setFfprobeInfo((probe.data as Record<string, unknown>).ffprobe as typeof ffprobeInfo);
+        }
       }
 
       setDetectedVendor(vendor);
       const name = cameraName.trim() || (useManual ? `Camera ${host}` : `Camera ${host}`);
-      const { data } = await createMutation.mutateAsync({
+      const existingId = findExistingCameraId(host);
+      const payload = {
         site_id: siteId,
         name,
         host,
@@ -129,27 +194,83 @@ export default function Cameras() {
         port,
         vendor,
         rtsp_path: detectedRtspPath,
-        stream_profile: 'main',
-      });
-      const cam = data as Camera;
+        stream_profile: 'main' as const,
+      };
+
+      let cam: Camera;
+      if (existingId && orgId) {
+        const { data } = await updateMutation.mutateAsync({
+          cameraId: existingId,
+          body: {
+            name: payload.name,
+            host: payload.host,
+            port: payload.port,
+            username: payload.username,
+            password: payload.password,
+            vendor: payload.vendor,
+            rtsp_path: payload.rtsp_path,
+            stream_profile: payload.stream_profile,
+          },
+        });
+        cam = data as Camera;
+      } else {
+        const { data } = await createMutation.mutateAsync(payload);
+        cam = data as Camera;
+      }
       setCreatedCameraId(cam.id);
       setCameraName(name);
 
       const testResult = await testMutation.mutateAsync(cam.id);
-      if (testResult.data.reachable) {
+      if (testResult.data.video_ok) {
         setTestOk(true);
         playClick();
         try {
-          const preview = await previewMutation.mutateAsync(cam.id);
-          setPreviewUrl(preview.data.preview_webrtc);
+          await previewMutation.mutateAsync(cam.id);
+          setPreviewOk(true);
+          setStreamVersion((v) => ({ ...v, [cam.id]: (v[cam.id] ?? 0) + 1 }));
         } catch {
-          /* go2rtc optional — stream might still work */
+          setPreviewOk(false);
+          setWizardError(t('cameras.wizard.previewFailed'));
         }
       } else {
         setWizardError(t('cameras.wizard.connectionFailed'));
       }
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 400) {
+        const apiErr = typeof err.response.data === 'object' && err.response.data && 'error' in err.response.data
+          ? String((err.response.data as { error?: string }).error)
+          : '';
+        if (apiErr.includes('site_id')) {
+          setWizardError(t('cameras.wizard.missingSite'));
+        } else {
+          setWizardError(apiErr || t('cameras.wizard.createError'));
+        }
+      } else if (isAxiosError(err) && err.code === 'ECONNABORTED') {
+        setWizardError(t('cameras.wizard.scanTimeout'));
+      } else {
+        setWizardError(t('cameras.wizard.createError'));
+      }
+    }
+  };
+
+  const handleTestStream = async (cam: Camera) => {
+    if (!orgId || testingStreamId) return;
+    playClick();
+    setTestingStreamId(cam.id);
+    try {
+      await previewMutation.mutateAsync(cam.id);
+      const testResult = await testMutation.mutateAsync(cam.id);
+      if (testResult.data.video_ok) {
+        pushToast(t('cameras.streamTestOk', { name: cam.name }));
+        setStreamVersion((v) => ({ ...v, [cam.id]: (v[cam.id] ?? 0) + 1 }));
+        void refetch();
+      } else {
+        pushToast(t('cameras.streamTestFailed', { name: cam.name }));
+      }
     } catch {
-      setWizardError(t('cameras.wizard.createError'));
+      pushToast(t('cameras.streamTestFailed', { name: cam.name }));
+    } finally {
+      setTestingStreamId(null);
     }
   };
 
@@ -166,7 +287,7 @@ export default function Cameras() {
     setTestOk(false);
     setDetectedVendor('generic');
     setFfprobeInfo(null);
-    setPreviewUrl(null);
+    setPreviewOk(false);
     setWizardError('');
   };
 
@@ -271,7 +392,17 @@ export default function Cameras() {
                       }`}
                     >
                       <span className="font-mono text-sm">{d.ip}</span>
-                      <span className="text-xs text-cv-muted">{d.vendor ?? d.model ?? (d.reachable ? t('cameras.status.online') : t('cameras.status.offline'))}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {(d.has_rtsp || d.rtsp_port) ? (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                            RTSP{d.rtsp_port && d.rtsp_port !== 554 ? ` :${d.rtsp_port}` : ''}
+                          </span>
+                        ) : d.reachable ? (
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-cv-muted bg-cv-deep/60 border border-cv-border/50 px-2 py-0.5 rounded-md">
+                            HTTP
+                          </span>
+                        ) : null}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -322,16 +453,18 @@ export default function Cameras() {
             </div>
           )}
 
-          {step === 2 && selectedDevice && (
+          {step === 2 && (selectedDevice || manualRtspUrl.trim()) && (
             <div className="max-w-lg mx-auto space-y-4">
-              <p className="text-sm text-cv-muted text-center font-mono">{selectedDevice.ip}</p>
+              <p className="text-sm text-cv-muted text-center font-mono">
+                {selectedDevice?.ip ?? manualRtspUrl.trim().replace(/^rtsp:\/\//, '').split('/')[0]}
+              </p>
               <div>
                 <label className="cv-label">{t('cameras.wizard.cameraName')}</label>
                 <input
                   value={cameraName}
                   onChange={(e) => setCameraName(e.target.value)}
                   className="cv-input"
-                  placeholder={`Camera ${selectedDevice.ip}`}
+                  placeholder={selectedDevice ? `Camera ${selectedDevice.ip}` : t('cameras.wizard.cameraName')}
                 />
               </div>
               <div>
@@ -354,15 +487,26 @@ export default function Cameras() {
               <button
                 type="button"
                 onClick={() => void handleCreateAndTest()}
-                disabled={createMutation.isPending || testMutation.isPending || !siteId}
+                disabled={
+                  createMutation.isPending ||
+                  updateMutation.isPending ||
+                  testMutation.isPending ||
+                  previewMutation.isPending ||
+                  !siteId
+                }
                 className="cv-btn-primary w-full"
               >
-                {(createMutation.isPending || testMutation.isPending) ? (
+                {(createMutation.isPending || updateMutation.isPending || testMutation.isPending || previewMutation.isPending) ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <KeyRound className="w-4 h-4" />
                 )}
-                {t('cameras.wizard.testConnection')}
+                {findExistingCameraId(
+                  selectedDevice?.ip ??
+                    manualRtspUrl.trim().replace(/^rtsp:\/\//, '').split('/')[0].split(':')[0],
+                )
+                  ? t('cameras.wizard.retryConnection')
+                  : t('cameras.wizard.testConnection')}
               </button>
               {testOk && (
                 <div className="space-y-2">
@@ -418,15 +562,17 @@ export default function Cameras() {
           {step === 4 && (
             <div className="max-w-3xl mx-auto">
               <p className="text-sm text-cv-muted text-center mb-4">{t('cameras.wizard.preview')}</p>
-              {previewUrl ? (
-                <iframe
-                  title="camera-preview"
-                  src={previewUrl}
-                  className="w-full aspect-video rounded-xl border border-cv-border bg-black/40"
-                  allow="autoplay; fullscreen"
+              {previewOk && createdCameraId ? (
+                <Go2RtcPlayer
+                  className="aspect-video w-full rounded-xl border border-cv-border"
+                  src={go2rtcStreamSrc({ id: createdCameraId }) ?? undefined}
+                  label={cameraName}
                 />
               ) : (
-                <VideoPlaceholder label={selectedDevice?.ip ?? cameraName} live={testOk} />
+                <VideoPlaceholder label={selectedDevice?.ip ?? cameraName} live={false} />
+              )}
+              {!previewOk && testOk && (
+                <p className="text-sm text-red-400 text-center mt-3">{t('cameras.wizard.previewFailed')}</p>
               )}
             </div>
           )}
@@ -446,7 +592,7 @@ export default function Cameras() {
                 (step === 1 && !selectedDevice && !manualRtspUrl.trim()) ||
                 (step === 2 && !testOk) ||
                 (step === 3 && !createdCameraId) ||
-                (step === 4 && !createdCameraId)
+                (step === 4 && !previewOk)
               }
               onClick={() => {
                 playClick();
@@ -468,7 +614,7 @@ export default function Cameras() {
         </div>
       )}
 
-      {cameras.length === 0 ? (
+      {!showWizard && cameras.length === 0 ? (
         <EmptyState
           title={t('cameras.empty')}
           hint={t('cameras.emptyHint')}
@@ -480,70 +626,78 @@ export default function Cameras() {
             </button>
           }
         />
-      ) : (
-        <div id="cameras-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      ) : !showWizard ? (
+        <div id="cameras-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {cameras.map((cam) => (
-            <div key={cam.id} className="cv-card-hover overflow-visible">
-              <VideoPlaceholder label={cam.name} live={cam.status !== 'offline'} className="rounded-none rounded-t-xl" />
-              <div className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-medium">{cam.name}</h3>
-                    <p className="text-xs text-cv-muted font-mono mt-0.5">{cam.ip}</p>
-                  </div>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      className="text-cv-muted hover:text-cv-accent p-1"
-                      onClick={(e) => {
-                        if (menuOpen === cam.id) {
-                          setMenuOpen(null);
-                          setMenuAnchorEl(null);
-                        } else {
-                          setMenuOpen(cam.id);
-                          setMenuAnchorEl(e.currentTarget);
-                        }
-                      }}
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-                    <DropdownPortal
-                      anchorRef={menuAnchorRef}
-                      open={menuOpen === cam.id}
-                      onClose={() => { setMenuOpen(null); setMenuAnchorEl(null); }}
-                    >
-                      <Link to={`/live?camera=${cam.id}`} className="block px-3 py-2 text-xs hover:bg-cv-accent/5" onClick={() => setMenuOpen(null)}>
-                        <MonitorPlay className="w-3.5 h-3.5 inline mr-2" />Live
-                      </Link>
-                      <Link to="/map" className="block px-3 py-2 text-xs hover:bg-cv-accent/5" onClick={() => setMenuOpen(null)}>
-                        <MapPin className="w-3.5 h-3.5 inline mr-2" />Carte
-                      </Link>
-                      <Link to={`/zones?camera=${cam.id}`} className="block px-3 py-2 text-xs hover:bg-cv-accent/5" onClick={() => setMenuOpen(null)}>
-                        <Shapes className="w-3.5 h-3.5 inline mr-2" />{t('nav.zoneEditor')}
-                      </Link>
-                      <button
-                        type="button"
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-cv-accent/5"
-                        onClick={() => {
-                          if (!orgId) return;
-                          void camerasApi.testStream(orgId, cam.id);
-                          setMenuOpen(null);
-                        }}
-                      >
-                        <Radio className="w-3.5 h-3.5 inline mr-2" />Tester flux
-                      </button>
-                    </DropdownPortal>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <span className="text-xs text-cv-muted">{cam.location}</span>
-                  {statusBadge(cam.status)}
-                </div>
-              </div>
-            </div>
+            <CameraCard
+              key={`${cam.id}-${streamVersion[cam.id] ?? 0}`}
+              camera={cam}
+              menuOpen={menuOpen === cam.id}
+              menuAnchorRef={menuAnchorRef}
+              menuAnchorEl={menuAnchorEl}
+              onMenuToggle={(el) => {
+                if (el) {
+                  setMenuOpen(cam.id);
+                  setMenuAnchorEl(el);
+                } else {
+                  setMenuOpen(null);
+                  setMenuAnchorEl(null);
+                }
+              }}
+              onMenuClose={() => { setMenuOpen(null); setMenuAnchorEl(null); }}
+              onDelete={() => {
+                setMenuOpen(null);
+                setMenuAnchorEl(null);
+                playClick();
+                setDeleteConfirm(cam);
+              }}
+              onTestStream={() => void handleTestStream(cam)}
+              testingStream={testingStreamId === cam.id}
+              statusBadge={statusBadge(cam.status)}
+            />
           ))}
         </div>
-      )}
+      ) : null}
+      <ConfirmDialog
+        open={deleteConfirm != null}
+        title={t('cameras.deleteConfirmTitle')}
+        message={t('cameras.deleteConfirmMessage', { name: deleteConfirm?.name ?? '' })}
+        detail={deleteConfirm?.ip}
+        confirmLabel={t('cameras.delete')}
+        danger
+        loading={deleteMutation.isPending}
+        loadingLabel={t('cameras.deleting')}
+        onCancel={() => {
+          if (deleteMutation.isPending) return;
+          setDeleteConfirm(null);
+        }}
+        onConfirm={() => {
+          const camera = deleteConfirm;
+          if (!camera?.id || deleteMutation.isPending) return;
+          deleteMutation.mutate(camera.id, {
+            onSuccess: () => {
+              setDeleteConfirm(null);
+              pushToast(t('cameras.deleteSuccess', { name: camera.name }));
+            },
+            onError: (err) => {
+              if (err instanceof Error && err.message === 'No organization') {
+                pushToast(t('cameras.wizard.scanAuthError'));
+                return;
+              }
+              const detail =
+                isAxiosError(err) && typeof err.response?.data === 'object' && err.response.data !== null
+                  ? String((err.response.data as { error?: string }).error ?? '')
+                  : '';
+              pushToast(
+                detail
+                  ? `${t('cameras.deleteFailed', { name: camera.name })} (${detail})`
+                  : t('cameras.deleteFailed', { name: camera.name }),
+              );
+            },
+          });
+        }}
+      />
+      <ToastStack toasts={toasts} />
     </div>
   );
 }

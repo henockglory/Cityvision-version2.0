@@ -15,15 +15,15 @@ interface WizardStepsProps {
 
 export default function WizardSteps({ steps, current, className = '' }: WizardStepsProps) {
   return (
-    <div className={`flex items-center justify-center gap-2 flex-wrap ${className}`}>
+    <div className={`flex items-center justify-center gap-1 sm:gap-2 flex-nowrap overflow-x-auto pb-1 ${className}`}>
       {steps.map((s, idx) => {
         const done = current > s.n;
         const active = current === s.n;
         const Icon = s.icon;
         return (
-          <div key={s.n} className="flex items-center gap-2">
+          <div key={s.n} className="flex items-center gap-1 sm:gap-2 shrink-0">
             <div
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
                 active
                   ? 'border-cv-accent bg-cv-accent/15 text-cv-accent'
                   : done
@@ -38,10 +38,10 @@ export default function WizardSteps({ steps, current, className = '' }: WizardSt
               >
                 {done ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
               </span>
-              <span className="hidden sm:inline">{s.label}</span>
+              <span className="truncate max-w-[7rem] sm:max-w-none">{s.label}</span>
             </div>
             {idx < steps.length - 1 && (
-              <div className={`w-6 h-px ${done ? 'bg-emerald-500/50' : 'bg-cv-border/60'}`} />
+              <div className={`w-4 sm:w-6 h-px shrink-0 ${done ? 'bg-emerald-500/50' : 'bg-cv-border/60'}`} />
             )}
           </div>
         );

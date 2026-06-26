@@ -51,7 +51,7 @@ export default function SystemPanel() {
   const refreshStatusQuiet = useCallback(async (preserveMode?: StartMode) => {
     try {
       const { data } = await systemApi.status();
-      setStatus((prev) => {
+      setStatus((_prev) => {
         if (!preserveMode) return data;
         return {
           ...data,

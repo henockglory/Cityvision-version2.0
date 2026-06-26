@@ -1,4 +1,7 @@
 import type { Rule } from '@/types';
+import type { TFunction } from 'i18next';
+import { narrateConditionSummary } from '@/lib/conditionNarrative';
+import type { NarrativeContext } from '@/lib/conditionNarrative';
 
 type CondNode = {
   op?: string;
@@ -7,47 +10,43 @@ type CondNode = {
   children?: CondNode[];
 };
 
-function walkCondition(node: CondNode | undefined, visit: (n: CondNode) => void) {
-  if (!node) return;
-  visit(node);
-  for (const c of node.children ?? []) walkCondition(c, visit);
-}
-
-const OP_LABELS: Record<string, string> = {
-  ET: 'ET',
-  AND: 'ET',
-  OU: 'OU',
-  OR: 'OU',
-  EQ: 'égal à',
-  GT: 'supérieur à',
-  LT: 'inférieur à',
-  IN_ZONE: 'dans la zone',
-  CROSS_LINE: 'franchit la ligne',
-  CONTAINS: 'contient',
-};
-
 /** Human-readable explanation of why a rule would trigger. */
-export function explainRule(rule: Rule): string {
+export function explainRule(
+  rule: Rule,
+  t?: TFunction,
+  ctx: NarrativeContext = {},
+): string {
   const def = rule.definition ?? {};
   const condition = (def.condition ?? def.conditions) as CondNode | undefined;
   const bindings = (def.bindings ?? {}) as Record<string, unknown>;
 
-  const parts: string[] = [];
-  walkCondition(condition, (node) => {
-    const op = String(node.op ?? '').toUpperCase();
-    if (['ET', 'AND', 'OU', 'OR', 'NON', 'NOT'].includes(op)) return;
-    const field = node.field ?? '';
-    const label = OP_LABELS[op] ?? op;
-    let val = node.value;
-    if (field === 'zone_id' && bindings.zone_name) val = bindings.zone_name;
-    if (field === 'line_id' && bindings.line_name) val = bindings.line_name;
-    if (field === 'duration_seconds' && bindings.duration_seconds) val = bindings.duration_seconds;
-    parts.push(`${field} ${label} ${String(val ?? '')}`.trim());
-  });
+  const enrichedCtx: NarrativeContext = {
+    ...ctx,
+    zoneName: ctx.zoneName ?? (bindings.zone_name as string | undefined),
+    lineName: ctx.lineName ?? (bindings.line_name as string | undefined),
+    classFilter: ctx.classFilter ?? (bindings.class_filter as string | undefined),
+  };
 
-  if (parts.length === 0) {
+  if (t && condition) {
+    return narrateConditionSummary(condition, t, enrichedCtx);
+  }
+
+  if (!condition) {
     return rule.description ?? 'Cette règle surveille les événements configurés sur la caméra sélectionnée.';
   }
+
+  const parts: string[] = [];
+  const walk = (node: CondNode | undefined) => {
+    if (!node) return;
+    const op = String(node.op ?? '').toUpperCase();
+    if (['ET', 'AND', 'OU', 'OR', 'NON', 'NOT', 'SEQUENCE'].includes(op)) {
+      for (const c of node.children ?? []) walk(c);
+      return;
+    }
+    parts.push(`${node.field} ${node.op} ${String(node.value ?? '')}`);
+  };
+  walk(condition);
+  if (parts.length === 0) return rule.description ?? '';
   return `Alerte lorsque : ${parts.join(' ; ')}.`;
 }
 
@@ -55,9 +54,15 @@ export function conditionNodesFromDefinition(definition: Record<string, unknown>
   const condition = (definition.condition ?? definition.conditions) as CondNode | undefined;
   if (!condition) return [];
   const nodes: CondNode[] = [];
-  walkCondition(condition, (n) => {
-    const op = String(n.op ?? '').toUpperCase();
-    if (!['ET', 'AND', 'OU', 'OR', 'NON', 'NOT'].includes(op)) nodes.push(n);
-  });
+  const walk = (node: CondNode | undefined) => {
+    if (!node) return;
+    const op = String(node.op ?? '').toUpperCase();
+    if (['ET', 'AND', 'OU', 'OR', 'NON', 'NOT', 'SEQUENCE'].includes(op)) {
+      for (const c of node.children ?? []) walk(c);
+      return;
+    }
+    nodes.push(node);
+  };
+  walk(condition);
   return nodes;
 }

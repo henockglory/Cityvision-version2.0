@@ -1,25 +1,32 @@
+import { Suspense, lazy } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppLayout from '@/components/layout/AppLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import SetupGuard from '@/components/SetupGuard';
 import Setup from '@/pages/Setup';
 import Login from '@/pages/Login';
-import DemoCenter from '@/pages/DemoCenter';
 import Dashboard from '@/pages/Dashboard';
 import Cameras from '@/pages/Cameras';
 import Users from '@/pages/Users';
-import Rules from '@/pages/Rules';
 import Alerts from '@/pages/Alerts';
 import Events from '@/pages/Events';
 import LiveView from '@/pages/LiveView';
-import VideoWall from '@/pages/VideoWall';
-import Map from '@/pages/Map';
-import ZoneEditor from '@/pages/ZoneEditor';
 import Settings from '@/pages/Settings';
 import Audit from '@/pages/Audit';
-import SystemHealth from '@/pages/SystemHealth';
+import LoadingState from '@/components/ui/LoadingState';
 import { RouteErrorPage } from '@/components/ErrorBoundary';
 import { useAuthStore } from '@/stores/authStore';
+
+const Rules = lazy(() => import('@/pages/Rules'));
+const Map = lazy(() => import('@/pages/Map'));
+const ZoneEditor = lazy(() => import('@/pages/ZoneEditor'));
+const VideoWall = lazy(() => import('@/pages/VideoWall'));
+const SystemHealth = lazy(() => import('@/pages/SystemHealth'));
+const DemoCenter = lazy(() => import('@/pages/DemoCenter'));
+
+function LazyPage({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<LoadingState />}>{children}</Suspense>;
+}
 
 function AuthRedirect({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -63,7 +70,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorPage />,
     children: [
       { index: true, element: <Dashboard /> },
-      { path: 'demo', element: <DemoCenter /> },
+      { path: 'demo', element: <LazyPage><DemoCenter /></LazyPage> },
       {
         path: 'cameras',
         element: (
@@ -73,13 +80,13 @@ export const router = createBrowserRouter([
         ),
       },
       { path: 'live', element: <LiveView /> },
-      { path: 'video-wall', element: <VideoWall /> },
-      { path: 'map', element: <Map /> },
+      { path: 'video-wall', element: <LazyPage><VideoWall /></LazyPage> },
+      { path: 'map', element: <LazyPage><Map /></LazyPage> },
       {
         path: 'zones',
         element: (
           <ProtectedRoute roles={['admin', 'operator']}>
-            <ZoneEditor />
+            <LazyPage><ZoneEditor /></LazyPage>
           </ProtectedRoute>
         ),
       },
@@ -87,7 +94,7 @@ export const router = createBrowserRouter([
         path: 'rules',
         element: (
           <ProtectedRoute roles={['admin', 'operator']}>
-            <Rules />
+            <LazyPage><Rules /></LazyPage>
           </ProtectedRoute>
         ),
       },
@@ -113,7 +120,7 @@ export const router = createBrowserRouter([
         path: 'health',
         element: (
           <ProtectedRoute roles={['admin', 'operator']}>
-            <SystemHealth />
+            <LazyPage><SystemHealth /></LazyPage>
           </ProtectedRoute>
         ),
       },

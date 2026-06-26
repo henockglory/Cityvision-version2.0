@@ -28,6 +28,7 @@ export interface DiscoveredDevice {
   port?: number;
   reachable?: boolean;
   rtsp_port?: number;
+  has_rtsp?: boolean;
   vendor?: string;
   model?: string;
 }

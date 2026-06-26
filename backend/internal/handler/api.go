@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -155,11 +156,17 @@ func (a *API) Me(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	resp := map[string]interface{}{
 		"user":   u,
 		"role":   claims.Role,
 		"org_id": claims.OrgID,
-	})
+	}
+	if a.Orgs != nil && claims.OrgID != nil {
+		if siteID, err := a.Orgs.DefaultSiteID(r.Context(), *claims.OrgID); err == nil {
+			resp["site_id"] = siteID.String()
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *API) Refresh(w http.ResponseWriter, r *http.Request) {
@@ -281,13 +288,40 @@ func (a *API) GetCamera(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cam)
 }
 
+func (a *API) DeleteCamera(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "cameraID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := a.Cameras.Delete(r.Context(), orgID, id); errors.Is(err, camera.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	cid := id.String()
+	if claims := middleware.GetClaims(r.Context()); claims != nil {
+		_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
+			OrgID: &orgID, UserID: &claims.UserID, Action: "camera.delete",
+			ResourceType: "camera", ResourceID: &cid,
+			IPAddress: parseIP(r), UserAgent: r.UserAgent(),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "id": cid})
+}
+
 func (a *API) DiscoverCameras(w http.ResponseWriter, r *http.Request) {
-	cidr := r.URL.Query().Get("cidr")
+	cidr := strings.TrimSpace(r.URL.Query().Get("cidr"))
 	if cidr == "" {
 		writeError(w, http.StatusBadRequest, "cidr query param required")
 		return
 	}
-	devices, err := camera.ScanSubnet(r.Context(), cidr, 2*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	devices, err := camera.ScanSubnet(ctx, cidr, 800*time.Millisecond)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -305,7 +339,7 @@ func (a *API) ProbeCamera(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	result := camera.ProbeCredentials(r.Context(), req, 4*time.Second)
+	result := camera.ProbeCredentials(r.Context(), req, 8*time.Second)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -316,22 +350,18 @@ func (a *API) CameraPreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	rtspURL, err := a.Cameras.BuildRTSP(r.Context(), orgID, id)
+	_, err = a.Cameras.ReOnboardCamera(r.Context(), orgID, id)
 	if errors.Is(err, camera.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "rtsp build failed")
-		return
-	}
-	client := camera.NewGo2RTCClient()
-	streamName := "cam-" + id.String()
-	reg, err := client.RegisterStream(r.Context(), streamName, rtspURL)
-	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	streamName := "cam-" + id.String()
+	client := camera.NewGo2RTCClient()
+	reg := client.PreviewForStream(streamName)
 	writeJSON(w, http.StatusOK, reg)
 }
 

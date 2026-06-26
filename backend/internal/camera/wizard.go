@@ -19,13 +19,15 @@ type ProbeRequest struct {
 }
 
 type ProbeCandidate struct {
-	Vendor   string `json:"vendor"`
-	Profile  string `json:"profile"`
-	RTSPPath string `json:"rtsp_path,omitempty"`
-	URL      string `json:"url"`
-	OK       bool   `json:"ok"`
-	LatencyMS int64 `json:"latency_ms,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Vendor    string `json:"vendor"`
+	Profile   string `json:"profile"`
+	RTSPPath  string `json:"rtsp_path,omitempty"`
+	URL       string `json:"url"`
+	OK        bool   `json:"ok"`
+	Reachable bool   `json:"reachable,omitempty"`
+	VideoOK   bool   `json:"video_ok,omitempty"`
+	LatencyMS int64  `json:"latency_ms,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 type ProbeResult struct {
@@ -59,13 +61,13 @@ func DefaultProbePaths(vendor string, channel int) []struct {
 		return []struct {
 			Vendor, Profile, Path string
 		}{
-			{"hikvision", "main", ""},
-			{"dahua", "main", ""},
-			{"generic", "main", "/stream"},
 			{"generic", "main", "/live"},
+			{"dahua", "main", ""},
+			{"generic", "main", "/cam/realmonitor?channel=1&subtype=0"},
+			{"hikvision", "main", ""},
+			{"generic", "main", "/stream"},
 			{"generic", "main", "/h264"},
 			{"generic", "main", "/Streaming/Channels/101"},
-			{"generic", "main", "/cam/realmonitor?channel=1&subtype=0"},
 		}
 	}
 }
@@ -78,11 +80,11 @@ func ProbeCredentials(ctx context.Context, req ProbeRequest, timeout time.Durati
 		req.Channel = 1
 	}
 	if timeout == 0 {
-		timeout = 4 * time.Second
+		timeout = 8 * time.Second
 	}
 
 	vendor := req.Vendor
-	if vendor == "" {
+	if vendor == "" || vendor == "auto" {
 		vendor = "auto"
 	}
 
@@ -91,29 +93,39 @@ func ProbeCredentials(ctx context.Context, req ProbeRequest, timeout time.Durati
 
 	var best *ProbeCandidate
 	for _, p := range paths {
+		select {
+		case <-ctx.Done():
+			result.Best = best
+			return result
+		default:
+		}
+
 		url := BuildRTSPURL(p.Vendor, req.Host, req.Port, req.Channel, req.Username, req.Password, p.Path, p.Profile)
 		test := TestStream(ctx, url, timeout)
 		cand := ProbeCandidate{
-			Vendor:  p.Vendor,
-			Profile: p.Profile,
-			RTSPPath: p.Path,
-			URL:     MaskRTSP(url),
-			OK:      test.Reachable,
+			Vendor:    p.Vendor,
+			Profile:   p.Profile,
+			RTSPPath:  p.Path,
+			URL:       MaskRTSP(url),
+			Reachable: test.Reachable,
+			VideoOK:   test.VideoOK,
+			OK:        test.VideoOK,
 			LatencyMS: test.LatencyMS,
-			Error:   test.Error,
+			Error:     test.Error,
 		}
 		result.Candidates = append(result.Candidates, cand)
 		if cand.OK && (best == nil || cand.LatencyMS < best.LatencyMS) {
 			copy := cand
 			best = &copy
+			// Chemin vidéo validé — pas besoin d'essayer les autres URLs
+			break
 		}
 	}
 	result.Best = best
-	// Run ffprobe on best candidate for deeper validation (async-safe, 7s timeout)
+	// ffprobe détaillé sur le meilleur candidat (codec, résolution)
 	if best != nil {
-		// Reconstruct the actual URL (without masking) from request params
 		ffURL := BuildRTSPURL(best.Vendor, req.Host, req.Port, req.Channel, req.Username, req.Password, best.RTSPPath, best.Profile)
-		ffResult := ProbeStreamFfprobe(ctx, ffURL, 7*time.Second)
+		ffResult := ProbeStreamFfprobe(ctx, ffURL, 12*time.Second)
 		result.Ffprobe = &ffResult
 	}
 	return result

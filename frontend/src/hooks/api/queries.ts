@@ -20,13 +20,20 @@ import {
   mapUser,
   ensureArray,
 } from '@/api/mappers';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, getAuthCredentials } from '@/stores/authStore';
 import type { AlertFilters, DashboardSummary, SystemHealthMetric } from '@/types';
+import { isAuthError } from '@/lib/apiErrors';
 
 const STALE = 30_000;
 
+function resolveOrgId(): string | null {
+  return useAuthStore.getState().orgId ?? getAuthCredentials().orgId;
+}
+
 function useOrgId(): string | null {
-  return useAuthStore((s) => s.orgId);
+  const storeOrg = useAuthStore((s) => s.orgId);
+  if (storeOrg) return storeOrg;
+  return getAuthCredentials().orgId;
 }
 
 export const queryKeys = {
@@ -46,10 +53,18 @@ export function useSetupStatus() {
     queryKey: queryKeys.setup,
     queryFn: async () => {
       const { data } = await setupApi.status();
+      if (data.initialized) {
+        localStorage.setItem('cv_setup_initialized', '1');
+      }
       return data;
     },
-    retry: 1,
+    retry: (failureCount, error) => {
+      if (isAuthError(error)) return false;
+      return failureCount < 3;
+    },
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 5_000),
     staleTime: 60_000,
+    networkMode: 'always',
   });
 }
 
@@ -59,6 +74,7 @@ export function useInitializeSetup() {
     mutationFn: (params: { orgName: string; adminEmail: string; adminPassword: string }) =>
       setupApi.initialize(params.orgName, params.adminEmail, params.adminPassword),
     onSuccess: () => {
+      localStorage.setItem('cv_setup_initialized', '1');
       void qc.invalidateQueries({ queryKey: queryKeys.setup });
     },
   });
@@ -84,6 +100,44 @@ export function useCreateCamera() {
     mutationFn: (body: Parameters<typeof camerasApi.create>[1]) => {
       if (!orgId) throw new Error('No organization');
       return camerasApi.create(orgId, body);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.cameras });
+    },
+  });
+}
+
+export function useDeleteCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (cameraId: string) => {
+      const orgId = resolveOrgId();
+      if (!orgId) throw new Error('No organization');
+      const { data } = await camerasApi.delete(orgId, cameraId);
+      return data;
+    },
+    onSuccess: (_data, cameraId) => {
+      qc.setQueryData(queryKeys.cameras, (old: ReturnType<typeof mapCamera>[] | undefined) =>
+        old ? old.filter((c) => c.id !== cameraId) : old,
+      );
+      void qc.invalidateQueries({ queryKey: queryKeys.cameras });
+    },
+  });
+}
+
+export function useUpdateCamera() {
+  const orgId = useOrgId();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      cameraId,
+      body,
+    }: {
+      cameraId: string;
+      body: Parameters<typeof camerasApi.update>[2];
+    }) => {
+      if (!orgId) throw new Error('No organization');
+      return camerasApi.update(orgId, cameraId, body);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.cameras });

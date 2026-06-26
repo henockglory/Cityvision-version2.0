@@ -18,8 +18,10 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
-    }
+      "@/*": ["./src/*"],
+      "@shared/*": ["../shared/*"]
+    },
+    "resolveJsonModule": true
   },
   "include": ["src"]
 }

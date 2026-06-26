@@ -78,7 +78,7 @@ services:
       - "${GO2RTC_WEBRTC_PORT:-8555}:8555"
       - "${GO2RTC_WEBRTC_PORT:-8555}:8555/udp"
     volumes:
-      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+      - ./go2rtc.yaml:/config/go2rtc.yaml
       - ${VIDEOS_PATH:-./data/videos}:/videos:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:1984/api || exit 1"]

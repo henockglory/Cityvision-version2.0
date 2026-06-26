@@ -12,6 +12,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
     },
   },
   server: {
@@ -22,10 +23,14 @@ export default defineConfig({
         target: 'http://localhost:8081',
         changeOrigin: true,
         ws: true,
+        timeout: 0,
+        proxyTimeout: 120_000,
       },
       '/health': {
         target: 'http://localhost:8081',
         changeOrigin: true,
+        timeout: 0,
+        proxyTimeout: 30_000,
       },
       '/go2rtc': {
         target: 'http://localhost:1984',

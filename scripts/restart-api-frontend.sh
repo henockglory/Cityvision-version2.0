@@ -26,8 +26,15 @@ if [[ -z "$GO_BIN" ]]; then
   exit 1
 fi
 
-start_bg backend "$ROOT/backend" "$GO_BIN run ./cmd/api" "$LOGDIR" "$ENV_FILE"
-sleep 10
+echo "[INFO] Building backend binary..."
+mkdir -p "$ROOT/backend/bin"
+if ! (cd "$ROOT/backend" && "$GO_BIN" build -o "$ROOT/backend/bin/citevision-api" ./cmd/api); then
+  echo "[FAIL] Backend build failed" >&2
+  exit 1
+fi
+
+start_bg backend "$ROOT/backend" "$ROOT/backend/bin/citevision-api" "$LOGDIR" "$ENV_FILE"
+sleep 5
 
 # WSL: ensure rollup native binding when node_modules was installed on Windows
 if [[ "$(uname -s)" == "Linux" ]] && [[ ! -d "$ROOT/frontend/node_modules/@rollup/rollup-linux-x64-gnu" ]]; then
@@ -58,3 +65,9 @@ fi
 
 echo ""
 echo "Done. Demo: http://localhost:5174/demo"
+
+if [[ "${WATCH_BACKEND:-1}" != "0" ]]; then
+  stop_from_pid "$LOGDIR/watch-backend.pid"
+  start_bg watch-backend "$ROOT" "bash scripts/watch-backend.sh" "$LOGDIR" "$ENV_FILE"
+  echo "[OK] Backend watchdog started"
+fi

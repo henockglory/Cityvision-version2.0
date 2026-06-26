@@ -16,6 +16,7 @@ import {
   getRefreshToken,
   syncAuthSession,
 } from '@/lib/authSession';
+import { isTransientApiError } from '@/lib/apiErrors';
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -23,11 +24,13 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<RefreshResult> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
+type RefreshResult = { token: string | null; authFailed: boolean };
+
+async function refreshAccessToken(): Promise<RefreshResult> {
   const refresh = getRefreshToken();
-  if (!refresh) return null;
+  if (!refresh) return { token: null, authFailed: true };
   try {
     const { data } = await axios.post<LoginResponse>('/api/v1/auth/refresh', {
       refresh_token: refresh,
@@ -35,9 +38,31 @@ async function refreshAccessToken(): Promise<string | null> {
     const { orgId } = getAuthCredentials();
     syncAuthSession(data.access_token, orgId, data.refresh_token, data.expires_in);
     window.dispatchEvent(new CustomEvent('cv-token-refreshed', { detail: data.access_token }));
-    return data.access_token;
-  } catch {
-    return null;
+    return { token: data.access_token, authFailed: false };
+  } catch (err) {
+    const authFailed =
+      axios.isAxiosError(err) &&
+      err.response != null &&
+      (err.response.status === 401 || err.response.status === 403);
+    return { token: null, authFailed };
+  }
+}
+
+/** Single-flight refresh used by the interceptor and proactive refresh hook. */
+export function refreshSession(): Promise<RefreshResult> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+function logoutToLogin() {
+  const path = window.location.pathname;
+  clearAuthSession();
+  if (path !== '/login' && path !== '/setup') {
+    window.location.href = '/login';
   }
 }
 
@@ -55,26 +80,23 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
+    // Backend restart / proxy blip — never treat as logout.
+    if (isTransientApiError(error)) {
+      return Promise.reject(error);
+    }
+
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true;
-      if (!refreshPromise) {
-        refreshPromise = refreshAccessToken().finally(() => {
-          refreshPromise = null;
-        });
-      }
-      const token = await refreshPromise;
+      const { token, authFailed } = await refreshSession();
       if (token && original.headers) {
         original.headers.Authorization = `Bearer ${token}`;
         return api(original);
       }
-    }
-    if (error.response?.status === 401) {
-      const path = window.location.pathname;
-      clearAuthSession();
-      if (path !== '/login' && path !== '/setup') {
-        window.location.href = '/login';
+      if (authFailed) {
+        logoutToLogin();
       }
+      return Promise.reject(error);
     }
     return Promise.reject(error);
   },
@@ -110,7 +132,7 @@ export const authApi = {
   refresh: (refreshToken: string) =>
     api.post<LoginResponse>('/auth/refresh', { refresh_token: refreshToken }),
   me: () =>
-    api.get<{ user: LoginResponse['user']; role: string; org_id?: string }>('/auth/me'),
+    api.get<{ user: LoginResponse['user']; role: string; org_id?: string; site_id?: string }>('/auth/me'),
   updateMe: (body: { full_name?: string; email?: string; password?: string; locale?: string }) =>
     api.patch<{ user: LoginResponse['user'] }>('/auth/me', body),
   setupTotp: () => api.post<{ secret: string; uri: string }>('/auth/totp/setup'),
@@ -203,7 +225,10 @@ export const camerasApi = {
     }
   ) => api.post<Camera>(`/orgs/${orgId}/cameras`, body),
   discover: (orgId: string, cidr: string) =>
-    api.get<DiscoveredDevice[]>(`/orgs/${orgId}/cameras/discover`, { params: { cidr } }),
+    api.get<DiscoveredDevice[]>(`/orgs/${orgId}/cameras/discover`, {
+      params: { cidr: cidr.trim() },
+      timeout: 90_000,
+    }),
   probe: (
     orgId: string,
     body: { host: string; username: string; password: string; port?: number; vendor?: string }
@@ -212,10 +237,11 @@ export const camerasApi = {
     candidates: unknown[];
   }>(
     `/orgs/${orgId}/cameras/probe`,
-    body
+    body,
+    { timeout: 60_000 },
   ),
   testStream: (orgId: string, cameraId: string) =>
-    api.post<{ reachable: boolean; error?: string }>(
+    api.post<{ reachable: boolean; video_ok?: boolean; error?: string }>(
       `/orgs/${orgId}/cameras/${cameraId}/stream/test`,
       {}
     ),
@@ -226,8 +252,22 @@ export const camerasApi = {
   update: (
     orgId: string,
     cameraId: string,
-    body: { metadata?: Record<string, unknown>; name?: string; is_active?: boolean }
-  ) => api.patch(`/orgs/${orgId}/cameras/${cameraId}`, body),
+    body: {
+      metadata?: Record<string, unknown>;
+      name?: string;
+      is_active?: boolean;
+      host?: string;
+      port?: number;
+      channel?: number;
+      username?: string;
+      password?: string;
+      vendor?: string;
+      rtsp_path?: string;
+      stream_profile?: string;
+    }
+  ) => api.patch<Camera>(`/orgs/${orgId}/cameras/${cameraId}`, body),
+  delete: (orgId: string, cameraId: string) =>
+    api.delete<{ deleted: boolean; id: string }>(`/orgs/${orgId}/cameras/${cameraId}`),
 };
 
 export const identityApi = {

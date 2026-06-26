@@ -20,11 +20,19 @@
             if (parsed && parsed.state && parsed.state.theme) theme = parsed.state.theme;
           }
           document.documentElement.classList.add(theme === 'light' ? 'light' : 'dark');
+          document.body.style.background = theme === 'light' ? '#f1f5f9' : '#0c1424';
+          document.body.style.color = theme === 'light' ? '#0f172a' : '#e2e8f0';
         } catch (_) {
           document.documentElement.classList.add('dark');
+          document.body.style.background = '#0c1424';
+          document.body.style.color = '#e2e8f0';
         }
       })();
     </script>
+    <style>
+      html.dark body { background: #0c1424; color: #e2e8f0; }
+      html.light body { background: #f1f5f9; color: #0f172a; }
+    </style>
     <title>Citévision v2</title>
   </head>
   <body>

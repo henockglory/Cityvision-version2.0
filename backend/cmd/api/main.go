@@ -119,6 +119,15 @@ func main() {
 
 	spatialSvc := spatial.NewService(pool)
 	cameraSvc := camera.NewService(pool, cipher)
+	go func() {
+		time.Sleep(5 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		ok, failed := cameraSvc.ReOnboardAllRealCameras(ctx)
+		if ok+failed > 0 {
+			log.Info("camera streams re-onboarded on startup", "ok", ok, "failed", failed)
+		}
+	}()
 	evidenceSvc, err := evidence.NewService(evidence.ConfigFromEnv())
 	if err != nil {
 		log.Warn("evidence service init failed", "error", err)
@@ -257,6 +266,7 @@ func main() {
 						r.Route("/{cameraID}", func(r chi.Router) {
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/", api.GetCamera)
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Patch("/", api.UpdateCamera)
+							r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Delete("/", api.DeleteCamera)
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/rtsp", api.BuildRTSP)
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Post("/stream/test", api.TestCameraStream)
 							r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/preview", api.CameraPreview)
@@ -324,11 +334,12 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:         cfg.Addr(),
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              cfg.Addr(),
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       0,
+		WriteTimeout:      90 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {

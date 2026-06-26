@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { authApi } from '@/api/client';
-import { getRefreshToken, isTokenExpiringSoon, syncAuthSession } from '@/lib/authSession';
+import { refreshSession } from '@/api/client';
+import { getRefreshToken, isTokenExpiringSoon } from '@/lib/authSession';
 import { useAuthStore } from '@/stores/authStore';
 
 /** Refresh JWT before expiry so sessions stay alive beyond 15 min. */
@@ -9,19 +9,16 @@ export function useProactiveTokenRefresh() {
 
   useEffect(() => {
     const tick = async () => {
-      if (!isTokenExpiringSoon(120_000)) return;
-      const refresh = getRefreshToken();
-      if (!refresh) return;
-      try {
-        const { data } = await authApi.refresh(refresh);
-        syncAuthSession(data.access_token, orgId, data.refresh_token, data.expires_in);
-        useAuthStore.setState({ token: data.access_token });
-        window.dispatchEvent(new CustomEvent('cv-token-refreshed', { detail: data.access_token }));
-      } catch {
-        /* 401 interceptor handles hard logout */
+      if (!isTokenExpiringSoon(180_000)) return;
+      if (!getRefreshToken()) return;
+      const { token, authFailed } = await refreshSession();
+      if (token) {
+        useAuthStore.setState({ token });
+      } else if (authFailed) {
+        /* hard logout only when refresh token is rejected — axios interceptor */
       }
     };
-    const id = window.setInterval(() => void tick(), 60_000);
+    const id = window.setInterval(() => void tick(), 30_000);
     void tick();
     return () => window.clearInterval(id);
   }, [orgId]);

@@ -13,4 +13,5 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
+export { loadRuleGuides } from './loadRuleGuides';
 export default i18n;

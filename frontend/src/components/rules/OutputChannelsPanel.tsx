@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send } from 'lucide-react';
 import InfoTip from '@/components/ui/InfoTip';
+import ExplanatorySelect from '@/components/ui/ExplanatorySelect';
+import { buildWebhookPresetOptions } from '@/lib/conditionValueOptions';
 import { WEBHOOK_PRESETS } from '@/lib/evidencePolicy';
 
 interface OutputChannelsPanelProps {
@@ -24,7 +27,9 @@ export default function OutputChannelsPanel({
   enableWebhook,
   onEnableWebhook,
 }: OutputChannelsPanelProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language.startsWith('en') ? 'en' : 'fr';
+  const webhookOptions = useMemo(() => buildWebhookPresetOptions(WEBHOOK_PRESETS, lang), [lang]);
 
   return (
     <div className="space-y-3 p-4 rounded-xl border border-cv-border/60 bg-cv-deep/30">
@@ -57,20 +62,13 @@ export default function OutputChannelsPanel({
         <>
           <div>
             <label className="cv-label">{t('rules.studio.webhookPreset')}</label>
-            <select
-              className="cv-input w-full"
+            <ExplanatorySelect
+              className="w-full"
               value={webhookPreset}
-              onChange={(e) => onWebhookPreset(e.target.value)}
-            >
-              {WEBHOOK_PRESETS.map((p) => (
-                <option key={p.id || 'custom'} value={p.id}>{p.label}</option>
-              ))}
-            </select>
-            {WEBHOOK_PRESETS.find((p) => p.id === webhookPreset)?.hint && (
-              <p className="text-[10px] text-cv-muted mt-1">
-                {WEBHOOK_PRESETS.find((p) => p.id === webhookPreset)?.hint}
-              </p>
-            )}
+              onChange={onWebhookPreset}
+              options={webhookOptions}
+              searchable={false}
+            />
           </div>
           {webhookPreset !== 'gmail' && (
             <div>
@@ -78,7 +76,7 @@ export default function OutputChannelsPanel({
               <input
                 type="url"
                 className="cv-input w-full"
-                placeholder="https://…"
+                placeholder="https://..."
                 value={webhookUrl}
                 onChange={(e) => onWebhookUrl(e.target.value)}
               />

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import type { RuleCatalogTemplate } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { BookOpen } from 'lucide-react';
+import { loadRuleGuides } from '@/i18n/loadRuleGuides';
 import PageShell from '@/components/ui/PageShell';
 import RuleCatalogPanel from '@/components/rules/RuleCatalogPanel';
 import RuleStudioDialog from '@/components/rules/RuleStudioDialog';
@@ -88,6 +89,10 @@ export default function Rules() {
       .catch(() => undefined)
       .finally(() => setOrgDeployLoaded(true));
   }, [orgId, orgDeployLoaded]);
+
+  useEffect(() => {
+    void loadRuleGuides();
+  }, []);
 
   const activeTemplateIds = useMemo(
     () =>
@@ -211,6 +216,7 @@ export default function Rules() {
 
       <GuideIllustration
         variant="rules"
+        imageRole="catalog"
         title={t('rules.guide.bannerTitle')}
         caption={
           deploymentScope === 'national'

@@ -7,6 +7,8 @@ interface DropdownPortalProps {
   onClose: () => void;
   children: ReactNode;
   minWidth?: number;
+  zIndex?: number;
+  align?: 'left' | 'right';
 }
 
 export default function DropdownPortal({
@@ -15,6 +17,8 @@ export default function DropdownPortal({
   onClose,
   children,
   minWidth = 160,
+  zIndex = 100,
+  align = 'right',
 }: DropdownPortalProps) {
   const portalRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -22,9 +26,13 @@ export default function DropdownPortal({
   const updatePosition = () => {
     if (!anchorRef.current) return;
     const rect = anchorRef.current.getBoundingClientRect();
+    const left =
+      align === 'left'
+        ? Math.max(8, rect.left)
+        : Math.max(8, rect.right - minWidth);
     setPos({
       top: rect.bottom + 4,
-      left: Math.max(8, rect.right - minWidth),
+      left,
     });
   };
 
@@ -37,7 +45,7 @@ export default function DropdownPortal({
       window.removeEventListener('scroll', updatePosition, true);
       window.removeEventListener('resize', updatePosition);
     };
-  }, [open, anchorRef, minWidth]);
+  }, [open, anchorRef, minWidth, align]);
 
   useEffect(() => {
     if (!open) return;
@@ -47,8 +55,8 @@ export default function DropdownPortal({
       if (portalRef.current?.contains(target)) return;
       onClose();
     };
-    document.addEventListener('click', onDoc);
-    return () => document.removeEventListener('click', onDoc);
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
   }, [open, onClose, anchorRef]);
 
   if (!open) return null;
@@ -56,8 +64,8 @@ export default function DropdownPortal({
   return createPortal(
     <div
       ref={portalRef}
-      className="fixed z-[100] cv-card py-1 shadow-lg border border-cv-border"
-      style={{ top: pos.top, left: pos.left, minWidth }}
+      className="fixed cv-dropdown-panel"
+      style={{ top: pos.top, left: pos.left, minWidth, zIndex }}
     >
       {children}
     </div>,

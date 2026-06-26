@@ -67,6 +67,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*models.Camera
 	if req.Vendor == "" {
 		req.Vendor = models.VendorGeneric
 	}
+	req.Host = NormalizeHost(req.Host)
 	meta := req.Metadata
 	if meta == nil {
 		meta = json.RawMessage(`{}`)
@@ -93,7 +94,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*models.Camera
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO cameras (org_id, site_id, name, vendor, host, port, channel, username, password_encrypted, rtsp_path, stream_profile, metadata)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		RETURNING id, org_id, site_id, name, vendor, host::text, port, channel, username, rtsp_path, stream_profile, status, metadata, is_active, created_at, updated_at`,
+		RETURNING id, org_id, site_id, name, vendor, host(host), port, channel, username, rtsp_path, stream_profile, status, metadata, is_active, created_at, updated_at`,
 		req.OrgID, req.SiteID, req.Name, req.Vendor, req.Host, req.Port, req.Channel,
 		username, enc, rtspPath, req.StreamProfile, meta,
 	).Scan(&cam.ID, &cam.OrgID, &cam.SiteID, &cam.Name, &cam.Vendor, &cam.Host, &cam.Port,
@@ -102,22 +103,25 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*models.Camera
 	if err != nil {
 		return nil, err
 	}
-	if rtsp, err := s.BuildRTSP(ctx, cam.OrgID, cam.ID); err == nil && rtsp != "" {
-		_ = OnboardCamera(ctx, &cam, rtsp)
-		if len(cam.Metadata) > 0 {
-			_, _ = s.pool.Exec(ctx, `UPDATE cameras SET metadata = $1, updated_at = NOW() WHERE id = $2`, cam.Metadata, cam.ID)
-		}
+	cam.Host = NormalizeHost(cam.Host)
+	if err := s.onboardAfterSave(ctx, &cam); err != nil {
+		_ = s.persistMetadata(ctx, cam.ID, cam.Metadata)
 	}
 	return &cam, nil
 }
 
 func (s *Service) Get(ctx context.Context, orgID, id uuid.UUID) (*models.Camera, error) {
-	return s.scanOne(ctx, `SELECT id, org_id, site_id, name, vendor, host::text, port, channel, username, rtsp_path, stream_profile, status, metadata, is_active, created_at, updated_at
+	cam, err := s.scanOne(ctx, `SELECT id, org_id, site_id, name, vendor, host(host), port, channel, username, rtsp_path, stream_profile, status, metadata, is_active, created_at, updated_at
 		FROM cameras WHERE id = $1 AND org_id = $2`, id, orgID)
+	if err != nil {
+		return nil, err
+	}
+	cam.Host = NormalizeHost(cam.Host)
+	return cam, nil
 }
 
 func (s *Service) List(ctx context.Context, orgID uuid.UUID, siteID *uuid.UUID) ([]models.Camera, error) {
-	query := `SELECT id, org_id, site_id, name, vendor, host::text, port, channel, username, rtsp_path, stream_profile, status, metadata, is_active, created_at, updated_at
+	query := `SELECT id, org_id, site_id, name, vendor, host(host), port, channel, username, rtsp_path, stream_profile, status, metadata, is_active, created_at, updated_at
 		FROM cameras WHERE org_id = $1`
 	args := []interface{}{orgID}
 	if siteID != nil {
@@ -138,6 +142,7 @@ func (s *Service) List(ctx context.Context, orgID uuid.UUID, siteID *uuid.UUID) 
 		if err != nil {
 			return nil, err
 		}
+		cam.Host = NormalizeHost(cam.Host)
 		list = append(list, *cam)
 	}
 	return list, rows.Err()
@@ -148,6 +153,8 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, req UpdateReq
 	if err != nil {
 		return nil, err
 	}
+	reOnboard := req.Host != nil || req.Password != nil || req.RTSPPath != nil ||
+		req.Username != nil || req.Port != nil || req.Channel != nil || req.Vendor != nil || req.StreamProfile != nil
 	if req.Name != nil {
 		cam.Name = *req.Name
 	}
@@ -155,7 +162,7 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, req UpdateReq
 		cam.Vendor = *req.Vendor
 	}
 	if req.Host != nil {
-		cam.Host = *req.Host
+		cam.Host = NormalizeHost(*req.Host)
 	}
 	if req.Port != nil {
 		cam.Port = *req.Port
@@ -198,10 +205,23 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, req UpdateReq
 	if err != nil {
 		return nil, err
 	}
+	if reOnboard {
+		updated, err := s.Get(ctx, orgID, id)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.onboardAfterSave(ctx, updated); err != nil {
+			_ = s.persistMetadata(ctx, updated.ID, updated.Metadata)
+		}
+		return updated, nil
+	}
 	return s.Get(ctx, orgID, id)
 }
 
 func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
+	streamName := "cam-" + id.String()
+	_ = NewGo2RTCClient().UnregisterStream(ctx, streamName)
+
 	tag, err := s.pool.Exec(ctx, `DELETE FROM cameras WHERE id = $1 AND org_id = $2`, id, orgID)
 	if err != nil {
 		return err
@@ -219,7 +239,7 @@ func (s *Service) BuildRTSP(ctx context.Context, orgID, id uuid.UUID) (string, e
 	var enc []byte
 	var metadata json.RawMessage
 	err := s.pool.QueryRow(ctx, `
-		SELECT vendor, host::text, port, channel, username, password_encrypted, rtsp_path, stream_profile, metadata
+		SELECT vendor, host(host), port, channel, username, password_encrypted, rtsp_path, stream_profile, metadata
 		FROM cameras WHERE id = $1 AND org_id = $2`, id, orgID,
 	).Scan(&vendor, &host, &port, &channel, &username, &enc, &rtspPath, &profile, &metadata)
 	if err != nil {
@@ -228,6 +248,7 @@ func (s *Service) BuildRTSP(ctx context.Context, orgID, id uuid.UUID) (string, e
 		}
 		return "", err
 	}
+	host = NormalizeHost(host)
 
 	var meta map[string]interface{}
 	_ = json.Unmarshal(metadata, &meta)
@@ -303,4 +324,73 @@ func ValidateCreate(req CreateRequest) error {
 		return fmt.Errorf("name, host, org_id and site_id are required")
 	}
 	return nil
+}
+
+func (s *Service) onboardAfterSave(ctx context.Context, cam *models.Camera) error {
+	rtsp, err := s.BuildRTSP(ctx, cam.OrgID, cam.ID)
+	if err != nil || rtsp == "" {
+		return err
+	}
+	if err := OnboardCamera(ctx, cam, rtsp); err != nil {
+		return err
+	}
+	return s.persistMetadata(ctx, cam.ID, cam.Metadata)
+}
+
+func (s *Service) persistMetadata(ctx context.Context, id uuid.UUID, meta json.RawMessage) error {
+	if len(meta) == 0 {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE cameras SET metadata = $1, updated_at = NOW() WHERE id = $2`, meta, id)
+	return err
+}
+
+// ReOnboardAllRealCameras registers go2rtc streams for all active non-virtual cameras (startup/repair).
+func (s *Service) ReOnboardAllRealCameras(ctx context.Context) (ok, failed int) {
+	rows, err := s.pool.Query(ctx, `SELECT org_id, id FROM cameras WHERE is_active = true`)
+	if err != nil {
+		return 0, 0
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var orgID, id uuid.UUID
+		if err := rows.Scan(&orgID, &id); err != nil {
+			continue
+		}
+		cam, err := s.Get(ctx, orgID, id)
+		if err != nil {
+			failed++
+			continue
+		}
+		var meta map[string]interface{}
+		_ = json.Unmarshal(cam.Metadata, &meta)
+		if meta != nil {
+			if v, _ := meta["virtual"].(bool); v {
+				continue
+			}
+			if src, _ := meta["go2rtc_src"].(string); src == "benedicte" {
+				continue
+			}
+		}
+		if err := s.onboardAfterSave(ctx, cam); err != nil {
+			_ = s.persistMetadata(ctx, cam.ID, cam.Metadata)
+			failed++
+		} else {
+			ok++
+		}
+	}
+	return ok, failed
+}
+
+// ReOnboardCamera rebuilds go2rtc registration for an existing camera.
+func (s *Service) ReOnboardCamera(ctx context.Context, orgID, id uuid.UUID) (*models.Camera, error) {
+	cam, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.onboardAfterSave(ctx, cam); err != nil {
+		_ = s.persistMetadata(ctx, cam.ID, cam.Metadata)
+		return cam, err
+	}
+	return s.Get(ctx, orgID, id)
 }

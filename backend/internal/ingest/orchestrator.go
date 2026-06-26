@@ -116,6 +116,19 @@ func (c *AIClient) StopCamera(ctx context.Context, cameraID string) error {
 	return nil
 }
 
+func (c *AIClient) Healthy(ctx context.Context) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode < 500
+}
+
 type Orchestrator struct {
 	pool     *pgxpool.Pool
 	ai       *AIClient
@@ -124,6 +137,10 @@ type Orchestrator struct {
 	log      *slog.Logger
 	interval time.Duration
 	active   map[uuid.UUID]bool
+	// Backoff after failed AI start attempts (avoids hammering backend/AI every 10s).
+	failNext    map[uuid.UUID]time.Time
+	failBackoff map[uuid.UUID]time.Duration
+	aiDownUntil time.Time
 }
 
 func NewOrchestrator(
@@ -140,7 +157,9 @@ func NewOrchestrator(
 		cameras:  cameraSvc,
 		log:      log,
 		interval: 10 * time.Second,
-		active:   make(map[uuid.UUID]bool),
+		active:      make(map[uuid.UUID]bool),
+		failNext:    make(map[uuid.UUID]time.Time),
+		failBackoff: make(map[uuid.UUID]time.Duration),
 	}
 }
 
@@ -166,6 +185,17 @@ func (o *Orchestrator) sync(ctx context.Context) {
 		}
 		return
 	}
+	if time.Now().Before(o.aiDownUntil) {
+		return
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	aiUp := o.ai.Healthy(probeCtx)
+	cancel()
+	if !aiUp {
+		o.aiDownUntil = time.Now().Add(2 * time.Minute)
+		return
+	}
+	o.aiDownUntil = time.Time{}
 	rows, err := o.pool.Query(ctx, `
 		SELECT c.id, c.org_id
 		FROM cameras c WHERE c.is_active = TRUE`)
@@ -182,6 +212,12 @@ func (o *Orchestrator) sync(ctx context.Context) {
 			continue
 		}
 		seen[id] = true
+		if o.active[id] {
+			continue
+		}
+		if next, ok := o.failNext[id]; ok && time.Now().Before(next) {
+			continue
+		}
 		rtspURL, err := o.cameras.BuildRTSP(ctx, orgID, id)
 		if err != nil || rtspURL == "" {
 			o.log.Warn("failed to build RTSP URL", "camera_id", id, "error", err)
@@ -211,8 +247,11 @@ func (o *Orchestrator) sync(ctx context.Context) {
 		}
 		if err := o.ai.StartCamera(ctx, id.String(), req); err != nil {
 			o.log.Warn("failed to start camera", "camera_id", id, "error", err)
+			o.scheduleRetry(id)
 		} else {
 			o.active[id] = true
+			delete(o.failNext, id)
+			delete(o.failBackoff, id)
 		}
 	}
 
@@ -220,8 +259,25 @@ func (o *Orchestrator) sync(ctx context.Context) {
 		if !seen[camID] {
 			_ = o.ai.StopCamera(ctx, camID.String())
 			delete(o.active, camID)
+			delete(o.failNext, camID)
+			delete(o.failBackoff, camID)
 		}
 	}
+}
+
+func (o *Orchestrator) scheduleRetry(cameraID uuid.UUID) {
+	const maxBackoff = 5 * time.Minute
+	wait := o.failBackoff[cameraID]
+	if wait == 0 {
+		wait = 30 * time.Second
+	} else {
+		wait *= 2
+		if wait > maxBackoff {
+			wait = maxBackoff
+		}
+	}
+	o.failBackoff[cameraID] = wait
+	o.failNext[cameraID] = time.Now().Add(wait)
 }
 
 func (o *Orchestrator) extractVideoFileFromCamera(ctx context.Context, orgID, cameraID uuid.UUID) string {

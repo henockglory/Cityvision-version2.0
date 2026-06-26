@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -13,10 +15,33 @@ type DiscoveredDevice struct {
 	Port      int    `json:"port"`
 	Reachable bool   `json:"reachable"`
 	RTSPPort  int    `json:"rtsp_port,omitempty"`
+	HasRTSP   bool   `json:"has_rtsp,omitempty"`
+}
+
+// Common RTSP ports (554 standard + frequent vendor alternates).
+var rtspScanPorts = []int{554, 8554, 10554, 5544, 7070, 8000}
+
+func detectRTSPPort(ctx context.Context, dialer net.Dialer, addr string) int {
+	for _, port := range rtspScanPorts {
+		if conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(addr, fmt.Sprintf("%d", port))); err == nil {
+			conn.Close()
+			return port
+		}
+	}
+	return 0
+}
+
+func tcpOpen(ctx context.Context, dialer net.Dialer, addr string, port int) bool {
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(addr, fmt.Sprintf("%d", port)))
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 func ScanSubnet(ctx context.Context, cidr string, timeout time.Duration) ([]DiscoveredDevice, error) {
-	_, ipNet, err := net.ParseCIDR(cidr)
+	_, ipNet, err := net.ParseCIDR(strings.TrimSpace(cidr))
 	if err != nil {
 		return nil, fmt.Errorf("invalid CIDR %q: %w", cidr, err)
 	}
@@ -34,11 +59,13 @@ func ScanSubnet(ctx context.Context, cidr string, timeout time.Duration) ([]Disc
 	results := make([]DiscoveredDevice, 0)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 64)
+	sem := make(chan struct{}, 128)
+	dialer := net.Dialer{Timeout: timeout}
 
 	for _, ip := range ips {
 		select {
 		case <-ctx.Done():
+			wg.Wait()
 			return results, ctx.Err()
 		default:
 		}
@@ -49,27 +76,49 @@ func ScanSubnet(ctx context.Context, cidr string, timeout time.Duration) ([]Disc
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			device := DiscoveredDevice{IP: addr, Port: 80}
-			conn, err := net.DialTimeout("tcp", net.JoinHostPort(addr, "80"), timeout)
-			if err == nil {
-				conn.Close()
-				device.Reachable = true
+			rtspPort := detectRTSPPort(ctx, dialer, addr)
+			webOpen := tcpOpen(ctx, dialer, addr, 80)
+			if rtspPort == 0 && !webOpen {
+				return
 			}
-			rtspConn, err := net.DialTimeout("tcp", net.JoinHostPort(addr, "554"), timeout)
-			if err == nil {
-				rtspConn.Close()
-				device.RTSPPort = 554
-				device.Reachable = true
+
+			device := DiscoveredDevice{
+				IP:        addr,
+				Reachable: true,
+				RTSPPort:  rtspPort,
+				HasRTSP:   rtspPort > 0,
 			}
-			if device.Reachable {
-				mu.Lock()
-				results = append(results, device)
-				mu.Unlock()
+			if webOpen {
+				device.Port = 80
+			} else if rtspPort > 0 {
+				device.Port = rtspPort
 			}
+
+			mu.Lock()
+			results = append(results, device)
+			mu.Unlock()
 		}(ip.String())
 	}
 	wg.Wait()
+	sortDiscoveredDevices(results)
 	return results, nil
+}
+
+func sortDiscoveredDevices(devices []DiscoveredDevice) {
+	sort.Slice(devices, func(i, j int) bool {
+		si, sj := discoverySortScore(devices[i]), discoverySortScore(devices[j])
+		if si != sj {
+			return si > sj
+		}
+		return devices[i].IP < devices[j].IP
+	})
+}
+
+func discoverySortScore(d DiscoveredDevice) int {
+	if d.HasRTSP || d.RTSPPort > 0 {
+		return 2
+	}
+	return 1
 }
 
 func incIP(ip net.IP) {
@@ -84,6 +133,10 @@ func incIP(ip net.IP) {
 type StreamTestResult struct {
 	URL       string `json:"url"`
 	Reachable bool   `json:"reachable"`
+	VideoOK   bool   `json:"video_ok"`
+	Codec     string `json:"codec,omitempty"`
+	Width     int    `json:"width,omitempty"`
+	Height    int    `json:"height,omitempty"`
 	LatencyMS int64  `json:"latency_ms,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
@@ -96,6 +149,7 @@ func TestStream(ctx context.Context, rtspURL string, timeout time.Duration) Stre
 		result.Error = err.Error()
 		return result
 	}
+	host = NormalizeHost(host)
 
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), timeout)
@@ -106,6 +160,18 @@ func TestStream(ctx context.Context, rtspURL string, timeout time.Duration) Stre
 	conn.Close()
 	result.Reachable = true
 	result.LatencyMS = time.Since(start).Milliseconds()
+
+	probeCtx, cancel := context.WithTimeout(ctx, onboardProbeTimeout)
+	defer cancel()
+	stats, err := ProbeStreamStats(probeCtx, rtspURL)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	result.VideoOK = true
+	result.Codec = stats.Codec
+	result.Width = stats.Width
+	result.Height = stats.Height
 	return result
 }
 

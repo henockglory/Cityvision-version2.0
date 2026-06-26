@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useSound } from '@/hooks/useSound';
@@ -5,11 +6,32 @@ import { useSound } from '@/hooks/useSound';
 interface ErrorStateProps {
   message?: string;
   onRetry?: () => void;
+  /** Auto-retry when API is briefly unreachable (backend restart). */
+  autoRetry?: boolean;
 }
 
-export default function ErrorState({ message, onRetry }: ErrorStateProps) {
+export default function ErrorState({ message, onRetry, autoRetry = true }: ErrorStateProps) {
   const { t } = useTranslation();
   const { playClick } = useSound();
+  const onRetryRef = useRef(onRetry);
+  onRetryRef.current = onRetry;
+
+  useEffect(() => {
+    if (!autoRetry || !onRetryRef.current) return;
+    const delays = [2_000, 4_000, 8_000, 16_000, 30_000];
+    let step = 0;
+    let timer = 0;
+    const schedule = () => {
+      if (step >= delays.length) return;
+      timer = window.setTimeout(() => {
+        onRetryRef.current?.();
+        step += 1;
+        schedule();
+      }, delays[step]);
+    };
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, [autoRetry]);
 
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center animate-fade-in">

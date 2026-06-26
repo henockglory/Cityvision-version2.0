@@ -11,7 +11,20 @@ function resolveDirectOrigin(): string {
 }
 
 export const GO2RTC_ORIGIN = resolveDirectOrigin();
+/** Demo Kinshasa stream — only for /demo and explicitly virtual cameras. */
 export const DEFAULT_STREAM = 'benedicte';
+
+export function isVirtualCamera(camera?: {
+  name?: string;
+  metadata?: Record<string, unknown>;
+} | null): boolean {
+  const meta = camera?.metadata;
+  if (meta?.virtual === true) return true;
+  if (meta?.go2rtc_src === DEFAULT_STREAM) return true;
+  if (meta?.source === 'benedicte.mp4') return true;
+  const name = camera?.name?.toLowerCase() ?? '';
+  return name.includes('benedicte') || name.includes('virtual');
+}
 
 export function go2rtcStreamSrc(camera?: {
   id?: string;
@@ -19,17 +32,14 @@ export function go2rtcStreamSrc(camera?: {
   streamUrl?: string;
   name?: string;
   metadata?: Record<string, unknown>;
-} | null): string {
-  if (camera?.streamKey) return camera.streamKey;
-  const meta = camera?.metadata as { go2rtc_src?: string; source?: string; virtual?: boolean } | undefined;
+} | null): string | undefined {
+  if (!camera) return undefined;
+  if (camera.streamKey) return camera.streamKey;
+  const meta = camera.metadata as { go2rtc_src?: string; virtual?: boolean; source?: string } | undefined;
+  if (isVirtualCamera(camera)) return DEFAULT_STREAM;
   if (meta?.go2rtc_src) return meta.go2rtc_src;
-  if (camera?.id) return `cam-${camera.id}`;
-  if (meta?.source === 'benedicte.mp4') return DEFAULT_STREAM;
-  const url = camera?.streamUrl ?? '';
-  if (url.includes('benedicte') || url.includes('8554/benedicte')) return DEFAULT_STREAM;
-  const name = camera?.name?.toLowerCase() ?? '';
-  if (name.includes('benedicte') || name.includes('virtual')) return DEFAULT_STREAM;
-  return DEFAULT_STREAM;
+  if (camera.id) return `cam-${camera.id}`;
+  return undefined;
 }
 
 export function go2rtcPlayerUrl(src: string = DEFAULT_STREAM): string {

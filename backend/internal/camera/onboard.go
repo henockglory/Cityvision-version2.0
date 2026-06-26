@@ -12,6 +12,8 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/models"
 )
 
+const onboardProbeTimeout = 10 * time.Second
+
 // StreamStats holds ffprobe results for onboarding.
 type StreamStats struct {
 	Codec      string  `json:"codec"`
@@ -21,14 +23,18 @@ type StreamStats struct {
 	HasBFrames bool    `json:"has_b_frames"`
 }
 
-// ProbeStreamStats runs ffprobe (3s timeout) on an RTSP URL.
+// ProbeStreamStats runs ffprobe on an RTSP URL.
 func ProbeStreamStats(ctx context.Context, rtspURL string) (*StreamStats, error) {
 	if rtspURL == "" {
 		return nil, fmt.Errorf("empty rtsp url")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, onboardProbeTimeout)
+		defer cancel()
+	}
 	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-rtsp_transport", "tcp",
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-show_entries", "stream=codec_name,r_frame_rate,width,height,has_b_frames",
@@ -81,7 +87,7 @@ func parseFrameRate(rate string) float64 {
 // OnboardCamera registers go2rtc stream and enriches camera metadata.
 func OnboardCamera(ctx context.Context, cam *models.Camera, rtspURL string) error {
 	if cam == nil || rtspURL == "" {
-		return nil
+		return fmt.Errorf("camera or rtsp url missing")
 	}
 	meta := map[string]interface{}{}
 	if len(cam.Metadata) > 0 {
@@ -89,17 +95,35 @@ func OnboardCamera(ctx context.Context, cam *models.Camera, rtspURL string) erro
 	}
 	streamName := fmt.Sprintf("cam-%s", cam.ID.String())
 	go2 := NewGo2RTCClient()
-	regURL := rtspURL
-	if stats, err := ProbeStreamStats(ctx, rtspURL); err == nil && stats != nil {
-		meta["stream_stats"] = stats
-		if stats.HasBFrames {
-			// Relay through go2rtc transcode policy when B-frames break WebRTC
-			meta["transcode"] = true
-		}
+
+	stats, probeErr := ProbeStreamStats(ctx, rtspURL)
+	if probeErr != nil {
+		meta["onboard_error"] = probeErr.Error()
+		meta["stream_ready"] = false
+		delete(meta, "go2rtc_src")
+		raw, _ := json.Marshal(meta)
+		cam.Metadata = raw
+		return fmt.Errorf("video probe failed: %w", probeErr)
 	}
-	if _, err := go2.RegisterStream(ctx, streamName, regURL); err == nil {
-		meta["go2rtc_src"] = streamName
+	meta["stream_stats"] = stats
+	regURL := Go2RTCSourceForRTSP(rtspURL, stats)
+	if regURL != rtspURL {
+		meta["transcode"] = true
+	} else {
+		delete(meta, "transcode")
 	}
+
+	if _, err := go2.RegisterStream(ctx, streamName, regURL); err != nil {
+		meta["onboard_error"] = err.Error()
+		meta["stream_ready"] = false
+		delete(meta, "go2rtc_src")
+		raw, _ := json.Marshal(meta)
+		cam.Metadata = raw
+		return fmt.Errorf("go2rtc register failed: %w", err)
+	}
+	meta["go2rtc_src"] = streamName
+	meta["stream_ready"] = true
+	delete(meta, "onboard_error")
 	raw, _ := json.Marshal(meta)
 	cam.Metadata = raw
 	return nil

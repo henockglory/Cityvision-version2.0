@@ -113,7 +113,7 @@ export function mapCamera(raw: BackendCamera): Camera {
     siteId: raw.site_id,
     model: raw.vendor,
     streamUrl: rtspMeta ?? raw.rtsp_path,
-    streamKey: go2rtcStreamSrc({ streamUrl: rtspMeta, name: raw.name, metadata: meta }),
+    streamKey: go2rtcStreamSrc({ id: raw.id, streamUrl: rtspMeta, name: raw.name, metadata: meta }),
     metadata: meta,
   };
 }

@@ -14,6 +14,15 @@ import {
   buildConfiguredDefinition,
   ensureSpatialConditions,
 } from '@/lib/ruleDefinitionBuilder';
+import ExplanatorySelect from '@/components/ui/ExplanatorySelect';
+import {
+  buildCameraOptions,
+  buildLineOptions,
+  buildSchemaEnumOptions,
+  buildSeverityOptions,
+  buildSurveillanceListOptions,
+  buildZoneOptions,
+} from '@/lib/conditionValueOptions';
 import ClassFilterPicker from '@/components/rules/ClassFilterPicker';
 import { classLabel } from '@/lib/detectionClasses';
 import { resolveConfigSchema, getSchemaDefaults } from '@/lib/ruleConfigSchema';
@@ -25,7 +34,10 @@ import {
   executedActionsOnly,
   actionsFromRule,
 } from '@/lib/ruleActionsRegistry';
-import ConditionTreeEditor from '@/components/rules/ConditionTreeEditor';
+import ConditionTreeVisualEditor from '@/components/rules/ConditionTreeVisualEditor';
+import ConditionTreeTechnicalMirror from '@/components/rules/ConditionTreeTechnicalMirror';
+import ConditionLogicSimulator from '@/components/rules/ConditionLogicSimulator';
+import RuleStudioGuideRail from '@/components/rules/RuleStudioGuideRail';
 import RuleFlowBuilder from '@/components/rules/RuleFlowBuilder';
 import EvidencePolicyPanel from '@/components/rules/EvidencePolicyPanel';
 import OutputChannelsPanel from '@/components/rules/OutputChannelsPanel';
@@ -38,6 +50,9 @@ import {
   type ConditionNode,
   validateConditionTree,
 } from '@/lib/conditionTree';
+import { narrateConditionSummary } from '@/lib/conditionNarrative';
+import { templatePrimaryEventType } from '@/lib/conditionValueOptions';
+import { loadRuleGuides } from '@/i18n/loadRuleGuides';
 import InfoTip from '@/components/ui/InfoTip';
 import Modal from '@/components/ui/Modal';
 import WizardSteps from '@/components/ui/WizardSteps';
@@ -117,7 +132,7 @@ export default function RuleStudioDialog({
   onClose,
   onActivated,
 }: RuleActivationDialogProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const orgId = useAuthStore((s) => s.orgId);
   const siteId = useAuthStore((s) => s.siteId);
   const { data: cameras = [] } = useCameras();
@@ -161,8 +176,23 @@ export default function RuleStudioDialog({
   const [enableWebhook, setEnableWebhook] = useState(false);
   const [webhookPreset, setWebhookPreset] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
+  const [guideRailCollapsed, setGuideRailCollapsed] = useState(false);
 
   const cameraId = String(values.camera_id ?? '');
+
+  useEffect(() => {
+    if (activeTemplate) void loadRuleGuides();
+  }, [activeTemplate?.id]);
+
+  const templateEventHint = useMemo(
+    () => templatePrimaryEventType(activeTemplate?.definition),
+    [activeTemplate],
+  );
+
+  const spatialContext = useMemo(
+    () => ({ zones, lines, loadingSpatial }),
+    [zones, lines, loadingSpatial],
+  );
 
   useEffect(() => {
     if (!activeTemplate) return;
@@ -248,6 +278,16 @@ export default function RuleStudioDialog({
   }, [schema.fields]);
 
   const activationCfg = useMemo(() => activationConfigFromValues(values), [values]);
+
+  const narrativeContext = useMemo(
+    () => ({
+      zoneName: activationCfg.zoneName,
+      lineName: activationCfg.lineName,
+      classFilter: activationCfg.classFilter,
+      cameraName: cameras.find((c) => c.id === cameraId)?.name,
+    }),
+    [activationCfg, cameras, cameraId],
+  );
 
   const resolveActionKeys = () => {
     let keys = [...selectedActions];
@@ -402,48 +442,57 @@ export default function RuleStudioDialog({
             {t('rules.studio.alertSeverity')}
             <InfoTip content="Faible : notification discrète. Moyenne : badge visible + son. Élevée : bandeau rouge. Critique : alerte sonore continue + notification push — à réserver aux situations urgentes." />
           </label>
-          <select className="cv-input w-full" value={actionSeverity} onChange={(e) => setActionSeverity(e.target.value)}>
-            <option value="low">{t('rules.severity.low')} — notification discrète</option>
-            <option value="medium">{t('rules.severity.medium')} — badge + son</option>
-            <option value="high">{t('rules.severity.high')} — bandeau rouge</option>
-            <option value="critical">{t('rules.severity.critical')} — alerte sonore continue</option>
-          </select>
+          <ExplanatorySelect
+            className="w-full"
+            value={actionSeverity}
+            onChange={setActionSeverity}
+            options={buildSeverityOptions(i18n.language.startsWith('en') ? 'en' : 'fr', {
+              low: t('rules.severity.low'),
+              medium: t('rules.severity.medium'),
+              high: t('rules.severity.high'),
+              critical: t('rules.severity.critical'),
+            })}
+            searchable={false}
+          />
         </div>
       )}
     </div>
   );
 
   const actionsStepContent = (
-    <div className="space-y-4">
-      <SegmentedTabs
-        className="sticky top-0 z-10"
-        tabs={[
-          { id: 'actions', label: 'Actions' },
-          { id: 'evidence', label: 'Preuves' },
-          { id: 'notifications', label: 'Notifications' },
-        ]}
-        value={step3Tab}
-        onChange={(id) => setStep3Tab(id as 'actions' | 'evidence' | 'notifications')}
-      />
-      {step3Tab === 'actions' && actionsOnlyContent}
-      {step3Tab === 'evidence' && (
-        <div id="evidence-policy-panel">
-          <p className="text-xs text-cv-muted mb-2">Clip de preuve automatique (H.264, {evidencePolicy.clip_seconds} s par défaut) — distinct de l&apos;enregistrement long ffmpeg.</p>
-          <EvidencePolicyPanel policy={evidencePolicy} onChange={setEvidencePolicy} />
-        </div>
-      )}
-      {step3Tab === 'notifications' && (
-        <OutputChannelsPanel
-          notifyEmail={notifyEmail}
-          onNotifyEmail={setNotifyEmail}
-          webhookPreset={webhookPreset}
-          onWebhookPreset={setWebhookPreset}
-          webhookUrl={webhookUrl}
-          onWebhookUrl={setWebhookUrl}
-          enableWebhook={enableWebhook}
-          onEnableWebhook={setEnableWebhook}
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div className="shrink-0 pb-3 border-b border-cv-border/40 bg-cv-surface/95 backdrop-blur-md -mx-1 px-1">
+        <SegmentedTabs
+          tabs={[
+            { id: 'actions', label: 'Actions' },
+            { id: 'evidence', label: 'Preuves' },
+            { id: 'notifications', label: 'Notifications' },
+          ]}
+          value={step3Tab}
+          onChange={(id) => setStep3Tab(id as 'actions' | 'evidence' | 'notifications')}
         />
-      )}
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto pt-4 space-y-4 pr-1">
+        {step3Tab === 'actions' && actionsOnlyContent}
+        {step3Tab === 'evidence' && (
+          <div id="evidence-policy-panel">
+            <p className="text-xs text-cv-muted mb-2">Clip de preuve automatique (H.264, {evidencePolicy.clip_seconds} s par défaut) — distinct de l&apos;enregistrement long ffmpeg.</p>
+            <EvidencePolicyPanel policy={evidencePolicy} onChange={setEvidencePolicy} />
+          </div>
+        )}
+        {step3Tab === 'notifications' && (
+          <OutputChannelsPanel
+            notifyEmail={notifyEmail}
+            onNotifyEmail={setNotifyEmail}
+            webhookPreset={webhookPreset}
+            onWebhookPreset={setWebhookPreset}
+            webhookUrl={webhookUrl}
+            onWebhookUrl={setWebhookUrl}
+            enableWebhook={enableWebhook}
+            onEnableWebhook={setEnableWebhook}
+          />
+        )}
+      </div>
     </div>
   );
 
@@ -497,8 +546,8 @@ export default function RuleStudioDialog({
     <Modal
       open
       onClose={onClose}
-      maxWidth="2xl"
-      className="max-h-[90vh] overflow-y-auto"
+      maxWidth="studio"
+      className="max-h-[92vh] overflow-hidden flex flex-col"
       footer={
         <>
           {step > 1 && (
@@ -519,7 +568,8 @@ export default function RuleStudioDialog({
         </>
       }
     >
-      <div className="flex items-start justify-between gap-3 mb-4 -mt-2">
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div className="flex items-start justify-between gap-3 mb-4 shrink-0">
         <div>
           <p className="text-xs uppercase tracking-wide text-cv-accent font-semibold mb-1">
             {isEdit ? t('rules.studio.editTitle') : t('rules.studio.createTitle')}
@@ -534,15 +584,34 @@ export default function RuleStudioDialog({
         </button>
       </div>
 
-      <WizardSteps steps={wizardSteps} current={step} className="mb-4" />
+      <WizardSteps steps={wizardSteps} current={step} className="mb-4 shrink-0" />
       <WizardStepContext step={step} template={activeTemplate as { name: string; partial_status?: string; partial_reason_fr?: string; category?: string }} t={t} />
 
-      {activeTemplate.tutorial && step === 1 && (
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,280px)_1fr] gap-5 flex-1 min-h-0 overflow-hidden">
+        <RuleStudioGuideRail
+          templateId={activeTemplate.id}
+          category={activeTemplate.category}
+          step={step}
+          collapsed={guideRailCollapsed}
+          onToggleCollapse={() => setGuideRailCollapsed((v) => !v)}
+        />
+        <div
+          className={
+            step === 3
+              ? 'flex flex-col flex-1 min-h-0 overflow-hidden pr-1'
+              : 'flex flex-col flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 space-y-4 pb-4'
+          }
+        >
+      {step === 3 ? (
+        actionsStepContent
+      ) : (
+        <>
+      {activeTemplate.tutorial && step === 1 && typeof activeTemplate.tutorial === 'string' && (
         <GuideIllustration
           variant="rules"
-          src={activeTemplate.illustration ?? '/guides/rules-zone-intrusion.svg'}
+          imageRole="howItWorks"
           title={t('rules.guide.wizardTitle')}
-          caption={activeTemplate.tutorial as string}
+          caption={activeTemplate.tutorial}
           className="mb-4"
         />
       )}
@@ -602,15 +671,24 @@ export default function RuleStudioDialog({
             </>
           )}
           {step === 2 && (
-            <ConditionTreeEditor value={conditionTree} onChange={setConditionTree} />
+            <div className="space-y-4">
+              <ConditionTreeVisualEditor
+                value={conditionTree}
+                onChange={setConditionTree}
+                narrativeContext={narrativeContext}
+                spatialContext={spatialContext}
+                templateEventHint={templateEventHint}
+              />
+              <ConditionLogicSimulator tree={conditionTree} />
+              <ConditionTreeTechnicalMirror value={conditionTree} />
+            </div>
           )}
-          {step === 3 && actionsStepContent}
           {step === 4 && previewRule && (
             <div className="space-y-3">
               <p className="text-sm font-medium">{t('rules.studio.previewTitle')}</p>
               {previewSummary && (
                 <p className="text-sm text-cv-muted bg-cv-border/20 rounded-lg p-3 border border-cv-border">
-                  {t('rules.studio.previewSummary', { details: previewSummary })}
+                  {narrateConditionSummary(conditionTree, t, narrativeContext)}
                 </p>
               )}
               {(() => {
@@ -643,9 +721,15 @@ export default function RuleStudioDialog({
           )}
         </div>
 
+        </>
+      )}
+
         {error && (
-          <p className="mt-4 text-sm text-red-500 bg-red-500/10 border border-red-500/30 rounded-lg p-3">{error}</p>
+          <p className="mt-4 text-sm text-red-500 bg-red-500/10 border border-red-500/30 rounded-lg p-3 shrink-0">{error}</p>
         )}
+        </div>
+      </div>
+      </div>
     </Modal>
   );
 }
@@ -671,7 +755,10 @@ function SchemaField({
   plateLists: SurveillanceList[];
   loadingSpatial: boolean;
 }) {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language.startsWith('en') ? 'en' : 'fr';
   const label = field.label ?? field.key;
+  const choose = t('common.choose', { defaultValue: '— Choisir —' });
 
   return (
     <div>
@@ -682,49 +769,55 @@ function SchemaField({
       </label>
 
       {field.type === 'camera' && (
-        <select className="cv-input w-full" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-          <option value="">— Choisir —</option>
-          {cameras.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+        <ExplanatorySelect
+          className="w-full"
+          value={String(value ?? '')}
+          onChange={(v) => onChange(v)}
+          options={buildCameraOptions(cameras, lang)}
+          placeholder={choose}
+          searchable={cameras.length > 8}
+        />
       )}
 
       {field.type === 'zone' && (
         loadingSpatial ? (
-          <p className="text-xs text-cv-muted">Chargement…</p>
+          <p className="text-xs text-cv-muted">{t('common.loading')}</p>
         ) : zones.length === 0 ? (
           <p className="text-xs text-amber-600 dark:text-amber-400">
             Aucune zone. <Link to="/zones" className="underline text-cv-accent">Éditeur de zones</Link>
           </p>
         ) : (
-          <select className="cv-input w-full" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-            <option value="">— Choisir —</option>
-            {zones.map((z) => (
-              <option key={z.id} value={z.name}>{z.name}</option>
-            ))}
-          </select>
+          <ExplanatorySelect
+            className="w-full"
+            value={String(value ?? '')}
+            onChange={(v) => onChange(v)}
+            options={buildZoneOptions(zones, lang)}
+            placeholder={choose}
+            searchable={zones.length > 8}
+          />
         )
       )}
 
       {field.type === 'line' && (
         loadingSpatial ? (
-          <p className="text-xs text-cv-muted">Chargement…</p>
+          <p className="text-xs text-cv-muted">{t('common.loading')}</p>
         ) : lines.length === 0 ? (
           <p className="text-xs text-amber-600 dark:text-amber-400">
             Aucune ligne. <Link to="/zones" className="underline text-cv-accent">Éditeur de zones</Link>
           </p>
         ) : (
-          <select className="cv-input w-full" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-            <option value="">— Choisir —</option>
-            {lines.map((l) => (
-              <option key={l.id} value={l.name}>{l.name}</option>
-            ))}
-          </select>
+          <ExplanatorySelect
+            className="w-full"
+            value={String(value ?? '')}
+            onChange={(v) => onChange(v)}
+            options={buildLineOptions(lines, lang)}
+            placeholder={choose}
+            searchable={lines.length > 8}
+          />
         )
       )}
 
-      {(field.type === 'number' || field.type === 'threshold') && (
+      {field.type === 'number' || field.type === 'threshold' ? (
         <input
           type="number"
           min={field.min}
@@ -733,7 +826,7 @@ function SchemaField({
           value={value != null ? Number(value) : ''}
           onChange={(e) => onChange(Number(e.target.value))}
         />
-      )}
+      ) : null}
 
       {field.type === 'watchlist' && (
         watchlists.length === 0 ? (
@@ -742,12 +835,14 @@ function SchemaField({
             <Link to="/settings" className="underline text-cv-accent">Paramètres → Identité</Link>
           </p>
         ) : (
-          <select className="cv-input w-full" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-            <option value="">— Choisir —</option>
-            {watchlists.map((w) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
+          <ExplanatorySelect
+            className="w-full"
+            value={String(value ?? '')}
+            onChange={(v) => onChange(v)}
+            options={buildSurveillanceListOptions(watchlists, lang, 'watchlist')}
+            placeholder={choose}
+            searchable={watchlists.length > 8}
+          />
         )
       )}
 
@@ -757,12 +852,14 @@ function SchemaField({
             <Link to="/settings" className="underline text-cv-accent">Créer une liste de plaques</Link>
           </p>
         ) : (
-          <select className="cv-input w-full" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-            <option value="">— Choisir —</option>
-            {plateLists.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          <ExplanatorySelect
+            className="w-full"
+            value={String(value ?? '')}
+            onChange={(v) => onChange(v)}
+            options={buildSurveillanceListOptions(plateLists, lang, 'plate_list')}
+            placeholder={choose}
+            searchable={plateLists.length > 8}
+          />
         )
       )}
 
@@ -775,16 +872,14 @@ function SchemaField({
       )}
 
       {field.type === 'enum' && (
-        <select className="cv-input w-full" value={String(value ?? field.default ?? '')} onChange={(e) => onChange(e.target.value)}>
-          <option value="">— Choisir —</option>
-          {(field.options ?? []).map((opt) => {
-            const val = typeof opt === 'string' ? opt : opt.value;
-            const lab = typeof opt === 'string' ? opt : opt.label;
-            return (
-              <option key={val} value={val}>{lab}</option>
-            );
-          })}
-        </select>
+        <ExplanatorySelect
+          className="w-full"
+          value={String(value ?? field.default ?? '')}
+          onChange={(v) => onChange(v)}
+          options={buildSchemaEnumOptions(field.options ?? [], lang, field.key)}
+          placeholder={choose}
+          searchable={(field.options ?? []).length > 8}
+        />
       )}
 
       {field.type === 'schedule' && (

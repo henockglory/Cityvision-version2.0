@@ -6,7 +6,6 @@ import {
   ZoomIn, ZoomOut, Camera, Maximize2, MonitorPlay, Activity, Plus,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
-import VideoPlaceholder from '@/components/ui/VideoPlaceholder';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
@@ -71,7 +70,6 @@ export default function LiveView() {
   const activeId = selectedId ?? cameras[0]?.id ?? '';
   const selected = cameras.find((c) => c.id === activeId) ?? cameras[0];
   const streamSrc = go2rtcStreamSrc(selected);
-  const hasStream = !!selected?.streamKey || !!selected?.streamUrl || selected?.metadata?.virtual;
 
   return (
     <div>
@@ -80,11 +78,7 @@ export default function LiveView() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div id="live-view-player" className="lg:col-span-3">
           <div className="cv-card overflow-hidden border-cv-electric/25">
-            {hasStream ? (
-              <Go2RtcPlayer className="aspect-video w-full" src={streamSrc} label={selected.name} />
-            ) : (
-              <VideoPlaceholder label={selected.name} live={selected.status !== 'offline'} className="aspect-video rounded-none" />
-            )}
+            <Go2RtcPlayer className="aspect-video w-full" src={streamSrc} label={selected.name} />
             <div className="p-3 flex items-center justify-between border-t border-cv-border">
               <div>
                 <p className="font-medium">{selected.name}</p>

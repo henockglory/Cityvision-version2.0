@@ -98,6 +98,50 @@
     box-shadow: var(--cv-shadow-soft);
   }
 
+  .cv-camera-card {
+    @apply cv-card-hover overflow-hidden transition-all duration-300;
+  }
+
+  .cv-camera-card:hover {
+    box-shadow: var(--cv-shadow-glow);
+  }
+
+  .cv-dropdown-panel {
+    @apply py-1.5 rounded-xl border border-cv-border/80 bg-cv-surface/95 backdrop-blur-xl;
+    box-shadow: var(--cv-shadow-card), 0 8px 32px rgb(0 0 0 / 0.35);
+  }
+
+  .cv-explanatory-select-trigger {
+    @apply inline-flex items-center gap-2 px-3 py-2 bg-cv-deep/40 border border-cv-border rounded-lg text-cv-text
+      transition-all duration-200 focus:outline-none focus:border-cv-accent/50 focus:ring-1 focus:ring-cv-accent/25
+      hover:border-cv-accent/30;
+  }
+
+  .cv-explanatory-select-trigger-compact {
+    @apply py-1.5 px-2.5;
+  }
+
+  .cv-explanatory-select-panel {
+    @apply rounded-xl overflow-hidden max-w-[min(520px,90vw)];
+  }
+
+  .cv-explanatory-option {
+    @apply px-3 py-2.5 transition-colors border-l-2 border-transparent;
+  }
+
+  .cv-explanatory-option:hover,
+  .cv-explanatory-option-highlight {
+    @apply bg-cv-accent/10 border-l-cv-accent/40;
+  }
+
+  .cv-explanatory-option-selected {
+    @apply bg-cv-accent/15 border-l-cv-accent;
+  }
+
+  .cv-explanatory-option-group {
+    @apply text-cv-accent;
+  }
+
   .cv-btn {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
       transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cv-accent/40 disabled:opacity-50 disabled:cursor-not-allowed;
@@ -295,7 +339,7 @@
   }
 
   .cv-modal-overlay {
-    @apply bg-black/60 backdrop-blur-sm;
+    @apply bg-black/70 backdrop-blur-md;
   }
 
   .cv-badge {
@@ -308,6 +352,10 @@
 
   .cv-badge-offline {
     @apply cv-badge bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30;
+  }
+
+  .cv-badge-recording {
+    @apply cv-badge bg-red-500/15 text-red-500 dark:text-red-400 border border-red-500/30;
   }
 
   .cv-page-title {

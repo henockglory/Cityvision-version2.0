@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Grid2x2, Grid3x3, LayoutGrid, Square, Grid3x3 as GridIcon, Plus } from 'lucide-react';
 import PageShell from '@/components/ui/PageShell';
-import VideoPlaceholder from '@/components/ui/VideoPlaceholder';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
@@ -107,22 +106,9 @@ export default function VideoWall() {
       >
         {cameras.map((cam) => {
           const src = go2rtcStreamSrc(cam);
-          const hasStream =
-            !!cam.streamKey ||
-            !!cam.streamUrl ||
-            cam.metadata?.virtual === true ||
-            String(cam.metadata?.source ?? '').includes('benedicte');
           return (
             <div key={cam.id} className="cv-wall-cell">
-              {hasStream ? (
-                <Go2RtcPlayer src={src} label={cam.name} bare />
-              ) : (
-                <VideoPlaceholder
-                  label={cam.name}
-                  live={cam.status !== 'offline'}
-                  className="cv-wall-placeholder"
-                />
-              )}
+              <Go2RtcPlayer src={src} label={cam.name} bare />
             </div>
           );
         })}
