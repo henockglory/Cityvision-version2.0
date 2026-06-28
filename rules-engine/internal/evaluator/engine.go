@@ -109,6 +109,15 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		var expected interface{}
 		_ = json.Unmarshal(node.Value, &expected)
 		return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", expected)
+	case "NEQ", "NE":
+		v, ok := fieldValue(payload, node.Field)
+		if !ok {
+			// Field absent: treat as "not equal" to a concrete expected value.
+			return true
+		}
+		var expected interface{}
+		_ = json.Unmarshal(node.Value, &expected)
+		return fmt.Sprintf("%v", v) != fmt.Sprintf("%v", expected)
 	case "GT":
 		raw, ok := fieldValue(payload, node.Field)
 		if !ok {
@@ -121,6 +130,18 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		var expected float64
 		_ = json.Unmarshal(node.Value, &expected)
 		return v > expected
+	case "GTE", "GE":
+		raw, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		v, ok := toFloat(raw)
+		if !ok {
+			return false
+		}
+		var expected float64
+		_ = json.Unmarshal(node.Value, &expected)
+		return v >= expected
 	case "LT":
 		raw, ok := fieldValue(payload, node.Field)
 		if !ok {
@@ -133,6 +154,18 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		var expected float64
 		_ = json.Unmarshal(node.Value, &expected)
 		return v < expected
+	case "LTE", "LE":
+		raw, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		v, ok := toFloat(raw)
+		if !ok {
+			return false
+		}
+		var expected float64
+		_ = json.Unmarshal(node.Value, &expected)
+		return v <= expected
 	case "CONTAINS":
 		v, ok := fieldValue(payload, node.Field)
 		if !ok {
@@ -248,6 +281,17 @@ func normalizePayload(payload map[string]interface{}) map[string]interface{} {
 	if _, ok := out["event_type"]; !ok {
 		if ev, ok := out["event"].(string); ok {
 			out["event_type"] = ev
+		}
+	}
+	// Hoist key fields from nested metadata to the root so conditions can
+	// reference them uniformly (the AI sometimes nests plate/speed in metadata).
+	if meta, ok := out["metadata"].(map[string]interface{}); ok {
+		for _, k := range []string{"plate_number", "speed_kmh", "state", "detected_class", "confidence"} {
+			if _, present := out[k]; !present {
+				if v, has := meta[k]; has && v != nil {
+					out[k] = v
+				}
+			}
 		}
 	}
 	return out

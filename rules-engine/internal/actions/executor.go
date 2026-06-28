@@ -339,10 +339,26 @@ func (e *Executor) runNotify(orgID string, rule evaluator.RuleDefinition, payloa
 	evSnap := buildEvidenceSnapshot(payload)
 	msg := fmt.Sprintf("Règle « %s » déclenchée.\nCaméra: %v\nÉvénement: %v\n", rule.Name, payload["camera_id"], payload["event_type"])
 	msg += formatEvidenceLinksForEmail(evSnap)
+	// Pass an enriched payload (with the evidence package) so the backend can render
+	// a premium HTML email with inline proof images; message stays as text fallback.
+	htmlPayload := map[string]interface{}{}
+	for k, v := range payload {
+		htmlPayload[k] = v
+	}
+	if _, ok := htmlPayload["package"]; !ok {
+		if pkg, ok := evSnap["package"]; ok {
+			htmlPayload["package"] = pkg
+		}
+	}
+	severity, _ := cfg["severity"].(string)
 	body, _ := json.Marshal(map[string]interface{}{
-		"to":      to,
-		"subject": "Alerte CitéVision — " + rule.Name,
-		"message": msg,
+		"to":        to,
+		"subject":   "Alerte CitéVision — " + rule.Name,
+		"message":   msg,
+		"title":     rule.Name,
+		"rule_name": rule.Name,
+		"severity":  severity,
+		"payload":   htmlPayload,
 	})
 	url := fmt.Sprintf("%s/internal/orgs/%s/notify/email", e.BackendURL, orgID)
 	e.postInternal(url, body)

@@ -317,10 +317,14 @@ export default function Settings() {
                 <p className="text-sm font-medium mb-2">Notifications par défaut (org)</p>
                 <Field
                   label="E-mail alertes par défaut"
-                  value={String((org.notification_prefs as Record<string, string>)?.default_email ?? '')}
+                  value={String(
+                    (org.notification_prefs as Record<string, string>)?.default_email_to ??
+                    (org.notification_prefs as Record<string, string>)?.default_email ??
+                    ''
+                  )}
                   onChange={(v) => setOrg({
                     ...org,
-                    notification_prefs: { ...org.notification_prefs, default_email: v },
+                    notification_prefs: { ...org.notification_prefs, default_email_to: v },
                   })}
                 />
                 <Field

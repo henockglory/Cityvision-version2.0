@@ -323,13 +323,13 @@
         "Alerter si violation"
       ]
     },
-    "role_summary_fr": "Détecte l'absence de ceinture de sécurité dans l'habitacle — IA embarquée OpenCV.",
+    "role_summary_fr": "Détecte l'absence de ceinture de sécurité dans l'habitacle via un modèle ONNX dédié (repli heuristique si modèle absent).",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
-    "partial_status": "requires_calibration",
-    "partial_reason_fr": "Détection ceinture nécessite une caméra haute résolution orientée conducteur (angle ≤45°)"
+    "partial_status": "requires_model",
+    "partial_reason_fr": "Nécessite le modèle ONNX « seatbelt » (scripts/download-secondary-models) + caméra orientée conducteur (angle ≤45°). Repli heuristique bêta sinon."
   },
   {
     "id": "tpl-phone-driving",
@@ -360,11 +360,12 @@
         "Détection téléphone"
       ]
     },
-    "role_summary_fr": "Détecte l'utilisation d'un téléphone au volant — analyse peau + forme en zone conducteur.",
+    "role_summary_fr": "Détecte l'utilisation d'un téléphone au volant via un modèle ONNX dédié (repli heuristique peau+forme si modèle absent).",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
-    "partial_status": "full"
+    "partial_status": "requires_model",
+    "partial_reason_fr": "Nécessite le modèle ONNX « driver_phone » (scripts/download-secondary-models). Repli heuristique bêta sinon — fiabilité variable."
   }
 ]

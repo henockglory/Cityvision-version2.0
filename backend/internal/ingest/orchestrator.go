@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -137,6 +139,10 @@ type Orchestrator struct {
 	log      *slog.Logger
 	interval time.Duration
 	active   map[uuid.UUID]bool
+	// configHash tracks the last spatial/rules/watchlist config pushed per camera so
+	// the orchestrator can hot-reload (re-push) when zones/lines/rules change, without
+	// a manual restart.
+	configHash map[uuid.UUID]string
 	// Backoff after failed AI start attempts (avoids hammering backend/AI every 10s).
 	failNext    map[uuid.UUID]time.Time
 	failBackoff map[uuid.UUID]time.Duration
@@ -158,6 +164,7 @@ func NewOrchestrator(
 		log:      log,
 		interval: 10 * time.Second,
 		active:      make(map[uuid.UUID]bool),
+		configHash:  make(map[uuid.UUID]string),
 		failNext:    make(map[uuid.UUID]time.Time),
 		failBackoff: make(map[uuid.UUID]time.Duration),
 	}
@@ -212,11 +219,12 @@ func (o *Orchestrator) sync(ctx context.Context) {
 			continue
 		}
 		seen[id] = true
-		if o.active[id] {
-			continue
-		}
-		if next, ok := o.failNext[id]; ok && time.Now().Before(next) {
-			continue
+		// While in backoff after a failed start, skip — but still allow active
+		// cameras to be re-evaluated for hot-reload below.
+		if !o.active[id] {
+			if next, ok := o.failNext[id]; ok && time.Now().Before(next) {
+				continue
+			}
 		}
 		rtspURL, err := o.cameras.BuildRTSP(ctx, orgID, id)
 		if err != nil || rtspURL == "" {
@@ -245,13 +253,26 @@ func (o *Orchestrator) sync(ctx context.Context) {
 		} else {
 			req.RTSPURL = rtspURL
 		}
+
+		// Hot-reload: skip if already active AND the config fingerprint is unchanged.
+		newHash := configFingerprint(req)
+		if o.active[id] && o.configHash[id] == newHash {
+			continue
+		}
+		reload := o.active[id]
 		if err := o.ai.StartCamera(ctx, id.String(), req); err != nil {
-			o.log.Warn("failed to start camera", "camera_id", id, "error", err)
-			o.scheduleRetry(id)
+			o.log.Warn("failed to start camera", "camera_id", id, "error", err, "reload", reload)
+			if !reload {
+				o.scheduleRetry(id)
+			}
 		} else {
 			o.active[id] = true
+			o.configHash[id] = newHash
 			delete(o.failNext, id)
 			delete(o.failBackoff, id)
+			if reload {
+				o.log.Info("camera config hot-reloaded", "camera_id", id)
+			}
 		}
 	}
 
@@ -259,10 +280,23 @@ func (o *Orchestrator) sync(ctx context.Context) {
 		if !seen[camID] {
 			_ = o.ai.StopCamera(ctx, camID.String())
 			delete(o.active, camID)
+			delete(o.configHash, camID)
 			delete(o.failNext, camID)
 			delete(o.failBackoff, camID)
 		}
 	}
+}
+
+// configFingerprint produces a stable hash of the camera's effective AI config so
+// the orchestrator can detect zone/line/rule/watchlist changes and re-push them.
+func configFingerprint(req StartCameraRequest) string {
+	b, err := json.Marshal(req)
+	if err != nil {
+		return ""
+	}
+	h := fnv.New64a()
+	_, _ = h.Write(b)
+	return strconv.FormatUint(h.Sum64(), 16)
 }
 
 func (o *Orchestrator) scheduleRetry(cameraID uuid.UUID) {
@@ -330,10 +364,14 @@ func (o *Orchestrator) buildSpatialConfig(ctx context.Context, orgID, cameraID u
 		if strings.HasPrefix(z.Name, "e2e-") || os.Getenv("E2E_MODE") == "1" {
 			loiterSec = 5
 		}
+		// Parse the rich behavior config; fall back to legacy zone_kind.
+		behavior, behaviorConfig := parseZoneBehavior(z.BehaviorConfig, z.ZoneKind)
 		zoneList = append(zoneList, map[string]interface{}{
 			"zone_id":          z.Name,
 			"name":             z.Name,
 			"zone_kind":        z.ZoneKind,
+			"behavior":         behavior,
+			"behavior_config":  behaviorConfig,
 			"polygon":          polygon,
 			"loiter_threshold": loiterSec,
 		})
@@ -365,6 +403,29 @@ func (o *Orchestrator) buildSpatialConfig(ctx context.Context, orgID, cameraID u
 		"lines":          lineList,
 		"presence_rules": o.buildPresenceRulesFromActiveRules(ctx, orgID, cameraID, zoneList),
 	}
+}
+
+// parseZoneBehavior extracts {behavior, config} from a zone's behavior_config JSON.
+// It falls back to the legacy zone_kind when no behavior is configured so existing
+// zones keep working unchanged.
+func parseZoneBehavior(raw json.RawMessage, zoneKind string) (string, map[string]interface{}) {
+	cfg := map[string]interface{}{}
+	behavior := ""
+	if len(raw) > 0 {
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(raw, &parsed); err == nil {
+			if b, ok := parsed["behavior"].(string); ok {
+				behavior = b
+			}
+			if c, ok := parsed["config"].(map[string]interface{}); ok {
+				cfg = c
+			}
+		}
+	}
+	if behavior == "" {
+		behavior = zoneKind
+	}
+	return behavior, cfg
 }
 
 var presenceRuleTemplates = map[string]bool{

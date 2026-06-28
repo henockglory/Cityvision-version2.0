@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  PenTool, Workflow, Bell, Activity, ChevronRight, RotateCcw,
+  PenTool, Workflow, Bell, Activity, ChevronRight, RotateCcw, Mail,
 } from 'lucide-react';
 import DemoEditableHeader from '@/components/demo/DemoEditableHeader';
 import DemoVideoPanel from '@/components/demo/DemoVideoPanel';
 import DemoFeedPanel from '@/components/demo/DemoFeedPanel';
+import DemoLineCounterPanel from '@/components/demo/DemoLineCounterPanel';
 import DemoZoneInlinePanel from '@/components/demo/DemoZoneInlinePanel';
 import RuleCatalogPanel from '@/components/rules/RuleCatalogPanel';
 import RuleActivationDialog from '@/components/rules/RuleActivationDialog';
@@ -18,7 +19,7 @@ import {
   useAlerts, useEvents, useRules, useRuleCatalog, useAcknowledgeAlert, useDemoSettings, useCameras,
   queryKeys,
 } from '@/hooks/api/queries';
-import { AI_ENGINE_HEALTH, GO2RTC_STREAMS_API } from '@/config/streams';
+import { AI_ENGINE_HEALTH, GO2RTC_STREAMS_API, MAILHOG_URL } from '@/config/streams';
 
 const MAX_DEMO_EVENTS = 20;
 
@@ -279,11 +280,21 @@ export default function DemoCenter() {
         <StatusChip label={t('demoCenter.gpuCuda')} ok={services.cuda} />
         <StatusChip label={t('demoCenter.detections')} ok={demoEvents.length > 0} />
         <StatusChip label={t('demoCenter.alertes')} ok={demoAlerts.length > 0} />
+        <a
+          href={MAILHOG_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto cv-btn-secondary text-xs py-1 px-3"
+          title={t('demoCenter.mailhogTip')}
+        >
+          <Mail className="w-3.5 h-3.5 text-cv-accent" />
+          {t('demoCenter.mailhogInbox')}
+        </a>
         <button
           type="button"
           onClick={() => void handleReset()}
           disabled={resetting}
-          className="ml-auto cv-btn-secondary text-xs py-1 px-3"
+          className="cv-btn-secondary text-xs py-1 px-3"
         >
           <RotateCcw className={`w-3.5 h-3.5 ${resetting ? 'animate-spin' : ''}`} />
           {t('demoCenter.resetDemo')}
@@ -381,6 +392,8 @@ export default function DemoCenter() {
           }}
         />
       )}
+
+      <DemoLineCounterPanel cameraId={zoneCameraId} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <DemoFeedPanel

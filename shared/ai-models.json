@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "description": "Registre des modèles d'inférence secondaire (bbox habitacle conducteur) pour téléphone au volant et port de ceinture. Les fichiers sont placés dans ai-engine/models/secondary/<file>. sha256 vide = non épinglé (le script de téléchargement calcule et avertit ; remplir la valeur pour figer l'intégrité).",
+  "models": [
+    {
+      "id": "driver_phone",
+      "task": "detection",
+      "behavior": "phone_use",
+      "event_type": "phone_use_violation",
+      "file": "driver_phone.onnx",
+      "input_size": 640,
+      "classes": ["safe_driving", "using_phone", "talking_phone", "texting"],
+      "positive_classes": ["using_phone", "talking_phone", "texting"],
+      "url": "https://huggingface.co/citevision/driver-distraction-onnx/resolve/main/driver_phone.onnx",
+      "sha256": "",
+      "license": "Apache-2.0 (à confirmer selon la source retenue)",
+      "size_mb": 12,
+      "notes": "Modèle YOLOv8 distraction conducteur. Remplacer l'URL par la source publique retenue, puis figer le sha256."
+    },
+    {
+      "id": "seatbelt",
+      "task": "detection",
+      "behavior": "seatbelt",
+      "event_type": "seatbelt_violation",
+      "file": "seatbelt.onnx",
+      "input_size": 640,
+      "classes": ["seatbelt", "no_seatbelt"],
+      "positive_classes": ["no_seatbelt"],
+      "url": "https://huggingface.co/citevision/seatbelt-onnx/resolve/main/seatbelt.onnx",
+      "sha256": "",
+      "license": "Apache-2.0 (à confirmer selon la source retenue)",
+      "size_mb": 12,
+      "notes": "Modèle YOLOv8 détection ceinture. Remplacer l'URL par la source publique retenue, puis figer le sha256."
+    }
+  ]
+}

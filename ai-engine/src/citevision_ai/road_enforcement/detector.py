@@ -52,12 +52,15 @@ class RoadEnforcementEngine:
         tracks: list[dict],
         timestamp: str,
         spatial_zones: list[dict] | None = None,
+        disable_red_light: bool = False,
+        disable_phone: bool = False,
+        disable_seatbelt: bool = False,
     ) -> list[dict[str, Any]]:
         self._frame_counter += 1
         if frame is None or frame.size == 0:
             return []
         h, w = frame.shape[:2]
-        red_active = self._detect_red_signal(frame)
+        red_active = False if disable_red_light else self._detect_red_signal(frame)
         events: list[dict[str, Any]] = []
         vehicles = [t for t in tracks if t.get("class_name") in VEHICLE_CLASSES]
 
@@ -83,7 +86,7 @@ class RoadEnforcementEngine:
                         )
                     )
 
-            if self._detect_no_seatbelt(frame, bbox):
+            if not disable_seatbelt and self._detect_no_seatbelt(frame, bbox):
                 if self._allow_emit(camera_id, tid, "seatbelt_violation"):
                     events.append(
                         self._make_event(
@@ -98,7 +101,7 @@ class RoadEnforcementEngine:
                         )
                     )
 
-            if self._detect_phone_near_ear(frame, bbox):
+            if not disable_phone and self._detect_phone_near_ear(frame, bbox):
                 if self._allow_emit(camera_id, tid, "phone_driving"):
                     events.append(
                         self._make_event(

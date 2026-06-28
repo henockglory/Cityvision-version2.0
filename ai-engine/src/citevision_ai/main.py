@@ -134,7 +134,7 @@ def health() -> dict[str, str]:
     face_loaded = pipeline.face_engine.is_loaded if pipeline else False
     plate_loaded = pipeline.plate_engine.is_loaded if pipeline else False
     provider = pipeline.detector.active_provider if pipeline else "none"
-    return {
+    result = {
         "status": "ok",
         "service": "citevision-ai-engine",
         "yolo_loaded": str(yolo_loaded).lower(),
@@ -143,7 +143,14 @@ def health() -> dict[str, str]:
         "yolo_provider": provider,
         "yolo_cuda": str(pipeline.detector.uses_cuda if pipeline else False).lower(),
         "ffmpeg_available": str(shutil.which("ffmpeg") is not None).lower(),
+        # Traffic-light detection is pure OpenCV — ready whenever frames flow.
+        "traffic_light_ready": "true",
     }
+    # Secondary cabin models (phone / seatbelt): honest per-model load status.
+    if pipeline:
+        for key, loaded in pipeline.secondary.health().items():
+            result[key] = str(loaded).lower()
+    return result
 
 
 @app.get("/hardware/profile")

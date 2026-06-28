@@ -162,4 +162,43 @@ func (e *EventIngestor) onMessage(_ mqtt.Client, msg mqtt.Message) {
 	if err != nil {
 		e.log.Debug("event ingest failed", "error", err, "type", eventType)
 	}
+
+	// Persistent line counter: every crossing increments the counter for its line.
+	if eventType == "line_cross" {
+		e.incrementLineCounter(ctx, orgID, camID, payload)
+	}
+}
+
+// incrementLineCounter upserts the per-line crossing counter. Direction "in"/"out"
+// bump the matching column; anything else still bumps the total.
+func (e *EventIngestor) incrementLineCounter(ctx context.Context, orgID uuid.UUID, camID *uuid.UUID, payload map[string]interface{}) {
+	lineID := stringField(payload, "line_id", "")
+	if lineID == "" {
+		return
+	}
+	direction := strings.ToLower(stringField(payload, "direction", ""))
+	className := stringField(payload, "class_name", "")
+	inInc, outInc := 0, 0
+	switch direction {
+	case "in", "entry", "north", "up":
+		inInc = 1
+	case "out", "exit", "south", "down":
+		outInc = 1
+	}
+	_, err := e.pool.Exec(ctx, `
+		INSERT INTO line_counters (org_id, camera_id, line_id, count_in, count_out, count_total, last_class, updated_at)
+		VALUES ($1,$2,$3,$4,$5,1,$6,NOW())
+		ON CONFLICT (org_id, camera_id, line_id) DO UPDATE SET
+			count_in = line_counters.count_in + EXCLUDED.count_in,
+			count_out = line_counters.count_out + EXCLUDED.count_out,
+			count_total = line_counters.count_total + 1,
+			last_class = EXCLUDED.last_class,
+			updated_at = NOW()`,
+		orgID, camID, lineID, inInc, outInc, className,
+	)
+	if err != nil {
+		e.log.Debug("line counter increment failed", "error", err, "line", lineID)
+	} else {
+		e.log.Info("line crossing counted", "line", lineID, "direction", direction, "class", className)
+	}
 }

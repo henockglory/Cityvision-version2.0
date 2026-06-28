@@ -77,4 +77,7 @@ except Exception as e:
     raise SystemExit(f"[ERR] PaddleOCR init failed: {e}")
 PY
 
+echo "==> Downloading secondary models (driver phone, seatbelt)"
+bash "$ROOT/scripts/download-secondary-models.sh" || echo "[WARN] secondary models step reported issues (honest degradation applies)"
+
 echo "==> All AI models download step complete"

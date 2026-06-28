@@ -422,6 +422,11 @@ export const zonesApi = {
     }),
   create: (orgId: string, body: Record<string, unknown>) =>
     api.post(`/orgs/${orgId}/zones`, body),
+  update: (
+    orgId: string,
+    zoneId: string,
+    body: { name?: string; zone_kind?: string; behavior_config?: Record<string, unknown> },
+  ) => api.patch<BackendZone>(`/orgs/${orgId}/zones/${zoneId}`, body),
   delete: (orgId: string, zoneId: string) =>
     api.delete(`/orgs/${orgId}/zones/${zoneId}`),
   createLine: (orgId: string, body: Record<string, unknown>) =>
@@ -430,9 +435,29 @@ export const zonesApi = {
     api.get<BackendLine[]>(`/orgs/${orgId}/lines`, {
       params: cameraId ? { camera_id: cameraId } : undefined,
     }),
+  updateLine: (orgId: string, lineId: string, body: { name?: string }) =>
+    api.patch<BackendLine>(`/orgs/${orgId}/lines/${lineId}`, body),
   deleteLine: (orgId: string, lineId: string) =>
     api.delete(`/orgs/${orgId}/lines/${lineId}`),
+  lineCounters: (orgId: string, cameraId?: string) =>
+    api.get<LineCounter[]>(`/orgs/${orgId}/lines/counters`, {
+      params: cameraId ? { camera_id: cameraId } : undefined,
+    }),
+  resetLineCounters: (orgId: string, cameraId?: string) =>
+    api.delete(`/orgs/${orgId}/lines/counters`, {
+      params: cameraId ? { camera_id: cameraId } : undefined,
+    }),
 };
+
+export interface LineCounter {
+  line_id: string;
+  camera_id?: string;
+  count_in: number;
+  count_out: number;
+  count_total: number;
+  last_class: string;
+  updated_at: string;
+}
 
 export interface BackendLine {
   id: string;
@@ -449,6 +474,7 @@ export interface BackendZone {
   color?: string;
   camera_id?: string;
   zone_kind?: string;
+  behavior_config?: { behavior?: string; config?: Record<string, unknown> };
 }
 
 export const healthApi = {

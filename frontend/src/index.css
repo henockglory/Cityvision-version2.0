@@ -1040,3 +1040,31 @@ html.light .cv-driver-popover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Zone behavior capability badges */
+.cv-behavior-cap {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+}
+.cv-behavior-cap--real {
+  color: rgb(34 197 94);
+  background: rgb(34 197 94 / 0.12);
+  border-color: rgb(34 197 94 / 0.35);
+}
+.cv-behavior-cap--partial {
+  color: rgb(234 179 8);
+  background: rgb(234 179 8 / 0.12);
+  border-color: rgb(234 179 8 / 0.35);
+}
+.cv-behavior-cap--beta {
+  color: rgb(244 114 182);
+  background: rgb(244 114 182 / 0.12);
+  border-color: rgb(244 114 182 / 0.35);
+}

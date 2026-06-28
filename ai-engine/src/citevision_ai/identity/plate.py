@@ -101,55 +101,83 @@ class PlateIdentityEngine:
         if not getattr(self._backend, "is_loaded", False):
             return []
 
+        if not self._anpr.is_enabled:
+            return []
+
         events: list[dict[str, Any]] = []
-        bboxes = []
+        h, w = frame.shape[:2]
+        # Recognize per-vehicle so each plate is linked to its track_id and the
+        # vehicle bbox is carried for evidence / plate↔vehicle association.
         for t in tracks:
             if t.get("class_name") not in VEHICLE_CLASSES:
                 continue
-            b = t["bbox"]
-            bboxes.append({
-                "x1": b["x"],
-                "y1": b["y"],
-                "x2": b["x"] + b["width"],
-                "y2": b["y"] + b["height"],
-            })
+            b = t.get("bbox") or {}
+            track_id = t.get("track_id", -1)
+            x1 = max(0, int(b.get("x", 0)))
+            y1 = max(0, int(b.get("y", 0)))
+            x2 = min(w, int(b.get("x", 0) + b.get("width", 0)))
+            y2 = min(h, int(b.get("y", 0) + b.get("height", 0)))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            crop = frame[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
 
-        for plate in self._anpr.process(frame, bboxes):
-            status = self._match_plate(plate.text)
-            event_type = "plate_unknown"
-            severity = "info"
-            if status == "blocked":
-                event_type = "plate_blocked"
-                severity = "critical"
-            elif status == "allowed":
-                event_type = "plate_allowed"
+            for plate in self._backend.recognize(crop):
+                if not plate.text:
+                    continue
+                status = self._match_plate(plate.text)
+                event_type = "plate_unknown"
                 severity = "info"
+                if status == "blocked":
+                    event_type = "plate_blocked"
+                    severity = "critical"
+                elif status == "allowed":
+                    event_type = "plate_allowed"
+                    severity = "info"
 
-            events.append({
-                "event_id": str(uuid.uuid4()),
-                "camera_id": camera_id,
-                "event_type": event_type,
-                "timestamp": timestamp,
-                "severity": severity,
-                "track_id": -1,
-                "metadata": {
+                # Normalized vehicle bbox so the consumer can draw/crop reliably.
+                norm_bbox = {
+                    "x": b.get("x", 0) / max(w, 1),
+                    "y": b.get("y", 0) / max(h, 1),
+                    "width": b.get("width", 0) / max(w, 1),
+                    "height": b.get("height", 0) / max(h, 1),
+                }
+                base_meta = {
                     "plate_number": plate.text,
                     "plate_confidence": plate.confidence,
                     "status": status,
-                },
-            })
-            events.append({
-                "event_id": str(uuid.uuid4()),
-                "camera_id": camera_id,
-                "event_type": "plate_detected",
-                "timestamp": timestamp,
-                "severity": "info",
-                "track_id": -1,
-                "metadata": {
+                }
+                events.append({
+                    "event_id": str(uuid.uuid4()),
+                    "camera_id": camera_id,
+                    "event_type": event_type,
+                    "timestamp": timestamp,
+                    "severity": severity,
+                    "track_id": track_id,
+                    "class_name": t.get("class_name"),
+                    # plate_number exposed at ROOT so rules-engine / evidence read it reliably.
                     "plate_number": plate.text,
                     "plate_confidence": plate.confidence,
-                },
-            })
+                    "bbox": norm_bbox,
+                    "metadata": base_meta,
+                })
+                events.append({
+                    "event_id": str(uuid.uuid4()),
+                    "camera_id": camera_id,
+                    "event_type": "plate_detected",
+                    "timestamp": timestamp,
+                    "severity": "info",
+                    "track_id": track_id,
+                    "class_name": t.get("class_name"),
+                    "plate_number": plate.text,
+                    "plate_confidence": plate.confidence,
+                    "bbox": norm_bbox,
+                    "metadata": {
+                        "plate_number": plate.text,
+                        "plate_confidence": plate.confidence,
+                    },
+                })
         return events
 
     def _match_plate(self, plate: str) -> str:

@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "description": "Catalogue extensible des comportements IA assignables à une zone. Chaque zone porte un behavior_config { behavior, config }. Le champ 'capability' indique le niveau de véracité réel de la détection.",
+  "capability_levels": {
+    "real": "Détection réelle et fiable (modèle dédié ou géométrie déterministe).",
+    "partial": "Détection fonctionnelle mais heuristique/approximative (à valider selon la scène).",
+    "beta": "Expérimental — résultats indicatifs, peut générer des faux positifs."
+  },
+  "groups": [
+    {
+      "id": "access",
+      "label_fr": "Accès & présence",
+      "label_en": "Access & presence"
+    },
+    {
+      "id": "traffic",
+      "label_fr": "Circulation & route",
+      "label_en": "Traffic & road"
+    },
+    {
+      "id": "driver",
+      "label_fr": "Conducteur (habitacle)",
+      "label_en": "Driver (cabin)"
+    },
+    {
+      "id": "safety",
+      "label_fr": "Sécurité & comportement",
+      "label_en": "Safety & behavior"
+    }
+  ],
+  "behaviors": [
+    {
+      "id": "",
+      "group": "access",
+      "label_fr": "Détection standard (auto)",
+      "label_en": "Standard detection (auto)",
+      "capability": "real",
+      "human_description_fr": "Détecte les entrées/sorties d'objets dans la zone (YOLO + suivi). Comportement par défaut.",
+      "human_description_en": "Detects objects entering/leaving the zone (YOLO + tracking). Default behavior.",
+      "emits": ["zone_enter", "zone_exit"],
+      "requires": [],
+      "config_fields": []
+    },
+    {
+      "id": "presence",
+      "group": "access",
+      "label_fr": "Présence soutenue",
+      "label_en": "Sustained presence",
+      "capability": "real",
+      "human_description_fr": "Alerte si une cible reste dans la zone au-delà d'une durée donnée.",
+      "human_description_en": "Alerts when a target stays in the zone beyond a duration.",
+      "emits": ["zone_presence"],
+      "requires": [],
+      "config_fields": [
+        { "key": "duration_seconds", "type": "number", "label_fr": "Durée (s)", "label_en": "Duration (s)", "default": 5, "min": 1, "max": 86400 },
+        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "person" }
+      ]
+    },
+    {
+      "id": "perimeter",
+      "group": "access",
+      "label_fr": "Périmètre sécurisé",
+      "label_en": "Secured perimeter",
+      "capability": "real",
+      "human_description_fr": "Toute entrée dans la zone est traitée comme une intrusion critique.",
+      "human_description_en": "Any entry into the zone is treated as a critical breach.",
+      "emits": ["perimeter_breach"],
+      "requires": [],
+      "config_fields": []
+    },
+    {
+      "id": "controlled_exit",
+      "group": "access",
+      "label_fr": "Sortie contrôlée",
+      "label_en": "Controlled exit",
+      "capability": "real",
+      "human_description_fr": "Toute sortie par cette zone est traitée comme une sortie non autorisée.",
+      "human_description_en": "Any exit through this zone is treated as unauthorized.",
+      "emits": ["unauthorized_exit"],
+      "requires": [],
+      "config_fields": []
+    },
+    {
+      "id": "parking",
+      "group": "traffic",
+      "label_fr": "Stationnement interdit",
+      "label_en": "No-parking",
+      "capability": "real",
+      "human_description_fr": "Alerte si un véhicule reste immobile dans la zone au-delà d'une durée.",
+      "human_description_en": "Alerts when a vehicle stays immobile in the zone beyond a duration.",
+      "emits": ["vehicle_stopped"],
+      "requires": [],
+      "config_fields": [
+        { "key": "duration_seconds", "type": "number", "label_fr": "Durée (s)", "label_en": "Duration (s)", "default": 120, "min": 5, "max": 86400 }
+      ]
+    },
+    {
+      "id": "count_crossings",
+      "group": "traffic",
+      "label_fr": "Comptage de franchissements",
+      "label_en": "Crossing counter",
+      "capability": "real",
+      "human_description_fr": "Compte les objets qui franchissent (utilisé sur les lignes). Le compteur est persistant et visible.",
+      "human_description_en": "Counts objects that cross (used on lines). Counter is persistent and visible.",
+      "emits": ["line_cross"],
+      "requires": [],
+      "config_fields": [
+        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet compté", "label_en": "Counted object", "default": "car" }
+      ]
+    },
+    {
+      "id": "traffic_light_color",
+      "group": "traffic",
+      "label_fr": "Couleur du feu (rouge/vert/orange)",
+      "label_en": "Traffic light color (red/green/amber)",
+      "capability": "real",
+      "human_description_fr": "Analyse la couleur du feu de circulation dans la zone (HSV + lissage temporel). Sert de référence pour le franchissement au rouge.",
+      "human_description_en": "Analyzes the traffic-light color inside the zone (HSV + temporal smoothing). Reference state for red-light running.",
+      "emits": ["traffic_light_state"],
+      "requires": [],
+      "config_fields": [
+        { "key": "stable_frames", "type": "number", "label_fr": "Frames de stabilité", "label_en": "Stability frames", "default": 3, "min": 1, "max": 30 }
+      ]
+    },
+    {
+      "id": "red_light_observation",
+      "group": "traffic",
+      "label_fr": "Observation feu rouge",
+      "label_en": "Red-light observation",
+      "capability": "real",
+      "human_description_fr": "Zone d'observation : un véhicule en mouvement ici pendant que le feu (zone traffic_light_color) est rouge déclenche une infraction + ANPR ciblé.",
+      "human_description_en": "Observation zone: a moving vehicle here while the light (traffic_light_color zone) is red triggers a violation + targeted ANPR.",
+      "emits": ["red_light_violation"],
+      "requires": ["zone:traffic_light_color"],
+      "config_fields": [
+        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "car" },
+        { "key": "min_speed_px", "type": "number", "label_fr": "Mouvement min (px/frame)", "label_en": "Min motion (px/frame)", "default": 2, "min": 0, "max": 100 }
+      ]
+    },
+    {
+      "id": "speed_measurement",
+      "group": "traffic",
+      "label_fr": "Mesure de vitesse (distance réelle)",
+      "label_en": "Speed measurement (real distance)",
+      "capability": "real",
+      "human_description_fr": "Mesure la vitesse d'un véhicule via le temps d'entrée→sortie de la zone et la distance réelle qu'elle couvre. Émet un excès au-delà de la limite.",
+      "human_description_en": "Measures vehicle speed from zone entry→exit time and the real distance it covers. Emits speeding above the limit.",
+      "emits": ["speeding"],
+      "requires": ["config:distance_m"],
+      "config_fields": [
+        { "key": "distance_m", "type": "number", "label_fr": "Distance réelle (m)", "label_en": "Real distance (m)", "default": 20, "min": 1, "max": 1000, "hint_fr": "Longueur au sol que la zone couvre dans le sens de circulation." },
+        { "key": "speed_limit_kmh", "type": "number", "label_fr": "Limite (km/h)", "label_en": "Limit (km/h)", "default": 20, "min": 1, "max": 300 },
+        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "car" }
+      ]
+    },
+    {
+      "id": "phone_use",
+      "group": "driver",
+      "label_fr": "Téléphone au volant (modèle)",
+      "label_en": "Phone use while driving (model)",
+      "capability": "real",
+      "human_description_fr": "Recadre l'habitacle du véhicule et exécute un modèle dédié de détection de distraction au téléphone. Nécessite le modèle secondaire installé.",
+      "human_description_en": "Crops the vehicle cabin and runs a dedicated phone-distraction model. Requires the secondary model installed.",
+      "emits": ["phone_use_violation"],
+      "requires": ["model:driver_phone"],
+      "config_fields": [
+        { "key": "confidence", "type": "number", "label_fr": "Confiance min", "label_en": "Min confidence", "default": 0.45, "min": 0.05, "max": 0.99, "step": 0.05 }
+      ]
+    },
+    {
+      "id": "seatbelt",
+      "group": "driver",
+      "label_fr": "Ceinture non portée (modèle)",
+      "label_en": "Seatbelt not worn (model)",
+      "capability": "real",
+      "human_description_fr": "Recadre l'habitacle et exécute un modèle dédié de détection du port de la ceinture. Nécessite le modèle secondaire installé.",
+      "human_description_en": "Crops the cabin and runs a dedicated seatbelt model. Requires the secondary model installed.",
+      "emits": ["seatbelt_violation"],
+      "requires": ["model:seatbelt"],
+      "config_fields": [
+        { "key": "confidence", "type": "number", "label_fr": "Confiance min", "label_en": "Min confidence", "default": 0.45, "min": 0.05, "max": 0.99, "step": 0.05 }
+      ]
+    },
+    {
+      "id": "loitering",
+      "group": "safety",
+      "label_fr": "Flânerie prolongée",
+      "label_en": "Loitering",
+      "capability": "real",
+      "human_description_fr": "Alerte si une personne reste/erre dans la zone au-delà d'un seuil.",
+      "human_description_en": "Alerts if a person lingers in the zone beyond a threshold.",
+      "emits": ["loitering"],
+      "requires": [],
+      "config_fields": [
+        { "key": "duration_seconds", "type": "number", "label_fr": "Durée (s)", "label_en": "Duration (s)", "default": 30, "min": 5, "max": 86400 }
+      ]
+    },
+    {
+      "id": "abandoned_object",
+      "group": "safety",
+      "label_fr": "Objet abandonné",
+      "label_en": "Abandoned object",
+      "capability": "partial",
+      "human_description_fr": "Détecte un objet (sac, valise…) immobile dans la zone — heuristique cycle de vie d'objet.",
+      "human_description_en": "Detects a static object (bag, suitcase…) in the zone — object lifecycle heuristic.",
+      "emits": ["object_abandoned"],
+      "requires": [],
+      "config_fields": [
+        { "key": "duration_seconds", "type": "number", "label_fr": "Durée (s)", "label_en": "Duration (s)", "default": 60, "min": 5, "max": 86400 }
+      ]
+    }
+  ]
+}

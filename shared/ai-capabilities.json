@@ -640,6 +640,19 @@
         "yolo"
       ]
     },
+    "traffic_light_state": {
+      "label_fr": "État du feu de circulation",
+      "required_config": [
+        "camera",
+        "zone"
+      ],
+      "proof_fields": [
+        "state"
+      ],
+      "models": [
+        "opencv"
+      ]
+    },
     "red_light_violation": {
       "label_fr": "Franchissement feu rouge",
       "required_config": [
@@ -681,6 +694,22 @@
       "models": [
         "yolo",
         "opencv"
+      ]
+    },
+    "phone_use_violation": {
+      "label_fr": "Téléphone au volant (modèle)",
+      "required_config": [
+        "camera",
+        "zone"
+      ],
+      "proof_fields": [
+        "track_id",
+        "confidence",
+        "detected_class"
+      ],
+      "models": [
+        "yolo",
+        "secondary_onnx"
       ]
     },
     "sudden_stop": {

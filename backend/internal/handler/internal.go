@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -21,9 +24,13 @@ func (a *API) InternalNotifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		To      string `json:"to"`
-		Subject string `json:"subject"`
-		Message string `json:"message"`
+		To       string                 `json:"to"`
+		Subject  string                 `json:"subject"`
+		Message  string                 `json:"message"`
+		Title    string                 `json:"title"`
+		RuleName string                 `json:"rule_name"`
+		Severity string                 `json:"severity"`
+		Payload  map[string]interface{} `json:"payload"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -43,11 +50,124 @@ func (a *API) InternalNotifyEmail(w http.ResponseWriter, r *http.Request) {
 	if subject == "" {
 		subject = "Alerte CitéVision"
 	}
+
+	// Render premium HTML (with inline proof images) when a payload is supplied.
+	if req.Payload != nil {
+		html, inline := a.buildNotifyHTML(r.Context(), req.Title, req.RuleName, req.Severity, req.Payload)
+		if html != "" {
+			if err := notify.SendAlertHTML(cfg, req.To, subject, html, req.Message, inline); err != nil {
+				if err2 := notify.SendAlert(cfg, req.To, subject, req.Message); err2 != nil {
+					writeError(w, http.StatusInternalServerError, err2.Error())
+					return
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+			return
+		}
+	}
+
 	if err := notify.SendAlert(cfg, req.To, subject, req.Message); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+}
+
+// buildNotifyHTML renders a premium HTML alert email from a raw event payload,
+// embedding up to 2 proof images inline (CID) when the evidence store is available.
+func (a *API) buildNotifyHTML(ctx context.Context, title, ruleName, severity string, payload map[string]interface{}) (string, []notify.InlineImage) {
+	sev := strings.ToLower(severity)
+	switch sev {
+	case "critical", "warning", "info":
+	default:
+		sev = "warning"
+	}
+	if title == "" {
+		if ruleName != "" {
+			title = ruleName
+		} else {
+			title = "Alerte CitéVision"
+		}
+	}
+	str := func(k string) string {
+		if v, ok := payload[k].(string); ok {
+			return v
+		}
+		return ""
+	}
+	data := notify.AlertEmailData{
+		Title:      title,
+		RuleName:   ruleName,
+		Severity:   sev,
+		CameraName: str("camera_id"),
+		Plate:      str("plate_number"),
+		FaceLabel:  str("face_label"),
+		EventType:  str("event_type"),
+		MailHogURL: os.Getenv("MAILHOG_PUBLIC_URL"),
+	}
+	if sp, ok := payload["speed_kmh"]; ok && sp != nil {
+		data.SpeedKmh = fmt.Sprintf("%v", sp)
+	}
+	if dir := str("direction"); dir != "" {
+		data.Details = append(data.Details, notify.EmailDetail{Label: "Direction", Value: dir})
+	}
+
+	var inline []notify.InlineImage
+	pkg := extractPackage(payload)
+	if pkg != nil {
+		if clip, ok := pkg["clip"].(map[string]interface{}); ok {
+			if u, ok := clip["url"].(string); ok {
+				data.ClipURL = u
+			}
+		}
+		if imgs, ok := pkg["images"].([]interface{}); ok && a.Evidence != nil && a.Evidence.Available() {
+			n := 0
+			for _, raw := range imgs {
+				if n >= 2 {
+					break
+				}
+				im, ok := raw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				key, _ := im["asset_id"].(string)
+				if key == "" {
+					continue
+				}
+				b, ct, err := a.Evidence.GetObjectBytes(ctx, key)
+				if err != nil || len(b) == 0 {
+					continue
+				}
+				cid := fmt.Sprintf("proof%d", n+1)
+				label, _ := im["label"].(string)
+				if label == "" {
+					label = "Preuve " + cid
+				}
+				data.Images = append(data.Images, notify.EmailImage{CID: cid, Label: label})
+				inline = append(inline, notify.InlineImage{CID: cid, ContentType: ct, Data: b})
+				n++
+			}
+		}
+	}
+
+	html, err := notify.RenderAlertEmail(data)
+	if err != nil {
+		return "", nil
+	}
+	return html, inline
+}
+
+// extractPackage finds an evidence package within a payload (top-level or under "evidence").
+func extractPackage(payload map[string]interface{}) map[string]interface{} {
+	if pkg, ok := payload["package"].(map[string]interface{}); ok {
+		return pkg
+	}
+	if ev, ok := payload["evidence"].(map[string]interface{}); ok {
+		if pkg, ok := ev["package"].(map[string]interface{}); ok {
+			return pkg
+		}
+	}
+	return nil
 }
 
 func (a *API) InternalRecordClip(w http.ResponseWriter, r *http.Request) {

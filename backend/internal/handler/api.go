@@ -548,6 +548,37 @@ func (a *API) CreateZone(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, z)
 }
 
+func (a *API) UpdateZone(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "zoneID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var patch spatial.ZonePatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if patch.Name != nil {
+		trimmed := strings.TrimSpace(*patch.Name)
+		if trimmed == "" {
+			writeError(w, http.StatusBadRequest, "name required")
+			return
+		}
+		patch.Name = &trimmed
+	}
+	z, err := a.Spatial.UpdateZone(r.Context(), orgID, id, patch)
+	if errors.Is(err, spatial.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, z)
+}
+
 func (a *API) ListLines(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
 	list, _ := a.Spatial.ListLines(r.Context(), orgID, nil)
@@ -583,6 +614,37 @@ func (a *API) CreateLine(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, l)
 }
 
+func (a *API) UpdateLine(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "lineID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var patch spatial.LinePatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if patch.Name != nil {
+		trimmed := strings.TrimSpace(*patch.Name)
+		if trimmed == "" {
+			writeError(w, http.StatusBadRequest, "name required")
+			return
+		}
+		patch.Name = &trimmed
+	}
+	l, err := a.Spatial.UpdateLine(r.Context(), orgID, id, patch)
+	if errors.Is(err, spatial.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, l)
+}
+
 func (a *API) DeleteLine(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "lineID"))
@@ -605,6 +667,39 @@ func (a *API) DeleteLine(w http.ResponseWriter, r *http.Request) {
 		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// ListLineCounters returns persistent crossing counters, optionally scoped to ?camera_id=.
+func (a *API) ListLineCounters(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	var camID *uuid.UUID
+	if cf := r.URL.Query().Get("camera_id"); cf != "" {
+		if id, err := uuid.Parse(cf); err == nil {
+			camID = &id
+		}
+	}
+	list, err := a.Spatial.ListLineCounters(r.Context(), orgID, camID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "counters failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// ResetLineCounters clears crossing counters, optionally scoped to ?camera_id=.
+func (a *API) ResetLineCounters(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	var camID *uuid.UUID
+	if cf := r.URL.Query().Get("camera_id"); cf != "" {
+		if id, err := uuid.Parse(cf); err == nil {
+			camID = &id
+		}
+	}
+	if err := a.Spatial.ResetLineCounters(r.Context(), orgID, camID); err != nil {
+		writeError(w, http.StatusInternalServerError, "reset failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
 }
 
 func (a *API) ListRules(w http.ResponseWriter, r *http.Request) {

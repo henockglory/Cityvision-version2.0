@@ -136,6 +136,16 @@ function StatusChip({ tpl, subtle = false }: { tpl: RuleCatalogTemplate; subtle?
       label: t('rules.partial.partial_aggregate'),
       cls: 'text-yellow-400 bg-yellow-400/8 border-yellow-400/30',
     },
+    beta: {
+      icon: <FlaskConical className="w-3 h-3 shrink-0" />,
+      label: t('rules.partial.beta'),
+      cls: 'text-sky-400 bg-sky-400/8 border-sky-400/30',
+    },
+    requires_model: {
+      icon: <FlaskConical className="w-3 h-3 shrink-0" />,
+      label: t('rules.partial.requires_model'),
+      cls: 'text-violet-400 bg-violet-400/8 border-violet-400/30',
+    },
   } as const;
 
   const item = cfg[ps as keyof typeof cfg];
@@ -186,6 +196,20 @@ function PrerequisitesPanel({ tpl }: { tpl: RuleCatalogTemplate }) {
       ok: false,
       label: t('rules.prereq.aggregate', { defaultValue: 'Flux vidéo avec activité suffisante' }),
       action: tpl.partial_reason_fr ?? t('rules.prereq.aggregateHint', { defaultValue: "→ Vérifiez que la caméra couvre bien la zone d'intérêt" }),
+    });
+  }
+  if (ps === 'beta') {
+    prereqs.push({
+      ok: false,
+      label: t('rules.prereq.beta', { defaultValue: 'Détection heuristique (bêta) — fiabilité variable' }),
+      action: tpl.partial_reason_fr ?? t('rules.prereq.betaHint', { defaultValue: '→ Validez sur vos vidéos réelles ; un modèle dédié améliorera la précision' }),
+    });
+  }
+  if (ps === 'requires_model') {
+    prereqs.push({
+      ok: false,
+      label: t('rules.prereq.model', { defaultValue: 'Modèle IA spécialisé requis (ONNX)' }),
+      action: tpl.partial_reason_fr ?? t('rules.prereq.modelHint', { defaultValue: '→ Lancez scripts/download-secondary-models.sh pour installer le modèle' }),
     });
   }
 

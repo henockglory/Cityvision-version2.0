@@ -7,7 +7,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 
 import { useTranslation } from 'react-i18next';
 
-import { Plus, Save, Pentagon, Shapes, Trash2, Video, Minus, ChevronDown, Check } from 'lucide-react';
+import { Plus, Save, Pentagon, Shapes, Trash2, Video, Minus } from 'lucide-react';
 
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -26,7 +26,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { zonesApi, type BackendZone, type BackendLine } from '@/api/client';
 
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import DropdownPortal from '@/components/ui/DropdownPortal';
+import PremiumSelect from '@/components/ui/PremiumSelect';
+import { behaviorsByGroup, getBehavior, type ZoneBehavior } from '@/lib/zoneBehaviors';
 
 import InfoTip from '@/components/ui/InfoTip';
 
@@ -78,52 +79,6 @@ interface SavedLine {
 
 
 
-/** Premium camera combobox replacing the native <select> in the zone editor header. */
-function CameraSelect({
-  cameras,
-  value,
-  onChange,
-}: {
-  cameras: { id: string; name: string }[];
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const selected = cameras.find((c) => c.id === value);
-
-  return (
-    <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        className="cv-input text-sm flex items-center justify-between gap-2 min-w-[200px] cursor-pointer"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="truncate text-left flex-1">{selected?.name ?? '—'}</span>
-        <ChevronDown className={`w-4 h-4 text-cv-muted shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      <DropdownPortal anchorRef={triggerRef} open={open} onClose={() => setOpen(false)} zIndex={200}>
-        <div className="py-1 min-w-[220px]">
-          {cameras.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors hover:bg-cv-accent/10 ${
-                c.id === value ? 'text-cv-accent font-medium' : 'text-cv-text'
-              }`}
-              onClick={() => { onChange(c.id); setOpen(false); }}
-            >
-              <span className="truncate flex-1">{c.name}</span>
-              {c.id === value && <Check className="w-3.5 h-3.5 shrink-0" />}
-            </button>
-          ))}
-        </div>
-      </DropdownPortal>
-    </div>
-  );
-}
-
 function polygonToPoints(polygon: { x: number; y: number }[]): number[] {
 
   return polygon.flatMap((p) => [p.x * STAGE_WIDTH, p.y * STAGE_HEIGHT]);
@@ -147,6 +102,10 @@ function backendToZone(z: BackendZone): Zone {
     cameraId: z.camera_id ?? '',
 
     zoneKind: z.zone_kind || undefined,
+
+    behavior: z.behavior_config?.behavior || z.zone_kind || undefined,
+
+    behaviorConfig: (z.behavior_config?.config as Record<string, unknown>) ?? undefined,
 
   };
 
@@ -190,7 +149,8 @@ export interface ZoneEditorProps {
 export default function ZoneEditor(props: ZoneEditorProps = {}) {
   const embedded = props.embedded ?? false;
 
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang: 'fr' | 'en' = i18n.language?.startsWith('en') ? 'en' : 'fr';
 
   const { playClick, playSonar } = useSound();
 
@@ -214,6 +174,8 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
   const [lineDraftStart, setLineDraftStart] = useState<[number, number] | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   const [drawing, setDrawing] = useState<number[]>([]);
 
@@ -342,7 +304,129 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
   }))];
 
+  useEffect(() => {
+    if (!selectedId) {
+      setEditName('');
+      return;
+    }
+    if (editMode === 'zone') {
+      const z = allZones.find((x) => x.id === selectedId);
+      setEditName(z?.name ?? '');
+    } else {
+      const l = allLines.find((x) => x.id === selectedId);
+      setEditName(l?.name ?? '');
+    }
+  }, [selectedId, editMode, savedZones, draftZones, savedLines, draftLines]);
 
+  const zoneKindLabel = (kind?: string) => {
+    if (!kind) return null;
+    const labels: Record<string, string> = {
+      perimeter: t('zoneEditor.zoneKindPerimeter'),
+      controlled_exit: t('zoneEditor.zoneKindExit'),
+      corridor: t('zoneEditor.zoneKindCorridor'),
+      parking: t('zoneEditor.zoneKindParking'),
+    };
+    return labels[kind] ?? kind;
+  };
+
+  const saveSelectedName = async () => {
+    if (!selectedId) return;
+    const name = editName.trim();
+    if (!name) {
+      const current = editMode === 'zone'
+        ? allZones.find((x) => x.id === selectedId)
+        : allLines.find((x) => x.id === selectedId);
+      setEditName(current?.name ?? '');
+      return;
+    }
+    const isDraft = selectedId.startsWith('draft-') || selectedId.startsWith('draft-line-');
+    const current = editMode === 'zone'
+      ? allZones.find((x) => x.id === selectedId)
+      : allLines.find((x) => x.id === selectedId);
+    if (!current || current.name === name) return;
+
+    if (isDraft) {
+      if (editMode === 'zone') {
+        setDraftZones((prev) => prev.map((z) => (z.id === selectedId ? { ...z, name } : z)));
+      } else {
+        setDraftLines((prev) => prev.map((l) => (l.id === selectedId ? { ...l, name } : l)));
+      }
+      return;
+    }
+    if (!orgId) return;
+    setSavingName(true);
+    try {
+      if (editMode === 'zone') {
+        await zonesApi.update(orgId, selectedId, { name });
+        setSavedZones((prev) => prev.map((z) => (z.id === selectedId ? { ...z, name } : z)));
+      } else {
+        await zonesApi.updateLine(orgId, selectedId, { name });
+        setSavedLines((prev) => prev.map((l) => (l.id === selectedId ? { ...l, name } : l)));
+      }
+    } catch {
+      setMessage(t('zoneEditor.renameFailed'));
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  // Persist the AI behavior assigned to the selected zone. Resets the per-behavior
+  // config to the catalog defaults so the new behavior starts coherent.
+  const saveSelectedBehavior = async (behaviorId: string) => {
+    if (!selectedId || editMode !== 'zone') return;
+    const behavior = behaviorId || undefined;
+    const def = getBehavior(behaviorId);
+    const defaults: Record<string, unknown> = {};
+    for (const f of def?.config_fields ?? []) {
+      if (f.default !== undefined) defaults[f.key] = f.default;
+    }
+    if (selectedId.startsWith('draft-')) {
+      setDraftZones((prev) =>
+        prev.map((z) => (z.id === selectedId ? { ...z, behavior, behaviorConfig: defaults } : z)),
+      );
+      return;
+    }
+    if (!orgId) return;
+    try {
+      await zonesApi.update(orgId, selectedId, {
+        behavior_config: behavior ? { behavior, config: defaults } : {},
+      });
+      setSavedZones((prev) =>
+        prev.map((z) => (z.id === selectedId ? { ...z, behavior, behaviorConfig: defaults } : z)),
+      );
+    } catch {
+      setMessage(t('zoneEditor.renameFailed'));
+    }
+  };
+
+  // Persist a single config value for the selected zone's current behavior.
+  const saveSelectedBehaviorConfig = async (key: string, value: unknown) => {
+    if (!selectedId || editMode !== 'zone' || !selectedZone) return;
+    const behavior = selectedZone.behavior;
+    if (!behavior) return;
+    const nextConfig = { ...(selectedZone.behaviorConfig ?? {}), [key]: value };
+    if (selectedId.startsWith('draft-')) {
+      setDraftZones((prev) =>
+        prev.map((z) => (z.id === selectedId ? { ...z, behaviorConfig: nextConfig } : z)),
+      );
+      return;
+    }
+    if (!orgId) return;
+    try {
+      await zonesApi.update(orgId, selectedId, {
+        behavior_config: { behavior, config: nextConfig },
+      });
+      setSavedZones((prev) =>
+        prev.map((z) => (z.id === selectedId ? { ...z, behaviorConfig: nextConfig } : z)),
+      );
+    } catch {
+      setMessage(t('zoneEditor.renameFailed'));
+    }
+  };
+
+  const selectedZone = editMode === 'zone' && selectedId
+    ? allZones.find((z) => z.id === selectedId)
+    : undefined;
 
   const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
 
@@ -510,6 +594,10 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
             zone_kind: zone.zoneKind || '',
 
+            behavior_config: zone.behavior
+              ? { behavior: zone.behavior, config: zone.behaviorConfig ?? {} }
+              : {},
+
           });
 
         }
@@ -627,13 +715,15 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
         actions={
           <div className="flex items-center gap-2">
             <label className="text-xs text-cv-muted shrink-0">{t('zoneEditor.cameraLabel')}</label>
-            <CameraSelect
-              cameras={cameras}
+            <PremiumSelect
               value={selectedCamera?.id ?? ''}
               onChange={(id) => {
                 playClick();
                 setSearchParams({ camera: id });
               }}
+              options={cameras.map((c) => ({ value: c.id, label: c.name }))}
+              triggerClassName="min-w-[200px]"
+              minWidth={260}
             />
           </div>
         }
@@ -829,13 +919,14 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
               <SpatialList
 
                 items={allZones.map((z) => {
-                  const kindLabel = z.zoneKind
-                    ? t(`zoneEditor.zoneKind${z.zoneKind.charAt(0).toUpperCase() + z.zoneKind.slice(1).replace('_', '')}` as never, z.zoneKind)
-                    : null;
+                  const beh = getBehavior(z.behavior);
+                  const kindLabel = beh && beh.id
+                    ? (lang === 'fr' ? beh.label_fr : beh.label_en)
+                    : zoneKindLabel(z.zoneKind);
                   return {
                     id: z.id,
                     name: z.name,
-                    detail: `${z.points.length / 2} pts${kindLabel ? ` · ${kindLabel}` : ''}${z.id.startsWith('draft-') ? ' · brouillon' : ' · enregistrée'}`,
+                    detail: `${z.points.length / 2} pts${kindLabel ? ` · ${kindLabel}` : ''} · ${z.id.startsWith('draft-') ? t('zoneEditor.draftBadge') : t('zoneEditor.savedBadge')}`,
                     isDraft: z.id.startsWith('draft-'),
                   };
                 })}
@@ -872,7 +963,7 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
                 name: l.name,
 
-                detail: l.id.startsWith('draft-line-') ? 'brouillon' : 'enregistrée',
+                detail: l.id.startsWith('draft-line-') ? t('zoneEditor.draftBadge') : t('zoneEditor.savedBadge'),
 
                 isDraft: l.id.startsWith('draft-line-'),
 
@@ -896,34 +987,67 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
           )}
 
-          {editMode === 'zone' && selectedId?.startsWith('draft-') && (() => {
-            const draft = draftZones.find((z) => z.id === selectedId);
-            if (!draft) return null;
-            return (
-              <div className="mt-3 pt-3 border-t border-cv-border space-y-2">
-                <label className="text-xs text-cv-muted flex items-center gap-1">
-                  {t('zoneEditor.zoneKind')}
-                  <InfoTip content="Le type sémantique indique à l'IA comment interpréter cette zone. « Périmètre » → intrusion. « Sortie contrôlée » → alerte sortie non autorisée. « Stationnement » → illicite si véhicule immobilisé. « Auto » = déduit du nom de la zone." />
+          {selectedId && (
+            <div className="mt-3 pt-3 border-t border-cv-border space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-xs text-cv-muted">
+                  {editMode === 'zone' ? t('zoneEditor.zoneName') : t('zoneEditor.lineName')}
                 </label>
-                <select
+                <input
                   className="cv-input w-full text-sm"
-                  value={draft.zoneKind ?? ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setDraftZones((prev) =>
-                      prev.map((z) => (z.id === selectedId ? { ...z, zoneKind: v || undefined } : z)),
-                    );
+                  value={editName}
+                  disabled={savingName}
+                  placeholder={t('zoneEditor.namePlaceholder')}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onBlur={() => void saveSelectedName()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') {
+                      const current = editMode === 'zone'
+                        ? allZones.find((x) => x.id === selectedId)
+                        : allLines.find((x) => x.id === selectedId);
+                      setEditName(current?.name ?? '');
+                      e.currentTarget.blur();
+                    }
                   }}
-                >
-                  <option value="">{t('zoneEditor.zoneKindAuto')}</option>
-                  <option value="perimeter">{t('zoneEditor.zoneKindPerimeter')}</option>
-                  <option value="controlled_exit">{t('zoneEditor.zoneKindExit')}</option>
-                  <option value="corridor">{t('zoneEditor.zoneKindCorridor')}</option>
-                  <option value="parking">{t('zoneEditor.zoneKindParking')}</option>
-                </select>
+                />
+                <p className="text-[10px] text-cv-muted leading-relaxed">{t('zoneEditor.renameHint')}</p>
               </div>
-            );
-          })()}
+
+              {editMode === 'zone' && selectedZone && (() => {
+                const selectedBehavior = getBehavior(selectedZone.behavior);
+                const behaviorOptions = behaviorsByGroup().flatMap(({ group, behaviors }) =>
+                  behaviors.map((b) => ({
+                    value: b.id,
+                    label: `${lang === 'fr' ? group.label_fr : group.label_en} · ${lang === 'fr' ? b.label_fr : b.label_en}`,
+                  })),
+                );
+                return (
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-cv-muted flex items-center gap-1">
+                      {t('zoneEditor.behaviorLabel')}
+                      <InfoTip content={t('zoneEditor.behaviorTip')} />
+                    </label>
+                    <PremiumSelect
+                      value={selectedZone.behavior ?? ''}
+                      onChange={(v) => void saveSelectedBehavior(v)}
+                      options={behaviorOptions}
+                      minWidth={340}
+                    />
+                    {selectedBehavior && (
+                      <BehaviorDetail
+                        behavior={selectedBehavior}
+                        lang={lang}
+                        config={selectedZone.behaviorConfig ?? {}}
+                        onConfigChange={(k, v) => void saveSelectedBehaviorConfig(k, v)}
+                        capabilityLabel={t(`zoneEditor.capability_${selectedBehavior.capability}`)}
+                      />
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           <button
 
@@ -998,6 +1122,8 @@ function SpatialList({
 
 }) {
 
+  const { t } = useTranslation();
+
   return (
 
     <div className="space-y-2 max-h-80 overflow-y-auto">
@@ -1042,7 +1168,7 @@ function SpatialList({
             <button
               type="button"
               className="cv-btn-ghost p-1.5 text-red-400 shrink-0 self-center"
-              title={item.isDraft ? undefined : 'Supprimer'}
+              title={item.isDraft ? undefined : t('common.delete')}
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(item.id, item.isDraft);
@@ -1061,6 +1187,75 @@ function SpatialList({
 
   );
 
+}
+
+/** Renders the description, capability badge, prerequisites and config fields of a zone behavior. */
+function BehaviorDetail({
+  behavior,
+  lang,
+  config,
+  onConfigChange,
+  capabilityLabel,
+}: {
+  behavior: ZoneBehavior;
+  lang: 'fr' | 'en';
+  config: Record<string, unknown>;
+  onConfigChange: (key: string, value: unknown) => void;
+  capabilityLabel: string;
+}) {
+  const { t } = useTranslation();
+  const desc = lang === 'fr' ? behavior.human_description_fr : behavior.human_description_en;
+  const capClass =
+    behavior.capability === 'real'
+      ? 'cv-behavior-cap--real'
+      : behavior.capability === 'partial'
+      ? 'cv-behavior-cap--partial'
+      : 'cv-behavior-cap--beta';
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-cv-border/60 bg-cv-bg/40 p-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`cv-behavior-cap ${capClass}`}>{capabilityLabel}</span>
+        {behavior.requires.length > 0 && (
+          <span className="text-[10px] text-cv-muted/80">
+            {t('zoneEditor.behaviorRequires')}: {behavior.requires.join(', ')}
+          </span>
+        )}
+      </div>
+      <p className="text-[11px] text-cv-muted leading-relaxed">{desc}</p>
+      {behavior.config_fields.length > 0 && (
+        <div className="space-y-2 pt-1">
+          {behavior.config_fields.map((f) => {
+            const value = config[f.key] ?? f.default ?? '';
+            const label = lang === 'fr' ? f.label_fr : f.label_en;
+            const hint = lang === 'fr' ? f.hint_fr : f.hint_en;
+            return (
+              <div key={f.key} className="space-y-1">
+                <label className="text-[11px] text-cv-muted">{label}</label>
+                {f.type === 'class_filter' || f.type === 'enum' ? (
+                  <input
+                    className="cv-input w-full text-sm"
+                    value={String(value)}
+                    onChange={(e) => onConfigChange(f.key, e.target.value)}
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    className="cv-input w-full text-sm"
+                    value={String(value)}
+                    min={f.min}
+                    max={f.max}
+                    step={f.step}
+                    onChange={(e) => onConfigChange(f.key, Number(e.target.value))}
+                  />
+                )}
+                {hint && <p className="text-[10px] text-cv-muted/70 leading-relaxed">{hint}</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 

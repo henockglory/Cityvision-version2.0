@@ -66,8 +66,22 @@ func (a *API) ForwardAlert(w http.ResponseWriter, r *http.Request) {
 		}
 		cfg := notify.ParseSMTP(o.SMTPConfig)
 		msg := buildForwardEmailMessage(alert, evSnap)
-		if err := notify.SendAlert(cfg, req.Email, "CitéVision — "+alert.Title, msg); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+		subject := "CitéVision — " + alert.Title
+		ruleName := ""
+		if alert.RuleName != nil {
+			ruleName = *alert.RuleName
+		}
+		html, inline := a.buildNotifyHTML(r.Context(), alert.Title, ruleName, alert.Severity, evSnap)
+		var sendErr error
+		if html != "" {
+			if sendErr = notify.SendAlertHTML(cfg, req.Email, subject, html, msg, inline); sendErr != nil {
+				sendErr = notify.SendAlert(cfg, req.Email, subject, msg)
+			}
+		} else {
+			sendErr = notify.SendAlert(cfg, req.Email, subject, msg)
+		}
+		if sendErr != nil {
+			writeError(w, http.StatusInternalServerError, sendErr.Error())
 			return
 		}
 		logEntry["channels"] = append(logEntry["channels"].([]string), "email")

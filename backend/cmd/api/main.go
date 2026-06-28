@@ -120,6 +120,9 @@ func main() {
 	if err != nil {
 		log.Warn("evidence service init failed", "error", err)
 	}
+	if evidenceSvc != nil {
+		routingSvc.SetAssetFetcher(evidenceSvc)
+	}
 	demoSvc := demo.NewServiceWithEvidence(pool, cameraSvc, evidenceSvc, log)
 	if ms := demoSvc.MinioStore(); ms != nil && ms.Available() {
 		if err := ms.EnsureBucket(ctx); err != nil {
@@ -301,12 +304,16 @@ func main() {
 					r.Route("/zones", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "zones:read")).Get("/", api.ListZones)
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Post("/", api.CreateZone)
+						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Patch("/{zoneID}", api.UpdateZone)
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Delete("/{zoneID}", api.DeleteZone)
 					})
 
 					r.Route("/lines", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "zones:read")).Get("/", api.ListLines)
+						r.With(middleware.RequirePermission(rbacSvc, "zones:read")).Get("/counters", api.ListLineCounters)
+						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Delete("/counters", api.ResetLineCounters)
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Post("/", api.CreateLine)
+						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Patch("/{lineID}", api.UpdateLine)
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Delete("/{lineID}", api.DeleteLine)
 					})
 

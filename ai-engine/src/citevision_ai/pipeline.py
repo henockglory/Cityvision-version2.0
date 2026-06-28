@@ -17,6 +17,7 @@ from citevision_ai.analytics.scene import SceneAnalyzer
 from citevision_ai.analytics.correlation import CorrelationEngine
 from citevision_ai.analytics.scene_correlation import SceneCorrelationEngine
 from citevision_ai.analytics.state import StateEngine
+from citevision_ai.analytics.zone_speed import ZoneSpeedEngine
 from citevision_ai.behavior.heuristics import BEHAVIOR_EVENT_TYPES, BehaviorHeuristics
 from citevision_ai.budget.resource_budget import ResourceBudgetManager
 from citevision_ai.detection.yolo_onnx import YoloOnnxDetector
@@ -25,6 +26,8 @@ from citevision_ai.evidence.service import EvidenceCaptureService
 from citevision_ai.identity.face import FaceIdentityEngine
 from citevision_ai.identity.plate import PlateIdentityEngine
 from citevision_ai.road_enforcement.detector import RoadEnforcementEngine
+from citevision_ai.road_enforcement.traffic_light import TrafficLightEngine
+from citevision_ai.secondary.inference import SecondaryInferenceEngine
 from citevision_ai.models.schemas import BBox, Detection, DetectionFrame
 from citevision_ai.mqtt.publisher import MqttPublisher
 from citevision_ai.tracking.bytetrack import ByteTracker
@@ -55,6 +58,10 @@ class PipelineService:
         self.face_engine = face_engine or FaceIdentityEngine()
         self.plate_engine = plate_engine or PlateIdentityEngine()
         self.road_enforcement = RoadEnforcementEngine()
+        self.traffic_light = TrafficLightEngine()
+        self.zone_speed = ZoneSpeedEngine()
+        self.secondary = SecondaryInferenceEngine(device=os.environ.get("YOLO_DEVICE", "cuda"))
+        self.secondary.load()
         self.evidence = EvidenceCaptureService()
         self._calibrations: dict[str, CalibrationEngine] = {}
         self._trackers: dict[str, ByteTracker] = {}
@@ -216,7 +223,11 @@ class PipelineService:
         for zone in config.get("zones", []):
             zone_id = zone.get("zone_id", zone.get("name", "zone"))
             polygon = zone.get("polygon", [])
+            behavior = str(zone.get("behavior", zone.get("zone_kind", "")) or "")
+            bcfg = zone.get("behavior_config") or {}
             loiter_sec = float(zone.get("loiter_threshold", 30))
+            if behavior == "loitering" and bcfg.get("duration_seconds"):
+                loiter_sec = float(bcfg["duration_seconds"])
             if os.environ.get("E2E_MODE") == "1":
                 loiter_sec = min(loiter_sec, 5.0)
             rules.append({
@@ -227,6 +238,8 @@ class PipelineService:
                     "zone_id": zone_id,
                     "polygon": polygon,
                     "zone_kind": zone.get("zone_kind", ""),
+                    "behavior": behavior,
+                    "behavior_config": bcfg,
                     "name": zone.get("name", zone_id),
                 },
             })
@@ -240,6 +253,16 @@ class PipelineService:
                 },
                 "zone": {"polygon": polygon},
             })
+            # A "presence" behavior adds an explicit zone_presence rule honoring its config.
+            if behavior == "presence":
+                rules.append({
+                    "camera_id": camera_id,
+                    "rule_type": "zone_presence",
+                    "enabled": True,
+                    "presence_seconds": float(bcfg.get("duration_seconds", 5)),
+                    "class_filter": str(bcfg.get("class_filter", "any")),
+                    "zone": {"zone_id": zone_id, "polygon": polygon},
+                })
         for pr in config.get("presence_rules", []):
             zone_id = pr.get("zone_id", "zone")
             polygon = pr.get("polygon", [])
@@ -506,9 +529,39 @@ class PipelineService:
             all_events.extend(self.plate_engine.process_frame(camera_id, frame, gated_tracks, ts))
 
         zones_cfg = (self._spatial_configs.get(camera_id) or {}).get("zones") or []
+        # Dedicated, zone-driven red-light pipeline (color classification + synergy).
+        tl_active = self.traffic_light.camera_has_behavior(zones_cfg)
+        if tl_active:
+            all_events.extend(
+                self.traffic_light.process_frame(camera_id, frame, track_dicts, ts, zones_cfg)
+            )
+        # Dedicated secondary ONNX models for cabin violations (phone, seatbelt).
+        zone_behaviors = {str(z.get("behavior", "")) for z in zones_cfg}
+        if self.secondary.camera_has_behavior(zones_cfg):
+            all_events.extend(
+                self.secondary.process_frame(camera_id, frame, track_dicts, zones_cfg, ts)
+            )
+        # Legacy heuristics; suppress built-in red-light / cabin checks when a
+        # dedicated zone behavior takes over (real model or honest no-result).
         all_events.extend(
-            self.road_enforcement.process_frame(camera_id, frame, track_dicts, ts, zones_cfg)
+            self.road_enforcement.process_frame(
+                camera_id, frame, track_dicts, ts, zones_cfg,
+                disable_red_light=tl_active,
+                disable_phone="phone_use" in zone_behaviors,
+                disable_seatbelt="seatbelt" in zone_behaviors,
+            )
         )
+        # Zone-distance speed measurement (real metres → km/h).
+        if self.zone_speed.camera_has_behavior(zones_cfg):
+            all_events.extend(
+                self.zone_speed.process_frame(
+                    camera_id, track_dicts, zones_cfg, w, h, now_ts, ts
+                )
+            )
+
+        # Plate ↔ vehicle linking: enrich violation events with the plate read on
+        # the same vehicle track this frame (red light, speeding, phone, seatbelt).
+        self._link_plates_to_violations(all_events)
 
         for t in track_dicts:
             if not self._track_in_capability_zone(camera_id, t, "speed_estimate"):
@@ -567,6 +620,42 @@ class PipelineService:
                 det["metadata"] = track_dicts[i].get("metadata", {})
         self.mqtt.publish_detection(camera_id, payload)
         return frame_result
+
+    # Violation events that benefit from a linked plate number.
+    _PLATE_LINKED_EVENTS = {
+        "red_light_violation",
+        "speeding",
+        "phone_use_violation",
+        "seatbelt_violation",
+        "vehicle_corridor",
+        "wrong_way",
+    }
+
+    def _link_plates_to_violations(self, events: list[dict[str, Any]]) -> None:
+        """Copy the plate number read on a vehicle track onto its violation events."""
+        plate_by_track: dict[Any, tuple[str, float]] = {}
+        for e in events:
+            tid = e.get("track_id")
+            plate = e.get("plate_number")
+            if tid is None or int(tid) < 0 or not plate:
+                continue
+            conf = float(e.get("plate_confidence", 0) or 0)
+            prev = plate_by_track.get(tid)
+            if prev is None or conf > prev[1]:
+                plate_by_track[tid] = (plate, conf)
+        if not plate_by_track:
+            return
+        for e in events:
+            et = e.get("event_type") or e.get("event")
+            if et not in self._PLATE_LINKED_EVENTS:
+                continue
+            if e.get("plate_number"):
+                continue
+            linked = plate_by_track.get(e.get("track_id"))
+            if linked:
+                e["plate_number"] = linked[0]
+                e["plate_confidence"] = linked[1]
+                e.setdefault("metadata", {})["plate_number"] = linked[0]
 
     def _correlation_events(
         self,

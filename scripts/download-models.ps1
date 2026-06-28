@@ -18,3 +18,6 @@ if (Test-Path $yolo) {
 } else {
     Write-Host "[WARN] YOLO model missing - AI returns empty detections (no fake data)"
 }
+
+Write-Host "=== Secondary models (driver phone, seatbelt) ==="
+& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'download-secondary-models.ps1')

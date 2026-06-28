@@ -196,6 +196,46 @@ func (s *Service) StatObject(ctx context.Context, objectKey string) (minio.Objec
 	return s.client.StatObject(ctx, s.cfg.Bucket, objectKey, minio.StatObjectOptions{})
 }
 
+// GetObjectBytes downloads a full object into memory along with its content type.
+// Intended for small assets (e.g. JPEG proof images embedded inline in emails).
+func (s *Service) GetObjectBytes(ctx context.Context, objectKey string) ([]byte, string, error) {
+	if !s.Available() {
+		return nil, "", fmt.Errorf("minio not configured")
+	}
+	stat, err := s.StatObject(ctx, objectKey)
+	if err != nil {
+		return nil, "", err
+	}
+	obj, err := s.GetObject(ctx, objectKey)
+	if err != nil {
+		return nil, "", err
+	}
+	defer obj.Close()
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, "", err
+	}
+	ct := stat.ContentType
+	if ct == "" || ct == "application/octet-stream" {
+		ct = contentTypeForKeyEv(objectKey)
+	}
+	return data, ct, nil
+}
+
+func contentTypeForKeyEv(key string) string {
+	lower := strings.ToLower(key)
+	switch {
+	case strings.HasSuffix(lower, ".jpg"), strings.HasSuffix(lower, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(lower, ".png"):
+		return "image/png"
+	case strings.HasSuffix(lower, ".mp4"):
+		return "video/mp4"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 // PurgeOrg deletes all evidence objects for an organization from object storage.
 func (s *Service) PurgeOrg(ctx context.Context, orgID uuid.UUID) (int, error) {
 	if !s.Available() {

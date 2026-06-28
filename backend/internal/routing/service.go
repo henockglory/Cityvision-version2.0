@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -31,12 +32,23 @@ type Rule struct {
 	UpdatedAt time.Time       `json:"updated_at"`
 }
 
+// AssetFetcher downloads small evidence assets (proof images) for inline email embedding.
+type AssetFetcher interface {
+	GetObjectBytes(ctx context.Context, objectKey string) ([]byte, string, error)
+}
+
 type Service struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	assets AssetFetcher
 }
 
 func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool}
+}
+
+// SetAssetFetcher wires the evidence store so alert emails can embed proof images inline.
+func (s *Service) SetAssetFetcher(f AssetFetcher) {
+	s.assets = f
 }
 
 func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]Rule, error) {
@@ -144,8 +156,17 @@ func (s *Service) DispatchAuto(ctx context.Context, orgSvc *org.Service, alertsS
 			if email == "" {
 				continue
 			}
-			msg := buildEmailBody(enriched, evSnap)
-			_ = notify.SendAlert(smtpCfg, email, "CitéVision — "+enriched.Title, msg)
+			subject := "CitéVision — " + enriched.Title
+			textBody := buildEmailBody(enriched, evSnap)
+			htmlBody, inline := s.buildHTMLEmail(ctx, enriched, evSnap, fields)
+			if htmlBody != "" {
+				if err := notify.SendAlertHTML(smtpCfg, email, subject, htmlBody, textBody, inline); err != nil {
+					// Fallback to plain text on HTML/SMTP failure.
+					_ = notify.SendAlert(smtpCfg, email, subject, textBody)
+				}
+			} else {
+				_ = notify.SendAlert(smtpCfg, email, subject, textBody)
+			}
 			logEntry["channels"] = append(logEntry["channels"].([]string), "email")
 			if logEntry["email"] == nil {
 				logEntry["email"] = email
@@ -268,6 +289,83 @@ func MatchRule(rule Rule, fields map[string]string) bool {
 	default:
 		return false
 	}
+}
+
+// buildHTMLEmail renders the premium HTML alert email and fetches up to 2 proof
+// images for inline (CID) embedding. Returns empty html if rendering fails.
+func (s *Service) buildHTMLEmail(ctx context.Context, a *alerts.EnrichedAlert, evSnap map[string]interface{}, fields map[string]string) (string, []notify.InlineImage) {
+	sev := strings.ToLower(a.Severity)
+	switch sev {
+	case "critical", "warning", "info":
+	default:
+		sev = "info"
+	}
+	ruleName := ""
+	if a.RuleName != nil {
+		ruleName = *a.RuleName
+	}
+	data := notify.AlertEmailData{
+		Title:      a.Title,
+		RuleName:   ruleName,
+		Severity:   sev,
+		CameraName: a.CameraID,
+		Plate:      fields["plate_number"],
+		FaceLabel:  fields["face_label"],
+		EventType:  fields["event_type"],
+		OccurredAt: time.Now().Format("02/01/2006 15:04:05"),
+		MailHogURL: os.Getenv("MAILHOG_PUBLIC_URL"),
+	}
+	if evSnap != nil {
+		if sp, ok := evSnap["speed_kmh"]; ok {
+			data.SpeedKmh = fmt.Sprintf("%v", sp)
+		}
+		if dir, ok := evSnap["direction"].(string); ok && dir != "" {
+			data.Details = append(data.Details, notify.EmailDetail{Label: "Direction", Value: dir})
+		}
+	}
+
+	var inline []notify.InlineImage
+	if pkg, ok := evSnap["package"].(map[string]interface{}); ok {
+		if clip, ok := pkg["clip"].(map[string]interface{}); ok {
+			if u, ok := clip["url"].(string); ok {
+				data.ClipURL = u
+			}
+		}
+		if imgs, ok := pkg["images"].([]interface{}); ok && s.assets != nil {
+			n := 0
+			for _, raw := range imgs {
+				if n >= 2 {
+					break
+				}
+				im, ok := raw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				key, _ := im["asset_id"].(string)
+				if key == "" {
+					continue
+				}
+				bytesData, ct, err := s.assets.GetObjectBytes(ctx, key)
+				if err != nil || len(bytesData) == 0 {
+					continue
+				}
+				cid := fmt.Sprintf("proof%d", n+1)
+				label, _ := im["label"].(string)
+				if label == "" {
+					label = "Preuve " + cid
+				}
+				data.Images = append(data.Images, notify.EmailImage{CID: cid, Label: label})
+				inline = append(inline, notify.InlineImage{CID: cid, ContentType: ct, Data: bytesData})
+				n++
+			}
+		}
+	}
+
+	html, err := notify.RenderAlertEmail(data)
+	if err != nil {
+		return "", nil
+	}
+	return html, inline
 }
 
 func buildEmailBody(a *alerts.EnrichedAlert, evSnap map[string]interface{}) string {

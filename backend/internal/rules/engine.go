@@ -264,6 +264,14 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		var expected interface{}
 		_ = json.Unmarshal(node.Value, &expected)
 		return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", expected)
+	case "NEQ", "NE":
+		v, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return true
+		}
+		var expected interface{}
+		_ = json.Unmarshal(node.Value, &expected)
+		return fmt.Sprintf("%v", v) != fmt.Sprintf("%v", expected)
 	case "GT":
 		raw, ok := fieldValue(payload, node.Field)
 		if !ok {
@@ -276,6 +284,18 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		var expected float64
 		_ = json.Unmarshal(node.Value, &expected)
 		return v > expected
+	case "GTE", "GE":
+		raw, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		v, ok := toFloat(raw)
+		if !ok {
+			return false
+		}
+		var expected float64
+		_ = json.Unmarshal(node.Value, &expected)
+		return v >= expected
 	case "LT":
 		raw, ok := fieldValue(payload, node.Field)
 		if !ok {
@@ -288,6 +308,18 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		var expected float64
 		_ = json.Unmarshal(node.Value, &expected)
 		return v < expected
+	case "LTE", "LE":
+		raw, ok := fieldValue(payload, node.Field)
+		if !ok {
+			return false
+		}
+		v, ok := toFloat(raw)
+		if !ok {
+			return false
+		}
+		var expected float64
+		_ = json.Unmarshal(node.Value, &expected)
+		return v <= expected
 	case "CONTAINS":
 		v, ok := fieldValue(payload, node.Field)
 		if !ok {

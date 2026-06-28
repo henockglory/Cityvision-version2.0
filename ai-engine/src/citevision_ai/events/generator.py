@@ -60,8 +60,10 @@ def _crosses_line(
 
 
 def _zone_semantic_kind(zone: dict) -> str:
-    """Infer zone semantic role from explicit kind or id/name heuristics."""
-    kind = str(zone.get("zone_kind") or zone.get("kind") or "").strip().lower()
+    """Infer zone semantic role from explicit behavior/kind or id/name heuristics."""
+    kind = str(
+        zone.get("behavior") or zone.get("zone_kind") or zone.get("kind") or ""
+    ).strip().lower()
     if kind in ("perimeter", "perimetre", "perimetric"):
         return "perimeter"
     if kind in ("controlled_exit", "exit", "sortie", "unauthorized_exit"):
