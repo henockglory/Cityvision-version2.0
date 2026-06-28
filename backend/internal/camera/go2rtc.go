@@ -2,6 +2,7 @@ package camera
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -88,6 +89,33 @@ func (g *Go2RTCClient) UnregisterStream(ctx context.Context, name string) error 
 		return fmt.Errorf("go2rtc delete stream: %s", string(b))
 	}
 	return nil
+}
+
+// DeleteStream is an alias for UnregisterStream used by the demo service.
+func (g *Go2RTCClient) DeleteStream(ctx context.Context, name string) error {
+	return g.UnregisterStream(ctx, name)
+}
+
+// StreamExists reports whether a stream name is currently registered in go2rtc.
+func (g *Go2RTCClient) StreamExists(ctx context.Context, name string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.baseURL+"/api/streams", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var streams map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&streams); err != nil {
+		return false
+	}
+	_, ok := streams[name]
+	return ok
 }
 
 func (g *Go2RTCClient) Health(ctx context.Context) error {

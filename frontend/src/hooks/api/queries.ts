@@ -10,6 +10,7 @@ import {
   aiHealthApi,
   dashboardApi,
   setupApi,
+  demoApi,
 } from '@/api/client';
 import {
   mapCamera,
@@ -46,6 +47,7 @@ export const queryKeys = {
   audit: ['audit'] as const,
   health: ['health'] as const,
   dashboard: ['dashboard'] as const,
+  demoSettings: ['demo', 'settings'] as const,
 };
 
 export function useSetupStatus() {
@@ -448,5 +450,24 @@ export function useHealth() {
     },
     staleTime: STALE,
     refetchInterval: 60_000,
+  });
+}
+
+export function useDemoSettings() {
+  const orgId = useOrgId();
+  return useQuery({
+    queryKey: queryKeys.demoSettings,
+    queryFn: async () => {
+      if (!orgId) throw new Error('No organization');
+      const { data } = await demoApi.getSettings(orgId);
+      return data;
+    },
+    enabled: !!orgId,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      const videos = query.state.data?.videos ?? [];
+      const processing = videos.some((v) => v.status === 'uploading' || v.status === 'processing');
+      return processing ? 2_000 : 15_000;
+    },
   });
 }

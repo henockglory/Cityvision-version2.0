@@ -11,6 +11,7 @@ import Tooltip from '@/components/ui/Tooltip';
 import { useAuthStore } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
 import { getNavGroupsForRole } from '@/config/navigation';
+import { useDemoSettings } from '@/hooks/api/queries';
 import { useSound } from '@/hooks/useSound';
 
 const iconMap: Record<string, LucideIcon> = {
@@ -31,6 +32,7 @@ export default function Sidebar({ mobile = false }: SidebarProps) {
   const { playClick } = useSound();
 
   const groups = user ? getNavGroupsForRole(user.role) : [];
+  const demoSettings = useDemoSettings();
   const isCollapsed = !mobile && collapsed;
 
   const closeMobile = () => setMobileOpen(false);
@@ -75,6 +77,9 @@ export default function Sidebar({ mobile = false }: SidebarProps) {
             <ul className="space-y-0.5 px-3">
               {group.items.map((item) => {
                 const Icon = iconMap[item.icon] ?? LayoutDashboard;
+                const label = item.path === '/demo' && demoSettings.data?.nav_label
+                  ? demoSettings.data.nav_label
+                  : t(item.labelKey);
                 const link = (
                   <NavLink
                     to={item.path}
@@ -92,13 +97,13 @@ export default function Sidebar({ mobile = false }: SidebarProps) {
                     }
                   >
                     <Icon className="w-[18px] h-[18px] shrink-0" />
-                    {(!isCollapsed || mobile) && <span className="truncate">{t(item.labelKey)}</span>}
+                    {(!isCollapsed || mobile) && <span className="truncate">{label}</span>}
                   </NavLink>
                 );
                 return (
                   <li key={item.path}>
                     {isCollapsed && !mobile ? (
-                      <Tooltip content={t(item.labelKey)} side="right">{link}</Tooltip>
+                      <Tooltip content={label} side="right">{link}</Tooltip>
                     ) : (
                       link
                     )}

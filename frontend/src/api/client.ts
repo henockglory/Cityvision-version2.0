@@ -502,6 +502,67 @@ export interface SystemStreamEvent {
 
 export type UninstallMode = 'restart' | 'soft' | 'standard' | 'full' | 'nuclear';
 
+export interface DemoVideo {
+  id: string;
+  org_id: string;
+  name: string;
+  status: 'uploading' | 'processing' | 'ready' | 'failed';
+  progress: number;
+  go2rtc_src?: string;
+  size_bytes: number;
+  duration_sec?: number;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface DemoSettings {
+  context_label: string;
+  title: string;
+  subtitle: string;
+  nav_label: string;
+  source_mode: 'video' | 'camera';
+  active_video_id?: string;
+  active_camera_id?: string;
+  active_go2rtc_src?: string;
+  videos: DemoVideo[];
+}
+
+export const demoApi = {
+  getSettings: (orgId: string) => api.get<DemoSettings>(`/orgs/${orgId}/demo/settings`),
+  patchSettings: (orgId: string, body: Partial<{
+    context_label: string;
+    title: string;
+    subtitle: string;
+    nav_label: string;
+    source_mode: string;
+    active_video_id: string | null;
+    active_camera_id: string | null;
+  }>) => api.patch<DemoSettings>(`/orgs/${orgId}/demo/settings`, body),
+  uploadVideo: (orgId: string, file: File, name?: string, onProgress?: (pct: number) => void) => {
+    const fd = new FormData();
+    fd.append('video', file);
+    if (name) fd.append('name', name);
+    return api.post<DemoVideo>(`/orgs/${orgId}/demo/videos`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 600_000,
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) {
+          onProgress(Math.round((e.loaded / e.total) * 30));
+        }
+      },
+    });
+  },
+  getVideoStatus: (orgId: string, videoId: string) =>
+    api.get<DemoVideo>(`/orgs/${orgId}/demo/videos/${videoId}/status`),
+  renameVideo: (orgId: string, videoId: string, name: string) =>
+    api.patch<DemoVideo>(`/orgs/${orgId}/demo/videos/${videoId}`, { name }),
+  deleteVideo: (orgId: string, videoId: string) =>
+    api.delete(`/orgs/${orgId}/demo/videos/${videoId}`),
+  retryVideo: (orgId: string, videoId: string) =>
+    api.post<DemoVideo>(`/orgs/${orgId}/demo/videos/${videoId}/retry`),
+  reset: (orgId: string) => api.post(`/orgs/${orgId}/demo/reset`),
+};
+
 export const systemApi = {
   status: () => api.get<SystemStatus>('/system/status'),
   setStartMode: (mode: 'auto' | 'manual') =>

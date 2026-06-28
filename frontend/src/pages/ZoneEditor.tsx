@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { Stage, Layer, Line, Circle } from 'react-konva';
@@ -7,7 +7,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 
 import { useTranslation } from 'react-i18next';
 
-import { Plus, Save, Pentagon, Shapes, Trash2, Video, Minus } from 'lucide-react';
+import { Plus, Save, Pentagon, Shapes, Trash2, Video, Minus, ChevronDown, Check } from 'lucide-react';
 
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { zonesApi, type BackendZone, type BackendLine } from '@/api/client';
 
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import DropdownPortal from '@/components/ui/DropdownPortal';
 
 import InfoTip from '@/components/ui/InfoTip';
 
@@ -76,6 +77,52 @@ interface SavedLine {
 }
 
 
+
+/** Premium camera combobox replacing the native <select> in the zone editor header. */
+function CameraSelect({
+  cameras,
+  value,
+  onChange,
+}: {
+  cameras: { id: string; name: string }[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const selected = cameras.find((c) => c.id === value);
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="cv-input text-sm flex items-center justify-between gap-2 min-w-[200px] cursor-pointer"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="truncate text-left flex-1">{selected?.name ?? '—'}</span>
+        <ChevronDown className={`w-4 h-4 text-cv-muted shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      <DropdownPortal anchorRef={triggerRef} open={open} onClose={() => setOpen(false)} zIndex={200}>
+        <div className="py-1 min-w-[220px]">
+          {cameras.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors hover:bg-cv-accent/10 ${
+                c.id === value ? 'text-cv-accent font-medium' : 'text-cv-text'
+              }`}
+              onClick={() => { onChange(c.id); setOpen(false); }}
+            >
+              <span className="truncate flex-1">{c.name}</span>
+              {c.id === value && <Check className="w-3.5 h-3.5 shrink-0" />}
+            </button>
+          ))}
+        </div>
+      </DropdownPortal>
+    </div>
+  );
+}
 
 function polygonToPoints(polygon: { x: number; y: number }[]): number[] {
 
@@ -133,7 +180,15 @@ function backendToLine(l: BackendLine): SavedLine {
 
 
 
-export default function ZoneEditor() {
+export interface ZoneEditorProps {
+  embedded?: boolean;
+  fixedCameraId?: string;
+  fixedStreamSrc?: string;
+  onClose?: () => void;
+}
+
+export default function ZoneEditor(props: ZoneEditorProps = {}) {
+  const embedded = props.embedded ?? false;
 
   const { t } = useTranslation();
 
@@ -142,7 +197,6 @@ export default function ZoneEditor() {
   const startTour = useAutoPageTour('zones');
 
   const orgId = useAuthStore((s) => s.orgId);
-
   const authSiteId = useAuthStore((s) => s.siteId);
 
   const { data: cameras = [], isLoading } = useCameras();
@@ -171,20 +225,54 @@ export default function ZoneEditor() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'zone' | 'line'; id: string; name: string } | null>(null);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState({ width: STAGE_WIDTH, height: STAGE_HEIGHT });
+
+  useEffect(() => {
+    // Observe the container (outer wrapper) rather than the canvas itself to avoid
+    // measuring the stage's own width, which causes a circular resize loop.
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      // Subtract card padding (p-4 = 16px each side = 32px total).
+      const available = Math.floor((el.clientWidth || STAGE_WIDTH) - 32);
+      const w = Math.max(280, Math.min(STAGE_WIDTH, available));
+      const h = Math.round(w * 9 / 16);  // strict 16:9
+      setLayout({ width: w, height: h });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [embedded]);
+
 
 
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const selectedCamera = cameras.find((c) => c.id === searchParams.get('camera'))
+  const selectedCamera = props.fixedCameraId
+    ? cameras.find((c) => c.id === props.fixedCameraId)
+    : cameras.find((c) => c.id === searchParams.get('camera'))
     ?? cameras.find(
-      (c) => c.name.toLowerCase().includes('virtual') || c.name.toLowerCase().includes('benedicte'),
-    ) ?? cameras[0];
+      (c) => {
+        const meta = c.metadata as Record<string, unknown> | undefined;
+        return meta?.demo === true || meta?.demo === 'true';
+      },
+    ) ?? (embedded ? undefined : cameras[0]);
 
   const siteId = authSiteId ?? selectedCamera?.siteId;
 
-  const streamSrc = go2rtcStreamSrc(selectedCamera);
+  const streamSrc = embedded
+    ? (props.fixedStreamSrc ?? '')
+    : (props.fixedStreamSrc ?? go2rtcStreamSrc(selectedCamera) ?? '');
 
-
+  const scaleX = layout.width / STAGE_WIDTH;
+  const scaleY = layout.height / STAGE_HEIGHT;
 
   const loadSpatial = useCallback(async () => {
 
@@ -212,7 +300,7 @@ export default function ZoneEditor() {
 
     } catch {
 
-      setMessage(t('zoneEditor.loadFailed', 'Impossible de charger les zones.'));
+      setMessage(t('zoneEditor.loadFailed'));
 
     } finally {
 
@@ -229,6 +317,14 @@ export default function ZoneEditor() {
     void loadSpatial();
 
   }, [loadSpatial]);
+
+  useEffect(() => {
+    setDrawing([]);
+    setLineDraftStart(null);
+    setSelectedId(null);
+    setDraftZones([]);
+    setDraftLines([]);
+  }, [selectedCamera?.id, streamSrc]);
 
 
 
@@ -258,6 +354,10 @@ export default function ZoneEditor() {
 
     if (!pos) return;
 
+    const x = pos.x / scaleX;
+
+    const y = pos.y / scaleY;
+
     playClick();
 
 
@@ -266,7 +366,7 @@ export default function ZoneEditor() {
 
       if (!lineDraftStart) {
 
-        setLineDraftStart([pos.x, pos.y]);
+        setLineDraftStart([x, y]);
 
         return;
 
@@ -286,7 +386,7 @@ export default function ZoneEditor() {
 
           start: lineDraftStart,
 
-          end: [pos.x, pos.y],
+          end: [x, y],
 
           cameraId: selectedCamera?.id ?? '',
 
@@ -304,7 +404,7 @@ export default function ZoneEditor() {
 
 
 
-    setDrawing((prev) => [...prev, pos.x, pos.y]);
+    setDrawing((prev) => [...prev, x, y]);
 
   };
 
@@ -350,7 +450,7 @@ export default function ZoneEditor() {
 
     if (!orgId || !siteId || !selectedCamera) {
 
-      setMessage(t('zoneEditor.noSite', 'Site introuvable — reconnectez-vous.'));
+      setMessage(t('zoneEditor.noSite'));
 
       return;
 
@@ -358,7 +458,7 @@ export default function ZoneEditor() {
 
     if (editMode === 'zone' && draftZones.length === 0) {
 
-      setMessage(t('zoneEditor.saveError', 'Dessinez au moins une zone (3 clics, puis « Fermer polygone »).'));
+      setMessage(t('zoneEditor.saveError'));
 
       return;
 
@@ -444,13 +544,16 @@ export default function ZoneEditor() {
 
       playSonar();
 
-      setMessage(t('zoneEditor.saved', 'Enregistré — rechargement…'));
+      setMessage(t('zoneEditor.saved'));
 
       await loadSpatial();
 
+      // Auto-clear success message after reload so the UI stays clean.
+      setMessage('');
+
     } catch {
 
-      setMessage(t('zoneEditor.saveFailed', 'Échec enregistrement — vérifiez la connexion.'));
+      setMessage(t('zoneEditor.saveFailed'));
 
     } finally {
 
@@ -488,13 +591,13 @@ export default function ZoneEditor() {
 
       <div>
 
-        <PageHeader title={t('zoneEditor.title')} onHelpTour={startTour} />
+        {!embedded && <PageHeader title={t('zoneEditor.title')} onHelpTour={startTour} />}
 
         <EmptyState
 
-          title={t('zoneEditor.noCamera')}
+          title={embedded ? t('demoCenter.zoneInlineNeedStream') : t('zoneEditor.noCamera')}
 
-          hint={t('zoneEditor.noCameraHint')}
+          hint={embedded ? t('demoCenter.emptyStreamBody') : t('zoneEditor.noCameraHint')}
 
           icon={Video}
 
@@ -512,6 +615,7 @@ export default function ZoneEditor() {
 
     <div>
 
+      {!embedded && (
       <PageHeader
 
         title={t('zoneEditor.title')}
@@ -523,22 +627,19 @@ export default function ZoneEditor() {
         actions={
           <div className="flex items-center gap-2">
             <label className="text-xs text-cv-muted shrink-0">{t('zoneEditor.cameraLabel')}</label>
-            <select
-              className="cv-input text-sm max-w-[220px]"
+            <CameraSelect
+              cameras={cameras}
               value={selectedCamera?.id ?? ''}
-              onChange={(e) => {
+              onChange={(id) => {
                 playClick();
-                setSearchParams({ camera: e.target.value });
+                setSearchParams({ camera: id });
               }}
-            >
-              {cameras.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            />
           </div>
         }
 
       />
+      )}
 
       <div className="flex gap-2 flex-wrap mb-4">
             <button
@@ -592,29 +693,40 @@ export default function ZoneEditor() {
 
 
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className={`grid grid-cols-1 gap-6 ${embedded ? '' : 'lg:grid-cols-4'}`}>
 
-        <div className="lg:col-span-3 cv-card p-4 overflow-x-auto">
+        <div ref={containerRef} className={`cv-card p-4 overflow-x-auto ${embedded ? '' : 'lg:col-span-3'}`}>
 
-          <div id="zone-canvas" className="relative rounded-lg overflow-hidden border border-cv-border mx-auto" style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT, minWidth: STAGE_WIDTH }}>
+          <div
+            ref={canvasRef}
+            id="zone-canvas"
+            className="relative rounded-lg overflow-hidden border border-cv-border mx-auto"
+            style={{ width: layout.width, height: layout.height }}
+          >
 
-            <Go2RtcPlayer src={streamSrc} bare className="absolute inset-0 w-full h-full pointer-events-none" />
+            <Go2RtcPlayer
+              src={streamSrc || undefined}
+              bare
+              friendlyErrors={embedded}
+              objectFit="fill"
+              className="absolute inset-0 w-full h-full pointer-events-none"
+            />
 
             <Stage
 
-              width={STAGE_WIDTH}
+              width={layout.width}
 
-              height={STAGE_HEIGHT}
+              height={layout.height}
 
               onClick={handleStageClick}
 
-              className="absolute inset-0 z-10"
+              className="absolute inset-0 z-10 cursor-crosshair"
 
               style={{ background: 'transparent' }}
 
             >
 
-              <Layer>
+              <Layer scaleX={scaleX} scaleY={scaleY}>
 
                 {editMode === 'zone' && allZones.map((zone) => (
 
@@ -845,9 +957,9 @@ export default function ZoneEditor() {
 
       <ConfirmDialog
         open={deleteConfirm != null}
-        title={deleteConfirm?.type === 'zone' ? 'Supprimer cette zone ?' : 'Supprimer cette ligne ?'}
-        message={`« ${deleteConfirm?.name ?? ''} » sera supprimée définitivement.`}
-        confirmLabel="Supprimer"
+        title={deleteConfirm?.type === 'zone' ? t('zoneEditor.deleteZoneTitle') : t('zoneEditor.deleteLineTitle')}
+        message={t('zoneEditor.deleteConfirmMsg', { name: deleteConfirm?.name ?? '' })}
+        confirmLabel={t('common.delete')}
         danger
         onConfirm={() => {
           if (!orgId || !deleteConfirm) return;
@@ -898,17 +1010,28 @@ function SpatialList({
 
           className={`p-3 rounded-lg border cursor-pointer transition-colors ${
 
-            selectedId === item.id ? 'border-cv-accent bg-cv-accent/5' : 'border-cv-border'
+            selectedId === item.id ? 'border-cv-accent bg-cv-accent/5 ring-1 ring-cv-accent/30' : 'border-cv-border hover:border-cv-accent/30'
 
           }`}
 
           onClick={() => onSelect(item.id === selectedId ? null : item.id)}
 
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelect(item.id === selectedId ? null : item.id);
+            }
+          }}
+
+          role="button"
+
+          tabIndex={0}
+
         >
 
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
 
-            <div>
+            <div className="min-w-0 flex-1">
 
               <p className="font-medium text-sm">{item.name}</p>
 
@@ -916,30 +1039,17 @@ function SpatialList({
 
             </div>
 
-            {item.isDraft ? (
-              <button
-                type="button"
-                className="cv-btn-ghost p-1.5 text-red-400"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(item.id, true);
-                }}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="cv-btn-ghost p-1.5 text-red-400"
-                title="Supprimer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(item.id, false);
-                }}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              type="button"
+              className="cv-btn-ghost p-1.5 text-red-400 shrink-0 self-center"
+              title={item.isDraft ? undefined : 'Supprimer'}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(item.id, item.isDraft);
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
 
           </div>
 

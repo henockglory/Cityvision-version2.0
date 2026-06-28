@@ -20,6 +20,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/config"
 	"github.com/citevision/citevision-v2/backend/internal/dashboard"
 	"github.com/citevision/citevision-v2/backend/internal/db"
+	"github.com/citevision/citevision-v2/backend/internal/demo"
 	"github.com/citevision/citevision-v2/backend/internal/events"
 	"github.com/citevision/citevision-v2/backend/internal/evidence"
 	"github.com/citevision/citevision-v2/backend/internal/handler"
@@ -113,12 +114,32 @@ func main() {
 	defer mqttCancel()
 	mqttSub.Start(mqttCtx)
 
-	eventsSvc := events.NewService(pool)
-	eventIngestor := mqttsub.NewEventIngestor(pool, eventsSvc, mqttBroker, log)
-	eventIngestor.Start(mqttCtx)
-
 	spatialSvc := spatial.NewService(pool)
 	cameraSvc := camera.NewService(pool, cipher)
+	evidenceSvc, err := evidence.NewService(evidence.ConfigFromEnv())
+	if err != nil {
+		log.Warn("evidence service init failed", "error", err)
+	}
+	demoSvc := demo.NewServiceWithEvidence(pool, cameraSvc, evidenceSvc, log)
+	if ms := demoSvc.MinioStore(); ms != nil && ms.Available() {
+		if err := ms.EnsureBucket(ctx); err != nil {
+			log.Warn("demo-videos bucket init failed", "error", err)
+		}
+	}
+	go demoSvc.StartRetentionJanitor(mqttCtx)
+
+	// Proactively re-register any demo streams that vanished from go2rtc after a restart.
+	go func() {
+		time.Sleep(3 * time.Second) // allow go2rtc to fully start
+		tctx, tcancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer tcancel()
+		demoSvc.EnsureAllOrgsStreamsRegistered(tctx)
+	}()
+
+	eventsSvc := events.NewService(pool)
+	eventIngestor := mqttsub.NewEventIngestor(pool, eventsSvc, demoSvc, mqttBroker, log)
+	eventIngestor.Start(mqttCtx)
+
 	go func() {
 		time.Sleep(5 * time.Second)
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -128,10 +149,6 @@ func main() {
 			log.Info("camera streams re-onboarded on startup", "ok", ok, "failed", failed)
 		}
 	}()
-	evidenceSvc, err := evidence.NewService(evidence.ConfigFromEnv())
-	if err != nil {
-		log.Warn("evidence service init failed", "error", err)
-	}
 	aiClient := ingest.NewAIClient(cfg)
 	orch := ingest.NewOrchestrator(pool, aiClient, spatialSvc, cameraSvc, log)
 	go orch.Run(mqttCtx)
@@ -165,6 +182,7 @@ func main() {
 		Record:      record.NewService(pool, cameraSvc),
 		Evidence:    evidenceSvc,
 		AI:          aiClient,
+		Demo:        demoSvc,
 	}
 
 	ws.ConfigureOrigins(cfg.WSAllowedOrigins)
@@ -243,8 +261,15 @@ func main() {
 					r.Get("/integrations/presets", api.ListIntegrationPresets)
 					r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "rules:write")).Post("/integrations/webhook/test", api.TestIntegrationWebhook)
 					r.With(middleware.RequirePermission(rbacSvc, "alerts:read")).Get("/integrations/delivery-log", api.ListDeliveryLog)
-					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/reset", api.ResetDemo)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/reset", api.ResetDemoWorkspace)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/purge-alerts", api.PurgeAlertsDemo)
+					r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/demo/settings", api.GetDemoSettings)
+					r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Patch("/demo/settings", api.PatchDemoSettings)
+					r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "cameras:write")).Post("/demo/videos", api.UploadDemoVideo)
+					r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/demo/videos/{videoID}/status", api.GetDemoVideoStatus)
+					r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Patch("/demo/videos/{videoID}", api.PatchDemoVideo)
+					r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Post("/demo/videos/{videoID}/retry", api.RetryDemoVideo)
+					r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Delete("/demo/videos/{videoID}", api.DeleteDemoVideo)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/maintenance/purge", api.PurgeOrgCommercial)
 
 					r.With(middleware.RequirePermission(rbacSvc, "audit:read")).Get("/audit", api.ListAuditLog)

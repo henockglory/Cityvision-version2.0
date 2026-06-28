@@ -4,19 +4,28 @@ interface SegmentedTab {
 }
 
 interface SegmentedTabsProps {
-  tabs: SegmentedTab[];
+  tabs?: SegmentedTab[];
+  /** @deprecated use tabs with { id, label } */
+  options?: { value: string; label: string }[];
   value: string;
   onChange: (id: string) => void;
   className?: string;
 }
 
-export default function SegmentedTabs({ tabs, value, onChange, className = '' }: SegmentedTabsProps) {
+export default function SegmentedTabs({
+  tabs,
+  options,
+  value,
+  onChange,
+  className = '',
+}: SegmentedTabsProps) {
+  const items: SegmentedTab[] = tabs ?? options?.map((o) => ({ id: o.value, label: o.label })) ?? [];
   return (
     <div
       className={`flex p-1 rounded-lg bg-cv-deep/50 border border-cv-border/60 gap-1 ${className}`}
       role="tablist"
     >
-      {tabs.map((tab) => (
+      {items.map((tab) => (
         <button
           key={tab.id}
           type="button"

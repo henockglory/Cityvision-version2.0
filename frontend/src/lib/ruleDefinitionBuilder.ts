@@ -111,6 +111,7 @@ export function buildConfiguredDefinition(
   tpl: RuleCatalogTemplate,
   cfg: RuleActivationConfig,
   conditionOverride?: CondNode,
+  options?: { demo?: boolean },
 ): Record<string, unknown> {
   const def = cloneDefinition(tpl.definition);
   const baseCond = (conditionOverride ?? def.condition) as CondNode;
@@ -130,6 +131,7 @@ export function buildConfiguredDefinition(
   if (cfg.classFilter) meta.class_filter = cfg.classFilter;
   if (cfg.direction) meta.direction = cfg.direction;
   if (cfg.schedule && !cfg.schedule.allDay) meta.schedule = cfg.schedule;
+  if (options?.demo) meta.demo = true;
 
   const actions = cfg.actions?.length
     ? cfg.actions

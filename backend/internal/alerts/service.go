@@ -63,8 +63,33 @@ func (s *Service) CreateAlert(ctx context.Context, req CreateAlertRequest) (*mod
 			if evidence.PolicyRequiresProof(policy) && !evidence.IsComplete(evidenceSnap, policy) {
 				return nil, ErrIncompleteEvidence
 			}
+			var def map[string]interface{}
+			if json.Unmarshal(definition, &def) == nil {
+				if bindings, ok := def["bindings"].(map[string]interface{}); ok {
+					if d, ok := bindings["demo"].(bool); ok && d {
+						metaMap["demo"] = true
+					}
+					if ds, ok := bindings["demo"].(string); ok && ds == "true" {
+						metaMap["demo"] = true
+					}
+				}
+			}
 		}
 	}
+	if camID, ok := metaMap["camera_id"].(string); ok && camID != "" {
+		if id, err := uuid.Parse(camID); err == nil {
+			var camMeta []byte
+			if s.pool.QueryRow(ctx, `SELECT metadata FROM cameras WHERE id = $1`, id).Scan(&camMeta) == nil {
+				var cm map[string]interface{}
+				if json.Unmarshal(camMeta, &cm) == nil {
+					if d, ok := cm["demo"].(bool); ok && d {
+						metaMap["demo"] = true
+					}
+				}
+			}
+		}
+	}
+	meta, _ = json.Marshal(metaMap)
 
 	var msg *string
 	if req.Message != "" {

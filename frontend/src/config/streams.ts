@@ -11,7 +11,7 @@ function resolveDirectOrigin(): string {
 }
 
 export const GO2RTC_ORIGIN = resolveDirectOrigin();
-/** Demo Kinshasa stream — only for /demo and explicitly virtual cameras. */
+/** @deprecated legacy demo stream name — use metadata.go2rtc_src from uploaded videos. */
 export const DEFAULT_STREAM = 'benedicte';
 
 export function isVirtualCamera(camera?: {
@@ -19,11 +19,9 @@ export function isVirtualCamera(camera?: {
   metadata?: Record<string, unknown>;
 } | null): boolean {
   const meta = camera?.metadata;
-  if (meta?.virtual === true) return true;
-  if (meta?.go2rtc_src === DEFAULT_STREAM) return true;
-  if (meta?.source === 'benedicte.mp4') return true;
+  if (meta?.virtual === true || meta?.demo === true || meta?.demo === 'true') return true;
   const name = camera?.name?.toLowerCase() ?? '';
-  return name.includes('benedicte') || name.includes('virtual');
+  return name.includes('virtual') || name.startsWith('démo') || name.startsWith('demo');
 }
 
 export function go2rtcStreamSrc(camera?: {
@@ -35,8 +33,7 @@ export function go2rtcStreamSrc(camera?: {
 } | null): string | undefined {
   if (!camera) return undefined;
   if (camera.streamKey) return camera.streamKey;
-  const meta = camera.metadata as { go2rtc_src?: string; virtual?: boolean; source?: string } | undefined;
-  if (isVirtualCamera(camera)) return DEFAULT_STREAM;
+  const meta = camera.metadata as { go2rtc_src?: string; virtual?: boolean; demo?: boolean | string } | undefined;
   if (meta?.go2rtc_src) return meta.go2rtc_src;
   if (camera.id) return `cam-${camera.id}`;
   return undefined;

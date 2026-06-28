@@ -230,6 +230,29 @@ func (s *Service) PurgeOrg(ctx context.Context, orgID uuid.UUID) (int, error) {
 	return removed, nil
 }
 
+// PurgeDemoPrefix deletes demo-tagged evidence objects for an organization.
+func (s *Service) PurgeDemoPrefix(ctx context.Context, orgID uuid.UUID) (int, error) {
+	if !s.Available() {
+		return 0, nil
+	}
+	prefix := path.Join("orgs", orgID.String(), "demo") + "/"
+	listCh := s.client.ListObjects(ctx, s.cfg.Bucket, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: true,
+	})
+	removed := 0
+	for obj := range listCh {
+		if obj.Err != nil {
+			return removed, obj.Err
+		}
+		if obj.Key != "" {
+			_ = s.client.RemoveObject(ctx, s.cfg.Bucket, obj.Key, minio.RemoveObjectOptions{})
+			removed++
+		}
+	}
+	return removed, nil
+}
+
 func getenv(k, def string) string {
 	if v := os.Getenv(k); v != "" {
 		return v

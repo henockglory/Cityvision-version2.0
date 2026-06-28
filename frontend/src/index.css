@@ -725,3 +725,318 @@ html.light .cv-driver-popover {
     animation: none;
   }
 }
+
+/* Demo workspace premium */
+.cv-demo-upload-btn {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(var(--cv-border));
+  background: rgb(var(--cv-surface) / 0.85);
+  color: rgb(var(--cv-accent));
+  backdrop-filter: blur(8px);
+  transition: border-color 0.15s, background 0.15s;
+}
+.cv-demo-upload-btn:hover {
+  border-color: rgb(var(--cv-accent) / 0.5);
+  background: rgb(var(--cv-accent) / 0.1);
+}
+
+.cv-demo-conversion-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.cv-demo-source-picker {
+  margin-top: 0.25rem;
+}
+
+.cv-demo-edit-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: 0.375rem;
+  color: rgb(var(--cv-muted));
+  transition: color 0.15s, background 0.15s;
+}
+.cv-demo-edit-trigger:hover {
+  color: rgb(var(--cv-accent));
+  background: rgb(var(--cv-accent) / 0.08);
+}
+
+.cv-demo-zone-modal {
+  max-height: 95vh;
+}
+
+.cv-demo-zone-inline {
+  border: 1px solid rgb(var(--cv-border) / 0.6);
+}
+
+.cv-demo-center {
+  padding-inline: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+@media (max-width: 390px) {
+  .cv-demo-upload-btn {
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
+
+/* Demo video library */
+.cv-demo-player-shell {
+  border: 1px solid rgb(var(--cv-border) / 0.5);
+}
+
+.cv-demo-empty-stream {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, rgb(var(--cv-black) / 0.5) 0%, rgb(var(--cv-surface) / 0.3) 100%);
+}
+
+.cv-demo-empty-stream-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 1.5rem;
+}
+
+.cv-demo-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  background: rgb(var(--cv-accent) / 0.1);
+  color: rgb(var(--cv-accent));
+  margin-bottom: 0.25rem;
+}
+
+.cv-demo-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(251 191 36 / 0.3);
+  background: rgb(251 191 36 / 0.08);
+  color: rgb(251 191 36);
+}
+
+.cv-demo-source-section {
+  padding: 0.25rem 0;
+}
+
+.cv-demo-video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.625rem;
+}
+
+.cv-demo-video-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(var(--cv-border) / 0.7);
+  background: rgb(var(--cv-surface) / 0.4);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.cv-demo-video-card--clickable {
+  cursor: pointer;
+  width: 100%;
+}
+.cv-demo-video-card--clickable:hover {
+  border-color: rgb(var(--cv-accent) / 0.35);
+}
+
+.cv-demo-video-card--active {
+  border-color: rgb(var(--cv-accent) / 0.55);
+  box-shadow: 0 0 0 1px rgb(var(--cv-accent) / 0.15);
+  background: rgb(var(--cv-accent) / 0.04);
+}
+
+.cv-demo-video-card--failed {
+  border-color: rgb(248 113 113 / 0.35);
+  background: rgb(248 113 113 / 0.04);
+}
+
+.cv-demo-video-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  background: rgb(var(--cv-accent) / 0.08);
+  flex-shrink: 0;
+}
+
+.cv-demo-video-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.cv-demo-video-rename-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  color: rgb(var(--cv-muted));
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.cv-demo-video-rename-btn:hover {
+  color: rgb(var(--cv-accent));
+  background: rgb(var(--cv-accent) / 0.1);
+}
+
+.cv-demo-video-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.375rem;
+  color: rgb(248 113 113 / 0.8);
+  flex-shrink: 0;
+  align-self: center;
+  transition: background 0.15s;
+}
+.cv-demo-video-delete-btn:hover {
+  background: rgb(248 113 113 / 0.12);
+}
+
+.cv-demo-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: capitalize;
+  background: rgb(var(--cv-border) / 0.5);
+  color: rgb(var(--cv-muted));
+}
+
+.cv-demo-status-pill--ready { background: rgb(16 185 129 / 0.12); color: rgb(52 211 153); }
+.cv-demo-status-pill--processing,
+.cv-demo-status-pill--uploading { background: rgb(var(--cv-accent) / 0.12); color: rgb(var(--cv-accent)); }
+.cv-demo-status-pill--failed { background: rgb(248 113 113 / 0.12); color: rgb(248 113 113); }
+.cv-demo-status-pill--active { background: rgb(var(--cv-accent) / 0.18); color: rgb(var(--cv-accent)); }
+
+.cv-demo-step-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  background: rgb(var(--cv-accent) / 0.15);
+  color: rgb(var(--cv-accent));
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.cv-demo-zone-header {
+  text-align: left;
+  transition: background 0.15s;
+}
+.cv-demo-zone-header:hover {
+  background: rgb(var(--cv-accent) / 0.04);
+}
+
+.cv-demo-zone-inline #zone-canvas {
+  width: 100% !important;
+  max-width: 800px;
+  min-width: 0 !important;
+}
+
+/* Premium inline edit field — borderless input with accent focus underline */
+.cv-demo-edit-inline {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgb(var(--cv-accent));
+  outline: none;
+  color: inherit;
+  padding: 0 0 1px;
+  font: inherit;
+}
+.cv-demo-edit-inline:focus {
+  border-bottom-color: rgb(var(--cv-accent));
+  box-shadow: 0 1px 0 rgb(var(--cv-accent) / 0.4);
+}
+
+/* Action row — always visible column of icon buttons on the right of the card */
+.cv-demo-action-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  align-self: center;
+  opacity: 1;
+}
+
+/* Zones button — same style as rename but with accent tint */
+.cv-demo-zone-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  color: rgb(var(--cv-accent) / 0.8);
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.cv-demo-zone-btn:hover {
+  color: rgb(var(--cv-accent));
+  background: rgb(var(--cv-accent) / 0.12);
+}
+
+/* Upload progress banner — thin bar at bottom of player, non-blocking */
+.cv-demo-upload-banner {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: rgb(0 0 0 / 0.72);
+  backdrop-filter: blur(6px);
+  color: #fff;
+}
+
+/* Mobile: collapse video grid to single column */
+@media (max-width: 390px) {
+  .cv-demo-video-grid {
+    grid-template-columns: 1fr;
+  }
+}

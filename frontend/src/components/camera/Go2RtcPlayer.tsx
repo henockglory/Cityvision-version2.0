@@ -8,6 +8,9 @@ interface Go2RtcPlayerProps {
   src?: string;
   bare?: boolean;
   label?: string;
+  /** Show a short user-facing message instead of raw WebRTC/RTSP errors. */
+  friendlyErrors?: boolean;
+  objectFit?: 'contain' | 'cover' | 'fill';
 }
 
 export default function Go2RtcPlayer({
@@ -15,6 +18,8 @@ export default function Go2RtcPlayer({
   src,
   bare = false,
   label,
+  friendlyErrors = false,
+  objectFit = 'contain',
 }: Go2RtcPlayerProps) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -67,7 +72,9 @@ export default function Go2RtcPlayer({
     <div className={`relative bg-black overflow-hidden ${className}`}>
       <video
         ref={videoRef}
-        className="absolute inset-0 w-full h-full object-contain bg-black"
+        className={`absolute inset-0 w-full h-full bg-black ${
+          objectFit === 'cover' ? 'object-cover' : objectFit === 'fill' ? 'object-fill' : 'object-contain'
+        }`}
         playsInline
         muted
         autoPlay
@@ -76,7 +83,11 @@ export default function Go2RtcPlayer({
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 pointer-events-none">
           <p className="text-sm text-white/80 text-center px-4">
             {connecting && (state === 'fallback-mse' ? t('liveView.fallbackMse', 'Repli MSE…') : t('liveView.connectingStream', 'Connexion vidéo…'))}
-            {state === 'error' && (errorDetail ?? t('liveView.streamError', 'Impossible d\'afficher l\'image'))}
+            {state === 'error' && (
+              friendlyErrors
+                ? t('demoCenter.streamUnavailable', 'Flux vidéo indisponible — importez ou sélectionnez une source active.')
+                : (errorDetail ?? t('liveView.streamError', "Impossible d'afficher l'image"))
+            )}
           </p>
         </div>
       )}

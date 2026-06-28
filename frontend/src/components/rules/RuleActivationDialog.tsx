@@ -74,6 +74,8 @@ interface RuleActivationDialogProps {
   template: RuleCatalogTemplate | null;
   existingRule?: Rule | null;
   initialStep?: 1 | 2 | 3 | 4;
+  demoMode?: boolean;
+  demoCameraIds?: string[];
   onClose: () => void;
   onActivated: () => void;
 }
@@ -129,13 +131,29 @@ export default function RuleStudioDialog({
   template,
   existingRule,
   initialStep = 1,
+  demoMode = false,
+  demoCameraIds,
   onClose,
   onActivated,
 }: RuleActivationDialogProps) {
   const { t, i18n } = useTranslation();
   const orgId = useAuthStore((s) => s.orgId);
   const siteId = useAuthStore((s) => s.siteId);
-  const { data: cameras = [] } = useCameras();
+  const { data: allCameras = [] } = useCameras();
+  const cameras = useMemo(() => {
+    if (!demoMode) return allCameras;
+    if (demoCameraIds?.length) {
+      return allCameras.filter((c) => demoCameraIds.includes(c.id));
+    }
+    return allCameras.filter((c) => {
+      const meta = c.metadata as Record<string, unknown> | undefined;
+      const isVirtual = meta?.virtual === true;
+      const isDemo = meta?.demo === true;
+      if (isDemo) return true;
+      if (!isVirtual) return true;
+      return false;
+    });
+  }, [allCameras, demoMode, demoCameraIds]);
   const isEdit = Boolean(existingRule);
 
   const activeTemplate = useMemo(() => {
@@ -198,12 +216,14 @@ export default function RuleStudioDialog({
     if (!activeTemplate) return;
     const defaults = getSchemaDefaults(schema);
     const bindings = (existingRule?.definition?.bindings ?? {}) as Record<string, unknown>;
-    const virtual =
-      cameras.find((c) => c.name.toLowerCase().includes('virtual') || c.name.toLowerCase().includes('benedicte')) ??
-      cameras[0];
+    const demoCam =
+      cameras.find((c) => {
+        const meta = c.metadata as Record<string, unknown> | undefined;
+        return meta?.demo === true || meta?.demo === 'true';
+      }) ?? cameras[0];
     setValues({
       ...defaults,
-      camera_id: bindings.camera_id ?? virtual?.id ?? '',
+      camera_id: bindings.camera_id ?? demoCam?.id ?? '',
       zone_name: bindings.zone_name ?? '',
       zone_name_2: bindings.zone_name_2 ?? '',
       line_name: bindings.line_name ?? '',
@@ -311,7 +331,7 @@ export default function RuleStudioDialog({
         enableWebhook ? { url: webhookUrl || undefined, preset: webhookPreset || undefined } : undefined,
       ),
     };
-    const definition = buildConfiguredDefinition(activeTemplate, cfg, cond);
+    const definition = buildConfiguredDefinition(activeTemplate, cfg, cond, { demo: demoMode });
     definition.evidence = evidencePolicy;
     return definition;
   };

@@ -20,6 +20,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/auth"
 	"github.com/citevision/citevision-v2/backend/internal/camera"
 	"github.com/citevision/citevision-v2/backend/internal/dashboard"
+	"github.com/citevision/citevision-v2/backend/internal/demo"
 	"github.com/citevision/citevision-v2/backend/internal/events"
 	"github.com/citevision/citevision-v2/backend/internal/evidence"
 	"github.com/citevision/citevision-v2/backend/internal/ingest"
@@ -56,6 +57,7 @@ type API struct {
 	Evidence    *evidence.Service
 	AI          *ingest.AIClient
 	Routing     *routing.Service
+	Demo        *demo.Service
 }
 
 // auditLog appends an audit entry and logs (does not silently drop) failures,

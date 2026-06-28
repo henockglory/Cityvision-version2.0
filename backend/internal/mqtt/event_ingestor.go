@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/citevision/citevision-v2/backend/internal/demo"
 	"github.com/citevision/citevision-v2/backend/internal/events"
 	"github.com/citevision/citevision-v2/backend/internal/evidence"
 )
@@ -18,12 +19,13 @@ import (
 type EventIngestor struct {
 	pool    *pgxpool.Pool
 	events  *events.Service
+	demo    *demo.Service
 	log     *slog.Logger
 	client  mqtt.Client
 	orgByCam map[string]uuid.UUID
 }
 
-func NewEventIngestor(pool *pgxpool.Pool, eventsSvc *events.Service, broker string, log *slog.Logger) *EventIngestor {
+func NewEventIngestor(pool *pgxpool.Pool, eventsSvc *events.Service, demoSvc *demo.Service, broker string, log *slog.Logger) *EventIngestor {
 	opts := mqtt.NewClientOptions().
 		AddBroker(broker).
 		SetClientID("citevision-event-ingestor").
@@ -33,6 +35,7 @@ func NewEventIngestor(pool *pgxpool.Pool, eventsSvc *events.Service, broker stri
 	return &EventIngestor{
 		pool:     pool,
 		events:   eventsSvc,
+		demo:     demoSvc,
 		log:      log,
 		client:   mqtt.NewClient(opts),
 		orgByCam: make(map[string]uuid.UUID),
@@ -141,10 +144,13 @@ func (e *EventIngestor) onMessage(_ mqtt.Client, msg mqtt.Message) {
 		camID = &id
 	}
 
-	raw, _ := json.Marshal(payload)
-	evSnap := evidence.SnapshotFromPayload(payload)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	if e.demo != nil {
+		e.demo.TagEventPayload(ctx, camID, payload)
+	}
+	raw, _ := json.Marshal(payload)
+	evSnap := evidence.SnapshotFromPayload(payload)
 	_, err := e.events.Ingest(ctx, events.IngestRequest{
 		OrgID:            orgID,
 		CameraID:         camID,
