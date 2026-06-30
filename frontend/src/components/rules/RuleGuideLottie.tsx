@@ -8,7 +8,12 @@ export default function RuleGuideLottie({
   category: string;
   className?: string;
 }) {
-  const [Lottie, setLottie] = useState<typeof import('lottie-react').default | null>(null);
+  const [Lottie, setLottie] = useState<React.ComponentType<{
+    animationData: object;
+    loop?: boolean;
+    autoplay?: boolean;
+    className?: string;
+  }> | null>(null);
   const [data, setData] = useState<object | null>(null);
   const [failed, setFailed] = useState(false);
 

@@ -133,7 +133,7 @@ class WorkerManager:
         with self._lock:
             if camera_id in self._workers and self._workers[camera_id].is_running:
                 self._configs[camera_id] = spatial_config or {}
-                return self._workers[camera_id].status()
+                return {"hot_reload": True, **self._workers[camera_id].status()}
 
             if camera_id in self._workers:
                 self._workers[camera_id].stop()

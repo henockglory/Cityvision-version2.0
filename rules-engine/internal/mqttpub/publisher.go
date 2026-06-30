@@ -63,6 +63,7 @@ func (p *Publisher) PublishRuleTrigger(orgID, targetRuleID string, payload map[s
 
 func (p *Publisher) PublishAlert(orgID, ruleID, title, message, severity string, metadata map[string]interface{}) {
 	if p == nil || p.client == nil || !p.client.IsConnected() {
+		log.Printf("mqtt alert publish skipped (disconnected) rule=%s org=%s", ruleID, orgID)
 		return
 	}
 	payload := map[string]interface{}{

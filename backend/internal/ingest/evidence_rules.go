@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -44,29 +45,36 @@ func buildEvidenceCaptureRules(def map[string]interface{}, ruleID string) []map[
 	if !ruleHasAlertAction(def) {
 		return nil
 	}
-	target := extractEvidenceTarget(def)
-	if target.eventType == "" {
+	targets := extractEvidenceTargets(def)
+	if len(targets) == 0 {
 		return nil
 	}
 	evidence := mergeEvidencePolicy(def)
-	if bindings, ok := def["bindings"].(map[string]interface{}); ok {
-		if cf, ok := bindings["class_filter"].(string); ok && cf != "" && target.classFilter == "" {
-			target.classFilter = cf
+	var out []map[string]interface{}
+	for _, target := range targets {
+		if target.eventType == "" {
+			continue
 		}
+		if bindings, ok := def["bindings"].(map[string]interface{}); ok {
+			if cf, ok := bindings["class_filter"].(string); ok && cf != "" && target.classFilter == "" {
+				target.classFilter = cf
+			}
+		}
+		entry := map[string]interface{}{
+			"rule_id":    ruleID,
+			"event_type": target.eventType,
+			"enabled":    true,
+			"evidence":   evidence,
+		}
+		if target.zoneID != "" {
+			entry["zone_id"] = target.zoneID
+		}
+		if target.classFilter != "" {
+			entry["class_filter"] = target.classFilter
+		}
+		out = append(out, entry)
 	}
-	out := map[string]interface{}{
-		"rule_id":    ruleID,
-		"event_type": target.eventType,
-		"enabled":    true,
-		"evidence":   evidence,
-	}
-	if target.zoneID != "" {
-		out["zone_id"] = target.zoneID
-	}
-	if target.classFilter != "" {
-		out["class_filter"] = target.classFilter
-	}
-	return []map[string]interface{}{out}
+	return out
 }
 
 type evidenceTarget struct {
@@ -104,20 +112,51 @@ func ruleHasAlertAction(def map[string]interface{}) bool {
 	return false
 }
 
-func extractEvidenceTarget(def map[string]interface{}) evidenceTarget {
-	var t evidenceTarget
+func extractEvidenceTargets(def map[string]interface{}) []evidenceTarget {
+	var targets []evidenceTarget
 	if cond, ok := def["condition"].(map[string]interface{}); ok {
-		walkCondition(cond, &t)
+		targets = collectEvidenceTargets(cond)
 	}
-	if bindings, ok := def["bindings"].(map[string]interface{}); ok {
-		if z, ok := bindings["zone_name"].(string); ok && z != "" && t.zoneID == "" {
-			t.zoneID = z
-		}
-		if cf, ok := bindings["class_filter"].(string); ok && cf != "" && t.classFilter == "" {
-			t.classFilter = cf
+	if len(targets) == 0 {
+		targets = []evidenceTarget{{}}
+	}
+	bindings, _ := def["bindings"].(map[string]interface{})
+	for i := range targets {
+		if bindings != nil {
+			if z, ok := bindings["zone_name"].(string); ok && z != "" && targets[i].zoneID == "" {
+				targets[i].zoneID = z
+			}
+			if cf, ok := bindings["class_filter"].(string); ok && cf != "" && targets[i].classFilter == "" {
+				targets[i].classFilter = cf
+			}
 		}
 	}
-	return t
+	return targets
+}
+
+func collectEvidenceTargets(node map[string]interface{}) []evidenceTarget {
+	if node == nil {
+		return nil
+	}
+	op, _ := node["op"].(string)
+	switch strings.ToUpper(op) {
+	case "OU", "OR":
+		var out []evidenceTarget
+		children, _ := node["children"].([]interface{})
+		for _, c := range children {
+			if cm, ok := c.(map[string]interface{}); ok {
+				out = append(out, collectEvidenceTargets(cm)...)
+			}
+		}
+		return out
+	default:
+		var t evidenceTarget
+		walkCondition(node, &t)
+		if t.eventType != "" {
+			return []evidenceTarget{t}
+		}
+	}
+	return nil
 }
 
 func walkCondition(node map[string]interface{}, t *evidenceTarget) {

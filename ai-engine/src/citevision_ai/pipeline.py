@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import logging
 import os
 import time
@@ -75,11 +76,13 @@ class PipelineService:
         self._timestamps: dict[str, float] = {}
         self._org_ids: dict[str, str] = {}
         self._capability_profiles: dict[str, list[dict[str, Any]]] = {}
+        self._spatial_behavior_fp: dict[str, str] = {}
 
     def register_camera(self, camera_id: str, spatial_config: dict[str, Any] | None = None) -> None:
-        self.budget.register_camera(camera_id)
-        self._trackers[camera_id] = ByteTracker(min_hits=1)
-        self._frame_counters[camera_id] = 0
+        if camera_id not in self._trackers:
+            self.budget.register_camera(camera_id)
+            self._trackers[camera_id] = ByteTracker(min_hits=1)
+            self._frame_counters[camera_id] = 0
         if spatial_config:
             if org := spatial_config.get("org_id"):
                 self._org_ids[camera_id] = str(org)
@@ -189,15 +192,37 @@ class PipelineService:
     def _runtime_for(self, camera_id: str) -> dict[str, Any]:
         return self._runtime_config.get(camera_id, {})
 
+    @staticmethod
+    def _behavior_fingerprint(config: dict[str, Any]) -> str:
+        zones = config.get("zones") or []
+        parts: list[tuple[str, str, str]] = []
+        for z in zones:
+            bcfg = z.get("behavior_config") or {}
+            parts.append(
+                (
+                    str(z.get("name", "")),
+                    str(z.get("behavior", "")),
+                    json.dumps(bcfg, sort_keys=True, default=str),
+                )
+            )
+        return json.dumps(sorted(parts))
+
+    spatial_behavior_fingerprint = _behavior_fingerprint
+
     def set_rules(self, rules: list[dict]) -> None:
         self._rules = rules
 
     def set_spatial_config(self, camera_id: str, config: dict[str, Any]) -> None:
+        fp = self._behavior_fingerprint(config)
+        if self._spatial_behavior_fp.get(camera_id) != fp:
+            self.traffic_light.reset_camera(camera_id)
+            self.zone_speed.reset_camera(camera_id)
+            self._spatial_behavior_fp[camera_id] = fp
         self._spatial_configs[camera_id] = config
         calib = CalibrationEngine(config.get("calibration"))
         self._calibrations[camera_id] = calib
         line_map: dict[str, dict[str, Any]] = {}
-        for line in config.get("lines", []):
+        for line in config.get("lines") or []:
             line_id = line.get("line_id", line.get("name", "line"))
             line_map[line_id] = line
             self.behavior.set_line_config(
@@ -220,7 +245,7 @@ class PipelineService:
 
     def _build_spatial_rules(self, camera_id: str, config: dict[str, Any]) -> list[dict]:
         rules: list[dict] = []
-        for zone in config.get("zones", []):
+        for zone in config.get("zones") or []:
             zone_id = zone.get("zone_id", zone.get("name", "zone"))
             polygon = zone.get("polygon", [])
             behavior = str(zone.get("behavior", zone.get("zone_kind", "")) or "")
@@ -263,7 +288,7 @@ class PipelineService:
                     "class_filter": str(bcfg.get("class_filter", "any")),
                     "zone": {"zone_id": zone_id, "polygon": polygon},
                 })
-        for pr in config.get("presence_rules", []):
+        for pr in config.get("presence_rules") or []:
             zone_id = pr.get("zone_id", "zone")
             polygon = pr.get("polygon", [])
             rules.append({
@@ -274,7 +299,7 @@ class PipelineService:
                 "class_filter": pr.get("class_filter", "any"),
                 "zone": {"zone_id": zone_id, "polygon": polygon},
             })
-        for line in config.get("lines", []):
+        for line in config.get("lines") or []:
             rules.append({
                 "camera_id": camera_id,
                 "rule_type": "line",
@@ -341,8 +366,25 @@ class PipelineService:
         if rt.get("speed_kmh"):
             self.behavior.speed_threshold = float(rt["speed_kmh"])
 
+        zones_cfg = (self._spatial_configs.get(camera_id) or {}).get("zones") or []
+        tl_active = self.traffic_light.camera_has_behavior(zones_cfg)
+        zs_active = self.zone_speed.camera_has_behavior(zones_cfg)
         skip = self.budget.frame_skip_interval(source_fps)
+        # State machines (traffic light, zone speed) need a processed frame every tick.
+        if tl_active or zs_active:
+            skip = 1
+
         if frame_id % skip != 0:
+            pre_events: list[dict[str, Any]] = []
+            if tl_active:
+                ts0 = datetime.now(timezone.utc).isoformat()
+                pre_events.extend(
+                    self.traffic_light.process_frame(camera_id, frame, [], ts0, zones_cfg)
+                )
+            for evt in pre_events:
+                if self._org_ids.get(camera_id):
+                    evt["org_id"] = self._org_ids[camera_id]
+                self.mqtt.publish_event(camera_id, evt)
             h, w = frame.shape[:2]
             return DetectionFrame(
                 camera_id=camera_id,
@@ -528,27 +570,25 @@ class PipelineService:
         if gated_tracks:
             all_events.extend(self.plate_engine.process_frame(camera_id, frame, gated_tracks, ts))
 
-        zones_cfg = (self._spatial_configs.get(camera_id) or {}).get("zones") or []
         # Dedicated, zone-driven red-light pipeline (color classification + synergy).
-        tl_active = self.traffic_light.camera_has_behavior(zones_cfg)
         if tl_active:
             all_events.extend(
                 self.traffic_light.process_frame(camera_id, frame, track_dicts, ts, zones_cfg)
             )
         # Dedicated secondary ONNX models for cabin violations (phone, seatbelt).
         zone_behaviors = {str(z.get("behavior", "")) for z in zones_cfg}
+        cabin_active = "driver_cabin" in zone_behaviors or "phone_use" in zone_behaviors or "seatbelt" in zone_behaviors
         if self.secondary.camera_has_behavior(zones_cfg):
             all_events.extend(
                 self.secondary.process_frame(camera_id, frame, track_dicts, zones_cfg, ts)
             )
-        # Legacy heuristics; suppress built-in red-light / cabin checks when a
-        # dedicated zone behavior takes over (real model or honest no-result).
+        # Legacy heuristics only as fallback on driver-cabin cameras (never on feux/ligne/décompte).
         all_events.extend(
             self.road_enforcement.process_frame(
                 camera_id, frame, track_dicts, ts, zones_cfg,
                 disable_red_light=tl_active,
-                disable_phone="phone_use" in zone_behaviors,
-                disable_seatbelt="seatbelt" in zone_behaviors,
+                disable_phone=not cabin_active,
+                disable_seatbelt=not cabin_active,
             )
         )
         # Zone-distance speed measurement (real metres → km/h).

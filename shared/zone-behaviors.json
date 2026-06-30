@@ -97,6 +97,7 @@
     {
       "id": "count_crossings",
       "group": "traffic",
+      "applies_to": "line",
       "label_fr": "Comptage de franchissements",
       "label_en": "Crossing counter",
       "capability": "real",
@@ -154,6 +155,20 @@
       ]
     },
     {
+      "id": "driver_cabin",
+      "group": "driver",
+      "label_fr": "Habitacle conducteur (téléphone + ceinture)",
+      "label_en": "Driver cabin (phone + seatbelt)",
+      "capability": "real",
+      "human_description_fr": "Analyse l'habitacle des véhicules dans la zone avec les modèles téléphone au volant et port de ceinture. Une seule zone pour les deux infractions.",
+      "human_description_en": "Analyzes vehicle cabins in the zone with both phone-use and seatbelt models. One zone covers both violations.",
+      "emits": ["phone_use_violation", "seatbelt_violation"],
+      "requires": ["model:driver_phone", "model:seatbelt"],
+      "config_fields": [
+        { "key": "confidence", "type": "number", "label_fr": "Confiance min", "label_en": "Min confidence", "default": 0.45, "min": 0.05, "max": 0.99, "step": 0.05 }
+      ]
+    },
+    {
       "id": "phone_use",
       "group": "driver",
       "label_fr": "Téléphone au volant (modèle)",
@@ -179,6 +194,21 @@
       "requires": ["model:seatbelt"],
       "config_fields": [
         { "key": "confidence", "type": "number", "label_fr": "Confiance min", "label_en": "Min confidence", "default": 0.45, "min": 0.05, "max": 0.99, "step": 0.05 }
+      ]
+    },
+    {
+      "id": "plate_ocr",
+      "group": "traffic",
+      "applies_to": "zone",
+      "label_fr": "Lecture de plaque (ANPR)",
+      "label_en": "License plate OCR (ANPR)",
+      "capability": "real",
+      "human_description_fr": "Active la lecture de plaque (PaddleOCR) pour les véhicules dans cette zone. Nécessite le module ANPR installé.",
+      "human_description_en": "Enables license plate OCR (PaddleOCR) for vehicles in this zone. Requires the ANPR module installed.",
+      "emits": ["plate_detected"],
+      "requires": ["model:paddleocr"],
+      "config_fields": [
+        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "car" }
       ]
     },
     {

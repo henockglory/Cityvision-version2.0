@@ -56,6 +56,7 @@ type API struct {
 	Record      *record.Service
 	Evidence    *evidence.Service
 	AI          *ingest.AIClient
+	Orchestrator *ingest.Orchestrator
 	Routing     *routing.Service
 	Demo        *demo.Service
 }

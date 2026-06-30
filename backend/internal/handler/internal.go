@@ -394,3 +394,48 @@ func (a *API) InternalArchiveStaleAlerts(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "archived", "count": n})
 }
+
+func (a *API) InternalResyncSpatial(w http.ResponseWriter, r *http.Request) {
+	if a.Orchestrator == nil {
+		writeError(w, http.StatusServiceUnavailable, "orchestrator unavailable")
+		return
+	}
+	a.Orchestrator.InvalidateConfigHashes()
+	a.Orchestrator.SyncNow(r.Context())
+	writeJSON(w, http.StatusOK, map[string]string{"status": "synced"})
+}
+
+func (a *API) InternalDebugSpatialConfig(w http.ResponseWriter, r *http.Request) {
+	if a.Orchestrator == nil || a.Cameras == nil {
+		writeError(w, http.StatusServiceUnavailable, "orchestrator unavailable")
+		return
+	}
+	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid org id")
+		return
+	}
+	cameraID, err := uuid.Parse(chi.URLParam(r, "cameraID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid camera id")
+		return
+	}
+	if _, err := a.Cameras.Get(r.Context(), orgID, cameraID); err != nil {
+		writeError(w, http.StatusNotFound, "camera not found")
+		return
+	}
+	cfg := a.Orchestrator.DebugSpatialConfig(r.Context(), orgID, cameraID)
+	zones, _ := cfg["zones"].([]map[string]interface{})
+	behaviors := make([]string, 0)
+	for _, z := range zones {
+		if b, ok := z["behavior"].(string); ok && b != "" {
+			behaviors = append(behaviors, b)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"camera_id":  cameraID.String(),
+		"zone_count": len(zones),
+		"behaviors":  behaviors,
+		"zones":      zones,
+	})
+}

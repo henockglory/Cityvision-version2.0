@@ -69,6 +69,12 @@ ensure_static_keys() {
   ensure_kv MINIO_ACCESS_KEY "$MINIO_ACCESS_VAL"
   ensure_kv MINIO_SECRET_KEY "$MINIO_SECRET_VAL"
   ensure_kv PUBLIC_API_BASE "$PUBLIC_API_VAL"
+  ensure_kv ALERT_EMAIL_TO "$EMAIL"
+  ensure_kv SMTP_HOST "localhost"
+  ensure_kv SMTP_PORT "1025"
+  ensure_kv SMTP_FROM "alertes@citevision.local"
+  ensure_kv SMTP_USE_TLS "false"
+  ensure_kv MAILHOG_PUBLIC_URL "http://localhost:8025"
 
   CURRENT_BUCKET="$(grep '^MINIO_BUCKET=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' \r' || true)"
   if [[ -z "$CURRENT_BUCKET" || "$CURRENT_BUCKET" == "citevision-recordings" ]]; then
@@ -93,8 +99,32 @@ setup_initialized() {
   [[ -n "$resp" ]] && echo "$resp" | grep -q '"initialized"[[:space:]]*:[[:space:]]*true'
 }
 
+resolve_demo_org_from_db() {
+  if ! command -v docker >/dev/null 2>&1; then
+    return 1
+  fi
+  docker exec citevision-v2-postgres psql -U citevision -d citevision -t -A -c \
+    "SELECT org_id FROM cameras WHERE metadata->>'demo' = 'true' GROUP BY org_id ORDER BY COUNT(*) DESC LIMIT 1;" 2>/dev/null \
+    | tr -d ' \r\n'
+}
+
 resolve_org_id() {
+  DEMO_ORG_DB=""
+  DEMO_ORG_DB="$(resolve_demo_org_from_db || true)"
+  if [[ -n "${DEMO_ORG_ID:-}" ]]; then
+    DEMO_ORG_DB="$DEMO_ORG_ID"
+  fi
+
   CURRENT_ORG="$(grep '^DEFAULT_ORG_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' \r' || true)"
+
+  # Prefer the org that owns demo cameras/rules when it differs from a stale DEFAULT_ORG_ID.
+  if [[ -n "$DEMO_ORG_DB" && -n "$CURRENT_ORG" && "$CURRENT_ORG" != "$DEMO_ORG_DB" ]]; then
+    echo "[FIX] DEFAULT_ORG_ID demo mismatch: $CURRENT_ORG -> $DEMO_ORG_DB"
+    sed -i "s/^DEFAULT_ORG_ID=.*/DEFAULT_ORG_ID=$DEMO_ORG_DB/" "$ENV_FILE"
+    echo "[OK] DEFAULT_ORG_ID=$DEMO_ORG_DB"
+    return 0
+  fi
+
   if [[ -n "$CURRENT_ORG" ]]; then
     echo "[OK] DEFAULT_ORG_ID=$CURRENT_ORG"
     return 0
@@ -118,7 +148,9 @@ resolve_org_id() {
   fi
 
   ORG=""
-  if [[ -n "$TOKEN" ]]; then
+  if [[ -n "$DEMO_ORG_DB" ]]; then
+    ORG="$DEMO_ORG_DB"
+  elif [[ -n "$TOKEN" ]]; then
     ORG="$(curl -sf "$API/api/v1/auth/me" -H "Authorization: Bearer $TOKEN" 2>/dev/null \
       | python3 -c "import sys,json; print(json.load(sys.stdin).get('org_id',''))" 2>/dev/null || true)"
   fi

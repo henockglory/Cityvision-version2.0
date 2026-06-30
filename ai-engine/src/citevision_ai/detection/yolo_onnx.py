@@ -68,7 +68,20 @@ class YoloOnnxDetector:
             import onnxruntime as ort
 
             providers, label = resolve_onnx_providers(self.device)
-            self._session = ort.InferenceSession(str(self.model_path), providers=providers)
+            try:
+                self._session = ort.InferenceSession(str(self.model_path), providers=providers)
+            except Exception as cuda_err:
+                if "CUDAExecutionProvider" in providers:
+                    logger.warning(
+                        "YOLO CUDA init failed (%s) — retrying CPUExecutionProvider",
+                        cuda_err,
+                    )
+                    self._session = ort.InferenceSession(
+                        str(self.model_path), providers=["CPUExecutionProvider"]
+                    )
+                    label = "cpu"
+                else:
+                    raise
             self._input_name = self._session.get_inputs()[0].name
             active = self._session.get_providers()
             self.active_provider = active[0] if active else label

@@ -14,6 +14,8 @@ RSYNC_EXCLUDES=(
   --exclude ai-engine/.venv
   --exclude ai-engine/models/yolov8n.onnx
   --exclude ai-engine/models/yolov8n.pt
+  --exclude ai-engine/models/secondary
+  --exclude ai-engine/models/insightface/models/buffalo_l
   --exclude logs
   --exclude .env
   --exclude dist
@@ -36,7 +38,12 @@ fi
 for DEST in "${TARGETS[@]}"; do
   echo "==> Syncing $SRC -> $DEST"
   mkdir -p "$DEST"
-  rsync -a --delete --no-group --no-owner "${RSYNC_EXCLUDES[@]}" "$SRC/" "$DEST/"
+  # Protect destination demo/transcoded videos from --delete (excluded from source transfer).
+  rsync -a --delete --no-group --no-owner \
+    --filter 'P data/videos/' \
+    --filter 'P ai-engine/models/secondary/' \
+    --filter 'P ai-engine/models/insightface/' \
+    "${RSYNC_EXCLUDES[@]}" "$SRC/" "$DEST/"
   find "$DEST/scripts" -name '*.sh' -exec sed -i 's/\r$//' {} + 2>/dev/null || true
   echo "[OK] $DEST"
 done

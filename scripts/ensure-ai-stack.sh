@@ -86,9 +86,15 @@ _health_keys_ok() {
   curl -sf "$url" 2>/dev/null | "$VENV_PY" -c "
 import json, sys
 d = json.load(sys.stdin)
-keys = ('yolo_loaded', 'face_loaded', 'plate_loaded')
-ok = all(str(d.get(k, '')).lower() == 'true' for k in keys)
-sys.exit(0 if ok else 1)
+keys = (
+    'yolo_loaded', 'face_loaded', 'plate_loaded',
+    'driver_phone_model_loaded', 'seatbelt_model_loaded',
+)
+missing = [k for k in keys if str(d.get(k, '')).lower() != 'true']
+if missing:
+    print('[WARN] AI health missing:', ', '.join(missing), file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
 " 2>/dev/null
 }
 
@@ -158,6 +164,9 @@ ensure_yolo_model() {
 ensure_download_models() {
   _log "[FIX] Téléchargement / init InsightFace + PaddleOCR…"
   bash "$ROOT/scripts/download-models.sh" --skip-yolo 2>&1
+  _log "[FIX] Modèles secondaires (téléphone / ceinture)…"
+  bash "$ROOT/scripts/build-secondary-models.sh" 2>&1 || \
+    bash "$ROOT/scripts/download-secondary-models.sh" --fix 2>&1 || true
 }
 
 restart_ai_engine() {

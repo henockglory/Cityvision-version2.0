@@ -17,6 +17,7 @@ spatial config; they are scaled to frame pixels internally.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import deque
 from typing import Any
@@ -25,6 +26,8 @@ import cv2
 import numpy as np
 
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle"}
+
+logger = logging.getLogger(__name__)
 
 TRAFFIC_LIGHT_BEHAVIOR = "traffic_light_color"
 OBSERVATION_BEHAVIOR = "red_light_observation"
@@ -81,10 +84,15 @@ def classify_light_color(roi: np.ndarray) -> tuple[str, dict[str, float]]:
         "amber": float(np.count_nonzero(amber)) / total,
         "green": float(np.count_nonzero(green)) / total,
     }
+    # Minimum illuminated ratio for any colour to count.
+    min_ratio = 0.006
     state = max(ratios, key=ratios.get)
-    # Require a minimum illuminated ratio, otherwise the light is off / not visible.
-    if ratios[state] < 0.012:
+    if ratios[state] < min_ratio:
         return "unknown", ratios
+    # Prefer red when clearly lit (demo videos often mix glare with green spill).
+    if ratios["red"] >= min_ratio and ratios["red"] >= ratios["amber"]:
+        if ratios["red"] >= ratios["green"] * 0.65:
+            return "red", ratios
     return state, ratios
 
 
@@ -98,8 +106,20 @@ class TrafficLightEngine:
         # Previous centroids to estimate per-track motion (pixels/frame).
         self._prev_centroid: dict[tuple[str, int], tuple[float, float]] = {}
         self._cooldown: dict[tuple[str, int], int] = {}
+        # Consecutive frames a track spent inside an observation zone (motion gate).
+        self._obs_streak: dict[tuple[str, int], int] = {}
         self._frame_counter = 0
         self._cooldown_frames = 45
+
+    def reset_camera(self, camera_id: str) -> None:
+        """Clear smoothed state when spatial config is hot-reloaded."""
+        self._state_history.pop(camera_id, None)
+        self._stable_state.pop(camera_id, None)
+        drop = [k for k in self._prev_centroid if k[0] == camera_id]
+        for k in drop:
+            self._prev_centroid.pop(k, None)
+            self._cooldown.pop(k, None)
+            self._obs_streak.pop(k, None)
 
     def camera_has_behavior(self, zones: list[dict] | None) -> bool:
         if not zones:
@@ -130,6 +150,7 @@ class TrafficLightEngine:
 
         # 1) Classify the traffic-light color from the dedicated zone(s).
         stable_window = 3
+        cooldown = self._cooldown_frames
         new_state = self._stable_state.get(camera_id, "unknown")
         for lz in light_zones:
             cfg = lz.get("behavior_config") or {}
@@ -137,6 +158,7 @@ class TrafficLightEngine:
                 stable_window = max(1, int(cfg.get("stable_frames", 3)))
             except (TypeError, ValueError):
                 stable_window = 3
+            cooldown = 8 if stable_window <= 1 else self._cooldown_frames
             box = _polygon_pixel_bbox(lz.get("polygon") or [], w, h)
             if not box:
                 continue
@@ -144,9 +166,12 @@ class TrafficLightEngine:
             raw_state, _ = classify_light_color(frame[y1:y2, x1:x2])
             hist = self._state_history.setdefault(camera_id, deque(maxlen=max(stable_window, 1)))
             hist.append(raw_state)
-            # Stable only if the window agrees.
-            if len(hist) >= hist.maxlen and len(set(hist)) == 1:
-                new_state = hist[0]
+            if len(hist) >= hist.maxlen:
+                # Majority vote — more tolerant of brief HSV flicker in live video.
+                counts: dict[str, int] = {}
+                for s in hist:
+                    counts[s] = counts.get(s, 0) + 1
+                new_state = max(counts, key=counts.get)
             break  # one traffic-light zone per camera is the supported case
 
         prev_stable = self._stable_state.get(camera_id)
@@ -157,6 +182,7 @@ class TrafficLightEngine:
             )
 
         # 2) Red-light synergy: moving vehicle in observation zone while red.
+        tracks_in_obs: set[tuple[str, int]] = set()
         if self._stable_state.get(camera_id) == "red" and obs_zones:
             for oz in obs_zones:
                 cfg = oz.get("behavior_config") or {}
@@ -172,19 +198,28 @@ class TrafficLightEngine:
                         continue
                     bbox = track.get("bbox") or {}
                     cx = (float(bbox.get("x", 0)) + float(bbox.get("width", 0)) / 2)
-                    cy = (float(bbox.get("y", 0)) + float(bbox.get("height", 0)) / 2)
+                    # Use a point near the bottom of the bbox (wheels / road contact).
+                    cy = float(bbox.get("y", 0)) + float(bbox.get("height", 0)) * 0.85
                     ncx, ncy = cx / max(w, 1), cy / max(h, 1)
                     if poly and not _point_in_polygon(ncx, ncy, poly):
                         continue
                     tid = int(track.get("track_id", -1))
+                    key = (camera_id, tid)
+                    tracks_in_obs.add(key)
+                    streak = self._obs_streak.get(key, 0) + 1
+                    self._obs_streak[key] = streak
                     motion = self._motion_px(camera_id, tid, cx, cy)
-                    if motion < min_motion:
+                    # First frame in zone has motion=0; allow after 2 consecutive frames.
+                    if motion < min_motion and streak < 2:
                         continue
-                    if not self._allow_emit(camera_id, tid):
+                    if not self._allow_emit(camera_id, tid, cooldown):
                         continue
                     events.append(
                         self._make_violation_event(camera_id, track, timestamp, motion)
                     )
+        for key in list(self._obs_streak):
+            if key[0] == camera_id and key not in tracks_in_obs:
+                self._obs_streak.pop(key, None)
 
         # Always refresh centroid cache for motion estimation.
         for track in tracks:
@@ -193,6 +228,12 @@ class TrafficLightEngine:
             cy = float(bbox.get("y", 0)) + float(bbox.get("height", 0)) / 2
             self._prev_centroid[(camera_id, int(track.get("track_id", -1)))] = (cx, cy)
 
+        if events:
+            logger.info(
+                "traffic_light camera=%s events=%s",
+                camera_id[:8],
+                [e.get("event_type") for e in events],
+            )
         return events
 
     def _motion_px(self, camera_id: str, track_id: int, cx: float, cy: float) -> float:
@@ -201,10 +242,11 @@ class TrafficLightEngine:
             return 0.0
         return float(((cx - prev[0]) ** 2 + (cy - prev[1]) ** 2) ** 0.5)
 
-    def _allow_emit(self, camera_id: str, track_id: int) -> bool:
+    def _allow_emit(self, camera_id: str, track_id: int, cooldown_frames: int | None = None) -> bool:
         key = (camera_id, track_id)
         last = self._cooldown.get(key, -9999)
-        if self._frame_counter - last < self._cooldown_frames:
+        frames = self._cooldown_frames if cooldown_frames is None else cooldown_frames
+        if self._frame_counter - last < frames:
             return False
         self._cooldown[key] = self._frame_counter
         return True

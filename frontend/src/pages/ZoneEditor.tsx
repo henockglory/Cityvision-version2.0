@@ -1016,12 +1016,17 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
               {editMode === 'zone' && selectedZone && (() => {
                 const selectedBehavior = getBehavior(selectedZone.behavior);
-                const behaviorOptions = behaviorsByGroup().flatMap(({ group, behaviors }) =>
+                const behaviorOptions = behaviorsByGroup('zone').flatMap(({ group, behaviors }) =>
                   behaviors.map((b) => ({
                     value: b.id,
                     label: `${lang === 'fr' ? group.label_fr : group.label_en} · ${lang === 'fr' ? b.label_fr : b.label_en}`,
                   })),
                 );
+                const needsTrafficLightZone =
+                  selectedZone.behavior === 'red_light_observation'
+                  && !allZones.some(
+                    (z) => z.id !== selectedZone.id && z.behavior === 'traffic_light_color',
+                  );
                 return (
                   <div className="space-y-1.5">
                     <label className="text-xs text-cv-muted flex items-center gap-1">
@@ -1042,6 +1047,11 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
                         onConfigChange={(k, v) => void saveSelectedBehaviorConfig(k, v)}
                         capabilityLabel={t(`zoneEditor.capability_${selectedBehavior.capability}`)}
                       />
+                    )}
+                    {needsTrafficLightZone && (
+                      <p className="text-xs text-amber-400/90 border border-amber-500/30 rounded-md px-2.5 py-2 bg-amber-500/5">
+                        {t('zoneEditor.redLightSynergyWarning')}
+                      </p>
                     )}
                   </div>
                 );

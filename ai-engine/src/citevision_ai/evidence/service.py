@@ -61,12 +61,19 @@ class EvidenceCaptureService:
         event_ts = evt.get("timestamp") or evt.get("ts")
         if isinstance(event_ts, str):
             try:
-                event_ts = float(event_ts)
+                from datetime import datetime
+
+                event_ts = datetime.fromisoformat(event_ts.replace("Z", "+00:00")).timestamp()
             except ValueError:
-                event_ts = None
+                try:
+                    event_ts = float(event_ts)
+                except ValueError:
+                    event_ts = None
         if event_ts is None:
             event_ts = time.time()
         frame = buf.get_frame_at_ts(float(event_ts)) if buf else None
+        if frame is None and buf:
+            frame = buf.get_last_frame()
         if frame is None:
             logger.warning("retro capture unavailable camera=%s (no buffer frame)", camera_id)
             return None

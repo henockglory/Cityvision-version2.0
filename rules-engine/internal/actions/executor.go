@@ -26,28 +26,36 @@ type Executor struct {
 func New(publisher *mqttpub.Publisher, backendURL, internalKey string) *Executor {
 	return &Executor{
 		Publisher:   publisher,
-		BackendURL:  backendURL,
+		BackendURL:  strings.TrimRight(backendURL, "/"),
 		InternalKey: internalKey,
-		HTTP:        &http.Client{Timeout: 15 * time.Second},
+		HTTP:        &http.Client{Timeout: 45 * time.Second},
 	}
+}
+
+func (e *Executor) internalOrgURL(orgID, path string) string {
+	return fmt.Sprintf("%s/api/v1/internal/orgs/%s%s", e.BackendURL, orgID, path)
 }
 
 func (e *Executor) Run(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, actions []evaluator.Action) {
 	logs := []map[string]interface{}{}
-	var alertActs []evaluator.Action
+	var alertActs, otherActs []evaluator.Action
 	for _, act := range actions {
 		if act.Type == "alert" {
 			alertActs = append(alertActs, act)
-			continue
+		} else {
+			otherActs = append(otherActs, act)
 		}
-		logs = append(logs, e.runNonAlert(orgID, rule, payload, act))
 	}
+	// Fire alerts first so slow evidence/notify never blocks alert → MQTT → BDD.
 	for _, act := range alertActs {
 		payload["action_log"] = logs
 		e.runAlert(orgID, rule, payload, act)
 		logs = append(logs, map[string]interface{}{
 			"type": "alert", "timestamp": time.Now().UTC().Format(time.RFC3339), "status": "executed",
 		})
+	}
+	for _, act := range otherActs {
+		logs = append(logs, e.runNonAlert(orgID, rule, payload, act))
 	}
 	if len(logs) > 0 {
 		payload["action_log"] = logs
@@ -118,6 +126,9 @@ func (e *Executor) enrichedMeta(orgID string, rule evaluator.RuleDefinition, pay
 		"matched_rule_id": rule.RuleID,
 		"org_id":          orgID,
 	}
+	if ruleIsDemo(rule) {
+		meta["demo"] = true
+	}
 	if ev, ok := payload["evidence"].(map[string]interface{}); ok {
 		meta["evidence"] = ev
 	}
@@ -149,14 +160,19 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 		evPolicy = rule.Evidence
 	}
 	if policyRequiresProof(evPolicy) && !hasEvidencePackage(payload, evPolicy) {
-		log.Printf("alert suppressed: incomplete evidence for rule %s", rule.RuleID)
-		return
+		if !ruleIsDemo(rule) {
+			log.Printf("alert suppressed: incomplete evidence for rule %s", rule.RuleID)
+			return
+		}
+		log.Printf("alert with demo/degraded evidence for rule %s", rule.RuleID)
 	}
 	meta := e.enrichedMeta(orgID, rule, payload, nil)
 	evidence := buildEvidenceSnapshot(payload)
 	meta["evidence_snapshot"] = evidence
 	if e.Publisher != nil {
 		e.Publisher.PublishAlert(orgID, rule.RuleID, rule.Name, "Règle déclenchée: "+rule.Name, severity, meta)
+	} else {
+		log.Printf("alert skipped: no publisher for rule %s", rule.RuleID)
 	}
 }
 
@@ -180,8 +196,15 @@ func (e *Executor) ensureEvidencePackage(orgID string, rule evaluator.RuleDefini
 		"event":     payload,
 		"evidence":  evPolicy,
 	})
-	url := fmt.Sprintf("%s/internal/orgs/%s/evidence/request", e.BackendURL, orgID)
+	url := e.internalOrgURL(orgID, "/evidence/request")
 	resp := e.postInternal(url, body)
+	if len(resp) == 0 {
+		log.Printf("ensureEvidencePackage: empty response for rule %s camera %s", rule.RuleID, cameraID)
+	} else if _, ok := resp["package"]; !ok {
+		if errMsg, ok := resp["error"].(string); ok && errMsg != "" {
+			log.Printf("ensureEvidencePackage: no package for rule %s: %s", rule.RuleID, errMsg)
+		}
+	}
 	if pkg, ok := resp["package"]; ok {
 		payload["package"] = pkg
 	}
@@ -258,6 +281,56 @@ func policyRequiresProof(policy map[string]interface{}) bool {
 	return true
 }
 
+func ruleIsDemo(rule evaluator.RuleDefinition) bool {
+	if rule.Bindings == nil {
+		return false
+	}
+	if d, ok := rule.Bindings["demo"].(bool); ok && d {
+		return true
+	}
+	if ds, ok := rule.Bindings["demo"].(string); ok && ds == "true" {
+		return true
+	}
+	return false
+}
+
+func payloadDemoTagged(payload map[string]interface{}) bool {
+	if payload == nil {
+		return false
+	}
+	if d, ok := payload["demo"].(bool); ok && d {
+		return true
+	}
+	if ds, ok := payload["demo"].(string); ok && ds == "true" {
+		return true
+	}
+	if meta, ok := payload["metadata"].(map[string]interface{}); ok {
+		if d, ok := meta["demo"].(bool); ok && d {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDemoSceneEvidence(payload map[string]interface{}) bool {
+	pkg := extractPackage(payload)
+	if pkg == nil {
+		return false
+	}
+	images, _ := pkg["images"].([]interface{})
+	for _, im := range images {
+		m, _ := im.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		role, _ := m["role"].(string)
+		if role == "scene" && (m["url"] != nil || m["asset_id"] != nil) {
+			return true
+		}
+	}
+	return false
+}
+
 func extractPackage(payload map[string]interface{}) map[string]interface{} {
 	if pkg, ok := payload["package"].(map[string]interface{}); ok && pkg != nil {
 		return pkg
@@ -301,7 +374,7 @@ func (e *Executor) runRecord(orgID string, rule evaluator.RuleDefinition, payloa
 		"rule_id":         rule.RuleID,
 		"trigger_payload": payload,
 	})
-	url := fmt.Sprintf("%s/internal/orgs/%s/record/clip", e.BackendURL, orgID)
+	url := e.internalOrgURL(orgID, "/record/clip")
 	resp := e.postInternal(url, body)
 	if path, ok := resp["clip_path"].(string); ok && path != "" {
 		payload["clip_path"] = path
@@ -311,7 +384,7 @@ func (e *Executor) runRecord(orgID string, rule evaluator.RuleDefinition, payloa
 }
 
 func (e *Executor) orgNotificationDefaults(orgID string) (email, webhook string) {
-	url := fmt.Sprintf("%s/internal/orgs/%s/notification-defaults", e.BackendURL, orgID)
+	url := e.internalOrgURL(orgID, "/notification-defaults")
 	out := e.getInternal(url)
 	email, _ = out["default_email_to"].(string)
 	webhook, _ = out["default_webhook_url"].(string)
@@ -360,7 +433,7 @@ func (e *Executor) runNotify(orgID string, rule evaluator.RuleDefinition, payloa
 		"severity":  severity,
 		"payload":   htmlPayload,
 	})
-	url := fmt.Sprintf("%s/internal/orgs/%s/notify/email", e.BackendURL, orgID)
+	url := e.internalOrgURL(orgID, "/notify/email")
 	e.postInternal(url, body)
 	return true
 }
@@ -425,7 +498,7 @@ func (e *Executor) runWebhook(orgID string, rule evaluator.RuleDefinition, paylo
 		"url":     url,
 		"payload": webhookPayload,
 	})
-	ep := fmt.Sprintf("%s/internal/orgs/%s/webhook", e.BackendURL, orgID)
+	ep := e.internalOrgURL(orgID, "/webhook")
 	e.postInternal(ep, body)
 	return true
 }
@@ -443,7 +516,7 @@ func (e *Executor) runIncident(orgID string, rule evaluator.RuleDefinition, payl
 		"severity":    severity,
 		"metadata":    payload,
 	})
-	url := fmt.Sprintf("%s/internal/orgs/%s/incidents", e.BackendURL, orgID)
+	url := e.internalOrgURL(orgID, "/incidents")
 	e.postInternal(url, body)
 }
 
@@ -458,7 +531,7 @@ func (e *Executor) runCounter(orgID string, rule evaluator.RuleDefinition, act e
 		"rule_id": rule.RuleID,
 		"delta":   delta,
 	})
-	url := fmt.Sprintf("%s/internal/orgs/%s/rules/counter", e.BackendURL, orgID)
+	url := e.internalOrgURL(orgID, "/rules/counter")
 	e.postInternal(url, body)
 }
 
@@ -511,7 +584,7 @@ func (e *Executor) runArchiveAuto(orgID string, rule evaluator.RuleDefinition, p
 		"comment":           fmt.Sprintf("Archivage auto après %d min (règle %s)", afterMin, rule.Name),
 		"evidence_snapshot": evSnap,
 	})
-	url := fmt.Sprintf("%s/internal/orgs/%s/alerts/archive-stale", e.BackendURL, orgID)
+	url := e.internalOrgURL(orgID, "/alerts/archive-stale")
 	e.postInternal(url, body)
 }
 
@@ -558,7 +631,15 @@ func (e *Executor) postInternal(url string, body []byte) map[string]interface{} 
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
-		log.Printf("internal action HTTP %d for %s", resp.StatusCode, url)
+		snippet := strings.TrimSpace(string(respBody))
+		if len(snippet) > 512 {
+			snippet = snippet[:512] + "…"
+		}
+		if snippet == "" {
+			log.Printf("internal action HTTP %d for %s (empty body)", resp.StatusCode, url)
+		} else {
+			log.Printf("internal action HTTP %d for %s: %s", resp.StatusCode, url, snippet)
+		}
 		return out
 	}
 	_ = json.Unmarshal(respBody, &out)

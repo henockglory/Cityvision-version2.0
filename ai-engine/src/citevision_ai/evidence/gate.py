@@ -76,7 +76,8 @@ class EvidenceCaptureGate:
             if want_et and want_et != et:
                 continue
             want_zone = _norm(str(rule.get("zone_id") or ""))
-            if want_zone and want_zone != zone:
+            # Only scope by zone when the event carries zone_id (secondary ONNX often omits it).
+            if want_zone and zone and want_zone != zone:
                 continue
             want_class = _norm(str(rule.get("class_filter") or rule.get("class_name") or ""))
             if want_class and want_class not in ("any", "*") and cls and not matches_class_filter(cls, want_class):

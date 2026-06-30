@@ -17,7 +17,7 @@ export default function DemoLineCounterPanel({ cameraId }: DemoLineCounterPanelP
   const orgId = useAuthStore((s) => s.orgId);
 
   const { data: counters = [], refetch } = useQuery({
-    queryKey: ['line-counters', orgId, cameraId],
+    queryKey: ['line-counters', orgId, cameraId ?? 'all'],
     queryFn: () => zonesApi.lineCounters(orgId!, cameraId).then((r) => r.data),
     enabled: Boolean(orgId),
     refetchInterval: 3000,
@@ -37,6 +37,9 @@ export default function DemoLineCounterPanel({ cameraId }: DemoLineCounterPanelP
           <Gauge className="w-4 h-4 text-cv-accent" />
           {t('demoCenter.lineCountersTitle')}
           <span className="text-cv-muted font-normal">({counters.length})</span>
+          {!cameraId && counters.length > 0 && (
+            <span className="text-[10px] text-cv-muted font-normal">{t('demoCenter.lineCountersAllOrg')}</span>
+          )}
         </div>
         {counters.length > 0 && (
           <button
@@ -57,7 +60,9 @@ export default function DemoLineCounterPanel({ cameraId }: DemoLineCounterPanelP
           {counters.map((c: LineCounter) => (
             <div key={c.line_id} className="rounded-lg border border-cv-border bg-cv-surface/60 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium truncate" title={c.line_id}>{c.line_id}</span>
+                <span className="text-sm font-medium truncate" title={c.line_id}>
+                  {c.line_id.includes('-') && c.line_id.length > 20 ? c.line_id.slice(0, 8) : c.line_id}
+                </span>
                 <span className="text-2xl font-bold tabular-nums text-cv-accent">{c.count_total}</span>
               </div>
               <div className="mt-2 flex items-center gap-4 text-xs text-cv-muted">

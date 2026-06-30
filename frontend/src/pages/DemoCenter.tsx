@@ -193,6 +193,15 @@ export default function DemoCenter() {
     return undefined;
   }, [cameras, demoSettings.data?.source_mode, demoSettings.data?.active_camera_id, demoSettings.data?.active_video_id]);
 
+  /** Line counters always bind to the décompte camera, not the active demo video. */
+  const counterCameraId = useMemo(() => {
+    const decompte = cameras.find((c) => {
+      const n = c.name.toLowerCase();
+      return n.includes('décompte') || n.includes('decompte');
+    });
+    return decompte?.id;
+  }, [cameras]);
+
   const zoneStreamSrc = useMemo(() => {
     if (!activeStream) return undefined;
     const videos = demoSettings.data?.videos ?? [];
@@ -393,7 +402,7 @@ export default function DemoCenter() {
         />
       )}
 
-      <DemoLineCounterPanel cameraId={zoneCameraId} />
+      <DemoLineCounterPanel cameraId={counterCameraId} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <DemoFeedPanel

@@ -69,9 +69,17 @@ async def lifespan(app: FastAPI):
     def process_fn(camera_id: str, frame: np.ndarray, fps: float) -> None:
         if pipeline is None:
             return
+        config = worker_manager.get_config(camera_id) if worker_manager else {}
         if camera_id not in pipeline._trackers:
-            config = worker_manager.get_config(camera_id) if worker_manager else {}
-            pipeline.register_camera(camera_id, config)
+            pipeline.register_camera(camera_id, config or None)
+        elif config:
+            existing = pipeline._spatial_configs.get(camera_id) or {}
+            if (
+                pipeline.spatial_behavior_fingerprint(config)
+                != pipeline.spatial_behavior_fingerprint(existing)
+                or (config.get("zones") and not existing.get("zones"))
+            ):
+                pipeline.set_spatial_config(camera_id, config)
         pipeline.process_frame(camera_id, frame, fps)
 
     worker_manager = WorkerManager(process_fn)
@@ -193,6 +201,23 @@ def list_cameras() -> dict[str, Any]:
     return {"cameras": worker_manager.list_status()}
 
 
+@app.get("/cameras/{camera_id}/spatial")
+def camera_spatial(camera_id: str) -> dict[str, Any]:
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    cfg = pipeline._spatial_configs.get(camera_id) or {}
+    zones = cfg.get("zones") or []
+    return {
+        "camera_id": camera_id,
+        "zone_count": len(zones),
+        "behaviors": [str(z.get("behavior", "")) for z in zones],
+        "lines": len(cfg.get("lines") or []),
+        "traffic_light_active": pipeline.traffic_light.camera_has_behavior(zones),
+        "zone_speed_active": pipeline.zone_speed.camera_has_behavior(zones),
+        "traffic_light_state": pipeline.traffic_light._stable_state.get(camera_id),
+    }
+
+
 @app.post("/cameras/{camera_id}/start")
 def start_camera(camera_id: str, body: CameraStartRequest) -> dict[str, Any]:
     if pipeline is None or worker_manager is None:
@@ -200,6 +225,17 @@ def start_camera(camera_id: str, body: CameraStartRequest) -> dict[str, Any]:
     spatial = {**body.spatial_rules}
     if body.calibration:
         spatial["calibration"] = body.calibration
+    zone_behaviors = [
+        str(z.get("behavior", ""))
+        for z in (spatial.get("zones") or [])
+        if z.get("behavior")
+    ]
+    logger.info(
+        "start_camera %s zones=%d behaviors=%s",
+        camera_id,
+        len(spatial.get("zones") or []),
+        zone_behaviors,
+    )
     pipeline.register_camera(camera_id, spatial)
     if body.org_id:
         pipeline.set_org_id(camera_id, body.org_id)
@@ -222,6 +258,11 @@ def start_camera(camera_id: str, body: CameraStartRequest) -> dict[str, Any]:
         video_file=body.video_file,
         ai_fps=body.ai_fps,
     )
+    if status.get("hot_reload"):
+        pipeline.set_spatial_config(camera_id, spatial)
+    else:
+        pipeline.traffic_light.reset_camera(camera_id)
+        pipeline.zone_speed.reset_camera(camera_id)
     return {"status": "started", **status}
 
 

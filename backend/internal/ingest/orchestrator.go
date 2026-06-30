@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -131,6 +132,41 @@ func (c *AIClient) Healthy(ctx context.Context) bool {
 	return resp.StatusCode < 500
 }
 
+// ListRunningCameras returns camera IDs currently ingesting on the AI engine.
+// Used to detect AI restarts: orchestrator may still think cameras are active
+// while the remote worker manager was wiped.
+func (c *AIClient) ListRunningCameras(ctx context.Context) (map[string]bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/cameras", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ai list cameras: %s", string(b))
+	}
+	var body struct {
+		Cameras []struct {
+			CameraID string `json:"camera_id"`
+			Running  bool   `json:"running"`
+		} `json:"cameras"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(body.Cameras))
+	for _, cam := range body.Cameras {
+		if cam.Running {
+			out[cam.CameraID] = true
+		}
+	}
+	return out, nil
+}
+
 type Orchestrator struct {
 	pool     *pgxpool.Pool
 	ai       *AIClient
@@ -138,6 +174,7 @@ type Orchestrator struct {
 	cameras  *camera.Service
 	log      *slog.Logger
 	interval time.Duration
+	mu       sync.Mutex
 	active   map[uuid.UUID]bool
 	// configHash tracks the last spatial/rules/watchlist config pushed per camera so
 	// the orchestrator can hot-reload (re-push) when zones/lines/rules change, without
@@ -184,12 +221,70 @@ func (o *Orchestrator) Run(ctx context.Context) {
 	}
 }
 
+func (o *Orchestrator) clearActiveIngest() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for camID := range o.active {
+		delete(o.active, camID)
+		delete(o.configHash, camID)
+	}
+}
+
+// InvalidateConfigHashes forces the next sync tick to re-push spatial/rules to the AI
+// engine for every active camera (hot-reload), without stopping ingest workers.
+func (o *Orchestrator) InvalidateConfigHashes() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for id := range o.configHash {
+		delete(o.configHash, id)
+	}
+}
+
+// SyncNow runs one orchestrator sync immediately (e.g. after spatial seed).
+func (o *Orchestrator) SyncNow(ctx context.Context) {
+	o.sync(ctx)
+}
+
+// DebugSpatialConfig returns the spatial payload that would be sent to the AI engine.
+func (o *Orchestrator) DebugSpatialConfig(ctx context.Context, orgID, cameraID uuid.UUID) map[string]interface{} {
+	return o.buildSpatialConfig(ctx, orgID, cameraID)
+}
+
+func (o *Orchestrator) reconcileWithAI(ctx context.Context) {
+	listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	running, err := o.ai.ListRunningCameras(listCtx)
+	cancel()
+	if err != nil {
+		o.log.Debug("ai camera list unavailable", "error", err)
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for camID := range o.active {
+		if !running[camID.String()] {
+			delete(o.active, camID)
+			delete(o.configHash, camID)
+			o.log.Info("camera ingest stale after ai restart, will re-push", "camera_id", camID)
+		}
+	}
+}
+
 func (o *Orchestrator) sync(ctx context.Context) {
 	if os.Getenv("DISABLE_AI_INGEST") == "1" || os.Getenv("VIDEO_ONLY_MODE") == "1" {
+		o.mu.Lock()
+		active := make([]uuid.UUID, 0, len(o.active))
 		for camID := range o.active {
+			active = append(active, camID)
+		}
+		o.mu.Unlock()
+		for _, camID := range active {
 			_ = o.ai.StopCamera(ctx, camID.String())
+		}
+		o.mu.Lock()
+		for _, camID := range active {
 			delete(o.active, camID)
 		}
+		o.mu.Unlock()
 		return
 	}
 	if time.Now().Before(o.aiDownUntil) {
@@ -200,9 +295,17 @@ func (o *Orchestrator) sync(ctx context.Context) {
 	cancel()
 	if !aiUp {
 		o.aiDownUntil = time.Now().Add(2 * time.Minute)
+		o.mu.Lock()
+		hadActive := len(o.active) > 0
+		o.mu.Unlock()
+		if hadActive {
+			o.clearActiveIngest()
+			o.log.Warn("ai engine unreachable — cleared local ingest state for re-sync")
+		}
 		return
 	}
 	o.aiDownUntil = time.Time{}
+	o.reconcileWithAI(ctx)
 	rows, err := o.pool.Query(ctx, `
 		SELECT c.id, c.org_id
 		FROM cameras c WHERE c.is_active = TRUE`)
@@ -219,13 +322,15 @@ func (o *Orchestrator) sync(ctx context.Context) {
 			continue
 		}
 		seen[id] = true
-		// While in backoff after a failed start, skip — but still allow active
-		// cameras to be re-evaluated for hot-reload below.
-		if !o.active[id] {
+		o.mu.Lock()
+		camActive := o.active[id]
+		if !camActive {
 			if next, ok := o.failNext[id]; ok && time.Now().Before(next) {
+				o.mu.Unlock()
 				continue
 			}
 		}
+		o.mu.Unlock()
 		rtspURL, err := o.cameras.BuildRTSP(ctx, orgID, id)
 		if err != nil || rtspURL == "" {
 			o.log.Warn("failed to build RTSP URL", "camera_id", id, "error", err)
@@ -256,34 +361,48 @@ func (o *Orchestrator) sync(ctx context.Context) {
 
 		// Hot-reload: skip if already active AND the config fingerprint is unchanged.
 		newHash := configFingerprint(req)
-		if o.active[id] && o.configHash[id] == newHash {
+		o.mu.Lock()
+		prevHash := o.configHash[id]
+		reload := o.active[id]
+		if reload && prevHash == newHash {
+			o.mu.Unlock()
 			continue
 		}
-		reload := o.active[id]
+		o.mu.Unlock()
 		if err := o.ai.StartCamera(ctx, id.String(), req); err != nil {
 			o.log.Warn("failed to start camera", "camera_id", id, "error", err, "reload", reload)
 			if !reload {
 				o.scheduleRetry(id)
 			}
 		} else {
+			o.mu.Lock()
 			o.active[id] = true
 			o.configHash[id] = newHash
 			delete(o.failNext, id)
 			delete(o.failBackoff, id)
+			o.mu.Unlock()
 			if reload {
-				o.log.Info("camera config hot-reloaded", "camera_id", id)
+				o.log.Info("camera config hot-reloaded", "camera_id", id, "behaviors", zoneBehaviorNames(spatialCfg))
 			}
 		}
 	}
 
+	o.mu.Lock()
+	stale := make([]uuid.UUID, 0)
 	for camID := range o.active {
 		if !seen[camID] {
-			_ = o.ai.StopCamera(ctx, camID.String())
-			delete(o.active, camID)
-			delete(o.configHash, camID)
-			delete(o.failNext, camID)
-			delete(o.failBackoff, camID)
+			stale = append(stale, camID)
 		}
+	}
+	o.mu.Unlock()
+	for _, camID := range stale {
+		_ = o.ai.StopCamera(ctx, camID.String())
+		o.mu.Lock()
+		delete(o.active, camID)
+		delete(o.configHash, camID)
+		delete(o.failNext, camID)
+		delete(o.failBackoff, camID)
+		o.mu.Unlock()
 	}
 }
 
@@ -299,8 +418,38 @@ func configFingerprint(req StartCameraRequest) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
+func zoneBehaviorNames(spatial map[string]interface{}) []string {
+	zones, _ := spatial["zones"].([]map[string]interface{})
+	if zones == nil {
+		raw, ok := spatial["zones"].([]interface{})
+		if !ok {
+			return nil
+		}
+		out := make([]string, 0, len(raw))
+		for _, item := range raw {
+			z, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if b, ok := z["behavior"].(string); ok && b != "" {
+				out = append(out, b)
+			}
+		}
+		return out
+	}
+	out := make([]string, 0, len(zones))
+	for _, z := range zones {
+		if b, ok := z["behavior"].(string); ok && b != "" {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 func (o *Orchestrator) scheduleRetry(cameraID uuid.UUID) {
 	const maxBackoff = 5 * time.Minute
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	wait := o.failBackoff[cameraID]
 	if wait == 0 {
 		wait = 30 * time.Second

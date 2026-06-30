@@ -188,3 +188,49 @@ func extractPackageFromMap(payload map[string]interface{}) map[string]interface{
 	}
 	return extractPackageMap(payload)
 }
+
+// IsDemoDefinition is true when rule.definition.bindings.demo is set.
+func IsDemoDefinition(definition json.RawMessage) bool {
+	if len(definition) == 0 {
+		return false
+	}
+	var root map[string]interface{}
+	if json.Unmarshal(definition, &root) != nil {
+		return false
+	}
+	bindings, _ := root["bindings"].(map[string]interface{})
+	if bindings == nil {
+		return false
+	}
+	if d, ok := bindings["demo"].(bool); ok && d {
+		return true
+	}
+	if ds, ok := bindings["demo"].(string); ok && ds == "true" {
+		return true
+	}
+	return false
+}
+
+// HasSceneEvidence returns true when the snapshot includes a scene image reference.
+func HasSceneEvidence(snapshot json.RawMessage) bool {
+	var snap map[string]interface{}
+	if json.Unmarshal(snapshot, &snap) != nil || snap == nil {
+		return false
+	}
+	pkg := extractPackageMap(snap)
+	if pkg == nil {
+		return false
+	}
+	images, _ := pkg["images"].([]interface{})
+	for _, im := range images {
+		m, _ := im.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		role, _ := m["role"].(string)
+		if role == "scene" && hasMediaRef(m) {
+			return true
+		}
+	}
+	return false
+}

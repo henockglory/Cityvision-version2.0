@@ -54,7 +54,7 @@ func demoRuleSpecs() []ruleSpec {
 			cameraMatch: "feux",
 			zoneName:    "Zone_Observation",
 			zoneName2:   "Zone_des_feux",
-			classFilter: "car",
+			classFilter: "any",
 			eventTypes:  []string{"red_light_violation"},
 			withEmail:   true,
 			withClip:    true,
@@ -73,13 +73,13 @@ func demoRuleSpecs() []ruleSpec {
 		},
 		{
 			name:        "Démo · Excès de vitesse",
-			description: "Véhicule dépassant 20 km/h dans Zone_distance_parcourue.",
+			description: "Véhicule dépassant 12 km/h dans Zone_distance_parcourue (calibration 12 m).",
 			templateID:  "tpl-speeding-premium",
 			severity:    "high",
 			cameraMatch: "ligne continue",
 			zoneName:    "Zone_distance_parcourue",
-			classFilter: "car",
-			speedKmh:    20,
+			classFilter: "any",
+			speedKmh:    8,
 			eventTypes:  []string{"speeding"},
 			withEmail:   true,
 			withClip:    true,
@@ -264,9 +264,20 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 		actions = append(actions, map[string]interface{}{"type": "record", "config": map[string]interface{}{}})
 	}
 	if spec.withEmail {
+		to := os.Getenv("ALERT_EMAIL_TO")
+		if to == "" {
+			to = os.Getenv("ADMIN_EMAIL")
+		}
+		if to == "" {
+			to = "glory.henock@hologram.cd"
+		}
 		actions = append(actions, map[string]interface{}{
-			"type":   "notify",
-			"config": map[string]interface{}{"channel": "email", "severity": spec.severity},
+			"type": "notify",
+			"config": map[string]interface{}{
+				"channel":  "email",
+				"severity": spec.severity,
+				"to":       to,
+			},
 		})
 	}
 

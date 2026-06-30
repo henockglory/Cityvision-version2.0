@@ -185,6 +185,7 @@ func main() {
 		Record:      record.NewService(pool, cameraSvc),
 		Evidence:    evidenceSvc,
 		AI:          aiClient,
+		Orchestrator: orch,
 		Demo:        demoSvc,
 	}
 
@@ -229,6 +230,12 @@ func main() {
 			r.Post("/rules/counter", api.InternalIncrementRuleCounter)
 			r.Post("/webhook", api.InternalWebhook)
 			r.Get("/notification-defaults", api.InternalNotificationDefaults)
+		})
+
+		r.Route("/internal/ingest", func(r chi.Router) {
+			r.Use(middleware.RequireInternalKey)
+			r.Post("/resync-spatial", api.InternalResyncSpatial)
+			r.Get("/orgs/{orgID}/cameras/{cameraID}/spatial-config", api.InternalDebugSpatialConfig)
 		})
 
 		r.Group(func(r chi.Router) {

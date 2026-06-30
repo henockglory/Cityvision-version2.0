@@ -57,6 +57,9 @@ for line in "${MODELS[@]}"; do
   fi
 
   if [[ -z "$url" ]]; then
+    if [[ -f "$out" ]]; then
+      echo "[OK] $id present (built locally, no URL)"; OK=$((OK+1)); continue
+    fi
     echo "[SKIP] $id has no URL — place $file manually in $DEST"; FAIL=$((FAIL+1)); continue
   fi
 

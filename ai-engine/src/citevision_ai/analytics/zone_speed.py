@@ -48,6 +48,14 @@ class ZoneSpeedEngine:
         self._inside: dict[tuple[str, str, int], bool] = {}
         self._cooldown: dict[tuple[str, str, int], float] = {}
 
+    def reset_camera(self, camera_id: str) -> None:
+        """Clear entry/exit timing when spatial config is hot-reloaded."""
+        for key in list(self._entry_time):
+            if key[0] == camera_id:
+                self._entry_time.pop(key, None)
+                self._inside.pop(key, None)
+                self._cooldown.pop(key, None)
+
     def camera_has_behavior(self, zones: list[dict] | None) -> bool:
         if not zones:
             return False
@@ -97,7 +105,7 @@ class ZoneSpeedEngine:
                     continue
                 bbox = track.get("bbox") or {}
                 cx = (float(bbox.get("x", 0)) + float(bbox.get("width", 0)) / 2) / max(frame_w, 1)
-                cy = (float(bbox.get("y", 0)) + float(bbox.get("height", 0)) / 2) / max(frame_h, 1)
+                cy = (float(bbox.get("y", 0)) + float(bbox.get("height", 0)) * 0.85) / max(frame_h, 1)
                 inside = _point_in_polygon(cx, cy, poly)
                 key = (camera_id, zone_id, tid)
                 if inside:

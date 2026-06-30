@@ -82,6 +82,7 @@ class _OnnxModel:
         self.event_type = str(spec.get("event_type", f"{self.id}_violation"))
         self.classes: list[str] = list(spec.get("classes", []))
         self.positive = set(spec.get("positive_classes", []))
+        self.task = str(spec.get("task", "detection"))
         self.input_size = int(spec.get("input_size", 640))
         self.path = models_dir() / str(spec.get("file", f"{self.id}.onnx"))
         self.device = device
@@ -101,7 +102,19 @@ class _OnnxModel:
             from citevision_ai.detection.yolo_onnx import resolve_onnx_providers
 
             providers, label = resolve_onnx_providers(self.device)
-            self._session = ort.InferenceSession(str(self.path), providers=providers)
+            try:
+                self._session = ort.InferenceSession(str(self.path), providers=providers)
+            except Exception as cuda_err:
+                if "CUDAExecutionProvider" in providers:
+                    logger.warning(
+                        "Secondary model '%s' CUDA init failed (%s) — retrying CPU",
+                        self.id, cuda_err,
+                    )
+                    self._session = ort.InferenceSession(
+                        str(self.path), providers=["CPUExecutionProvider"]
+                    )
+                else:
+                    raise
             self._input_name = self._session.get_inputs()[0].name
             active = self._session.get_providers()
             self.active_provider = active[0] if active else label
@@ -128,6 +141,8 @@ class _OnnxModel:
         except Exception:
             logger.debug("Secondary inference failed for '%s'", self.id, exc_info=True)
             return None
+        if self.task == "classification":
+            return self._parse_classification(out, conf)
         if out.ndim == 3:
             out = out[0]
         # YOLOv8 export is (4+nc, N); transpose to (N, 4+nc).
@@ -146,6 +161,20 @@ class _OnnxModel:
             if name in self.positive and (best is None or score > best[1]):
                 best = (name, score)
         return best
+
+    def _parse_classification(self, out: np.ndarray, conf: float) -> tuple[str, float] | None:
+        """YOLOv8-cls ONNX output: (1, nc) logits or probabilities."""
+        flat = out.reshape(-1)
+        if flat.size == 0:
+            return None
+        cid = int(np.argmax(flat))
+        score = float(flat[cid])
+        if score < conf or cid >= len(self.classes):
+            return None
+        name = self.classes[cid]
+        if name in self.positive:
+            return (name, score)
+        return None
 
 
 class SecondaryInferenceEngine:
@@ -176,7 +205,22 @@ class SecondaryInferenceEngine:
     def camera_has_behavior(self, zones: list[dict] | None) -> bool:
         if not zones:
             return False
-        return any(str(z.get("behavior", "")) in self._models for z in zones)
+        for z in zones:
+            b = str(z.get("behavior", ""))
+            if b in self._models or b == "driver_cabin":
+                if b == "driver_cabin" and self._cabin_models():
+                    return True
+                if b in self._models:
+                    return True
+        return False
+
+    def _cabin_models(self) -> list[_OnnxModel]:
+        out: list[_OnnxModel] = []
+        for key in ("phone_use", "seatbelt"):
+            m = self._models.get(key)
+            if m and m.is_loaded:
+                out.append(m)
+        return out
 
     def behaviors_present(self, zones: list[dict] | None) -> set[str]:
         if not zones:
@@ -194,17 +238,21 @@ class SecondaryInferenceEngine:
         self._frame_counter += 1
         if frame is None or frame.size == 0 or not zones:
             return []
-        target_zones = [z for z in zones if str(z.get("behavior", "")) in self._models]
+        target_zones: list[tuple[dict, list[_OnnxModel]]] = []
+        for z in zones:
+            b = str(z.get("behavior", ""))
+            if b == "driver_cabin":
+                models = self._cabin_models()
+                if models:
+                    target_zones.append((z, models))
+            elif b in self._models:
+                target_zones.append((z, [self._models[b]]))
         if not target_zones or (self._frame_counter - 1) % self._process_every_n != 0:
             return []
 
         h, w = frame.shape[:2]
         events: list[dict[str, Any]] = []
-        for zone in target_zones:
-            behavior = str(zone.get("behavior", ""))
-            model = self._models.get(behavior)
-            if not model or not model.is_loaded:
-                continue
+        for zone, models in target_zones:
             cfg = zone.get("behavior_config") or {}
             try:
                 conf = float(cfg.get("confidence", 0.45))
@@ -220,16 +268,19 @@ class SecondaryInferenceEngine:
                 if poly and not _point_in_polygon(cx, cy, poly):
                     continue
                 crop = self._crop(frame, bbox)
-                result = model.infer_crop(crop, conf)
-                if not result:
-                    continue
-                tid = int(track.get("track_id", -1))
-                if not self._allow_emit(camera_id, tid, model.event_type):
-                    continue
-                cls_name, score = result
-                events.append(
-                    self._make_event(camera_id, model, track, cls_name, score, timestamp)
-                )
+                for model in models:
+                    result = model.infer_crop(crop, conf)
+                    if not result:
+                        continue
+                    tid = int(track.get("track_id", -1))
+                    if not self._allow_emit(camera_id, tid, model.event_type):
+                        continue
+                    cls_name, score = result
+                    events.append(
+                        self._make_event(
+                            camera_id, model, track, cls_name, score, timestamp, zone=zone,
+                        )
+                    )
         return events
 
     @staticmethod
@@ -261,7 +312,12 @@ class SecondaryInferenceEngine:
         cls_name: str,
         score: float,
         timestamp: str,
+        *,
+        zone: dict | None = None,
     ) -> dict[str, Any]:
+        zone_id = ""
+        if zone:
+            zone_id = str(zone.get("zone_id") or zone.get("name") or "")
         return {
             "event_id": str(uuid.uuid4()),
             "camera_id": camera_id,
@@ -270,6 +326,7 @@ class SecondaryInferenceEngine:
             "timestamp": timestamp,
             "track_id": track.get("track_id"),
             "class_name": track.get("class_name"),
+            "zone_id": zone_id or None,
             "bbox": track.get("bbox") or {},
             "confidence": round(score, 3),
             "severity": "high",

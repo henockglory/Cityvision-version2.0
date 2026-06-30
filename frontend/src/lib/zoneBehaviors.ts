@@ -27,6 +27,8 @@ export interface ZoneBehavior {
   emits: string[];
   requires: string[];
   config_fields: BehaviorConfigField[];
+  /** zone = polygon behaviors; line = crossing-line behaviors */
+  applies_to?: 'zone' | 'line';
 }
 
 export interface BehaviorGroup {
@@ -55,9 +57,16 @@ export function behaviorDescription(id: string | undefined, lang: 'fr' | 'en' = 
 }
 
 /** Behaviors grouped by their category, in catalog order, for a grouped selector. */
-export function behaviorsByGroup(): { group: BehaviorGroup; behaviors: ZoneBehavior[] }[] {
+export function behaviorsByGroup(
+  appliesTo?: 'zone' | 'line',
+): { group: BehaviorGroup; behaviors: ZoneBehavior[] }[] {
   return BEHAVIOR_GROUPS.map((group) => ({
     group,
-    behaviors: ZONE_BEHAVIORS.filter((b) => b.group === group.id),
+    behaviors: ZONE_BEHAVIORS.filter((b) => {
+      if (b.group !== group.id) return false;
+      if (!appliesTo) return true;
+      const scope = b.applies_to ?? 'zone';
+      return scope === appliesTo;
+    }),
   })).filter((g) => g.behaviors.length > 0);
 }

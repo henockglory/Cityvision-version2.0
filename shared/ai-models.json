@@ -1,21 +1,32 @@
 {
   "version": 1,
-  "description": "Registre des modèles d'inférence secondaire (bbox habitacle conducteur) pour téléphone au volant et port de ceinture. Les fichiers sont placés dans ai-engine/models/secondary/<file>. sha256 vide = non épinglé (le script de téléchargement calcule et avertit ; remplir la valeur pour figer l'intégrité).",
+  "description": "Registre des modèles d'inférence secondaire (habitacle conducteur). Les fichiers sont dans ai-engine/models/secondary/. Construire via: bash scripts/build-secondary-models.sh",
   "models": [
     {
       "id": "driver_phone",
-      "task": "detection",
+      "task": "classification",
       "behavior": "phone_use",
       "event_type": "phone_use_violation",
       "file": "driver_phone.onnx",
-      "input_size": 640,
-      "classes": ["safe_driving", "using_phone", "talking_phone", "texting"],
-      "positive_classes": ["using_phone", "talking_phone", "texting"],
-      "url": "https://huggingface.co/citevision/driver-distraction-onnx/resolve/main/driver_phone.onnx",
-      "sha256": "",
-      "license": "Apache-2.0 (à confirmer selon la source retenue)",
-      "size_mb": 12,
-      "notes": "Modèle YOLOv8 distraction conducteur. Remplacer l'URL par la source publique retenue, puis figer le sha256."
+      "input_size": 224,
+      "classes": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c9"
+      ],
+      "positive_classes": ["c1", "c2", "c3", "c4"],
+      "url": "",
+      "sha256": "122017a4ec26b2fcf9a1c885f46f8a8293e66b73d9f6cf690b64ea1f732d74e5",
+      "license": "See Safe-Drive-TN/State-farm-detection on Hugging Face",
+      "size_mb": 6,
+      "notes": "Export ONNX depuis Safe-Drive-TN/State-farm-detection (Ultralytics YOLOv8-cls). Script: build-secondary-models.sh"
     },
     {
       "id": "seatbelt",
@@ -24,13 +35,13 @@
       "event_type": "seatbelt_violation",
       "file": "seatbelt.onnx",
       "input_size": 640,
-      "classes": ["seatbelt", "no_seatbelt"],
-      "positive_classes": ["no_seatbelt"],
-      "url": "https://huggingface.co/citevision/seatbelt-onnx/resolve/main/seatbelt.onnx",
-      "sha256": "",
-      "license": "Apache-2.0 (à confirmer selon la source retenue)",
+      "classes": ["Seat_Belt", "Without_Seat_Belt"],
+      "positive_classes": ["Without_Seat_Belt"],
+      "url": "",
+      "sha256": "624be2813d19c64eb61c0ba1ba8b15da0da8a547ff46d52579966ec86119ff44",
+      "license": "Apache-2.0 (Ultralytics)",
       "size_mb": 12,
-      "notes": "Modèle YOLOv8 détection ceinture. Remplacer l'URL par la source publique retenue, puis figer le sha256."
+      "notes": "Entraîné/exporté via build-secondary-models.sh (Roboflow seat_belt ou poids publics)."
     }
   ]
 }
