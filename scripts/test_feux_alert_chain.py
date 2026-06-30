@@ -49,7 +49,7 @@ def alert_meta(a: dict) -> dict:
 
 
 def count_demo_alerts(token: str) -> int:
-    rows = req("GET", f"{API}/api/v1/orgs/{ORG}/alerts?limit=200", token)
+    rows = req("GET", f"{API}/api/v1/orgs/{ORG}/alerts?limit=200&include_incomplete=true", token)
     if not isinstance(rows, list):
         rows = rows.get("items", []) if isinstance(rows, dict) else []
     return sum(

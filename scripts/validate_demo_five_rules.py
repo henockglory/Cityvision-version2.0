@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.request
@@ -17,6 +18,7 @@ EMAIL = os.environ.get("ADMIN_EMAIL", "glory.henock@hologram.cd")
 PASS = os.environ.get("ADMIN_PASSWORD", "Hologram2026!")
 TARGET = int(os.environ.get("TARGET_DETECTIONS", "2"))
 TIMEOUT = int(os.environ.get("RULE_TIMEOUT_SEC", "600"))
+SYNC_WAIT = int(os.environ.get("RULE_SYNC_WAIT_SEC", "35"))
 DEMO_ORG = os.environ.get("DEMO_ORG_ID", "e312f375-7442-4089-8022-ed232abc09e8")
 # Comma-separated rule names to validate (default: all). Example:
 # VALIDATE_ONLY="Démo · Feu rouge,Démo · Excès de vitesse"
@@ -124,7 +126,7 @@ def _alert_meta(a: dict) -> dict:
 
 
 def count_alerts(token: str, org: str) -> int:
-    rows = req("GET", f"{API}/api/v1/orgs/{org}/alerts?limit=200", token)
+    rows = req("GET", f"{API}/api/v1/orgs/{org}/alerts?limit=200&include_incomplete=true", token)
     if not isinstance(rows, list):
         rows = rows.get("items", []) if isinstance(rows, dict) else []
     return sum(
@@ -169,6 +171,23 @@ def wait_active_rules(n: int, sec: int = 120) -> None:
             pass
         time.sleep(3)
     print(f"WARN: active_rules != {n} after {sec}s")
+
+
+def refresh_feux_stream() -> None:
+    script = ROOT / "scripts/push_ai_spatial_from_api.py"
+    if not script.is_file():
+        return
+    print("==> refresh feux AI stream before feu rule")
+    try:
+        subprocess.run(
+            [sys.executable, str(script)],
+            cwd=str(ROOT),
+            timeout=120,
+            check=False,
+        )
+        time.sleep(12)
+    except Exception as exc:
+        print(f"WARN: feux refresh: {exc}")
 
 
 def main() -> int:
@@ -238,9 +257,13 @@ def main() -> int:
         alerts_baseline = count_alerts(token, org)
         mail_rule_before = mail_count()
 
+        if name == "Démo · Feu rouge":
+            refresh_feux_stream()
+
         set_rule(token, org, rule["id"], True)
-        wait_active_rules(1)
-        time.sleep(20)
+        wait_active_rules(1, sec=180)
+        print(f"rules-engine sync wait {SYNC_WAIT}s…")
+        time.sleep(SYNC_WAIT)
 
         deadline = time.time() + TIMEOUT
         new_count = 0

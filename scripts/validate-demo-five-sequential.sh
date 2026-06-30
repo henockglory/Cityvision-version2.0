@@ -18,6 +18,12 @@ bash "$ROOT/scripts/seed-demo-spatial.sh"
 echo "==> 2/5 force spatial reload"
 bash "$ROOT/scripts/force-spatial-reload.sh"
 
+echo "==> 2.5/5 ensure rules sync + seed demo rules"
+export DEMO_ORG_ID="${DEMO_ORG_ID:-e312f375-7442-4089-8022-ed232abc09e8}"
+bash "$ROOT/scripts/ensure-rules-sync-env.sh" 2>/dev/null || true
+load_dotenv "$ENV_FILE"
+bash "$ROOT/scripts/seed-demo-rules.sh"
+
 echo "==> 3/5 restart backend (demo alerts)"
 stop_from_pid "$ROOT/logs/backend.pid" 2>/dev/null || true
 free_port "${API_PORT:-8081}" 2>/dev/null || true
@@ -35,6 +41,18 @@ free_port "${RULES_ENGINE_PORT:-8010}" 2>/dev/null || true
 start_bg rules-engine "$ROOT/rules-engine" "$GO_BIN run ./cmd/rules-engine" "$ROOT/logs" "$ENV_FILE"
 for _ in $(seq 1 30); do
   curl -sf "http://127.0.0.1:${RULES_ENGINE_PORT:-8010}/health" >/dev/null 2>&1 && break
+  sleep 2
+done
+
+echo "==> wait backend MQTT alert subscription"
+for _ in $(seq 1 45); do
+  if grep -q '"mqtt subscribed".*cv/alerts' "$ROOT/logs/backend.log" 2>/dev/null; then
+    last_mqtt="$(grep -i mqtt "$ROOT/logs/backend.log" | tail -1)"
+    if echo "$last_mqtt" | grep -q 'mqtt subscribed'; then
+      echo "OK mqtt alerts subscribed"
+      break
+    fi
+  fi
   sleep 2
 done
 

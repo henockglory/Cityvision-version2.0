@@ -68,8 +68,8 @@ test.describe('premium UI', () => {
   test.beforeEach(async ({ page }) => {
     await disableAutoTours(page);
     await page.goto(`${BASE}/login`);
-    await page.fill('input[type=email], input[name=email]', EMAIL);
-    await page.fill('input[type=password]', PASS);
+    await page.fill('#email', EMAIL);
+    await page.fill('#password', PASS);
     await page.click('button[type=submit]');
     await page.waitForURL(/\/(dashboard|live|alerts)/, { timeout: 20000 }).catch(() => {});
   });

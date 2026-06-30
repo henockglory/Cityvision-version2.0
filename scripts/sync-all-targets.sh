@@ -45,6 +45,9 @@ for DEST in "${TARGETS[@]}"; do
     --filter 'P ai-engine/models/insightface/' \
     "${RSYNC_EXCLUDES[@]}" "$SRC/" "$DEST/"
   find "$DEST/scripts" -name '*.sh' -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+  if [[ -f "$DEST/scripts/fix-crlf.py" ]]; then
+    python3 "$DEST/scripts/fix-crlf.py" "$DEST/scripts/"*.sh 2>/dev/null || true
+  fi
   echo "[OK] $DEST"
 done
 
