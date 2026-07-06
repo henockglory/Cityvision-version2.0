@@ -26,17 +26,27 @@ type Subscriber struct {
 }
 
 func New(broker string, handler AlertHandler, log *slog.Logger) *Subscriber {
+	s := &Subscriber{
+		handler: handler,
+		log:     log,
+	}
 	opts := mqtt.NewClientOptions().
 		AddBroker(broker).
 		SetClientID("citevision-backend").
 		SetAutoReconnect(true).
 		SetConnectRetry(true).
 		SetConnectRetryInterval(5 * time.Second)
-	return &Subscriber{
-		client:  mqtt.NewClient(opts),
-		handler: handler,
-		log:     log,
-	}
+	opts.SetOnConnectHandler(func(_ mqtt.Client) {
+		token := s.client.Subscribe("cv/alerts/#", 1, s.onMessage)
+		token.Wait()
+		if err := token.Error(); err != nil {
+			s.log.Warn("mqtt subscribe failed", "error", err)
+		} else {
+			s.log.Info("mqtt subscribed", "topic", "cv/alerts/#")
+		}
+	})
+	s.client = mqtt.NewClient(opts)
+	return s
 }
 
 func (s *Subscriber) Start(ctx context.Context) {
@@ -54,14 +64,6 @@ func (s *Subscriber) Start(ctx context.Context) {
 				if err := token.Error(); err != nil {
 					s.log.Warn("mqtt connect failed, retrying", "error", err)
 					time.Sleep(5 * time.Second)
-					continue
-				}
-				token = s.client.Subscribe("cv/alerts/#", 1, s.onMessage)
-				token.Wait()
-				if err := token.Error(); err != nil {
-					s.log.Warn("mqtt subscribe failed", "error", err)
-				} else {
-					s.log.Info("mqtt subscribed", "topic", "cv/alerts/#")
 				}
 			}
 			time.Sleep(10 * time.Second)

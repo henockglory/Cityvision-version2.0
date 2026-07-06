@@ -1,0 +1,834 @@
+{
+  "tours": {
+    "common": {
+      "tip": "Astuce",
+      "procedure": "Procédure",
+      "waitSeconds": "Lisez calmement… {{n}} s",
+      "progress": "{{current}} / {{total}}",
+      "fieldTitle": "Aide sur ce champ",
+      "fieldAria": "Ouvrir l'aide détaillée"
+    },
+    "labels": {
+      "login": "Connexion",
+      "addUser": "Inviter un utilisateur",
+      "setup": "Installation initiale",
+      "redLightAssistant": "Assistant feu rouge",
+      "confirmDialog": "Confirmation",
+      "ruleActivation": "Assistant activation règle",
+      "cameraWizard": "Assistant caméra",
+      "modelImport": "Import modèle ONNX",
+      "evidenceViewer": "Visionneuse de preuves"
+    },
+    "global": {
+      "sidebar": "Menu principal",
+      "sidebarDesc": "Ce menu à gauche regroupe toutes les sections de CitéVision : tableau de bord, caméras, règles, alertes, etc. Chaque icône mène à une page dédiée.",
+      "sidebarTip": "Sur mobile, ouvrez le menu avec le bouton ☰ en haut. Vous pouvez le replier sur grand écran pour gagner de la place.",
+      "sidebarSteps": [
+        "Repérez les groupes : Surveillance, Analyse, Administration.",
+        "Cliquez sur une entrée pour changer de page.",
+        "Le bouton en bas replie ou déplie le menu."
+      ],
+      "search": "Recherche rapide",
+      "searchDesc": "Tapez le nom d'une caméra, d'une règle ou d'une alerte pour y accéder directement sans parcourir les menus.",
+      "searchTip": "Raccourci : cliquez dans la barre puis tapez les premières lettres.",
+      "searchSteps": [
+        "Cliquez dans la barre de recherche en haut.",
+        "Tapez au moins 2 caractères.",
+        "Sélectionnez le résultat dans la liste."
+      ],
+      "theme": "Thème clair / sombre",
+      "themeDesc": "Basculez entre le mode sombre (confort visuel) et le mode clair (lisibilité en plein jour). Votre choix est mémorisé.",
+      "themeTip": "Le tutoriel et les pop-ups s'adaptent automatiquement au thème actif.",
+      "content": "Zone de travail",
+      "contentDesc": "C'est ici que s'affiche le contenu de chaque page. Un petit bouton ? en haut à droite relance le tutoriel détaillé de la page en cours.",
+      "contentTip": "Prenez le temps de lire chaque étape : un délai de 4 secondes vous laisse assimiler l'information.",
+      "contentSteps": [
+        "Naviguez via le menu latéral.",
+        "Lisez le titre et le sous-titre de la page.",
+        "Cliquez sur ? si vous voulez revoir le guide."
+      ]
+    },
+    "login": {
+      "brand": "Bienvenue sur CitéVision",
+      "brandDesc": "CitéVision est la plateforme de vidéosurveillance intelligente : caméras, zones, règles IA et alertes avec preuves. Cette page sert uniquement à vous connecter.",
+      "brandTip": "Le thème clair/sombre (coin haut droit) s'applique aussi aux tutoriels.",
+      "form": "Formulaire de connexion",
+      "formDesc": "Saisissez l'e-mail et le mot de passe fournis par votre administrateur. Après connexion, vous arrivez sur le Centre démo ou le tableau de bord.",
+      "formTip": "En cas d'erreur « serveur injoignable », vérifiez que la stack est démarrée (scripts/start-linux.sh).",
+      "formSteps": [
+        "Renseignez votre e-mail professionnel.",
+        "Entrez votre mot de passe.",
+        "Cliquez Se connecter."
+      ],
+      "email": "Adresse e-mail",
+      "emailDesc": "Identifiant unique de votre compte. Doit correspondre exactement à celui enregistré dans CitéVision (majuscules ignorées).",
+      "emailTip": "Utilisez l'e-mail complet, pas seulement le prénom.",
+      "password": "Mot de passe",
+      "passwordDesc": "Secret personnel. Cliquez sur l'icône œil pour vérifier ce que vous tapez sans l'afficher aux autres.",
+      "passwordTip": "Après 5 échecs, contactez un administrateur pour réinitialiser le mot de passe.",
+      "submit": "Bouton Se connecter",
+      "submitDesc": "Envoie vos identifiants au serveur. Si tout est correct, vous êtes redirigé vers l'application.",
+      "submitTip": "Ne partagez jamais votre mot de passe par messagerie.",
+      "submitSteps": [
+        "Vérifiez e-mail et mot de passe.",
+        "Cliquez Se connecter.",
+        "Attendez la redirection (1–2 secondes)."
+      ]
+    },
+    "setup": {
+      "brand": "Première installation",
+      "brandDesc": "Cette page ne s'affiche qu'une seule fois, lors de la mise en service de CitéVision sur un serveur vierge. Vous créez l'organisation et le compte administrateur.",
+      "brandTip": "Notez bien le mot de passe admin : il sert aussi à la première connexion.",
+      "progress": "Étapes de l'assistant",
+      "progressDesc": "Trois étapes : nom de l'organisation, compte administrateur, récapitulatif avant validation.",
+      "progressTip": "Vous pouvez revenir en arrière sans perdre ce que vous avez déjà saisi.",
+      "progressSteps": [
+        "Étape 1 : nom de l'organisation.",
+        "Étape 2 : e-mail et mot de passe admin.",
+        "Étape 3 : vérification puis Terminer."
+      ],
+      "step1": "Organisation",
+      "step1Desc": "Nom affiché dans l'interface (ex. « Ville de Kinshasa », « Entrepôt Nord »). Vous pourrez le modifier plus tard dans Paramètres.",
+      "step1Tip": "Choisissez un nom clair pour vos collègues.",
+      "step2": "Compte administrateur",
+      "step2Desc": "E-mail de connexion et mot de passe fort (12 caractères minimum, majuscule, minuscule, chiffre). Ce compte a tous les droits.",
+      "step2Tip": "Confirmez le mot de passe deux fois pour éviter une faute de frappe.",
+      "step2Steps": [
+        "Saisissez l'e-mail admin.",
+        "Entrez un mot de passe robuste.",
+        "Retapez-le dans « Confirmer »."
+      ],
+      "step3": "Récapitulatif",
+      "step3Desc": "Relisez le nom d'organisation et l'e-mail avant de valider. Après Terminer, vous serez redirigé vers la page de connexion.",
+      "step3Tip": "L'installation échoue si le serveur backend n'est pas démarré.",
+      "step3Steps": [
+        "Vérifiez organisation et e-mail.",
+        "Cliquez Terminer.",
+        "Connectez-vous avec le même e-mail et mot de passe."
+      ],
+      "submit": "Bouton Suivant / Terminer",
+      "submitDesc": "Passe à l'étape suivante ou lance la création définitive à l'étape 3.",
+      "submitTip": "Un spinner indique que le serveur traite la demande — patientez."
+    },
+    "dashboard": {
+      "statsTip": "Survolez chaque carte pour voir une explication courte.",
+      "statsSteps": [
+        "Comptez vos caméras actives.",
+        "Vérifiez les alertes non acquittées.",
+        "Consultez le volume d'événements récents.",
+        "Contrôlez le nombre de règles actives."
+      ],
+      "alertsTip": "Une alerte rouge ou orange demande souvent une action rapide.",
+      "alertsSteps": [
+        "Lisez le message de chaque alerte.",
+        "Cliquez une ligne pour ouvrir le détail.",
+        "Acquittez une fois le cas traité."
+      ],
+      "liveTip": "Les détections apparaissent seulement si une caméra diffuse et qu'une règle est active.",
+      "liveSteps": [
+        "Vérifiez qu'une caméra est en ligne.",
+        "Activez au moins une règle dans Règles.",
+        "Attendez 30 à 60 secondes pour les premiers événements."
+      ],
+      "navAlerts": "Accès alertes",
+      "navAlertsDesc": "Ce lien ouvre la page complète des alertes avec filtres, preuves et acquittement.",
+      "navAlertsTip": "Utilisez-le quand le tableau de bord affiche trop peu de détails."
+    },
+    "map": {
+      "modesTip": "Commencez par « Plan » si vous débutez : c'est plus simple que le globe 3D.",
+      "modesSteps": [
+        "Choisissez Carte, Plan ou Globe.",
+        "Zoomez avec la molette ou les boutons + / −.",
+        "Revenez au plan pour repositionner une caméra."
+      ],
+      "canvasTip": "Une caméra mal placée n'impacte pas la détection : seul le flux vidéo compte pour l'IA.",
+      "canvasSteps": [
+        "Survolez un marqueur pour l'aperçu live.",
+        "Cliquez pour ouvrir la fiche caméra.",
+        "Glissez le marqueur pour corriger la position SIG."
+      ]
+    },
+    "rules": {
+      "catalogTip": "Filtrez par échelle (nationale, entreprise, domestique) selon votre contexte.",
+      "catalogSteps": [
+        "Parcourez le catalogue illustré.",
+        "Lisez le badge real / partial / beta.",
+        "Cliquez Configurer sur la règle souhaitée."
+      ],
+      "activeTip": "Seules les règles listées ici sont réellement surveillées par le moteur.",
+      "activeSteps": [
+        "Vérifiez le voyant Activée / Désactivée.",
+        "Ouvrez une règle pour modifier zones ou seuils.",
+        "Désactivez temporairement sans supprimer."
+      ],
+      "helpBtn": "Bouton d'aide",
+      "helpBtnDesc": "Ce bouton ? relance à tout moment le tutoriel complet de la page Règles.",
+      "helpBtnTip": "Utile après une mise à jour ou pour former un nouveau collègue."
+    },
+    "alerts": {
+      "filtersTip": "Combinez plusieurs filtres pour isoler un incident précis.",
+      "filtersSteps": [
+        "Choisissez une période (aujourd'hui, 7 jours…).",
+        "Filtrez par caméra ou par type de règle.",
+        "Triez par sévérité si la liste est longue."
+      ],
+      "list": "Liste des alertes",
+      "listDesc": "Chaque ligne résume un incident : heure, caméra, règle déclenchée et message. Les alertes avec preuve affichent une miniature.",
+      "listTip": "Cliquez une alerte pour ouvrir le détail et télécharger les preuves.",
+      "listSteps": [
+        "Repérez la pastille de sévérité (couleur).",
+        "Ouvrez l'alerte pour voir clip et images.",
+        "Acquittez quand le traitement est terminé."
+      ]
+    },
+    "videoWall": {
+      "layoutTip": "Commencez par 4 quadrants : c'est le meilleur compromis lisibilité / couverture.",
+      "layoutSteps": [
+        "Choisissez 1, 4, 9 ou 16 cases.",
+        "Assignez une caméra par case.",
+        "Passez en plein écran sur une case si besoin."
+      ],
+      "gridTip": "Si une case reste noire, la caméra est hors ligne ou le flux RTSP est coupé.",
+      "gridSteps": [
+        "Vérifiez l'état dans la page Caméras.",
+        "Attendez 5 s le temps de la reconnexion.",
+        "Remplacez par une autre caméra si nécessaire."
+      ]
+    },
+    "liveView": {
+      "playerTip": "Le flux affiché est la même source que celle analysée par l'IA.",
+      "playerSteps": [
+        "Sélectionnez une caméra dans la liste.",
+        "Attendez le badge LIVE.",
+        "Utilisez les contrôles PTZ si la caméra le supporte."
+      ],
+      "sidebar": "Liste des caméras",
+      "sidebarDesc": "Toutes vos caméras accessibles en un clic. Le statut en ligne / hors ligne est indiqué par une pastille colorée.",
+      "sidebarTip": "Triez mentalement par site si vous en avez beaucoup : le nom contient souvent le lieu."
+    },
+    "cameras": {
+      "listTip": "Une caméra « hors ligne » peut être un problème réseau, pas forcément un défaut matériel.",
+      "listSteps": [
+        "Vérifiez l'adresse IP et le port RTSP.",
+        "Testez depuis la page Caméras → Modifier.",
+        "Consultez Santé système si plusieurs caméras tombent."
+      ],
+      "wizardTip": "Préparez login et mot de passe RTSP avant de lancer l'assistant.",
+      "wizardSteps": [
+        "Cliquez + Ajouter une caméra.",
+        "Scan réseau ou URL RTSP manuelle.",
+        "Testez le flux avant d'enregistrer."
+      ]
+    },
+    "cameraWizard": {
+      "intro": "Assistant caméra",
+      "introDesc": "Cet assistant en 4 étapes connecte une caméra IP (RTSP) à CitéVision. Aucune compétence réseau avancée requise : suivez les étapes dans l'ordre.",
+      "introTip": "Gardez les identifiants fabricant sous la main (souvent admin / mot de passe caméra).",
+      "introSteps": [
+        "Étape 1 : trouver la caméra sur le réseau ou saisir l'URL.",
+        "Étape 2 : entrer identifiant et mot de passe.",
+        "Étape 3 : tester la connexion.",
+        "Étape 4 : valider l'aperçu live."
+      ],
+      "step1": "Découverte réseau",
+      "step1Desc": "Indiquez le sous-réseau (ex. 192.168.1.0/24) puis lancez le scan. Sinon, passez en saisie manuelle d'URL RTSP.",
+      "step1Tip": "Hikvision et Dahua pré-remplissent souvent l'URL ; pour les autres marques, consultez le manuel RTSP.",
+      "step1Steps": [
+        "Saisissez le sous-réseau de votre LAN.",
+        "Cliquez Scanner.",
+        "Sélectionnez l'appareil détecté."
+      ],
+      "step2": "Identifiants",
+      "step2Desc": "Entrez le nom d'utilisateur et le mot de passe RTSP de la caméra. Ces informations restent stockées de façon sécurisée pour le flux continu.",
+      "step2Tip": "Si le test échoue, vérifiez que le compte a les droits « flux vidéo » sur l'interface caméra.",
+      "step3": "Test de connexion",
+      "step3Desc": "CitéVision tente d'ouvrir le flux RTSP. Un succès confirme que l'URL et les identifiants sont corrects.",
+      "step3Tip": "Un échec fréquent : mauvais port (554 par défaut) ou RTSP désactivé sur la caméra.",
+      "step4": "Aperçu et enregistrement",
+      "step4Desc": "Vérifiez l'image live, donnez un nom lisible à la caméra, puis validez. Elle apparaîtra dans toutes les listes et pourra recevoir des zones.",
+      "step4Tip": "Nommez avec le lieu physique (ex. « Entrée nord ») : c'est plus clair pour les alertes.",
+      "step4Steps": [
+        "Confirmez que l'image est nette.",
+        "Saisissez un nom explicite.",
+        "Cliquez Terminer."
+      ]
+    },
+    "zones": {
+      "toolbar": "Barre d'outils zones",
+      "toolbarDesc": "Choisissez le mode Zone (polygone) ou Ligne (comptage), sélectionnez la caméra source, puis enregistrez vos dessins.",
+      "toolbarTip": "Une zone mal nommée peut empêcher la bonne règle IA de s'appliquer.",
+      "toolbarSteps": [
+        "Sélectionnez la caméra à éditer.",
+        "Basculez Zone ou Ligne selon le besoin.",
+        "Enregistrez après chaque modification."
+      ],
+      "canvasTip": "Minimum 3 clics pour une zone ; 2 clics pour une ligne de comptage.",
+      "canvasSteps": [
+        "Cliquez chaque coin du polygone sur la vidéo.",
+        "Cliquez Fermer polygone.",
+        "Ajustez les points en les glissant si besoin."
+      ],
+      "behavior": "Comportement IA",
+      "behaviorDesc": "Associez un type sémantique à la zone (vitesse, comptage, téléphone au volant, etc.). Ce choix détermine quelles règles du catalogue peuvent s'y brancher.",
+      "behaviorTip": "Les options du menu viennent des capacités IA réellement chargées sur votre serveur.",
+      "behaviorSteps": [
+        "Ouvrez le sélecteur de comportement.",
+        "Lisez la description sous chaque option.",
+        "Enregistrez puis activez la règle correspondante."
+      ]
+    },
+    "events": {
+      "filtersTip": "Filtrez par type (vitesse, franchissement, présence…) pour retrouver un incident précis.",
+      "filtersSteps": [
+        "Choisissez la caméra.",
+        "Cochez un ou plusieurs types d'événement.",
+        "Réduisez la période si la liste est trop longue."
+      ],
+      "timelineTip": "Chaque événement = une détection IA, pas forcément une alerte finale.",
+      "timelineSteps": [
+        "Cliquez un événement dans la liste.",
+        "Vérifiez l'horodatage et la caméra.",
+        "Ouvrez les preuves dans le panneau de droite."
+      ],
+      "detail": "Détail et preuves",
+      "detailDesc": "Le panneau de droite montre le clip vidéo (souvent 6 s), les images fixes et les métadonnées (vitesse, classe d'objet, etc.).",
+      "detailTip": "Sans clip ni images, la politique de preuve n'était peut-être pas satisfaite au moment de la détection."
+    },
+    "users": {
+      "tableTip": "Chaque rôle limite les pages visibles dans le menu.",
+      "tableSteps": [
+        "Repérez le rôle (admin, opérateur, observateur…).",
+        "Modifiez un compte via la ligne Actions.",
+        "Désactivez plutôt que supprimer pour garder l'historique."
+      ],
+      "add": "Ajouter un utilisateur",
+      "addDesc": "Créez un compte avec e-mail, mot de passe et rôle. L'utilisateur recevra les droits correspondant à son profil.",
+      "addTip": "Commencez par le rôle le moins permissif nécessaire (principe du moindre privilège).",
+      "addSteps": [
+        "Cliquez Ajouter en haut à droite.",
+        "Remplissez le formulaire d'invitation.",
+        "Communiquez le mot de passe temporaire de façon sécurisée."
+      ]
+    },
+    "addUser": {
+      "intro": "Inviter un collègue",
+      "introDesc": "Créez un compte pour un nouvel opérateur ou observateur. Seuls les administrateurs peuvent ajouter des utilisateurs.",
+      "introTip": "Le mot de passe temporaire doit être changé à la première connexion si votre politique l'exige.",
+      "introSteps": [
+        "Saisissez le nom complet (affiché dans l'audit).",
+        "Indiquez un e-mail valide.",
+        "Choisissez le rôle adapté au poste."
+      ],
+      "name": "Nom complet",
+      "nameDesc": "Prénom et nom tels qu'ils apparaîtront dans les journaux d'audit et les listes d'utilisateurs.",
+      "nameTip": "Évitez les surnoms : préférez « Marie Dupont » à « MD ».",
+      "email": "E-mail du compte",
+      "emailDesc": "Servira d'identifiant de connexion. Chaque e-mail ne peut être utilisé qu'une fois dans l'organisation.",
+      "emailTip": "Vérifiez l'orthographe : une faute bloque la connexion.",
+      "password": "Mot de passe temporaire",
+      "passwordDesc": "Minimum 12 caractères. L'utilisateur pourra le modifier dans Paramètres → Profil après connexion.",
+      "passwordTip": "Utilisez un gestionnaire de mots de passe pour générer une valeur forte.",
+      "passwordSteps": [
+        "Générez au moins 12 caractères.",
+        "Transmettez-le par un canal sécurisé (pas par e-mail non chiffré si possible).",
+        "Demandez à l'utilisateur de le changer rapidement."
+      ],
+      "role": "Rôle RBAC",
+      "roleDesc": "Administrateur : tout. Opérateur : caméras, règles, alertes. Observateur : lecture seule sans modification.",
+      "roleTip": "Un observateur ne peut ni activer une règle ni archiver une alerte.",
+      "roleSteps": [
+        "Lisez les trois rôles proposés.",
+        "Choisissez le minimum nécessaire.",
+        "Validez avec Créer le compte."
+      ],
+      "submit": "Créer le compte",
+      "submitDesc": "Enregistre l'utilisateur immédiatement. Il peut se connecter dès que le serveur répond.",
+      "submitTip": "En cas d'échec, vérifiez que l'e-mail n'existe pas déjà."
+    },
+    "audit": {
+      "logTip": "Utile en cas d'audit de sécurité ou de litige sur une action opérateur.",
+      "logSteps": [
+        "Filtrez par date si le journal est volumineux.",
+        "Repérez l'auteur et l'action (connexion, règle, caméra…).",
+        "Exportez ou copiez pour un rapport externe."
+      ]
+    },
+    "health": {
+      "servicesTip": "Rouge = service arrêté ou injoignable. Relancez via les scripts indiqués ou contactez l'administrateur.",
+      "servicesSteps": [
+        "Vérifiez Backend, Moteur IA, Rules engine, go2rtc.",
+        "Cliquez un service rouge pour les instructions.",
+        "Attendez 30 s après un redémarrage avant de retester."
+      ],
+      "aiModelsTip": "Sans YOLO, pas de détection d'objets ; sans PaddleOCR, pas de lecture de plaques.",
+      "aiModelsSteps": [
+        "Vérifiez que chaque modèle affiche « chargé ».",
+        "Importez un modèle ONNX custom si besoin.",
+        "Relancez le moteur IA après un import."
+      ],
+      "importModel": "Import modèle ONNX",
+      "importModelDesc": "Ajoutez un modèle personnalisé (téléphone, ceinture, etc.) pour enrichir le menu des comportements de zone.",
+      "importModelTip": "Le fichier doit être un vrai .onnx exporté, pas un placeholder.",
+      "importModelSteps": [
+        "Cliquez Importer un modèle.",
+        "Suivez l'assistant en 5 étapes.",
+        "Vérifiez que le modèle apparaît dans Santé système."
+      ]
+    },
+    "modelImport": {
+      "intro": "Assistant import ONNX",
+      "introDesc": "Cet assistant enregistre un modèle IA personnalisé pour votre organisation. Une fois importé, il apparaît dans les menus de zone, de ligne et dans le catalogue des capacités.",
+      "introTip": "Préparez le fichier .onnx ou une URL HTTPS directe vers le fichier.",
+      "introSteps": [
+        "Choisissez un gabarit ou « personnalisé ».",
+        "Fournissez le fichier ou l'URL.",
+        "Renseignez identité et classes.",
+        "Validez : le moteur IA recharge les modèles."
+      ],
+      "step1": "Gabarit",
+      "step1Desc": "Les gabarits pré-remplissent les champs pour téléphone au volant, ceinture, etc. « Personnalisé » laisse tout configurable.",
+      "step1Tip": "Un gabarit adapté réduit les erreurs de configuration.",
+      "step2": "Source du fichier",
+      "step2Desc": "Importez un fichier .onnx depuis votre ordinateur ou indiquez un lien HTTPS public. Le serveur valide le format avant installation.",
+      "step2Tip": "Taille typique : quelques Mo à quelques centaines de Mo selon le modèle.",
+      "step2Steps": [
+        "Choisissez Fichier ou Lien HTTPS.",
+        "Sélectionnez le .onnx.",
+        "Attendez la fin de l'envoi."
+      ],
+      "step3": "Identité",
+      "step3Desc": "ID modèle, type d'événement MQTT, libellés FR/EN et portée (zone, ligne ou les deux). Ces infos apparaissent dans l'interface opérateur.",
+      "step3Tip": "Utilisez des noms courts sans espaces pour l'ID technique.",
+      "step4": "Classes",
+      "step4Desc": "Listez les classes de sortie du modèle et indiquez lesquelles déclenchent une alerte (classes positives).",
+      "step4Tip": "Pour une classification binaire : negative, positive est un bon point de départ.",
+      "step5": "Validation",
+      "step5Desc": "Récapitulatif avant envoi. Après succès, le backend demande au moteur IA de recharger les modèles secondaires.",
+      "step5Tip": "Si le rechargement échoue, consultez les logs du moteur IA (port 8001).",
+      "step5Steps": [
+        "Relisez ID et type d'événement.",
+        "Cliquez Importer.",
+        "Vérifiez dans Santé que le modèle est chargé."
+      ]
+    },
+    "redLightAssistant": {
+      "intro": "Assistant feu rouge",
+      "introDesc": "Cet assistant vous guide pour configurer deux zones complémentaires sur la même caméra, puis activer la règle « feu rouge » avec preuves.",
+      "introTip": "Sans les deux zones, la règle ne peut pas fonctionner correctement.",
+      "introSteps": [
+        "Zone feu : détecte la couleur du signal.",
+        "Zone observation : détecte le franchissement.",
+        "Étape 3 : activation de la règle catalogue."
+      ],
+      "step1": "Zone feu (ROI)",
+      "step1Desc": "Dessinez un polygone sur le feu tricolore dans ZoneEditor et assignez le comportement traffic_light_color.",
+      "step1Tip": "Le polygone doit couvrir uniquement le feu, pas toute l'intersection.",
+      "step2": "Zone observation",
+      "step2Desc": "Dessinez la zone d'intersection (red_light_observation) où les véhicules sont surveillés quand le feu est rouge.",
+      "step2Tip": "Même caméra que la zone feu — sinon la corrélation échoue.",
+      "step3": "Règle et preuves",
+      "step3Desc": "Une fois les deux zones détectées (✓ vert), activez la règle tpl-red-light avec clip 6 s, 2 images et lecture de plaque.",
+      "step3Tip": "Le bouton reste grisé tant qu'une zone manque.",
+      "step3Steps": [
+        "Vérifiez les deux ✓ verts.",
+        "Cliquez Activer la règle feu rouge.",
+        "Testez sur le Centre démo."
+      ]
+    },
+    "confirmDialog": {
+      "intro": "Fenêtre de confirmation",
+      "introDesc": "Cette fenêtre demande votre accord avant une action importante : suppression, désactivation, réinitialisation, etc.",
+      "introTip": "Lisez toujours le message avant de confirmer — certaines actions sont irréversibles.",
+      "message": "Message et détail",
+      "messageDesc": "Le titre résume l'action. Le texte explique les conséquences. Une ligne technique (monospace) peut préciser l'élément concerné.",
+      "messageTip": "En mode danger (rouge), l'action supprime ou désactive définitivement.",
+      "actions": "Annuler ou confirmer",
+      "actionsDesc": "Annuler ferme la fenêtre sans rien changer. Confirmer exécute l'action décrite.",
+      "actionsTip": "Si vous hésitez, cliquez Annuler : vous pourrez revenir plus tard.",
+      "actionsSteps": [
+        "Lisez le titre et le message.",
+        "Cliquez Annuler pour abandonner.",
+        "Cliquez Confirmer seulement si vous êtes sûr."
+      ]
+    },
+    "settings": {
+      "tabsTip": "Chaque onglet regroupe un thème : apparence, profil, e-mail, preuves, tutoriels…",
+      "tabsSteps": [
+        "Général : langue, thème, sons, tutoriels.",
+        "Organisation : fuseau, profil de déploiement.",
+        "Preuves & capture : durée clip, nombre d'images."
+      ],
+      "toursPanel": "Tutoriels guidés",
+      "toursPanelDesc": "Activez ou désactivez les mini-tutoriels sur toutes les pages et pop-ups. Vous pouvez aussi relancer manuellement chaque guide.",
+      "toursPanelTip": "Désactivé = plus de lancement automatique, mais le bouton ? reste disponible si les tutoriels sont activés.",
+      "toursPanelSteps": [
+        "Tutoriels : interrupteur principal ON/OFF.",
+        "Lancement auto : première visite de chaque page.",
+        "Boutons ci-dessous : rejouer un guide précis."
+      ]
+    },
+    "demo": {
+      "bannerTip": "Tous les voyants verts = démo prête pour une présentation client.",
+      "bannerSteps": [
+        "Serveur : API backend joignable.",
+        "Vidéo : flux go2rtc actif.",
+        "Analyse IA : détections possibles.",
+        "GPU CUDA : optionnel mais recommandé."
+      ],
+      "video": "Panneau vidéo",
+      "videoDesc": "Importez un MP4 de test ou choisissez une caméra réelle. Le badge LIVE confirme que l'IA peut analyser ce flux.",
+      "videoTip": "Une seule source est analysée à la fois : sélectionnez explicitement la vidéo voulue.",
+      "videoSteps": [
+        "Importez ou sélectionnez une vidéo.",
+        "Attendez la conversion si le fichier est volumineux.",
+        "Vérifiez le badge LIVE sur le lecteur."
+      ],
+      "zones": "Zones en démo",
+      "zonesDesc": "Sous la vidéo, dépliez le panneau zones : 3 clics pour un polygone, puis Enregistrer. Les règles actives surveillent ces zones.",
+      "zonesTip": "Sans zone dessinée, les règles spatiales (vitesse, comptage…) ne peuvent pas se déclencher.",
+      "zonesSteps": [
+        "Dépliez le panneau sous la vidéo.",
+        "Tracez au moins 3 points.",
+        "Fermez le polygone et enregistrez."
+      ],
+      "steps": "Parcours en 4 étapes",
+      "stepsDesc": "Ce panneau résume le scénario démo : regarder → zoner → activer une règle → observer alertes et détections.",
+      "stepsTip": "Suivez les numéros dans l'ordre lors d'une première présentation.",
+      "rules": "Catalogue de règles",
+      "rulesDesc": "Choisissez une règle illustrée (vitesse, feu, comptage, téléphone, ceinture…) et cliquez Configurer pour l'activer sur la zone dessinée.",
+      "rulesTip": "Chaque règle affiche un badge indiquant si elle est pleinement supportée (real) ou partielle.",
+      "rulesSteps": [
+        "Parcourez le catalogue.",
+        "Cliquez Configurer.",
+        "Liez la zone et validez l'assistant."
+      ],
+      "detections": "Détections live",
+      "detectionsDesc": "Flux des événements IA bruts liés à la vidéo active. Cliquez une ligne pour l'aperçu premium (clip + images).",
+      "detectionsTip": "Comptez 30 à 60 s après activation d'une règle pour les premières lignes.",
+      "detectionsSteps": [
+        "Vérifiez qu'une vidéo LIVE est sélectionnée.",
+        "Activez au moins une règle dans le catalogue.",
+        "Cliquez une ligne pour ouvrir l'aperçu preuve."
+      ],
+      "alertsFeed": "Alertes live",
+      "alertsFeedDesc": "Alertes finalisées avec preuves et e-mails (prévisualisables dans MailHog). C'est le résultat « métier » de la chaîne zone → IA → règle → preuve.",
+      "alertsFeedTip": "Pas d'alerte ? Vérifiez qu'au moins une règle est activée et que la zone correspond.",
+      "alertsFeedSteps": [
+        "Attendez le premier déclenchement.",
+        "Cliquez pour ouvrir la preuve.",
+        "Consultez MailHog pour l'e-mail d'alerte."
+      ]
+    },
+    "ruleActivation": {
+      "intro": "Studio d'activation",
+      "introDesc": "Cet assistant transforme un modèle du catalogue en règle active pour votre organisation. Quatre étapes : cible, conditions, preuves, canaux de sortie.",
+      "introTip": "Ayez déjà dessiné la zone ou la ligne sur la bonne caméra avant de commencer.",
+      "introSteps": [
+        "Étape 1 : choisir caméra, zone ou ligne.",
+        "Étape 2 : ajuster seuils et classes.",
+        "Étape 3 : politique de preuve.",
+        "Étape 4 : e-mail, webhook, sévérité."
+      ],
+      "step1": "Cible spatiale",
+      "step1Desc": "Sélectionnez la caméra puis la zone ou la ligne à surveiller. Sans lien spatial, la règle ne sait pas où analyser.",
+      "step1Tip": "Le menu ne propose que les zones compatibles avec le type de règle.",
+      "step1Steps": [
+        "Choisissez la caméra.",
+        "Sélectionnez zone ou ligne.",
+        "Vérifiez l'aperçu vidéo à droite."
+      ],
+      "step2": "Conditions",
+      "step2Desc": "Affinez les seuils (vitesse max, durée de présence, classes d'objets…). Les valeurs par défaut conviennent souvent pour une première activation.",
+      "step2Tip": "Utilisez le simulateur de logique pour comprendre quand la règle sera vraie.",
+      "step3": "Arbre de conditions",
+      "step3Desc": "Visualisez ou éditez l'arbre logique (ET / OU). Mode avancé pour les opérateurs expérimentés.",
+      "step3Tip": "En cas de doute, gardez l'arbre par défaut du catalogue.",
+      "step3Steps": [
+        "Lisez le résumé en langage clair.",
+        "Modifiez seulement si nécessaire.",
+        "Validez sans erreur rouge."
+      ],
+      "evidence": "Politique de preuves",
+      "evidenceDesc": "Définissez clip vidéo, nombre d'images, lecture de plaque si routier. La règle n'enverra une alerte « complète » que si ces exigences sont remplies.",
+      "evidenceTip": "Standard démo : clip 6 s + 2 images.",
+      "step4": "Sorties et activation",
+      "step4Desc": "Choisissez e-mail, webhook, sévérité et cooldown. Cliquez Activer : la règle apparaît dans Règles actives et commence à surveiller.",
+      "step4Tip": "Un cooldown trop long peut donner l'impression que la règle ne fonctionne plus.",
+      "step4Steps": [
+        "Cochez les canaux souhaités.",
+        "Réglez la sévérité.",
+        "Cliquez Activer et attendez 30–60 s."
+      ]
+    },
+    "evidenceViewer": {
+      "intro": "Visionneuse de preuves",
+      "introDesc": "Cet écran regroupe tout le matériel probatoire d'une alerte ou d'un événement : clip vidéo, images HD et métadonnées (plaque, vitesse, etc.).",
+      "introTip": "Les preuves sont générées au moment de la détection, pas après coup.",
+      "introSteps": [
+        "Lisez le bandeau récapitulatif en haut.",
+        "Lancez le clip pour revoir l'action.",
+        "Téléchargez ou partagez si votre rôle le permet."
+      ],
+      "clip": "Clip vidéo",
+      "clipDesc": "Extrait court (souvent 6 secondes) centré sur l'instant de la détection. Les contrôles permettent pause, avance et plein écran.",
+      "clipTip": "Si le clip manque, l'alerte peut être marquée comme incomplète selon la politique.",
+      "images": "Images fixes",
+      "imagesDesc": "Une ou plusieurs captures haute résolution complètent le clip pour identifier visuellement personnes, véhicules ou plaques.",
+      "imagesTip": "Cliquez une miniature pour l'agrandir."
+    },
+    "fields": {
+      "alertSeverity": {
+        "title": "Filtre sévérité",
+        "desc": "Limite la liste aux alertes Faible, Moyenne, Élevée ou Critique. Utile pour prioriser les dossiers urgents.",
+        "tip": "Critique = son + bandeau rouge ; Faible = notification discrète.",
+        "steps": [
+          "Choisissez un niveau ou laissez « Toutes ».",
+          "Combinez avec une caméra pour cibler un site.",
+          "Ouvrez une alerte pour voir les preuves."
+        ]
+      },
+      "alertCamera": {
+        "title": "Filtre caméra",
+        "desc": "Affiche uniquement les alertes issues d'une caméra précise. Pratique quand plusieurs sites partagent la même organisation.",
+        "tip": "Le nom de caméra reprend souvent le lieu physique (ex. « Entrée nord »).",
+        "steps": [
+          "Sélectionnez la caméra concernée.",
+          "Ajoutez une période si l'historique est long.",
+          "Acquittez les alertes traitées."
+        ]
+      },
+      "loginEmail": {
+        "title": "E-mail de connexion",
+        "desc": "Identifiant de votre compte CitéVision. Doit être exactement celui enregistré par l'administrateur.",
+        "tip": "Copier-coller depuis l'e-mail d'invitation évite les fautes de frappe.",
+        "steps": [
+          "Saisissez l'adresse complète.",
+          "Vérifiez le domaine (@…).",
+          "Passez au mot de passe."
+        ]
+      },
+      "loginPassword": {
+        "title": "Mot de passe",
+        "desc": "Secret personnel. Ne le communiquez à personne, même à un support qui prétend vous aider.",
+        "tip": "L'icône œil permet de contrôler la saisie sans afficher le mot de passe à l'écran longtemps.",
+        "steps": [
+          "Tapez le mot de passe fourni.",
+          "Utilisez l'œil si vous doutez.",
+          "Cliquez Se connecter."
+        ]
+      },
+      "userFullName": {
+        "title": "Nom affiché",
+        "desc": "Nom complet visible dans les listes et le journal d'audit.",
+        "tip": "Utilisez le nom officiel de la personne.",
+        "steps": [
+          "Prénom + nom.",
+          "Pas d'abréviation.",
+          "Passez à l'e-mail."
+        ]
+      },
+      "userEmail": {
+        "title": "E-mail utilisateur",
+        "desc": "Identifiant de connexion du nouveau compte. Doit être unique dans l'organisation.",
+        "tip": "Préférez une adresse professionnelle monitorée.",
+        "steps": [
+          "Vérifiez l'orthographe.",
+          "Évitez les alias partagés.",
+          "Continuez vers le mot de passe."
+        ]
+      },
+      "userPassword": {
+        "title": "Mot de passe temporaire",
+        "desc": "Minimum 12 caractères. À transmettre de façon sécurisée au nouvel utilisateur.",
+        "tip": "Générez une valeur aléatoire avec un gestionnaire de mots de passe.",
+        "steps": [
+          "12 caractères minimum.",
+          "Mélange lettres, chiffres, symboles.",
+          "Ne pas envoyer en clair par SMS public."
+        ]
+      },
+      "userRole": {
+        "title": "Rôle et droits",
+        "desc": "Admin = configuration complète. Opérateur = exploitation quotidienne. Observateur = consultation seule.",
+        "tip": "Le moindre privilège réduit les risques en cas de compte compromis.",
+        "steps": [
+          "Lisez les trois options.",
+          "Choisissez le rôle minimal.",
+          "Validez la création."
+        ]
+      },
+      "zoneBehavior": {
+        "title": "Comportement de zone",
+        "desc": "Ce menu liste ce que l'IA doit calculer dans le polygone : vitesse, comptage, téléphone au volant, etc. Seules les options réellement disponibles sur votre serveur apparaissent.",
+        "tip": "Une option grisée signifie qu'un modèle requis n'est pas encore chargé (voir Santé système).",
+        "steps": [
+          "Choisissez le comportement qui correspond à votre règle.",
+          "Enregistrez la zone après modification.",
+          "Activez ensuite la règle du catalogue qui utilise ce comportement."
+        ]
+      },
+      "lineBehavior": {
+        "title": "Comportement de ligne",
+        "desc": "Pour une ligne de comptage, sélectionnez le type d'événement émis quand quelqu'un ou un véhicule franchit la ligne (comptage, vitesse, modèle personnalisé…).",
+        "tip": "La liste est synchronisée avec les capacités IA et les modèles ONNX importés pour votre organisation.",
+        "steps": [
+          "Tracez d'abord la ligne en 2 clics sur la vidéo.",
+          "Choisissez le comportement compatible.",
+          "Enregistrez puis liez une règle de comptage ou de franchissement."
+        ]
+      },
+      "evidencePolicy": {
+        "title": "Politique de preuves",
+        "desc": "Définit ce que CitéVision doit capturer avant d'envoyer une alerte « complète » : durée du clip vidéo, nombre d'images fixes, lecture de plaque si routier.",
+        "tip": "Standard courant : clip 6 secondes + 2 images. Sans clip, l'alerte peut rester partielle.",
+        "steps": [
+          "Cochez clip et images selon vos besoins légaux ou opérationnels.",
+          "Ajustez la durée si la scène est rapide (vitesse) ou lente (intrusion).",
+          "Vérifiez le résultat sur une alerte test dans le Centre démo."
+        ]
+      },
+      "clipDuration": {
+        "title": "Durée du clip",
+        "desc": "Nombre de secondes enregistrées autour de l'instant de détection. Le clip est centré sur l'événement pour montrer le contexte avant et après.",
+        "tip": "6 s convient à la plupart des infractions routières ; 10–15 s pour les scènes de foule.",
+        "steps": [
+          "Entrez une valeur entre 3 et 30 secondes.",
+          "Testez sur une fausse alerte.",
+          "Réduisez si l'espace disque est limité."
+        ]
+      },
+      "imageCount": {
+        "title": "Nombre d'images",
+        "desc": "Captures fixes en plus du clip : vue d'ensemble (scène), gros plan (sujet), recadrage plaque si disponible.",
+        "tip": "2 images (scène + sujet) suffisent pour la plupart des dossiers.",
+        "steps": [
+          "Choisissez 1 à 4 images.",
+          "Activez la plaque si la règle est routière.",
+          "Ouvrez une alerte pour valider la qualité."
+        ]
+      },
+      "sequenceCondition": {
+        "title": "Condition séquentielle",
+        "desc": "Exige que plusieurs événements se produisent dans un ordre ou une fenêtre de temps (ex. présence puis franchissement).",
+        "tip": "Réservé aux scénarios avancés ; gardez la séquence par défaut du catalogue si vous débutez.",
+        "steps": [
+          "Lisez le résumé en langage clair sous l'arbre.",
+          "Ne modifiez que si le scénario métier l'exige.",
+          "Utilisez le simulateur pour tester la logique."
+        ]
+      },
+      "outputChannels": {
+        "title": "Canaux de sortie",
+        "desc": "Choisissez comment l'alerte est diffusée : e-mail, webhook vers un SI externe, notification dans l'interface.",
+        "tip": "Vous pouvez activer plusieurs canaux en parallèle pour la même règle.",
+        "steps": [
+          "Cochez e-mail pour les opérateurs.",
+          "Ajoutez un webhook si un ticket doit être créé automatiquement.",
+          "Testez avec MailHog en environnement démo."
+        ]
+      },
+      "notifyEmail": {
+        "title": "Notification e-mail",
+        "desc": "Adresse qui reçoit un message structuré avec lien vers les preuves quand la règle se déclenche.",
+        "tip": "Utilisez une liste de diffusion plutôt qu'une seule personne en production.",
+        "steps": [
+          "Saisissez une adresse valide.",
+          "Vérifiez les spams / MailHog en test.",
+          "Ajustez le modèle d'e-mail dans Paramètres si besoin."
+        ]
+      },
+      "catalogConfigure": {
+        "title": "Configurer une règle",
+        "desc": "Ouvre l'assistant en 4 étapes : cible (caméra/zone), conditions, preuves, puis activation. La règle apparaîtra dans « Règles actives » une fois validée.",
+        "tip": "Dessinez d'abord la zone sur la bonne caméra pour débloquer les champs spatiaux.",
+        "steps": [
+          "Cliquez Configurer sur la carte souhaitée.",
+          "Suivez l'assistant sans sauter d'étape.",
+          "Attendez 30–60 s après activation pour les premières alertes."
+        ]
+      },
+      "catalogNotConfigurable": {
+        "title": "Règle non configurable",
+        "desc": "Ce modèle nécessite un module IA, une zone ou un réglage manquant. Le badge partial/beta ou le message indique ce qui bloque.",
+        "tip": "Consultez Santé système pour les modèles non chargés ; importez un ONNX si besoin.",
+        "steps": [
+          "Lisez la raison affichée sur la carte.",
+          "Corrigez prérequis (zone, modèle, caméra).",
+          "Revenez ici quand le voyant redevient configurable."
+        ]
+      },
+      "severity": {
+        "title": "Sévérité de l'alerte",
+        "desc": "Niveau d'urgence perçu par les opérateurs : Faible (discrète), Moyenne (badge), Élevée (bandeau), Critique (son continu + push).",
+        "tip": "Réservez Critique aux situations dangereuses pour ne pas habituer à ignorer les alertes.",
+        "steps": [
+          "Choisissez le niveau adapté au risque métier.",
+          "Alignez avec la procédure interne de votre organisation.",
+          "Testez le rendu visuel et sonore sur une alerte fictive."
+        ]
+      },
+      "evidenceForward": {
+        "title": "Transfert de preuve",
+        "desc": "Renvoie le dossier probatoire (clip, images, métadonnées) vers un canal externe après acquittement ou manuellement.",
+        "tip": "Utile pour archivage juridique ou ERP ; vérifiez la conformité RGPD.",
+        "steps": [
+          "Choisissez le mode de transfert (e-mail ou webhook).",
+          "Renseignez la destination.",
+          "Testez sur une alerte avec preuves complètes."
+        ]
+      },
+      "forwardEmail": {
+        "title": "E-mail de transfert",
+        "desc": "Adresse qui reçoit une copie du dossier de preuve. Distincte de l'e-mail d'alerte initial si vous séparez notification et archivage.",
+        "tip": "Préférez une boîte fonctionnelle monitored 24/7.",
+        "steps": [
+          "Saisissez l'adresse de destination.",
+          "Déclenchez un transfert test.",
+          "Vérifiez pièces jointes et liens."
+        ]
+      },
+      "forwardWebhook": {
+        "title": "Webhook de transfert",
+        "desc": "URL HTTPS appelée avec un JSON contenant les métadonnées et liens vers les fichiers de preuve.",
+        "tip": "Le endpoint doit répondre en moins de 5 s pour éviter les timeouts.",
+        "steps": [
+          "Collez l'URL fournie par votre SI.",
+          "Validez le format JSON attendu avec votre équipe IT.",
+          "Surveillez les codes HTTP 2xx en test."
+        ]
+      },
+      "totp2fa": {
+        "title": "Authentification à deux facteurs",
+        "desc": "Ajoute un code temporaire (TOTP) après votre mot de passe. Compatible Google Authenticator, Authy, etc.",
+        "tip": "Conservez les codes de secours ; sans téléphone, vous ne pourrez plus vous connecter.",
+        "steps": [
+          "Cliquez Configurer 2FA.",
+          "Scannez le QR code avec l'application.",
+          "Entrez le code à 6 chiffres pour confirmer."
+        ]
+      },
+      "schema": {
+        "speed_limit_kmh": {
+          "title": "Limite de vitesse",
+          "desc": "Seuil en km/h au-delà duquel la règle considère qu'un véhicule excède la limite dans la zone calibrée.",
+          "tip": "Calibrez d'abord les bords de zone (longueur réelle) pour des vitesses fiables.",
+          "steps": [
+            "Entrez la limite réglementaire ou interne.",
+            "Testez avec un véhicule connu en démo.",
+            "Ajustez si les mesures semblent systématiquement hautes/basses."
+          ]
+        },
+        "min_duration_sec": {
+          "title": "Durée minimale",
+          "desc": "Temps minimum de présence ou d'infraction avant déclenchement. Filtre les faux positifs très brefs.",
+          "tip": "2–3 s suffisent souvent pour téléphone ou ceinture ; plus pour stationnement.",
+          "steps": [
+            "Partez de la valeur catalogue.",
+            "Augmentez si trop d'alertes parasites.",
+            "Diminuez si les infractions courtes sont manquées."
+          ]
+        }
+      }
+    }
+  }
+}

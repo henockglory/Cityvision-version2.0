@@ -23,6 +23,7 @@ class InsightFaceModule(FaceRecognizer):
         self.model_path = Path(model_path) if model_path else None
         self._app = None
         self._enabled = False
+        self._device = "cpu"
 
     def load(self) -> None:
         if not self.model_path or not self.model_path.exists():
@@ -31,10 +32,27 @@ class InsightFaceModule(FaceRecognizer):
         try:
             from insightface.app import FaceAnalysis  # type: ignore[import-untyped]
 
-            self._app = FaceAnalysis(name=str(self.model_path))
-            self._app.prepare(ctx_id=-1, det_size=(640, 640))
+            # [G.62]/[P.132] GPU priority, CPU last resort ([A.5]). Auto-detect the
+            # CUDA provider; fall back to CPU only when CUDA is unavailable.
+            providers = ["CPUExecutionProvider"]
+            ctx_id = -1
+            try:
+                import onnxruntime as ort  # type: ignore[import-untyped]
+
+                if "CUDAExecutionProvider" in ort.get_available_providers():
+                    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                    ctx_id = 0
+            except Exception:
+                logger.warning("onnxruntime provider probe failed; InsightFace on CPU")
+
+            self._app = FaceAnalysis(name=str(self.model_path), providers=providers)
+            self._app.prepare(ctx_id=ctx_id, det_size=(640, 640))
             self._enabled = True
-            logger.info("InsightFace loaded from %s", self.model_path)
+            self._device = "cuda" if ctx_id >= 0 else "cpu"
+            logger.info(
+                "InsightFace loaded from %s (device=%s, providers=%s)",
+                self.model_path, self._device, providers,
+            )
         except ImportError:
             logger.info("InsightFace package not installed; face detection disabled")
         except Exception:
@@ -43,6 +61,10 @@ class InsightFaceModule(FaceRecognizer):
     @property
     def is_enabled(self) -> bool:
         return self._enabled
+
+    @property
+    def device(self) -> str:
+        return self._device
 
     def detect_faces(self, frame: np.ndarray) -> list[dict[str, Any]]:
         if not self._enabled or self._app is None:

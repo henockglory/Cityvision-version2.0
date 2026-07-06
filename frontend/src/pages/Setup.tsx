@@ -1,14 +1,18 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Building2, UserPlus, CheckCircle, ChevronRight, ChevronLeft, Loader2,
+  Building2, UserPlus, CheckCircle, ChevronRight, ChevronLeft, Loader2, HelpCircle,
 } from 'lucide-react';
 import EyeLogo from '@/components/EyeLogo';
 import PremiumNetworkBackground from '@/components/PremiumNetworkBackground';
+import ThemeToggle from '@/components/ThemeToggle';
+import Tooltip from '@/components/ui/Tooltip';
 import { useInitializeSetup } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
+import { useAutoPageTour } from '@/hooks/useAutoPageTour';
+import { useUiStore } from '@/stores/uiStore';
 import { isPasswordStrongEnough } from '@/utils/setup';
 import { isAxiosError } from 'axios';
 
@@ -20,6 +24,7 @@ export default function Setup() {
   const { playClick, playSonar } = useSound();
   const setSiteId = useAuthStore((s) => s.setSiteId);
   const initMutation = useInitializeSetup();
+  const toursEnabled = useUiStore((s) => s.toursEnabled);
 
   const [step, setStep] = useState<Step>(1);
   const [orgName, setOrgName] = useState('');
@@ -27,6 +32,18 @@ export default function Setup() {
   const [adminPassword, setAdminPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+
+  const prepareTourStep = useCallback((selector: string) => {
+    const map: Record<string, Step> = {
+      '#setup-step1': 1,
+      '#setup-step2': 2,
+      '#setup-step3': 3,
+    };
+    const n = map[selector];
+    if (n) setStep(n);
+  }, []);
+
+  const startTour = useAutoPageTour('setup', { prepareStep: prepareTourStep });
 
   const handleFinish = async () => {
     setError('');
@@ -93,8 +110,24 @@ export default function Setup() {
       <PremiumNetworkBackground />
       <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 pointer-events-none" />
 
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        {toursEnabled && (
+          <Tooltip content={t('pageHeader.tourHint', 'Guide pas à pas : menus, champs et procédures expliqués simplement.')}>
+            <button
+              type="button"
+              className="cv-btn-ghost p-2"
+              onClick={startTour}
+              aria-label={t('pageHeader.tourAriaLabel', 'Tutoriel guidé')}
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        )}
+        <ThemeToggle />
+      </div>
+
       <div className="relative z-10 w-full max-w-lg mx-auto px-4 animate-fade-in">
-        <div className="text-center mb-8">
+        <div id="setup-brand" className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <EyeLogo size={64} />
           </div>
@@ -104,7 +137,7 @@ export default function Setup() {
           <p className="text-cv-muted mt-2">{t('setup.subtitle')}</p>
         </div>
 
-        <div className="flex items-center justify-center gap-3 mb-6">
+        <div id="setup-progress" className="flex items-center justify-center gap-3 mb-6">
           {steps.map((s, i) => (
             <div key={s.n} className="flex items-center gap-2">
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm ${
@@ -120,7 +153,7 @@ export default function Setup() {
           ))}
         </div>
 
-        <form onSubmit={handleNext} className="cv-card p-8 space-y-5">
+        <form id="setup-form" onSubmit={handleNext} className="cv-card p-8 space-y-5">
           {error && (
             <div className="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center">
               {error}
@@ -128,7 +161,7 @@ export default function Setup() {
           )}
 
           {step === 1 && (
-            <div>
+            <div id="setup-step1">
               <label className="cv-label" htmlFor="orgName">{t('setup.orgName')}</label>
               <input
                 id="orgName"
@@ -143,7 +176,7 @@ export default function Setup() {
           )}
 
           {step === 2 && (
-            <>
+            <div id="setup-step2" className="space-y-4">
               <div>
                 <label className="cv-label" htmlFor="adminEmail">{t('setup.adminEmail')}</label>
                 <input
@@ -180,11 +213,11 @@ export default function Setup() {
                   minLength={8}
                 />
               </div>
-            </>
+            </div>
           )}
 
           {step === 3 && (
-            <div className="space-y-4">
+            <div id="setup-step3" className="space-y-4">
               <div className="p-4 rounded-lg bg-cv-deep/50 border border-cv-border">
                 <p className="text-xs text-cv-muted uppercase tracking-wider mb-1">{t('setup.summaryOrg')}</p>
                 <p className="font-medium">{orgName}</p>
@@ -209,7 +242,7 @@ export default function Setup() {
               <ChevronLeft className="w-4 h-4" />
               {t('setup.back')}
             </button>
-            <button type="submit" disabled={initMutation.isPending} className="cv-btn-primary">
+            <button id="setup-submit" type="submit" disabled={initMutation.isPending} className="cv-btn-primary">
               {initMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : step === 3 ? (

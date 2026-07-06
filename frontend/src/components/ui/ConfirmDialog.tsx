@@ -2,6 +2,8 @@ import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
+import DialogTourHelpButton from '@/components/ui/DialogTourHelpButton';
+import { useDialogTour } from '@/hooks/useDialogTour';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -15,6 +17,8 @@ interface ConfirmDialogProps {
   loadingLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Désactive le tutoriel contextuel pour ce dialogue. */
+  tourDisabled?: boolean;
 }
 
 export default function ConfirmDialog({
@@ -29,17 +33,21 @@ export default function ConfirmDialog({
   loadingLabel = '…',
   onConfirm,
   onCancel,
+  tourDisabled = false,
 }: ConfirmDialogProps) {
   const Icon = danger ? Trash2 : AlertTriangle;
+  const startTour = useDialogTour('confirmDialog', open && !tourDisabled);
 
   return (
     <Modal
       open={open}
       onClose={onCancel}
+      id="confirm-dialog"
       maxWidth="sm"
       className={danger ? 'border-red-500/25 shadow-xl shadow-red-950/20' : ''}
+      footerLeft={!tourDisabled ? <DialogTourHelpButton onClick={() => startTour()} /> : undefined}
       footer={
-        <div className="flex w-full gap-3 justify-end">
+        <div id="confirm-dialog-actions" className="flex w-full gap-3 justify-end">
           <button type="button" onClick={onCancel} disabled={loading} className="cv-btn-secondary min-w-[5.5rem]">
             {cancelLabel}
           </button>
@@ -58,7 +66,12 @@ export default function ConfirmDialog({
         </div>
       }
     >
-      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left" role="alertdialog" aria-labelledby="confirm-title">
+      <div
+        id="confirm-dialog-body"
+        className="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left"
+        role="alertdialog"
+        aria-labelledby="confirm-title"
+      >
         <div
           className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center ${
             danger

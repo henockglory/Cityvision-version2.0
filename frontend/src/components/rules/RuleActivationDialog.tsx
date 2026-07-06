@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, Loader2, Settings2, X, MapPin, GitBranch, Zap, Check, AlertTriangle, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
+  capabilitiesApi,
   identityApi,
   rulesApi,
   zonesApi,
   type BackendZone,
+  type CapabilitiesBehaviorMenuItem,
   type SurveillanceList,
 } from '@/api/client';
 import {
@@ -52,12 +54,15 @@ import {
 } from '@/lib/conditionTree';
 import { narrateConditionSummary } from '@/lib/conditionNarrative';
 import { templatePrimaryEventType } from '@/lib/conditionValueOptions';
+import { zoneLinkedToRule } from '@/lib/zoneRuleLinks';
 import { loadRuleGuides } from '@/i18n/loadRuleGuides';
 import InfoTip from '@/components/ui/InfoTip';
 import Modal from '@/components/ui/Modal';
 import WizardSteps from '@/components/ui/WizardSteps';
 import SegmentedTabs from '@/components/ui/SegmentedTabs';
 import GuideIllustration from '@/components/ui/GuideIllustration';
+import DialogTourHelpButton from '@/components/ui/DialogTourHelpButton';
+import { useDialogTour } from '@/hooks/useDialogTour';
 import { useAuthStore } from '@/stores/authStore';
 import { useCameras } from '@/hooks/api/queries';
 import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
@@ -68,6 +73,43 @@ import type { ConfigSchemaField, Rule, RuleCatalogTemplate } from '@/types';
 interface BackendLine {
   id: string;
   name: string;
+  behavior_config?: { behavior?: string; config?: Record<string, unknown> };
+}
+
+function modelHealthKey(modelID: string): string {
+  switch (modelID) {
+    case 'driver_phone':
+      return 'driver_phone_model_loaded';
+    case 'seatbelt':
+      return 'seatbelt_model_loaded';
+    case 'paddleocr':
+    case 'plate':
+      return 'plate_loaded';
+    case 'yolo':
+      return 'yolo_loaded';
+    case 'face':
+    case 'insightface':
+      return 'face_loaded';
+    default:
+      return `${modelID}_model_loaded`;
+  }
+}
+
+function healthLoaded(health: Record<string, string>, key: string): boolean {
+  const v = health[key];
+  return v === 'true' || v === '1' || v === 'True';
+}
+
+function spatialEmitsEvent(
+  behaviorId: string | undefined,
+  eventType: string,
+  behaviors: CapabilitiesBehaviorMenuItem[],
+): boolean {
+  if (!eventType) return true;
+  const id = behaviorId ?? '';
+  const entry = behaviors.find((b) => b.id === id);
+  if (!entry) return id === '';
+  return entry.emits.includes(eventType);
 }
 
 interface RuleActivationDialogProps {
@@ -176,6 +218,8 @@ export default function RuleStudioDialog({
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [zones, setZones] = useState<BackendZone[]>([]);
   const [lines, setLines] = useState<BackendLine[]>([]);
+  const [capabilityBehaviors, setCapabilityBehaviors] = useState<CapabilitiesBehaviorMenuItem[]>([]);
+  const [capabilityHealth, setCapabilityHealth] = useState<Record<string, string>>({});
   const [watchlists, setWatchlists] = useState<SurveillanceList[]>([]);
   const [plateLists, setPlateLists] = useState<SurveillanceList[]>([]);
   const [loadingSpatial, setLoadingSpatial] = useState(false);
@@ -196,6 +240,17 @@ export default function RuleStudioDialog({
   const [webhookUrl, setWebhookUrl] = useState('');
   const [guideRailCollapsed, setGuideRailCollapsed] = useState(false);
 
+  const prepareTourStep = useCallback((selector: string) => {
+    if (selector === '#rule-activation-step1') setStep(1);
+    else if (selector === '#rule-activation-step2' || selector === '#rule-activation-step3') setStep(2);
+    else if (selector === '#evidence-policy-panel') {
+      setStep(3);
+      setStep3Tab('evidence');
+    } else if (selector === '#rule-activation-step4') setStep(4);
+  }, []);
+
+  const startRuleTour = useDialogTour('ruleActivation', Boolean(activeTemplate && !showFeedback), { prepareStep: prepareTourStep });
+
   const cameraId = String(values.camera_id ?? '');
 
   useEffect(() => {
@@ -207,9 +262,63 @@ export default function RuleStudioDialog({
     [activeTemplate],
   );
 
+  useEffect(() => {
+    if (!orgId) return;
+    void capabilitiesApi.menu(orgId)
+      .then((r) => {
+        setCapabilityBehaviors(r.data.behaviors ?? []);
+        setCapabilityHealth(r.data.health ?? {});
+      })
+      .catch(() => {
+        setCapabilityBehaviors([]);
+        setCapabilityHealth({});
+      });
+  }, [orgId]);
+
+  const compatibleZones = useMemo(() => {
+    if (!templateEventHint) return zones;
+    return zones.filter((z) =>
+      spatialEmitsEvent(z.behavior_config?.behavior, templateEventHint, capabilityBehaviors),
+    );
+  }, [zones, templateEventHint, capabilityBehaviors]);
+
+  const compatibleLines = useMemo(() => {
+    if (!templateEventHint || templateEventHint === 'line_cross') return lines;
+    return lines.filter((l) =>
+      spatialEmitsEvent(l.behavior_config?.behavior, templateEventHint, capabilityBehaviors),
+    );
+  }, [lines, templateEventHint, capabilityBehaviors]);
+
+  const templateHasPartial = Boolean(
+    activeTemplate?.partial_status && activeTemplate.partial_status !== 'full',
+  );
+
+  const linkedBehaviors = useMemo(() => {
+    const tplId = activeTemplate?.id ?? '';
+    if (!tplId && !templateEventHint) return [];
+    return capabilityBehaviors.filter((b) => {
+      if (!templateHasPartial && !b.ready) return false;
+      if (tplId && b.compatible_templates?.includes(tplId)) return true;
+      return Boolean(templateEventHint && b.emits.includes(templateEventHint));
+    });
+  }, [capabilityBehaviors, activeTemplate, templateEventHint, templateHasPartial]);
+
+  const missingModelHealthKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const b of linkedBehaviors) {
+      for (const req of b.requires ?? []) {
+        if (!req.startsWith('model:')) continue;
+        const modelId = req.slice('model:'.length);
+        const hk = modelHealthKey(modelId);
+        if (!healthLoaded(capabilityHealth, hk)) keys.add(hk);
+      }
+    }
+    return [...keys];
+  }, [linkedBehaviors, capabilityHealth]);
+
   const spatialContext = useMemo(
-    () => ({ zones, lines, loadingSpatial }),
-    [zones, lines, loadingSpatial],
+    () => ({ zones: compatibleZones, lines: compatibleLines, loadingSpatial }),
+    [compatibleZones, compatibleLines, loadingSpatial],
   );
 
   useEffect(() => {
@@ -298,6 +407,37 @@ export default function RuleStudioDialog({
   }, [schema.fields]);
 
   const activationCfg = useMemo(() => activationConfigFromValues(values), [values]);
+
+  const spatialZoneRows = useMemo(
+    () => zones.map((z) => ({ name: z.name, behavior: z.behavior_config?.behavior })),
+    [zones],
+  );
+
+  const spatialLineRows = useMemo(
+    () => lines.map((l) => ({ name: l.name, behavior: l.behavior_config?.behavior ?? 'line_cross' })),
+    [lines],
+  );
+
+  const linkedZoneStatus = useMemo(
+    () => zoneLinkedToRule(
+      activationCfg.zoneName,
+      activationCfg.lineName,
+      spatialZoneRows,
+      spatialLineRows,
+      templateEventHint,
+      capabilityBehaviors,
+    ),
+    [activationCfg.zoneName, activationCfg.lineName, spatialZoneRows, spatialLineRows, templateEventHint, capabilityBehaviors],
+  );
+
+  const selectedZoneRaw = String(values.zone_name ?? '');
+  const selectedZoneMissing = Boolean(
+    selectedZoneRaw && !loadingSpatial && !zones.some((z) => z.name === selectedZoneRaw),
+  );
+  const selectedLineRaw = String(values.line_name ?? '');
+  const selectedLineMissing = Boolean(
+    selectedLineRaw && !loadingSpatial && !lines.some((l) => l.name === selectedLineRaw),
+  );
 
   const narrativeContext = useMemo(
     () => ({
@@ -397,6 +537,12 @@ export default function RuleStudioDialog({
     try {
       const syncedCond = ensureSpatialConditions(conditionTree, activationCfg);
       const definition = buildDefinition(syncedCond);
+      const intentCheck = await capabilitiesApi.validateIntent(orgId, definition);
+      if (!intentCheck.data.valid) {
+        const details = intentCheck.data.errors?.join(' · ') ?? t('rules.studio.saveError');
+        setError(details);
+        return;
+      }
       const name = ruleName.trim() || activeTemplate.name;
       if (isEdit && existingRule) {
         await rulesApi.update(orgId, existingRule.id, { definition, name });
@@ -460,7 +606,10 @@ export default function RuleStudioDialog({
         <div>
           <label className="cv-label flex items-center gap-1.5">
             {t('rules.studio.alertSeverity')}
-            <InfoTip content="Faible : notification discrète. Moyenne : badge visible + son. Élevée : bandeau rouge. Critique : alerte sonore continue + notification push — à réserver aux situations urgentes." />
+            <InfoTip
+              helpKey="severity"
+              content="Faible : notification discrète. Moyenne : badge visible + son. Élevée : bandeau rouge. Critique : alerte sonore continue + notification push — à réserver aux situations urgentes."
+            />
           </label>
           <ExplanatorySelect
             className="w-full"
@@ -565,6 +714,7 @@ export default function RuleStudioDialog({
   return (
     <Modal
       open
+      id="rule-activation-dialog"
       onClose={onClose}
       maxWidth="studio"
       className="max-h-[92vh] overflow-hidden flex flex-col"
@@ -599,13 +749,36 @@ export default function RuleStudioDialog({
             {stepLabels[step - 1]} · {t(`rules.catalogCategory.${activeTemplate.category}`, activeTemplate.category)}
           </p>
         </div>
-        <button type="button" onClick={onClose} className="cv-btn-ghost p-2 rounded-lg" aria-label={t('common.cancel')}>
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <DialogTourHelpButton onClick={() => startRuleTour()} />
+          <button type="button" onClick={onClose} className="cv-btn-ghost p-2 rounded-lg" aria-label={t('common.cancel')}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <WizardSteps steps={wizardSteps} current={step} className="mb-4 shrink-0" />
       <WizardStepContext step={step} template={activeTemplate as { name: string; partial_status?: string; partial_reason_fr?: string; category?: string }} t={t} />
+
+      {missingModelHealthKeys.length > 0 && (
+        <div className="cv-callout text-amber-300 bg-amber-400/5 border border-amber-400/20 mb-4 shrink-0">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+          <div className="space-y-1 min-w-0">
+            <p className="text-sm text-cv-text/90">
+              {t('rules.studio.modelMissingBanner', {
+                defaultValue: 'Un modèle IA requis n\'est pas chargé. Importez-le avant d\'activer cette règle.',
+              })}
+            </p>
+            <p className="text-xs text-cv-muted font-mono">{missingModelHealthKeys.join(', ')}</p>
+            <Link
+              to="/health?wizard=import-model"
+              className="inline-flex text-xs font-medium text-cv-accent underline underline-offset-2"
+            >
+              {t('rules.studio.importModelWizard', { defaultValue: 'Assistant d\'import de modèle →' })}
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,280px)_1fr] gap-5 flex-1 min-h-0 overflow-hidden">
         <RuleStudioGuideRail
@@ -665,6 +838,7 @@ export default function RuleStudioDialog({
 
       <div className="space-y-4">
           {step === 1 && (
+            <div id="rule-activation-step1">
             <>
               <div>
                 <label className="cv-label">{t('rules.studio.ruleName')}</label>
@@ -681,17 +855,88 @@ export default function RuleStudioDialog({
                   value={values[field.key]}
                   onChange={(v) => setField(field.key, v)}
                   cameras={cameras}
-                  zones={zones}
-                  lines={lines}
+                  zones={compatibleZones}
+                  lines={compatibleLines}
+                  allZonesCount={zones.length}
+                  templateEventHint={templateEventHint}
                   watchlists={watchlists}
                   plateLists={plateLists}
                   loadingSpatial={loadingSpatial}
                 />
               ))}
+              {(activationCfg.zoneName || activationCfg.lineName) && (
+                <div className="rounded-lg border border-cv-border/50 bg-cv-deep/30 p-3 space-y-2">
+                  <p className="text-xs font-medium text-cv-text flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-cv-accent" />
+                    {t('rules.studio.linkedZone', { defaultValue: 'Zone / ligne liée' })}
+                  </p>
+                  <div className="text-[11px] space-y-1">
+                    {activationCfg.zoneName ? (
+                      <p className="text-cv-text/90">
+                        {t('rules.studio.linkedZoneName', { defaultValue: 'Zone' })}: {activationCfg.zoneName}
+                        {linkedZoneStatus.behavior ? (
+                          <span className="text-cv-muted"> · {linkedZoneStatus.behavior}</span>
+                        ) : null}
+                      </p>
+                    ) : null}
+                    {activationCfg.lineName ? (
+                      <p className="text-cv-text/90">
+                        {t('rules.studio.linkedLineName', { defaultValue: 'Ligne' })}: {activationCfg.lineName}
+                      </p>
+                    ) : null}
+                    {(selectedZoneMissing || selectedLineMissing || linkedZoneStatus.misconfigured) && (
+                      <p className="flex items-start gap-1 text-amber-400">
+                        <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                        <span>
+                          {selectedZoneMissing || selectedLineMissing
+                            ? t('rules.studio.zoneMissing', {
+                                defaultValue: 'Zone ou ligne introuvable sur cette caméra.',
+                              })
+                            : linkedZoneStatus.reason}
+                          {' '}
+                          <Link to="/zones" className="underline text-cv-accent">
+                            {t('rules.studio.openZoneEditor', { defaultValue: 'Éditeur de zones' })}
+                          </Link>
+                        </span>
+                      </p>
+                    )}
+                    {!selectedZoneMissing && !selectedLineMissing && linkedZoneStatus.found && !linkedZoneStatus.misconfigured && (
+                      <p className="text-emerald-400 text-xs">
+                        {t('rules.studio.zoneLinkedOk', { defaultValue: 'Liaison zone ↔ règle cohérente' })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {linkedBehaviors.length > 0 && (
+                <div className="rounded-lg border border-cv-border/50 bg-cv-deep/30 p-3 space-y-2">
+                  <p className="text-xs font-medium text-cv-text flex items-center gap-1.5">
+                    <GitBranch className="w-3.5 h-3.5 text-cv-accent" />
+                    {t('rules.studio.linkedBehaviors', { defaultValue: 'Comportements zone compatibles' })}
+                  </p>
+                  <ul className="text-[11px] text-cv-muted space-y-1">
+                    {linkedBehaviors.map((b) => (
+                      <li key={b.id || b.label_fr} className="flex items-start gap-2">
+                        <span className={b.ready ? 'text-emerald-400' : 'text-amber-400'}>
+                          {b.ready ? '●' : '○'}
+                        </span>
+                        <span>
+                          <span className="text-cv-text/90">{b.label_fr}</span>
+                          {!b.ready && b.ready_reason_fr ? (
+                            <span className="block text-amber-400/90">{b.ready_reason_fr}</span>
+                          ) : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
+            </div>
           )}
           {step === 2 && (
-            <div className="space-y-4">
+            <div id="rule-activation-step2" className="space-y-4">
+              <div id="rule-activation-step3">
               <ConditionTreeVisualEditor
                 value={conditionTree}
                 onChange={setConditionTree}
@@ -701,10 +946,11 @@ export default function RuleStudioDialog({
               />
               <ConditionLogicSimulator tree={conditionTree} />
               <ConditionTreeTechnicalMirror value={conditionTree} />
+              </div>
             </div>
           )}
           {step === 4 && previewRule && (
-            <div className="space-y-3">
+            <div id="rule-activation-step4" className="space-y-3">
               <p className="text-sm font-medium">{t('rules.studio.previewTitle')}</p>
               {previewSummary && (
                 <p className="text-sm text-cv-muted bg-cv-border/20 rounded-lg p-3 border border-cv-border">
@@ -764,6 +1010,8 @@ function SchemaField({
   watchlists,
   plateLists,
   loadingSpatial,
+  allZonesCount,
+  templateEventHint,
 }: {
   field: ConfigSchemaField;
   value: unknown;
@@ -774,6 +1022,8 @@ function SchemaField({
   watchlists: SurveillanceList[];
   plateLists: SurveillanceList[];
   loadingSpatial: boolean;
+  allZonesCount?: number;
+  templateEventHint?: string;
 }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language.startsWith('en') ? 'en' : 'fr';
@@ -785,7 +1035,12 @@ function SchemaField({
       <label className="cv-label flex items-center gap-1.5">
         {label}
         {field.required && <span className="text-red-500">*</span>}
-        {field.hint && <InfoTip content={field.hint} />}
+        {field.hint && (
+          <InfoTip
+            content={field.hint}
+            helpKey={['speed_limit_kmh', 'min_duration_sec'].includes(field.key) ? `schema.${field.key}` : undefined}
+          />
+        )}
       </label>
 
       {field.type === 'camera' && (
@@ -803,9 +1058,17 @@ function SchemaField({
         loadingSpatial ? (
           <p className="text-xs text-cv-muted">{t('common.loading')}</p>
         ) : zones.length === 0 ? (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            Aucune zone. <Link to="/zones" className="underline text-cv-accent">Éditeur de zones</Link>
-          </p>
+          <div className="text-xs text-amber-600 dark:text-amber-400 space-y-1">
+            <p>
+              {allZonesCount && allZonesCount > 0 && templateEventHint
+                ? t('rules.studio.noCompatibleZone', {
+                    defaultValue: 'Aucune zone compatible avec cet événement sur cette caméra.',
+                    event: templateEventHint,
+                  })
+                : 'Aucune zone.'}
+            </p>
+            <Link to="/zones" className="underline text-cv-accent">Éditeur de zones</Link>
+          </div>
         ) : (
           <ExplanatorySelect
             className="w-full"

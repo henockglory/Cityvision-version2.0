@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 import logging
+import os
+
+# Paddle 3.x + WSL: disable oneDNN path that crashes on some CPUs.
+os.environ.setdefault("FLAGS_use_mkldnn", "0")
+os.environ.setdefault("FLAGS_use_onednn", "0")
+os.environ.setdefault("FLAGS_enable_pir_api", "0")
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -17,6 +25,7 @@ from citevision_ai.identity.plate import PlateIdentityEngine
 from citevision_ai.ingest.rtsp_worker import WorkerManager
 from citevision_ai.mqtt.publisher import MqttPublisher
 from citevision_ai.pipeline import PipelineService
+from citevision_ai.utils.ai_registry import load_stack_registry, required_health_keys
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,14 +56,6 @@ async def lifespan(app: FastAPI):
     face_engine.load()
     plate_engine = PlateIdentityEngine()
     plate_engine.load()
-    if face_engine.is_loaded:
-        logger.info("InsightFace loaded from %s", iface_root)
-    else:
-        logger.warning("InsightFace not loaded — install: pip install -e 'ai-engine/.[identity]'")
-    if plate_engine.is_loaded:
-        logger.info("PaddleOCR loaded for ANPR")
-    else:
-        logger.warning("PaddleOCR not loaded — install: pip install -e 'ai-engine/.[anpr]'")
 
     budget = ResourceBudgetManager(max_cameras=settings.max_cameras)
     mqtt = MqttPublisher(
@@ -65,6 +66,40 @@ async def lifespan(app: FastAPI):
     )
     mqtt.connect()
     pipeline = PipelineService(detector, budget, mqtt, face_engine, plate_engine)
+
+    if face_engine.is_loaded:
+        logger.info("InsightFace loaded from %s", iface_root)
+    else:
+        logger.warning("InsightFace not loaded — install: pip install -e 'ai-engine/.[identity]'")
+    if plate_engine.is_loaded:
+        logger.info("PaddleOCR loaded for ANPR")
+    else:
+        logger.warning("PaddleOCR not loaded — install: pip install -e 'ai-engine/.[anpr]'")
+
+    if settings.ai_require_all_models:
+        missing: list[str] = []
+        if not detector.is_loaded:
+            missing.append("yolo_loaded")
+        if not face_engine.is_loaded:
+            missing.append("face_loaded")
+        if not plate_engine.is_loaded:
+            missing.append("plate_loaded")
+        # Only shared registry models marked required block startup — org ONNX uploads
+        # that fail probe/load must not take down YOLO/plate/phone/seatbelt.
+        required_secondary = set(required_health_keys())
+        for key, loaded in pipeline.secondary.health().items():
+            if key in required_secondary and not loaded:
+                missing.append(key)
+        if missing:
+            raise RuntimeError(
+                "AI stack incomplete ("
+                + ", ".join(missing)
+                + "). Run: bash scripts/install-ai-models.sh --fix"
+            )
+        if settings.yolo_device.lower() in ("cuda", "gpu", "0") and not detector.uses_cuda:
+            raise RuntimeError(
+                "YOLO CUDA required but inactive. Run: bash scripts/setup-cuda-onnx.sh"
+            )
 
     def process_fn(camera_id: str, frame: np.ndarray, fps: float) -> None:
         if pipeline is None:
@@ -158,7 +193,25 @@ def health() -> dict[str, str]:
     if pipeline:
         for key, loaded in pipeline.secondary.health().items():
             result[key] = str(loaded).lower()
+
+    req = required_health_keys()
+    bad = [k for k in req if str(result.get(k, "")).lower() != "true"]
+    result["models_all_ok"] = str(len(bad) == 0).lower()
+    if bad:
+        result["models_missing"] = ",".join(bad)
+    result["registry_version"] = str(load_stack_registry().get("version", 1))
     return result
+
+
+@app.post("/admin/reload-secondary-models")
+def reload_secondary_models() -> dict[str, Any]:
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    health_map = pipeline.reload_secondary_models()
+    out: dict[str, Any] = {"status": "reloaded", "models": health_map}
+    for k, v in health_map.items():
+        out[k] = str(v).lower()
+    return out
 
 
 @app.get("/hardware/profile")

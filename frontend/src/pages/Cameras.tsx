@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isAxiosError } from 'axios';
 import {
@@ -28,6 +28,8 @@ import {
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
+import { useDialogTour } from '@/hooks/useDialogTour';
+import DialogTourHelpButton from '@/components/ui/DialogTourHelpButton';
 import type { Camera, DiscoveredDevice } from '@/types';
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -74,6 +76,19 @@ export default function Cameras() {
   const [testingStreamId, setTestingStreamId] = useState<string | null>(null);
   const [streamVersion, setStreamVersion] = useState<Record<string, number>>({});
   const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([]);
+
+  const prepareWizardTourStep = useCallback((selector: string) => {
+    const map: Record<string, WizardStep> = {
+      '#camera-wizard-step1': 1,
+      '#camera-wizard-step2': 2,
+      '#camera-wizard-step3': 3,
+      '#camera-wizard-step4': 4,
+    };
+    const n = map[selector];
+    if (n) setStep(n);
+  }, []);
+
+  const startWizardTour = useDialogTour('cameraWizard', showWizard, { prepareStep: prepareWizardTourStep });
 
   useEffect(() => {
     if (deleteConfirm) {
@@ -319,6 +334,7 @@ export default function Cameras() {
         actions={
           <button
             type="button"
+            data-tour="add-camera"
             onClick={() => { playClick(); setShowWizard(true); }}
             className="cv-btn-primary"
           >
@@ -329,7 +345,10 @@ export default function Cameras() {
       />
 
       {showWizard && (
-        <div className="cv-card p-6 mb-6 border-cv-accent/30 shadow-glow animate-fade-in">
+        <div id="camera-wizard" className="cv-card p-6 mb-6 border-cv-accent/30 shadow-glow animate-fade-in">
+          <div className="flex justify-end mb-2">
+            <DialogTourHelpButton onClick={() => startWizardTour()} />
+          </div>
           <div className="flex items-center justify-center gap-4 mb-8">
             {[
               { n: 1, label: t('cameras.wizard.step1'), icon: Wifi },
@@ -358,7 +377,7 @@ export default function Cameras() {
           )}
 
           {step === 1 && (
-            <div className="max-w-lg mx-auto space-y-4">
+            <div id="camera-wizard-step1" className="max-w-lg mx-auto space-y-4">
               {/* Info honnête sur la couverture */}
               <div className="flex gap-2 p-3 rounded-lg bg-cv-surface border border-cv-border text-xs text-cv-muted">
                 <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-cv-accent" />
@@ -453,8 +472,10 @@ export default function Cameras() {
             </div>
           )}
 
-          {step === 2 && (selectedDevice || manualRtspUrl.trim()) && (
-            <div className="max-w-lg mx-auto space-y-4">
+          {step === 2 && (
+            <div id="camera-wizard-step2" className="max-w-lg mx-auto space-y-4">
+              {(selectedDevice || manualRtspUrl.trim()) ? (
+              <>
               <p className="text-sm text-cv-muted text-center font-mono">
                 {selectedDevice?.ip ?? manualRtspUrl.trim().replace(/^rtsp:\/\//, '').split('/')[0]}
               </p>
@@ -535,11 +556,15 @@ export default function Cameras() {
                   )}
                 </div>
               )}
+              </>
+              ) : (
+                <p className="text-sm text-cv-muted text-center">{t('cameras.wizard.selectDevice')}</p>
+              )}
             </div>
           )}
 
           {step === 3 && (
-            <div className="max-w-2xl mx-auto text-center space-y-4">
+            <div id="camera-wizard-step3" className="max-w-2xl mx-auto text-center space-y-4">
               <p className="text-sm text-cv-muted">{t('cameras.wizard.validating', 'Vérification de la connexion…')}</p>
               {testOk ? (
                 <div className="flex items-center justify-center gap-2 text-emerald-400">
@@ -560,7 +585,7 @@ export default function Cameras() {
           )}
 
           {step === 4 && (
-            <div className="max-w-3xl mx-auto">
+            <div id="camera-wizard-step4" className="max-w-3xl mx-auto">
               <p className="text-sm text-cv-muted text-center mb-4">{t('cameras.wizard.preview')}</p>
               {previewOk && createdCameraId ? (
                 <Go2RtcPlayer

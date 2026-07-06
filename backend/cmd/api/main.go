@@ -335,6 +335,16 @@ func main() {
 					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Get("/events", api.ListEvents)
 					r.With(middleware.RequireAnyPermission(rbacSvc, "events:read", "alerts:read")).Get("/evidence/asset", api.ServeEvidenceAsset)
 
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/ai/model-pack", api.GetModelPack)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/ai/models", api.ListOrgAIModels)
+					r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "system:health")).Post("/ai/models", api.UploadOrgAIModel)
+
+					r.Route("/capabilities", func(r chi.Router) {
+						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/menu", api.GetCapabilitiesMenu)
+					})
+
+					r.With(middleware.RequirePermission(rbacSvc, "rules:simulate")).Post("/scene-intent/validate", api.ValidateSceneIntent)
+
 					r.Route("/rules", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/", api.ListRules)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/catalog", api.ListRuleCatalog)

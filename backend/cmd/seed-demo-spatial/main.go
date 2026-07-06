@@ -50,12 +50,27 @@ func patches() ([]zonePatch, []linePatch) {
 			cameraMatch: "ligne continue",
 			zoneName:    "Zone_distance_parcourue",
 			behavior:    "speed_measurement",
-			config: map[string]interface{}{"distance_m": 8.0, "speed_limit_kmh": 8, "class_filter": "any"},
+			config: map[string]interface{}{
+				"distance_m":         8.0,
+				"edge_distances_m":   []interface{}{8.0, 2.0, 8.0, 2.0},
+				"speed_limit_kmh":    8,
+				"cooldown_sec":       2.0,
+				"spatial_dedup_sec":  2.0,
+				"class_filter":       "any",
+			},
 		},
+		// [P.130] The user drew TWO cabin zones (Zone_bbox + Zone_bbox2), one per
+		// violation, not a single driver_cabin zone. Match the real drawing.
 		{
 			cameraMatch: "ceinture",
 			zoneName:    "Zone_bbox",
-			behavior:    "driver_cabin",
+			behavior:    "phone_use",
+			config:      map[string]interface{}{"confidence": 0.35},
+		},
+		{
+			cameraMatch: "ceinture",
+			zoneName:    "Zone_bbox2",
+			behavior:    "seatbelt",
 			config:      map[string]interface{}{"confidence": 0.35},
 		},
 	}

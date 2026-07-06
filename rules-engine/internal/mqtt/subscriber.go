@@ -13,17 +13,40 @@ type Handler func(topic string, payload map[string]interface{})
 type Subscriber struct {
 	client  mqtt.Client
 	handler Handler
+	topics  []string
 	mu      sync.Mutex
 }
 
 func New(broker string, port int, handler Handler) *Subscriber {
+	s := &Subscriber{handler: handler}
 	opts := mqtt.NewClientOptions().
 		AddBroker(broker).
-		SetClientID("citevision-rules-engine")
-	return &Subscriber{
-		client:  mqtt.NewClient(opts),
-		handler: handler,
-	}
+		SetClientID("citevision-rules-engine").
+		SetAutoReconnect(true).
+		SetResumeSubs(true).
+		SetOnConnectHandler(func(c mqtt.Client) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			for _, topic := range s.topics {
+				topic := topic
+				c.Subscribe(topic, 1, func(_ mqtt.Client, msg mqtt.Message) { //nolint:errcheck
+					var payload map[string]interface{}
+					if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+						log.Printf("invalid payload on %s: %v", msg.Topic(), err)
+						return
+					}
+					s.handler(msg.Topic(), payload)
+				})
+			}
+			if len(s.topics) > 0 {
+				log.Printf("MQTT re-subscribed to %v after reconnect", s.topics)
+			}
+		}).
+		SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+			log.Printf("MQTT connection lost: %v — will auto-reconnect", err)
+		})
+	s.client = mqtt.NewClient(opts)
+	return s
 }
 
 func (s *Subscriber) Connect() error {
@@ -33,6 +56,9 @@ func (s *Subscriber) Connect() error {
 }
 
 func (s *Subscriber) Subscribe(topics ...string) error {
+	s.mu.Lock()
+	s.topics = append(s.topics, topics...)
+	s.mu.Unlock()
 	for _, topic := range topics {
 		topic := topic
 		token := s.client.Subscribe(topic, 1, func(_ mqtt.Client, msg mqtt.Message) {

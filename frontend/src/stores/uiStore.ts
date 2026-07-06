@@ -17,6 +17,7 @@ interface UiStore {
   tooltipsEnabled: boolean;
   networkEffectEnabled: boolean;
   onboardingCompleted: boolean;
+  toursEnabled: boolean;
   toursAutoStart: boolean;
   completedTours: Partial<Record<TourId, boolean>>;
   toggleTheme: () => void;
@@ -33,6 +34,7 @@ interface UiStore {
   completeTour: (tourId: TourId) => void;
   resetTour: (tourId: TourId) => void;
   resetAllTours: () => void;
+  toggleToursEnabled: () => void;
   toggleToursAutoStart: () => void;
 }
 
@@ -48,6 +50,7 @@ export const useUiStore = create<UiStore>()(
       tooltipsEnabled: true,
       networkEffectEnabled: false,
       onboardingCompleted: false,
+      toursEnabled: true,
       toursAutoStart: true,
       completedTours: {},
       toggleTheme: () =>
@@ -78,6 +81,7 @@ export const useUiStore = create<UiStore>()(
           return { completedTours: next };
         }),
       resetAllTours: () => set({ completedTours: {} }),
+      toggleToursEnabled: () => set((s) => ({ toursEnabled: !s.toursEnabled })),
       toggleToursAutoStart: () => set((s) => ({ toursAutoStart: !s.toursAutoStart })),
     }),
     {

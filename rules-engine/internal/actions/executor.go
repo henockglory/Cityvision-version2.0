@@ -47,14 +47,24 @@ func (e *Executor) Run(orgID string, rule evaluator.RuleDefinition, payload map[
 		}
 	}
 	// Fire alerts first so slow evidence/notify never blocks alert → MQTT → BDD.
+	alertFired := false
 	for _, act := range alertActs {
 		payload["action_log"] = logs
-		e.runAlert(orgID, rule, payload, act)
+		if e.runAlert(orgID, rule, payload, act) {
+			alertFired = true
+		}
 		logs = append(logs, map[string]interface{}{
-			"type": "alert", "timestamp": time.Now().UTC().Format(time.RFC3339), "status": "executed",
+			"type": "alert", "timestamp": time.Now().UTC().Format(time.RFC3339),
+			"status": map[bool]string{true: "executed", false: "suppressed"}[alertFired],
 		})
 	}
 	for _, act := range otherActs {
+		if !alertFired && (act.Type == "notify" || act.Type == "record") {
+			logs = append(logs, map[string]interface{}{
+				"type": act.Type, "timestamp": time.Now().UTC().Format(time.RFC3339), "status": "skipped",
+			})
+			continue
+		}
 		logs = append(logs, e.runNonAlert(orgID, rule, payload, act))
 	}
 	if len(logs) > 0 {
@@ -147,7 +157,7 @@ func (e *Executor) enrichedMeta(orgID string, rule evaluator.RuleDefinition, pay
 	return meta
 }
 
-func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) {
+func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) bool {
 	severity := "medium"
 	var cfg map[string]interface{}
 	_ = json.Unmarshal(act.Config, &cfg)
@@ -160,20 +170,20 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 		evPolicy = rule.Evidence
 	}
 	if policyRequiresProof(evPolicy) && !hasEvidencePackage(payload, evPolicy) {
-		if !ruleIsDemo(rule) {
-			log.Printf("alert suppressed: incomplete evidence for rule %s", rule.RuleID)
-			return
-		}
-		log.Printf("alert with demo/degraded evidence for rule %s", rule.RuleID)
+		log.Printf("alert suppressed: incomplete evidence for rule %s", rule.RuleID)
+		payload["_alert_suppressed"] = true
+		return false
 	}
 	meta := e.enrichedMeta(orgID, rule, payload, nil)
 	evidence := buildEvidenceSnapshot(payload)
 	meta["evidence_snapshot"] = evidence
 	if e.Publisher != nil {
-		e.Publisher.PublishAlert(orgID, rule.RuleID, rule.Name, "Règle déclenchée: "+rule.Name, severity, meta)
+		e.Publisher.PublishAlert(orgID, rule.RuleID, rule.Name, premiumAlertMessage(rule, payload), severity, meta)
 	} else {
 		log.Printf("alert skipped: no publisher for rule %s", rule.RuleID)
+		return false
 	}
+	return true
 }
 
 func (e *Executor) ensureEvidencePackage(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}) {
@@ -257,7 +267,11 @@ func hasEvidencePackage(payload map[string]interface{}, policy map[string]interf
 				if m == nil {
 					continue
 				}
-				if role, ok := m["role"].(string); ok && role != "" {
+				// The plate crop is best-effort: ANPR cannot always read a plate
+				// (night, angle, occlusion). Do not suppress a valid violation
+				// alert just because the plate is unreadable — it is attached when
+				// available but never required for the evidence package to count.
+				if role, ok := m["role"].(string); ok && role != "" && role != "plate" {
 					required = append(required, role)
 				}
 			}
@@ -434,7 +448,10 @@ func (e *Executor) runNotify(orgID string, rule evaluator.RuleDefinition, payloa
 		"payload":   htmlPayload,
 	})
 	url := e.internalOrgURL(orgID, "/notify/email")
-	e.postInternal(url, body)
+	if !e.postInternalOK(url, body) {
+		log.Printf("notify email failed for rule %q to %s", rule.Name, to)
+		return false
+	}
 	return true
 }
 
@@ -608,6 +625,102 @@ func buildEvidenceSnapshot(payload map[string]interface{}) map[string]interface{
 		}
 	}
 	return out
+}
+
+// alertField returns the first non-empty value for the given keys, looking in the
+// event payload and its nested "metadata" object. Values are stringified.
+func alertField(payload map[string]interface{}, keys ...string) (string, bool) {
+	meta, _ := payload["metadata"].(map[string]interface{})
+	for _, k := range keys {
+		if v, ok := payload[k]; ok && v != nil {
+			if s := fmt.Sprintf("%v", v); s != "" && s != "<nil>" {
+				return s, true
+			}
+		}
+		if meta != nil {
+			if v, ok := meta[k]; ok && v != nil {
+				if s := fmt.Sprintf("%v", v); s != "" && s != "<nil>" {
+					return s, true
+				}
+			}
+		}
+	}
+	return "", false
+}
+
+// premiumAlertMessage builds a human-readable French alert message tailored to the
+// event type (speed, plate, zone) instead of a generic "rule triggered" string.
+func premiumAlertMessage(rule evaluator.RuleDefinition, payload map[string]interface{}) string {
+	etype, _ := payload["event_type"].(string)
+	plate, hasPlate := alertField(payload, "plate_number", "plate")
+	zone, hasZone := alertField(payload, "zone_id", "zone_name")
+
+	var b strings.Builder
+	switch etype {
+	case "speeding":
+		b.WriteString("Excès de vitesse détecté")
+		if speed, ok := alertField(payload, "speed_kmh"); ok {
+			b.WriteString(" : " + speed + " km/h")
+		}
+		if limit, ok := alertField(payload, "speed_limit_kmh"); ok {
+			b.WriteString(" (limite " + limit + " km/h)")
+		}
+	case "red_light_violation":
+		b.WriteString("Franchissement au feu rouge détecté")
+	case "seatbelt_violation":
+		b.WriteString("Ceinture de sécurité non bouclée détectée")
+	case "phone_use_violation", "phone_driving":
+		b.WriteString("Utilisation du téléphone au volant détectée")
+	case "line_cross":
+		b.WriteString("Véhicule comptabilisé au passage de la ligne")
+	default:
+		if etype != "" {
+			b.WriteString("Règle « " + rule.Name + " » déclenchée (" + etype + ")")
+		} else {
+			b.WriteString("Règle « " + rule.Name + " » déclenchée")
+		}
+	}
+	if hasZone {
+		b.WriteString(" — zone " + zone)
+	}
+	if hasPlate {
+		b.WriteString(" — plaque " + plate)
+	}
+	return b.String()
+}
+
+func (e *Executor) postInternalOK(url string, body []byte) bool {
+	if e.BackendURL == "" {
+		return false
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if e.InternalKey != "" {
+		req.Header.Set("X-Internal-Key", e.InternalKey)
+	}
+	resp, err := e.HTTP.Do(req)
+	if err != nil {
+		log.Printf("internal action failed: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		snippet := strings.TrimSpace(string(respBody))
+		if len(snippet) > 512 {
+			snippet = snippet[:512] + "…"
+		}
+		if snippet == "" {
+			log.Printf("internal action HTTP %d for %s (empty body)", resp.StatusCode, url)
+		} else {
+			log.Printf("internal action HTTP %d for %s: %s", resp.StatusCode, url, snippet)
+		}
+		return false
+	}
+	return true
 }
 
 func (e *Executor) postInternal(url string, body []byte) map[string]interface{} {

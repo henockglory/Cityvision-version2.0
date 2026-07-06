@@ -1,24 +1,67 @@
-"""Zone-based speed measurement (Frigate-style real-distance calibration).
+"""Zone-based speed measurement with per-edge real-world calibration.
 
-A zone with behavior ``speed_measurement`` declares the *real* ground distance
-(in metres) that the zone spans along the direction of travel, plus a speed
-limit. We time how long a vehicle's centroid stays inside the polygon
-(entry → exit) and compute:
+Each polygon vertex may declare ``distance_to_next_m`` (metres to the next
+vertex). From calibrated edges we derive a ground scale and measure speed as:
 
-    speed_kmh = distance_m / elapsed_seconds * 3.6
+    speed_kmh = path_distance_m / elapsed_seconds * 3.6
 
-When the measured speed exceeds the configured limit we emit a ``speeding``
-event for that vehicle, carrying the measured speed so evidence/email/plate
-linking can use it. This avoids relying on a global homography calibration.
+Speed is measured once per zone crossing (entry → exit). Spatial dedup prevents
+the same physical vehicle from re-firing when ByteTrack reassigns track_id.
 """
 
 from __future__ import annotations
 
+import math
+import os
 import uuid
 from typing import Any
 
+from citevision_ai.analytics.zone_geometry import edge_midpoint, resolve_speed_distance_m
+
 SPEED_BEHAVIOR = "speed_measurement"
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle"}
+MIN_DWELL_SEC = 0.35
+DEFAULT_COOLDOWN_SEC = 20.0
+MAX_PLAUSIBLE_SPEED_KMH = 160.0
+SPATIAL_DEDUP_SEC = 8.0
+SPATIAL_DEDUP_DIST = 0.05
+MIN_EXIT_PROGRESS_NORM = 0.015
+# B.18: start/finalize timer when track anchor passes calibrated edge midpoints.
+EDGE_PAIR_PROXIMITY_NORM = 0.04
+# Explicit demo-dense mode ([E.52]/[D.45]): reduced cooldown + relaxed spatial
+# dedup so closely-spaced vehicles each raise an alert during a live demo.
+# Opt-in only (behavior_config.demo_dense or CV_DEMO_DENSE=1) — never a prod default.
+DENSE_COOLDOWN_SEC = 5.0
+DENSE_SPATIAL_DEDUP_SEC = 3.0
+
+
+def _edge_pair_indices(cfg: dict) -> tuple[int, int] | None:
+    """Return (entry_edge_index, exit_edge_index) when both are configured."""
+    try:
+        entry = cfg.get("entry_edge_index")
+        exit_ = cfg.get("exit_edge_index")
+        if entry is not None and exit_ is not None:
+            return int(entry), int(exit_)
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def _near_norm_point(
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+    threshold: float = EDGE_PAIR_PROXIMITY_NORM,
+) -> bool:
+    return math.hypot(ax - bx, ay - by) <= threshold
+
+
+def _demo_dense_enabled(cfg: dict) -> bool:
+    """Explicit dense-demo toggle, decoupled from the speed limit value."""
+    if cfg.get("demo_dense"):
+        return True
+    return os.getenv("CV_DEMO_DENSE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _point_in_polygon(px: float, py: float, polygon: list[dict]) -> bool:
@@ -38,28 +81,98 @@ def _point_in_polygon(px: float, py: float, polygon: list[dict]) -> bool:
     return inside
 
 
+def _track_anchor_norm(
+    bbox: dict,
+    frame_w: int,
+    frame_h: int,
+    *,
+    anchor: str = "bottom",
+) -> tuple[float, float]:
+    """Normalised (0–1) anchor on the bbox — bottom centre matches road contact for speed zones."""
+    x = float(bbox.get("x", 0))
+    y = float(bbox.get("y", 0))
+    w = float(bbox.get("width", 0))
+    h = float(bbox.get("height", 0))
+    cx = (x + w / 2) / max(frame_w, 1)
+    cy = (y + h) / max(frame_h, 1) if anchor == "bottom" else (y + h / 2) / max(frame_h, 1)
+    return cx, cy
+
+
+def _track_in_zone(bbox: dict, polygon: list[dict], frame_w: int, frame_h: int) -> tuple[bool, tuple[float, float]]:
+    """True when bottom-centre or bbox centre lies inside the speed polygon."""
+    bottom = _track_anchor_norm(bbox, frame_w, frame_h, anchor="bottom")
+    center = _track_anchor_norm(bbox, frame_w, frame_h, anchor="center")
+    if _point_in_polygon(*bottom, polygon):
+        return True, bottom
+    if _point_in_polygon(*center, polygon):
+        return True, center
+    return False, bottom
+
+
 class ZoneSpeedEngine:
-    """Measures vehicle speed from zone entry/exit timing and a real distance."""
+    """Measures vehicle speed from zone entry/exit timing and calibrated edges."""
 
     def __init__(self) -> None:
-        # (camera, zone_id, track_id) -> entry monotonic time
         self._entry_time: dict[tuple[str, str, int], float] = {}
-        # remember last-known inside state to detect the exit edge
+        self._entry_xy: dict[tuple[str, str, int], tuple[float, float]] = {}
         self._inside: dict[tuple[str, str, int], bool] = {}
         self._cooldown: dict[tuple[str, str, int], float] = {}
+        self._recent_spatial: dict[tuple[str, str], list[tuple[float, float, float]]] = {}
 
     def reset_camera(self, camera_id: str) -> None:
-        """Clear entry/exit timing when spatial config is hot-reloaded."""
         for key in list(self._entry_time):
             if key[0] == camera_id:
                 self._entry_time.pop(key, None)
+                self._entry_xy.pop(key, None)
                 self._inside.pop(key, None)
                 self._cooldown.pop(key, None)
+        for key in list(self._recent_spatial):
+            if key[0] == camera_id:
+                self._recent_spatial.pop(key, None)
 
     def camera_has_behavior(self, zones: list[dict] | None) -> bool:
         if not zones:
             return False
         return any(str(z.get("behavior", "")) == SPEED_BEHAVIOR for z in zones)
+
+    def _prune_spatial(self, camera_id: str, zone_id: str, now_ts: float, window_sec: float) -> list[tuple[float, float, float]]:
+        zkey = (camera_id, zone_id)
+        kept = [
+            (t, x, y)
+            for t, x, y in self._recent_spatial.get(zkey, [])
+            if now_ts - t < window_sec
+        ]
+        self._recent_spatial[zkey] = kept
+        return kept
+
+    def _spatial_duplicate(
+        self,
+        camera_id: str,
+        zone_id: str,
+        cx: float,
+        cy: float,
+        now_ts: float,
+        window_sec: float,
+        dist_thresh: float,
+    ) -> bool:
+        for t, x, y in self._prune_spatial(camera_id, zone_id, now_ts, window_sec):
+            if math.hypot(cx - x, cy - y) < dist_thresh:
+                return True
+        return False
+
+    def _record_spatial_emit(
+        self,
+        camera_id: str,
+        zone_id: str,
+        cx: float,
+        cy: float,
+        now_ts: float,
+        window_sec: float,
+    ) -> None:
+        zkey = (camera_id, zone_id)
+        hist = self._prune_spatial(camera_id, zone_id, now_ts, window_sec)
+        hist.append((now_ts, cx, cy))
+        self._recent_spatial[zkey] = hist
 
     def process_frame(
         self,
@@ -81,21 +194,72 @@ class ZoneSpeedEngine:
         for sz in speed_zones:
             cfg = sz.get("behavior_config") or {}
             try:
-                distance_m = float(cfg.get("distance_m", 0) or 0)
-            except (TypeError, ValueError):
-                distance_m = 0.0
-            try:
                 limit = float(cfg.get("speed_limit_kmh", 0) or 0)
             except (TypeError, ValueError):
                 limit = 0.0
             class_filter = str(cfg.get("class_filter", "car"))
             zone_id = str(sz.get("zone_id", sz.get("name", "zone")))
             poly = sz.get("polygon") or []
-            if distance_m <= 0 or not poly:
-                # No real distance configured → cannot measure honestly; skip.
+            if not poly:
                 continue
+            try:
+                cooldown_sec = float(cfg.get("cooldown_sec", DEFAULT_COOLDOWN_SEC) or DEFAULT_COOLDOWN_SEC)
+            except (TypeError, ValueError):
+                cooldown_sec = DEFAULT_COOLDOWN_SEC
+            try:
+                spatial_window = float(cfg.get("spatial_dedup_sec", SPATIAL_DEDUP_SEC) or SPATIAL_DEDUP_SEC)
+            except (TypeError, ValueError):
+                spatial_window = SPATIAL_DEDUP_SEC
+            # Dense demo mode: explicit opt-in, or the legacy sub-1 km/h forced path.
+            demo_dense = _demo_dense_enabled(cfg) or (limit > 0 and limit <= 1.0)
+            if demo_dense:
+                cooldown_sec = min(cooldown_sec, DENSE_COOLDOWN_SEC)
+                spatial_window = min(spatial_window, DENSE_SPATIAL_DEDUP_SEC)
+            cooldown_sec = max(cooldown_sec, MIN_DWELL_SEC)
 
-            present_tracks: set[int] = set()
+            edge_pair = _edge_pair_indices(cfg)
+            entry_mid: tuple[float, float] | None = None
+            exit_mid: tuple[float, float] | None = None
+            if edge_pair is not None:
+                entry_mid = edge_midpoint(poly, edge_pair[0])
+                exit_mid = edge_midpoint(poly, edge_pair[1])
+                if entry_mid is None or exit_mid is None:
+                    edge_pair = None
+
+            active_tids = {
+                int(t.get("track_id", -1))
+                for t in tracks
+                if int(t.get("track_id", -1)) >= 0
+            }
+            # Debug: log tracks once per 10s to diagnose no-detection issues
+            import time as _time, logging as _logging
+            _dbg_log = _logging.getLogger(__name__)
+            _debug_key = f"_dbg_{camera_id}_{zone_id}"
+            _now_dbg = _time.monotonic()
+            _last_dbg = getattr(ZoneSpeedEngine, _debug_key, 0)
+            if _now_dbg - _last_dbg > 10:
+                setattr(ZoneSpeedEngine, _debug_key, _now_dbg)
+                vehicle_tracks = [t for t in tracks if str(t.get("class_name","")) in VEHICLE_CLASSES or class_filter in ("any","")]
+                _dbg_log.warning(
+                    "[zone_speed_debug] cam=%s zone=%s tracks_total=%d vehicle_tracks=%d "
+                    "poly_y=[%.2f-%.2f] frame=%dx%d",
+                    camera_id[:8], zone_id, len(tracks), len(vehicle_tracks),
+                    min((p.get("y",0) for p in poly), default=0),
+                    max((p.get("y",0) for p in poly), default=0),
+                    frame_w, frame_h,
+                )
+                for t in vehicle_tracks[:3]:
+                    bbox = t.get("bbox") or {}
+                    bottom = _track_anchor_norm(bbox, frame_w, frame_h, anchor="bottom")
+                    center = _track_anchor_norm(bbox, frame_w, frame_h, anchor="center")
+                    in_z, _ = _track_in_zone(bbox, poly, frame_w, frame_h)
+                    _dbg_log.warning(
+                        "  track_id=%s cls=%s bbox_px=(%.0f,%.0f,%.0f,%.0f) "
+                        "norm_bottom=(%.3f,%.3f) norm_center=(%.3f,%.3f) in_zone=%s",
+                        t.get("track_id"), t.get("class_name"),
+                        bbox.get("x",0), bbox.get("y",0), bbox.get("width",0), bbox.get("height",0),
+                        bottom[0], bottom[1], center[0], center[1], in_z,
+                    )
             for track in tracks:
                 cls = str(track.get("class_name", ""))
                 if class_filter not in ("any", "") and cls != class_filter and cls not in VEHICLE_CLASSES:
@@ -104,32 +268,207 @@ class ZoneSpeedEngine:
                 if tid < 0:
                     continue
                 bbox = track.get("bbox") or {}
-                cx = (float(bbox.get("x", 0)) + float(bbox.get("width", 0)) / 2) / max(frame_w, 1)
-                cy = (float(bbox.get("y", 0)) + float(bbox.get("height", 0)) * 0.85) / max(frame_h, 1)
-                inside = _point_in_polygon(cx, cy, poly)
                 key = (camera_id, zone_id, tid)
-                if inside:
-                    present_tracks.add(tid)
-                    if key not in self._entry_time:
-                        self._entry_time[key] = now_ts
-                    self._inside[key] = True
-                elif self._inside.get(key):
-                    # Exit edge → compute speed.
-                    self._inside[key] = False
-                    entry = self._entry_time.pop(key, None)
-                    if entry is None:
-                        continue
-                    elapsed = max(now_ts - entry, 1e-3)
-                    speed_kmh = distance_m / elapsed * 3.6
-                    last = self._cooldown.get(key, -9999.0)
-                    if speed_kmh > limit and (now_ts - last) > 2.0:
-                        self._cooldown[key] = now_ts
-                        events.append(
-                            self._make_speeding_event(
-                                camera_id, track, zone_id, speed_kmh, limit, distance_m, elapsed, iso_ts
+
+                if edge_pair is not None and entry_mid is not None and exit_mid is not None:
+                    cx, cy = _track_anchor_norm(bbox, frame_w, frame_h, anchor="bottom")
+                    if _near_norm_point(cx, cy, entry_mid[0], entry_mid[1]):
+                        if key not in self._entry_time:
+                            self._entry_time[key] = now_ts
+                            self._entry_xy[key] = (cx, cy)
+                        self._inside[key] = True
+                    elif (
+                        key in self._entry_time
+                        and self._inside.get(key)
+                        and _near_norm_point(cx, cy, exit_mid[0], exit_mid[1])
+                    ):
+                        events.extend(
+                            self._finalize_crossing(
+                                camera_id,
+                                zone_id,
+                                tid,
+                                track,
+                                key,
+                                entry_xy=self._entry_xy.get(key),
+                                exit_xy=(cx, cy),
+                                entry=self._entry_time.get(key),
+                                now_ts=now_ts,
+                                iso_ts=iso_ts,
+                                poly=poly,
+                                cfg=cfg,
+                                limit=limit,
+                                cooldown_sec=cooldown_sec,
+                                spatial_window=spatial_window,
+                                frame_w=frame_w,
+                                frame_h=frame_h,
+                                track_lost=False,
+                                demo_dense=demo_dense,
+                                edge_pair_mode=True,
                             )
                         )
+                    continue
+
+                inside, (cx, cy) = _track_in_zone(bbox, poly, frame_w, frame_h)
+                if inside:
+                    if key not in self._entry_time:
+                        self._entry_time[key] = now_ts
+                        self._entry_xy[key] = (cx, cy)
+                    self._inside[key] = True
+                    continue
+
+                if not self._inside.get(key):
+                    continue
+                events.extend(
+                    self._finalize_crossing(
+                        camera_id,
+                        zone_id,
+                        tid,
+                        track,
+                        key,
+                        entry_xy=self._entry_xy.get(key),
+                        exit_xy=(cx, cy),
+                        entry=self._entry_time.get(key),
+                        now_ts=now_ts,
+                        iso_ts=iso_ts,
+                        poly=poly,
+                        cfg=cfg,
+                        limit=limit,
+                        cooldown_sec=cooldown_sec,
+                        spatial_window=spatial_window,
+                        frame_w=frame_w,
+                        frame_h=frame_h,
+                        track_lost=False,
+                        demo_dense=demo_dense,
+                        edge_pair_mode=False,
+                    )
+                )
+
+            # Track lost while still inside zone → measure on last known entry (common with ByteTrack).
+            for key in list(self._inside.keys()):
+                if key[0] != camera_id or key[1] != zone_id or not self._inside.get(key):
+                    continue
+                tid = key[2]
+                if tid in active_tids:
+                    continue
+                entry = self._entry_time.get(key)
+                entry_xy = self._entry_xy.get(key)
+                if entry is None or entry_xy is None:
+                    self._inside.pop(key, None)
+                    continue
+                events.extend(
+                    self._finalize_crossing(
+                        camera_id,
+                        zone_id,
+                        tid,
+                        {"track_id": tid, "class_name": "car", "bbox": {}},
+                        key,
+                        entry_xy=entry_xy,
+                        exit_xy=entry_xy,
+                        entry=entry,
+                        now_ts=now_ts,
+                        iso_ts=iso_ts,
+                        poly=poly,
+                        cfg=cfg,
+                        limit=limit,
+                        cooldown_sec=cooldown_sec,
+                        spatial_window=spatial_window,
+                        frame_w=frame_w,
+                        frame_h=frame_h,
+                        track_lost=True,
+                        demo_dense=demo_dense,
+                        edge_pair_mode=edge_pair is not None,
+                    )
+                )
         return events
+
+    def _finalize_crossing(
+        self,
+        camera_id: str,
+        zone_id: str,
+        tid: int,
+        track: dict,
+        key: tuple[str, str, int],
+        *,
+        entry_xy: tuple[float, float] | None,
+        exit_xy: tuple[float, float] | None,
+        entry: float | None,
+        now_ts: float,
+        iso_ts: str,
+        poly: list[dict],
+        cfg: dict,
+        limit: float,
+        cooldown_sec: float,
+        spatial_window: float,
+        frame_w: int,
+        frame_h: int,
+        track_lost: bool,
+        demo_dense: bool = False,
+        edge_pair_mode: bool = False,
+    ) -> list[dict[str, Any]]:
+        self._inside[key] = False
+        self._entry_time.pop(key, None)
+        self._entry_xy.pop(key, None)
+        if entry is None or entry_xy is None:
+            return []
+
+        elapsed = max(now_ts - entry, MIN_DWELL_SEC)
+        if not track_lost and exit_xy is not None:
+            if not edge_pair_mode:
+                progress = math.hypot(exit_xy[0] - entry_xy[0], exit_xy[1] - entry_xy[1])
+                if progress < MIN_EXIT_PROGRESS_NORM:
+                    return []
+            distance_m, method = resolve_speed_distance_m(poly, cfg, entry_xy, exit_xy)
+        else:
+            distance_m, method = resolve_speed_distance_m(poly, cfg, entry_xy, None)
+        if distance_m is None or distance_m <= 0:
+            return []
+
+        speed_kmh = distance_m / elapsed * 3.6
+        demo_force = limit > 0 and limit <= 1.0
+        if speed_kmh > MAX_PLAUSIBLE_SPEED_KMH:
+            return []
+        if demo_force:
+            # Demo: sub-1 km/h limits force alerts; slow ingest inflates dwell → under-counted speed.
+            if speed_kmh <= 0:
+                return []
+            if speed_kmh <= limit:
+                speed_kmh = limit + 1.0
+        elif speed_kmh <= limit:
+            return []
+
+        emit_x = entry_xy[0]
+        emit_y = entry_xy[1]
+        if exit_xy is not None and not track_lost:
+            emit_x = (entry_xy[0] + exit_xy[0]) / 2
+            emit_y = (entry_xy[1] + exit_xy[1]) / 2
+        # Dense demo: skip spatial dedup — same-lane traffic shares exit coordinates;
+        # position dedup would collapse many distinct vehicles into one alert.
+        if not demo_dense and self._spatial_duplicate(
+            camera_id, zone_id, emit_x, emit_y, now_ts, spatial_window, SPATIAL_DEDUP_DIST,
+        ):
+            return []
+
+        last = self._cooldown.get(key, -9999.0)
+        if (now_ts - last) < cooldown_sec:
+            return []
+
+        self._cooldown[key] = now_ts
+        self._record_spatial_emit(camera_id, zone_id, emit_x, emit_y, now_ts, spatial_window)
+        return [
+            self._make_speeding_event(
+                camera_id,
+                track,
+                zone_id,
+                speed_kmh,
+                limit,
+                distance_m,
+                elapsed,
+                iso_ts,
+                method or ("track_lost_timing" if track_lost else "edge_path_timing"),
+                frame_w,
+                frame_h,
+            )
+        ]
 
     @staticmethod
     def _make_speeding_event(
@@ -141,8 +480,23 @@ class ZoneSpeedEngine:
         distance_m: float,
         elapsed_s: float,
         iso_ts: str,
+        method: str,
+        frame_w: int = 1920,
+        frame_h: int = 1080,
     ) -> dict[str, Any]:
-        bbox = track.get("bbox") or {}
+        raw = track.get("bbox") or {}
+        x, y = float(raw.get("x", 0)), float(raw.get("y", 0))
+        bw, bh = float(raw.get("width", 0)), float(raw.get("height", 0))
+        fw, fh = max(frame_w, 1), max(frame_h, 1)
+        if bw > 0 and bh > 0 and not (x <= 1 and y <= 1 and bw <= 1 and bh <= 1):
+            bbox = {
+                "x": max(0.0, min(1.0, x / fw)),
+                "y": max(0.0, min(1.0, y / fh)),
+                "width": max(0.0, min(1.0, bw / fw)),
+                "height": max(0.0, min(1.0, bh / fh)),
+            }
+        else:
+            bbox = raw
         return {
             "event_id": str(uuid.uuid4()),
             "camera_id": camera_id,
@@ -159,8 +513,8 @@ class ZoneSpeedEngine:
             "metadata": {
                 "speed_kmh": round(speed_kmh, 1),
                 "speed_limit_kmh": limit,
-                "distance_m": distance_m,
+                "distance_m": round(distance_m, 2),
                 "elapsed_s": round(elapsed_s, 2),
-                "detection_method": "zone_distance_timing",
+                "detection_method": method,
             },
         }

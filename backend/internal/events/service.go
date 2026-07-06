@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +23,9 @@ type IngestRequest struct {
 	Payload          json.RawMessage `json:"payload"`
 	EvidenceSnapshot json.RawMessage `json:"evidence_snapshot,omitempty"`
 	OccurredAt       *time.Time      `json:"occurred_at,omitempty"`
+	// ExternalID: if set and a valid UUID, used as the event primary key so
+	// the AI engine's event_id and the DB id stay in sync for evidence patching.
+	ExternalID string `json:"external_id,omitempty"`
 }
 
 type Service struct {
@@ -33,6 +37,7 @@ func NewService(pool *pgxpool.Pool) *Service {
 }
 
 func (s *Service) Ingest(ctx context.Context, req IngestRequest) (*models.Event, error) {
+	req.Severity = normalizeEventSeverity(req.Severity)
 	if req.Severity == "" {
 		req.Severity = "info"
 	}
@@ -51,14 +56,59 @@ func (s *Service) Ingest(ctx context.Context, req IngestRequest) (*models.Event,
 		occurred = *req.OccurredAt
 	}
 
+	// Use the AI engine's own event_id as PK when provided — keeps DB id and
+	// the upstream event_id aligned so PatchEvidenceSnapshot can find the row.
+	var externalID *uuid.UUID
+	if req.ExternalID != "" {
+		if parsed, err := uuid.Parse(req.ExternalID); err == nil {
+			externalID = &parsed
+		}
+	}
+
 	var e models.Event
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO events (org_id, site_id, camera_id, event_type, severity, payload, evidence_snapshot, occurred_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		RETURNING id, org_id, site_id, camera_id, event_type, severity, payload, evidence_snapshot, occurred_at, ingested_at`,
-		req.OrgID, req.SiteID, req.CameraID, req.EventType, req.Severity, payload, evSnap, occurred,
-	).Scan(&e.ID, &e.OrgID, &e.SiteID, &e.CameraID, &e.EventType, &e.Severity, &e.Payload, &e.EvidenceSnapshot, &e.OccurredAt, &e.IngestedAt)
+	var err error
+	if externalID != nil {
+		err = s.pool.QueryRow(ctx, `
+			INSERT INTO events (id, org_id, site_id, camera_id, event_type, severity, payload, evidence_snapshot, occurred_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			ON CONFLICT (id) DO UPDATE SET evidence_snapshot = EXCLUDED.evidence_snapshot
+			RETURNING id, org_id, site_id, camera_id, event_type, severity, payload, evidence_snapshot, occurred_at, ingested_at`,
+			*externalID, req.OrgID, req.SiteID, req.CameraID, req.EventType, req.Severity, payload, evSnap, occurred,
+		).Scan(&e.ID, &e.OrgID, &e.SiteID, &e.CameraID, &e.EventType, &e.Severity, &e.Payload, &e.EvidenceSnapshot, &e.OccurredAt, &e.IngestedAt)
+	} else {
+		err = s.pool.QueryRow(ctx, `
+			INSERT INTO events (org_id, site_id, camera_id, event_type, severity, payload, evidence_snapshot, occurred_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			RETURNING id, org_id, site_id, camera_id, event_type, severity, payload, evidence_snapshot, occurred_at, ingested_at`,
+			req.OrgID, req.SiteID, req.CameraID, req.EventType, req.Severity, payload, evSnap, occurred,
+		).Scan(&e.ID, &e.OrgID, &e.SiteID, &e.CameraID, &e.EventType, &e.Severity, &e.Payload, &e.EvidenceSnapshot, &e.OccurredAt, &e.IngestedAt)
+	}
 	return &e, err
+}
+
+// PatchEvidenceSnapshot updates an event's evidence_snapshot in-place after async upload.
+// It reads the existing snapshot first so bbox, speed_kmh and other ingest-time fields are preserved.
+func (s *Service) PatchEvidenceSnapshot(ctx context.Context, orgID uuid.UUID, eventID string, pkg *evidence.Package) error {
+	evID, err := uuid.Parse(eventID)
+	if err != nil {
+		return nil // invalid id — skip silently
+	}
+	// Read existing snapshot to preserve bbox, speed_kmh, plate_number, etc.
+	var existingRaw []byte
+	_ = s.pool.QueryRow(ctx,
+		`SELECT evidence_snapshot FROM events WHERE id = $1 AND org_id = $2`,
+		evID, orgID,
+	).Scan(&existingRaw)
+	var existing map[string]interface{}
+	if len(existingRaw) > 0 {
+		_ = json.Unmarshal(existingRaw, &existing)
+	}
+	snap := evidence.MergeIntoSnapshot(existing, pkg, nil)
+	_, err = s.pool.Exec(ctx,
+		`UPDATE events SET evidence_snapshot = $1 WHERE id = $2 AND org_id = $3`,
+		snap, evID, orgID,
+	)
+	return err
 }
 
 func (s *Service) List(ctx context.Context, orgID uuid.UUID, limit int, eventType, cameraID string) ([]models.Event, error) {
@@ -187,4 +237,17 @@ func (s *Service) PurgeForOrg(ctx context.Context, orgID uuid.UUID) (int64, erro
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+// normalizeEventSeverity maps AI-engine labels to DB enum event_severity [D.44].
+func normalizeEventSeverity(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "warning", "warn":
+		return "medium"
+	case "info", "low", "medium", "high", "critical":
+		return s
+	default:
+		return "info"
+	}
 }

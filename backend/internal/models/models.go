@@ -134,9 +134,11 @@ type Line struct {
 	StartPoint json.RawMessage `json:"start_point"`
 	EndPoint   json.RawMessage `json:"end_point"`
 	Direction  *string         `json:"direction,omitempty"`
-	IsActive   bool            `json:"is_active"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
+	// BehaviorConfig mirrors zones: {"behavior":"line_cross","config":{"class_filter":"...","direction":"..."}}.
+	BehaviorConfig json.RawMessage `json:"behavior_config,omitempty"`
+	IsActive       bool            `json:"is_active"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
 type Event struct {

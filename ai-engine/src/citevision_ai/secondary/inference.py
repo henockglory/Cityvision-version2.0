@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -44,12 +45,57 @@ def _registry_path() -> Path:
 
 def load_registry() -> list[dict[str, Any]]:
     path = _registry_path()
+    models: list[dict[str, Any]] = []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return list(data.get("models", []))
+        models = list(data.get("models", []))
     except Exception:
         logger.warning("Could not read AI model registry at %s", path)
+    models.extend(_load_org_registry())
+    return models
+
+
+def _org_models_root() -> Path | None:
+    env = os.environ.get("ORG_MODELS_ROOT", "").strip()
+    if env:
+        return Path(env)
+    data_root = os.environ.get("DATA_ROOT", "").strip()
+    if data_root:
+        return Path(data_root) / "orgs"
+    for candidate in (
+        _REPO_ROOT / "data" / "orgs",
+        _REPO_ROOT / "backend" / "data" / "orgs",
+    ):
+        if candidate.exists():
+            return candidate
+    return _REPO_ROOT / "data" / "orgs"
+
+
+def _load_org_registry() -> list[dict[str, Any]]:
+    root = _org_models_root()
+    if root is None or not root.exists():
         return []
+    out: list[dict[str, Any]] = []
+    for org_dir in sorted(root.iterdir()):
+        if not org_dir.is_dir():
+            continue
+        reg_path = org_dir / "ai-models" / "org-models.json"
+        if not reg_path.exists():
+            continue
+        try:
+            data = json.loads(reg_path.read_text(encoding="utf-8"))
+            for raw in data.get("models", []):
+                spec = dict(raw)
+                if not spec.get("probe_ok", True):
+                    continue
+                fname = str(spec.get("file") or f"{spec.get('id', '')}.onnx")
+                spec["org_path"] = str((org_dir / "ai-models" / fname).resolve())
+                if not spec.get("behavior"):
+                    spec["behavior"] = f"custom:{spec.get('id', '')}"
+                out.append(spec)
+        except Exception:
+            logger.warning("Could not read org model registry at %s", reg_path, exc_info=True)
+    return out
 
 
 def models_dir() -> Path:
@@ -84,7 +130,11 @@ class _OnnxModel:
         self.positive = set(spec.get("positive_classes", []))
         self.task = str(spec.get("task", "detection"))
         self.input_size = int(spec.get("input_size", 640))
-        self.path = models_dir() / str(spec.get("file", f"{self.id}.onnx"))
+        org_path = spec.get("org_path")
+        if org_path:
+            self.path = Path(str(org_path))
+        else:
+            self.path = models_dir() / str(spec.get("file", f"{self.id}.onnx"))
         self.device = device
         self._session = None
         self._input_name: str | None = None
@@ -189,18 +239,26 @@ class SecondaryInferenceEngine:
         self._cooldown_frames = 45
 
     def load(self) -> None:
+        self._models.clear()
+        seen_ids: set[str] = set()
         for spec in load_registry():
             model = _OnnxModel(spec, device=self._device)
             model.load()
-            # Index by behavior so a zone behavior maps directly to its model.
+            if model.id in seen_ids:
+                continue
+            seen_ids.add(model.id)
             if model.behavior:
                 self._models[model.behavior] = model
 
+    def reload(self) -> None:
+        """Reload shared + org ONNX models (after upload)."""
+        self.load()
+
     def health(self) -> dict[str, bool]:
-        return {
-            f"{m.id}_model_loaded": m.is_loaded
-            for m in self._models.values()
-        }
+        out: dict[str, bool] = {}
+        for m in self._models.values():
+            out[f"{m.id}_model_loaded"] = m.is_loaded
+        return out
 
     def camera_has_behavior(self, zones: list[dict] | None) -> bool:
         if not zones:
@@ -210,7 +268,7 @@ class SecondaryInferenceEngine:
             if b in self._models or b == "driver_cabin":
                 if b == "driver_cabin" and self._cabin_models():
                     return True
-                if b in self._models:
+                if b in self._models and self._models[b].is_loaded:
                     return True
         return False
 

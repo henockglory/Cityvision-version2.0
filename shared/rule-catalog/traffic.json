@@ -1,15 +1,8 @@
 [
   {
     "id": "tpl-speeding",
-    "redirect_to": "tpl-speeding",
-    "role_summary_fr": "Alerte si un véhicule dépasse la vitesse limite configurée — nécessite calibration caméra.",
-    "deployment_scopes": [
-      "national",
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "requires_calibration",
-    "partial_reason_fr": "Nécessite une calibration caméra (homographie) pour mesurer la vitesse en km/h"
+    "redirect_to": "tpl-speeding-premium",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-speeding-premium (règle vitesse canonique de la démo)."
   },
   {
     "id": "tpl-slow-vehicle",
@@ -39,90 +32,17 @@
   },
   {
     "id": "tpl-speed-threshold",
-    "name": "Vitesse > seuil",
-    "category": "traffic",
-    "severity": "high",
-    "definition": {
-      "condition": {
-        "op": "gt",
-        "field": "speed_kmh",
-        "value": 50
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "high"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Déclenche quand un véhicule franchit un seuil de vitesse défini — configurable par voie.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "requires_calibration",
-    "partial_reason_fr": "Nécessite une calibration caméra (homographie) pour mesurer la vitesse en km/h"
+    "redirect_to": "tpl-speeding-premium",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-speeding-premium. Le seuil de vitesse se configure sur la règle canonique."
   },
   {
     "id": "tpl-wrong-lane",
-    "name": "Mauvaise voie",
-    "category": "traffic",
-    "severity": "medium",
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "wrong_way"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {}
-        }
-      ]
-    },
-    "role_summary_fr": "Alerte si un véhicule emprunte une voie interdite.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "full"
+    "redirect_to": "tpl-wrong-way",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-wrong-way (même événement wrong_way)."
   },
   {
     "id": "tpl-stopped-traffic",
-    "name": "Véhicule arrêté sur voie",
-    "category": "traffic",
-    "severity": "medium",
-    "definition": {
-      "condition": {
-        "op": "AND",
-        "children": [
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "vehicle_stopped"
-          },
-          {
-            "op": "eq",
-            "field": "class",
-            "value": "car"
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {}
-        }
-      ]
-    },
-    "role_summary_fr": "Alerte quand le trafic s'arrête dans une zone de fluidité obligatoire.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "full"
+    "redirect_to": "tpl-vehicle-stopped",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-vehicle-stopped (même événement vehicle_stopped ; le filtre de classe se configure sur la règle canonique)."
   }
 ]

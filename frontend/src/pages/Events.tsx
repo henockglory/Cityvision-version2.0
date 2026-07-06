@@ -191,7 +191,7 @@ export default function Events() {
               />
             ))}
             detail={selected ? (
-              <div>
+              <div id="events-detail">
                 <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                   <div>
                     <span className="inline-flex items-center gap-2 text-sm font-medium">

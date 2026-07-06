@@ -9,14 +9,16 @@ import (
 )
 
 type CatalogTemplate struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name"`
-	Description  string          `json:"description,omitempty"`
-	Category     string          `json:"category"`
-	Severity     string          `json:"severity"`
-	Definition   json.RawMessage `json:"definition,omitempty"`
-	ConfigSchema json.RawMessage `json:"configSchema,omitempty"`
-	RedirectTo   string          `json:"redirect_to,omitempty"`
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description,omitempty"`
+	Category       string          `json:"category"`
+	Severity       string          `json:"severity"`
+	Definition     json.RawMessage `json:"definition,omitempty"`
+	ConfigSchema   json.RawMessage `json:"configSchema,omitempty"`
+	RedirectTo     string          `json:"redirect_to,omitempty"`
+	PartialStatus  string          `json:"partial_status,omitempty"`
+	PartialReasonFR string         `json:"partial_reason_fr,omitempty"`
 }
 
 func LoadCatalog(dir string) ([]CatalogTemplate, error) {

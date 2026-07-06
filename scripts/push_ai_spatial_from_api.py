@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 
-API = "http://127.0.0.1:8081"
-AI = "http://127.0.0.1:8001"
-ORG = "e312f375-7442-4089-8022-ed232abc09e8"
-EMAIL = "glory.henock@hologram.cd"
-PASS = "Hologram2026!"
+API = os.environ.get("BACKEND_API_URL", "http://127.0.0.1:8081")
+AI = os.environ.get("AI_ENGINE_URL", "http://127.0.0.1:8001")
+# [P.131] No hardcoded IDs/creds — resolved live from /auth/me, env overridable.
+ORG = os.environ.get("DEMO_ORG_ID", "")
+EMAIL = os.environ.get("ADMIN_EMAIL", "glory.henock@hologram.cd")
+PASS = os.environ.get("ADMIN_PASSWORD", "")
 
 
 def req(method: str, url: str, body: dict | None = None, token: str | None = None) -> object:
@@ -68,6 +70,11 @@ def build_spatial(token: str, camera_id: str) -> dict:
 def main() -> None:
     login = req("POST", f"{API}/api/v1/auth/login", body={"email": EMAIL, "password": PASS})
     token = login["access_token"]
+
+    global ORG
+    if not ORG:
+        me = req("GET", f"{API}/api/v1/auth/me", token=token)
+        ORG = (me or {}).get("org_id", "")
 
     cameras = req("GET", f"{API}/api/v1/orgs/{ORG}/cameras", token=token)
     if isinstance(cameras, dict):

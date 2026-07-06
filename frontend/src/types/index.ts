@@ -109,7 +109,7 @@ export interface RuleCatalogTemplate {
   tutorial?: string;
   prerequisites?: string[];
   unsupported_message_fr?: string;
-  partial_status?: "full" | "requires_calibration" | "requires_ocr" | "requires_face_ai" | "partial_aggregate" | "beta" | "requires_model";
+  partial_status?: "full" | "requires_calibration" | "requires_ocr" | "requires_face_ai" | "partial_aggregate" | "beta" | "requires_model" | "not_emitted";
   partial_reason_fr?: string;
 }
 
@@ -208,10 +208,9 @@ export interface Zone {
   points: number[];
   color: string;
   cameraId: string;
-  /** perimeter | controlled_exit | corridor | parking | … (API spatial, legacy) */
+  /** Real-world metres for edge i → vertex (i+1) mod n. */
+  edgeDistancesM?: (number | undefined)[];
   zoneKind?: string;
-  /** Rich AI behavior id from shared/zone-behaviors.json (supersedes zoneKind). */
   behavior?: string;
-  /** Per-behavior configuration values keyed by config field key. */
   behaviorConfig?: Record<string, unknown>;
 }

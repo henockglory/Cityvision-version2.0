@@ -10,6 +10,7 @@ export interface ModalProps {
   footerLeft?: ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | 'studio';
   className?: string;
+  id?: string;
 }
 
 const widthClass = {
@@ -34,6 +35,7 @@ export default function Modal({
   footerLeft,
   maxWidth = 'lg',
   className = '',
+  id,
 }: ModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -56,6 +58,7 @@ export default function Modal({
         role="presentation"
       >
         <div
+          id={id}
           className={`cv-card w-full ${widthClass[maxWidth]} p-6 animate-fade-in flex flex-col ${className}`}
           role="dialog"
           aria-modal="true"

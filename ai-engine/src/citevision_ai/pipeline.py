@@ -18,7 +18,8 @@ from citevision_ai.analytics.scene import SceneAnalyzer
 from citevision_ai.analytics.correlation import CorrelationEngine
 from citevision_ai.analytics.scene_correlation import SceneCorrelationEngine
 from citevision_ai.analytics.state import StateEngine
-from citevision_ai.analytics.zone_speed import ZoneSpeedEngine
+from citevision_ai.evidence.config import EVIDENCE_WORTHY_TYPES
+from citevision_ai.evidence.gate import default_evidence_policy
 from citevision_ai.behavior.heuristics import BEHAVIOR_EVENT_TYPES, BehaviorHeuristics
 from citevision_ai.budget.resource_budget import ResourceBudgetManager
 from citevision_ai.detection.yolo_onnx import YoloOnnxDetector
@@ -29,6 +30,7 @@ from citevision_ai.identity.plate import PlateIdentityEngine
 from citevision_ai.road_enforcement.detector import RoadEnforcementEngine
 from citevision_ai.road_enforcement.traffic_light import TrafficLightEngine
 from citevision_ai.secondary.inference import SecondaryInferenceEngine
+from citevision_ai.analytics.zone_speed import ZoneSpeedEngine
 from citevision_ai.models.schemas import BBox, Detection, DetectionFrame
 from citevision_ai.mqtt.publisher import MqttPublisher
 from citevision_ai.tracking.bytetrack import ByteTracker
@@ -77,6 +79,8 @@ class PipelineService:
         self._org_ids: dict[str, str] = {}
         self._capability_profiles: dict[str, list[dict[str, Any]]] = {}
         self._spatial_behavior_fp: dict[str, str] = {}
+        self._frame_shape: dict[str, tuple[int, int]] = {}
+        self._blur_streak: dict[str, int] = {}
 
     def register_camera(self, camera_id: str, spatial_config: dict[str, Any] | None = None) -> None:
         if camera_id not in self._trackers:
@@ -130,21 +134,39 @@ class PipelineService:
             return True
         class_name = str(track.get("class_name", ""))
         bbox = track.get("bbox") or {}
-        cx = float(bbox.get("x", 0)) + float(bbox.get("width", 0)) / 2
-        cy = float(bbox.get("y", 0)) + float(bbox.get("height", 0)) / 2
+        fw, fh = self._frame_shape.get(camera_id, (1920, 1080))
+        x = float(bbox.get("x", 0))
+        y = float(bbox.get("y", 0))
+        bw = float(bbox.get("width", 0))
+        bh = float(bbox.get("height", 0))
+        if bw <= 0 or bh <= 0:
+            return False
+        if x <= 1 and y <= 1 and bw <= 1 and bh <= 1:
+            cx, cy = x + bw / 2, y + bh / 2
+        else:
+            cx = (x + bw / 2) / max(fw, 1)
+            cy = (y + bh / 2) / max(fh, 1)
         spatial = self._spatial_configs.get(camera_id, {})
         zone_map = {z.get("zone_id", z.get("name", "")): z for z in spatial.get("zones", [])}
         for pr in profiles:
             if not self._profile_has_capability(pr, capability):
                 continue
             cf = str(pr.get("class_filter", "any"))
-            if cf not in ("any", "", class_name) and class_name != cf:
+            if cf not in ("any", "", "*") and class_name and class_name != cf:
                 continue
             zone_id = str(pr.get("zone_id", ""))
             if not zone_id:
                 return True
             zone = zone_map.get(zone_id)
-            if zone and self._point_in_polygon(cx, cy, zone.get("polygon", [])):
+            if not zone:
+                continue
+            polygon = zone.get("polygon") or []
+            if not polygon:
+                return True
+            if self._polygon_is_normalized(polygon):
+                if self._point_in_polygon(cx, cy, polygon):
+                    return True
+            elif self._point_in_polygon(cx * fw, cy * fh, polygon):
                 return True
         return False
 
@@ -173,6 +195,7 @@ class PipelineService:
         self._org_ids.pop(camera_id, None)
         self._capability_profiles.pop(camera_id, None)
         self.evidence.clear_camera(camera_id)
+        self.plate_engine.reset_camera(camera_id)
 
     def apply_runtime_config(self, camera_id: str, config: dict[str, Any]) -> None:
         self._runtime_config[camera_id] = dict(config)
@@ -212,11 +235,16 @@ class PipelineService:
     def set_rules(self, rules: list[dict]) -> None:
         self._rules = rules
 
+    def reload_secondary_models(self) -> dict[str, bool]:
+        self.secondary.reload()
+        return self.secondary.health()
+
     def set_spatial_config(self, camera_id: str, config: dict[str, Any]) -> None:
         fp = self._behavior_fingerprint(config)
         if self._spatial_behavior_fp.get(camera_id) != fp:
             self.traffic_light.reset_camera(camera_id)
             self.zone_speed.reset_camera(camera_id)
+            self.plate_engine.reset_camera(camera_id)
             self._spatial_behavior_fp[camera_id] = fp
         self._spatial_configs[camera_id] = config
         calib = CalibrationEngine(config.get("calibration"))
@@ -412,6 +440,7 @@ class PipelineService:
         track_dicts = []
         calib = self._calibrations.get(camera_id, CalibrationEngine())
         h, w = frame.shape[:2]
+        self._frame_shape[camera_id] = (w, h)
         ts = datetime.now(timezone.utc).isoformat()
 
         for t in tracks:
@@ -601,7 +630,7 @@ class PipelineService:
 
         # Plate ↔ vehicle linking: enrich violation events with the plate read on
         # the same vehicle track this frame (red light, speeding, phone, seatbelt).
-        self._link_plates_to_violations(all_events)
+        self._link_plates_to_violations(camera_id, all_events)
 
         for t in track_dicts:
             if not self._track_in_capability_zone(camera_id, t, "speed_estimate"):
@@ -651,7 +680,20 @@ class PipelineService:
                         break
             org_id = self._org_ids.get(camera_id, "")
             if org_id:
-                self.evidence.attach_evidence(camera_id, org_id, evt, frame)
+                et = str(evt.get("event_type") or evt.get("event") or "")
+                if et in ("vehicle_corridor", "vehicle_count_threshold"):
+                    continue
+                policy = self.evidence._gate.match_policy(camera_id, evt)
+                should_capture = policy is not None or et in self._PLATE_LINKED_EVENTS
+                if should_capture:
+                    force = policy is None and et in self._PLATE_LINKED_EVENTS
+                    pol = policy if policy is not None else (default_evidence_policy() if force else None)
+                    if pol is not None:
+                        self.evidence.attach_evidence_async(
+                            camera_id, org_id, evt, frame.copy(), policy=pol,
+                        )
+                if et in self._EVIDENCE_MANDATORY and not self._event_has_package(evt):
+                    evt.setdefault("evidence_status", "pending")
             self.mqtt.publish_event(camera_id, evt)
 
         payload = frame_result.to_mqtt_payload()
@@ -670,9 +712,27 @@ class PipelineService:
         "vehicle_corridor",
         "wrong_way",
     }
+    _EVIDENCE_MANDATORY = {
+        "red_light_violation",
+        "speeding",
+        "phone_use_violation",
+        "seatbelt_violation",
+    }
 
-    def _link_plates_to_violations(self, events: list[dict[str, Any]]) -> None:
-        """Copy the plate number read on a vehicle track onto its violation events."""
+    @staticmethod
+    def _event_has_package(evt: dict[str, Any]) -> bool:
+        pkg = evt.get("package")
+        if isinstance(pkg, dict) and (pkg.get("clip") or pkg.get("images")):
+            return True
+        ev = evt.get("evidence")
+        if isinstance(ev, dict):
+            inner = ev.get("package")
+            if isinstance(inner, dict) and (inner.get("clip") or inner.get("images")):
+                return True
+        return False
+
+    def _link_plates_to_violations(self, camera_id: str, events: list[dict[str, Any]]) -> None:
+        """Copy plate reads onto violation events (same frame, then per-track cache)."""
         plate_by_track: dict[Any, tuple[str, float]] = {}
         for e in events:
             tid = e.get("track_id")
@@ -683,19 +743,22 @@ class PipelineService:
             prev = plate_by_track.get(tid)
             if prev is None or conf > prev[1]:
                 plate_by_track[tid] = (plate, conf)
-        if not plate_by_track:
-            return
         for e in events:
             et = e.get("event_type") or e.get("event")
             if et not in self._PLATE_LINKED_EVENTS:
                 continue
             if e.get("plate_number"):
                 continue
-            linked = plate_by_track.get(e.get("track_id"))
+            tid = e.get("track_id")
+            linked = plate_by_track.get(tid) if tid is not None else None
+            if not linked and tid is not None and int(tid) >= 0:
+                linked = self.plate_engine.get_last_plate(camera_id, int(tid))
             if linked:
                 e["plate_number"] = linked[0]
                 e["plate_confidence"] = linked[1]
-                e.setdefault("metadata", {})["plate_number"] = linked[0]
+                meta = e.setdefault("metadata", {})
+                meta["plate_number"] = linked[0]
+                meta["plate_confidence"] = linked[1]
 
     def _correlation_events(
         self,
@@ -739,14 +802,21 @@ class PipelineService:
                 "track_id": -1,
                 "metadata": {"brightness": brightness},
             })
+        # J.86 stub: require consecutive blurry frames before emitting video_blur.
+        min_blur_frames = 2
         if blur_score < 50:
-            events.append({
-                "event_id": str(uuid.uuid4()),
-                "camera_id": camera_id,
-                "event_type": "video_blur",
-                "timestamp": ts,
-                "severity": "info",
-                "track_id": -1,
-                "metadata": {"blur_score": blur_score},
-            })
+            streak = self._blur_streak.get(camera_id, 0) + 1
+            self._blur_streak[camera_id] = streak
+            if streak >= min_blur_frames:
+                events.append({
+                    "event_id": str(uuid.uuid4()),
+                    "camera_id": camera_id,
+                    "event_type": "video_blur",
+                    "timestamp": ts,
+                    "severity": "info",
+                    "track_id": -1,
+                    "metadata": {"blur_score": blur_score, "frame_streak": streak},
+                })
+        else:
+            self._blur_streak[camera_id] = 0
         return events

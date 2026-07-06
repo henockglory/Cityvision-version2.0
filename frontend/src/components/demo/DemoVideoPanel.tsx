@@ -100,6 +100,13 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
     }
   }, [settings?.source_mode]);
 
+  // Clear a stale upload error once server-side processing is visible.
+  useEffect(() => {
+    if (processingVideo && uploadError) {
+      setUploadError('');
+    }
+  }, [processingVideo?.id, uploadError]);
+
   // Poll individual video status every 2s while processing.
   useEffect(() => {
     if (!processingVideo || !orgId) return;
@@ -123,8 +130,9 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
     }
     setUploadError('');
     setUploadPct(5);
+    const displayName = file.name.replace(/\.mp4$/i, '');
     try {
-      const { data: uploaded } = await demoApi.uploadVideo(orgId, file, file.name.replace(/\.mp4$/i, ''), setUploadPct);
+      const { data: uploaded } = await demoApi.uploadVideo(orgId, file, displayName, setUploadPct);
       setUploadPct(null);
       // Immediately insert the returned video into the cached settings so the
       // in-card progress bar appears without waiting for the next poll cycle.
@@ -137,13 +145,32 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
       // the catch block and displays a spurious "upload failed" banner.
       void qc.invalidateQueries({ queryKey: queryKeys.demoSettings });
     } catch (err) {
+      setUploadPct(null);
+      // Vite proxy or network may drop before the HTTP response while the backend
+      // already ingested the file and started ffmpeg — recover silently if so.
+      try {
+        const { data: fresh } = await demoApi.getSettings(orgId);
+        qc.setQueryData(queryKeys.demoSettings, fresh);
+        const recovered = fresh.videos.some(
+          (v) =>
+            (v.status === 'processing' || v.status === 'uploading') &&
+            v.name === displayName &&
+            v.size_bytes > 0 &&
+            Math.abs(v.size_bytes - file.size) <= Math.max(4096, file.size * 0.02),
+        );
+        if (recovered) {
+          setUploadError('');
+          return;
+        }
+      } catch {
+        // fall through to error banner
+      }
       let msg = t('demoCenter.uploadFailed');
       if (axios.isAxiosError(err)) {
         const apiMsg = (err.response?.data as { error?: string })?.error;
         if (apiMsg) msg = apiMsg;
       }
       setUploadError(msg);
-      setUploadPct(null);
     }
   };
 
@@ -239,7 +266,7 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
   };
 
   return (
-    <div className="space-y-4">
+    <div id="demo-video" className="space-y-4">
       {/* Main player area */}
       <div className="cv-card overflow-hidden p-0 relative cv-demo-player-shell">
         {hasStream ? (

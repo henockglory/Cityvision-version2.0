@@ -20,22 +20,42 @@ class InsightFaceRecognizer(FaceRecognizer):
         self.model_root = model_root
         self._app = None
         self._loaded = False
+        self._device = "cpu"
 
     def load(self) -> None:
         try:
             from insightface.app import FaceAnalysis
 
+            # [G.62]/[P.132] GPU priority, CPU last resort ([A.5]). The previous
+            # config forced providers=["CPUExecutionProvider"] even with ctx_id=0,
+            # so InsightFace ran on CPU. Auto-detect CUDA and prefer it.
+            providers = ["CPUExecutionProvider"]
+            ctx_id = -1
+            try:
+                import onnxruntime as ort
+
+                if "CUDAExecutionProvider" in ort.get_available_providers():
+                    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                    ctx_id = 0
+            except Exception:
+                logger.warning("onnxruntime provider probe failed; InsightFace on CPU")
+
             self._app = FaceAnalysis(
                 name=self.model_name,
                 root=self.model_root,
-                providers=["CPUExecutionProvider"],
+                providers=providers,
             )
-            self._app.prepare(ctx_id=0, det_size=(640, 640))
+            self._app.prepare(ctx_id=ctx_id, det_size=(640, 640))
             self._loaded = True
-            logger.info("InsightFace loaded: %s", self.model_name)
+            self._device = "cuda" if ctx_id >= 0 else "cpu"
+            logger.info("InsightFace loaded: %s (device=%s)", self.model_name, self._device)
         except Exception:
             logger.exception("InsightFace load failed")
             self._loaded = False
+
+    @property
+    def device(self) -> str:
+        return self._device
 
     @property
     def is_loaded(self) -> bool:

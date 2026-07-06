@@ -135,12 +135,13 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall-all.ps1 -Yes -FromScr
 
 ## Politique auto-fix (zéro échec local)
 
-L'installateur et les scripts `setup-wsl.sh` / `start-linux.sh` **ne se contentent plus d'afficher des WARN** : ils exécutent `scripts/ensure-ai-stack.sh` qui :
+L'installateur et les scripts `setup-wsl.sh` / `start-linux.sh` **ne se contentent plus d'afficher des WARN** : ils exécutent `scripts/ensure-ai-stack.sh` → `scripts/install-ai-models.sh --fix`, qui :
 
-1. Installe les extras Python (InsightFace + PaddleOCR) — **sans fallback pip minimal**
-2. Télécharge les modèles manquants (YOLO, buffalo_l, PaddleOCR)
-3. Redémarre l'AI engine si les clés `/health` (`yolo_loaded`, `face_loaded`, `plate_loaded`) sont incomplètes
-4. Réessaie jusqu'à validation (5–8 tentatives selon le contexte)
+1. Installe les extras Python (InsightFace + PaddleOCR) et ONNX Runtime GPU (CUDA)
+2. Télécharge / construit **tous** les modèles (YOLO, buffalo_l, PaddleOCR, modèles secondaires ONNX)
+3. Lance des smoke tests d'inférence (`verify_ai_stack.py`) avant tout démarrage de l'AI engine
+4. Vérifie le `/health` complet via le registre (`shared/ai-stack-registry.json` + `shared/ai-models.json`) : `yolo_loaded`, `face_loaded`, `plate_loaded`, `yolo_cuda`, `driver_phone_model_loaded`, `seatbelt_model_loaded`
+5. Réessaie automatiquement en cas d'échec (5–8 tentatives selon le contexte)
 
 L'étape **Lancement** de l'installateur 7315 affiche les événements `Correction automatique…` en temps réel. Aucune commande manuelle (`pip install`, `download-models.sh`) n'est requise dans le parcours normal.
 

@@ -32,7 +32,7 @@
     ],
     "role_summary_fr": "Alerte quand un visage connu de la liste de surveillance est identifié par la caméra.",
     "partial_status": "requires_face_ai",
-    "partial_reason_fr": "Correspondance liste noire nécessite le module InsightFace + base de données de visages configurée"
+    "partial_reason_fr": "Correspondance liste noire : nécessite le module InsightFace + base de données de visages configurée."
   },
   {
     "id": "tpl-unknown-face",
@@ -58,7 +58,8 @@
       "domestic"
     ],
     "role_summary_fr": "Signale la présence d'un visage non reconnu dans une zone à accès contrôlé.",
-    "partial_status": "full"
+    "partial_status": "requires_face_ai",
+    "partial_reason_fr": "Nécessite le module de reconnaissance faciale (InsightFace) actif."
   },
   {
     "id": "tpl-face-detected",
@@ -86,34 +87,8 @@
       "domestic"
     ],
     "role_summary_fr": "Enregistre et alerte à chaque détection de visage — utile pour les zones à faible trafic.",
-    "partial_status": "full"
-  },
-  {
-    "id": "tpl-face-count",
-    "name": "Comptage visages",
-    "category": "identity",
-    "severity": "low",
-    "definition": {
-      "condition": {
-        "op": "gt",
-        "field": "face_count",
-        "value": 3
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {}
-        }
-      ]
-    },
-    "deployment_scopes": [
-      "national",
-      "enterprise",
-      "domestic"
-    ],
-    "role_summary_fr": "Alerte si le nombre de visages détectés dépasse le seuil configuré sur une période.",
     "partial_status": "requires_face_ai",
-    "partial_reason_fr": "Comptage des visages nécessite le module InsightFace (non installé par défaut)"
+    "partial_reason_fr": "Nécessite le module de détection/reconnaissance faciale (InsightFace) actif."
   },
   {
     "id": "tpl-blocked-plate",
@@ -141,7 +116,8 @@
       "domestic"
     ],
     "role_summary_fr": "Alerte immédiate si une plaque figurant sur la liste noire est reconnue par la caméra.",
-    "partial_status": "full"
+    "partial_status": "requires_ocr",
+    "partial_reason_fr": "Nécessite le module de lecture de plaques (PaddleOCR) + une liste noire configurée."
   },
   {
     "id": "tpl-unknown-plate",
@@ -167,7 +143,8 @@
       "domestic"
     ],
     "role_summary_fr": "Signale toute plaque non présente dans la liste blanche — contrôle d'accès véhicules.",
-    "partial_status": "full"
+    "partial_status": "requires_ocr",
+    "partial_reason_fr": "Nécessite le module de lecture de plaques (PaddleOCR) + une liste blanche configurée."
   },
   {
     "id": "tpl-plate-whitelist",
@@ -195,7 +172,8 @@
       "domestic"
     ],
     "role_summary_fr": "Autorise les véhicules dont la plaque est dans la liste blanche — alerte pour toute autre plaque.",
-    "partial_status": "full"
+    "partial_status": "requires_ocr",
+    "partial_reason_fr": "Nécessite le module de lecture de plaques (PaddleOCR) + une liste blanche configurée."
   },
   {
     "id": "tpl-plate-detected",
@@ -221,7 +199,8 @@
       "domestic"
     ],
     "role_summary_fr": "Enregistre et alerte à chaque détection de plaque d'immatriculation sur la scène.",
-    "partial_status": "full"
+    "partial_status": "requires_ocr",
+    "partial_reason_fr": "Nécessite le module de lecture de plaques (PaddleOCR) actif sur une zone dédiée."
   },
   {
     "id": "tpl-identity-correlation",
@@ -247,6 +226,7 @@
       "enterprise",
       "domestic"
     ],
-    "partial_status": "full"
+    "partial_status": "requires_face_ai",
+    "partial_reason_fr": "Corrélation visage↔plaque : nécessite les modules InsightFace et PaddleOCR actifs simultanément."
   }
 ]

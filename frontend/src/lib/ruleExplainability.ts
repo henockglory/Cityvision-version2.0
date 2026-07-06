@@ -50,6 +50,24 @@ export function explainRule(
   return `Alerte lorsque : ${parts.join(' ; ')}.`;
 }
 
+/** Caméra / zone / ligne liées à une règle (affichage liste). */
+export function ruleBindingSummary(
+  rule: Rule,
+  cameras: { id: string; name: string }[] = [],
+): string {
+  const def = rule.definition ?? {};
+  const bindings = (def.bindings ?? {}) as Record<string, unknown>;
+  const camId = String(bindings.camera_id ?? def.camera_id ?? '');
+  const cam = cameras.find((c) => c.id === camId);
+  const camLabel = cam?.name ?? (camId ? `${camId.slice(0, 8)}…` : '—');
+  const parts = [`Caméra : ${camLabel}`];
+  const zone = bindings.zone_name as string | undefined;
+  const line = bindings.line_name as string | undefined;
+  if (zone) parts.push(`Zone : ${zone}`);
+  if (line) parts.push(`Ligne : ${line}`);
+  return parts.join(' · ');
+}
+
 export function conditionNodesFromDefinition(definition: Record<string, unknown>): CondNode[] {
   const condition = (definition.condition ?? definition.conditions) as CondNode | undefined;
   if (!condition) return [];

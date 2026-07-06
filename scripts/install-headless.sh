@@ -107,10 +107,18 @@ _wait_health_key() {
 _wait_all_ai_models() {
   local url="$1"
   local timeout="${2:-300}"
-  _wait_health_key "$url" "yolo_loaded" "$timeout" || return 1
-  _wait_health_key "$url" "face_loaded" "$timeout" || return 1
-  _wait_health_key "$url" "plate_loaded" "$timeout" || return 1
-  return 0
+  local venv_py="$ROOT/ai-engine/.venv/bin/python3"
+  [[ -x "$venv_py" ]] || return 1
+  local i=0
+  while (( i < timeout )); do
+    if curl -sf "$url" >/dev/null 2>&1 \
+        && "$venv_py" "$ROOT/ai-engine/scripts/check_ai_health.py" --url "$url" --require-gpu 2>/dev/null; then
+      return 0
+    fi
+    sleep 3
+    ((i += 3))
+  done
+  return 1
 }
 
 _step "Installation headless CitéVision v2"
@@ -205,7 +213,7 @@ for _fix_round in 1 2 3 4 5; do
   if wait_http_ok "http://127.0.0.1:$AI_PORT/health" 30; then
     if _wait_all_ai_models "http://127.0.0.1:$AI_PORT/health" 120; then
       AI_MODELS_OK=true
-      _ok "AI Engine opérationnel — yolo_loaded, face_loaded, plate_loaded"
+      _ok "AI Engine opérationnel — tous les modèles IA (registry + CUDA)"
       break
     fi
   fi
@@ -282,4 +290,12 @@ else
 fi
 
 _ok "Tous les services sont opérationnels"
+
+_step "Gate Phase E (validate-install-gate)"
+if bash "$ROOT/scripts/validate-install-gate.sh" >>"$LOG_FILE" 2>&1; then
+  _ok "Gate installateur validée"
+else
+  _warn "validate-install-gate a signalé des écarts — voir logs/install-gate-report.json"
+fi
+
 exit 0

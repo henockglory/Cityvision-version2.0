@@ -1,9 +1,10 @@
 {
   "version": 1,
-  "description": "Registre des modèles d'inférence secondaire (habitacle conducteur). Les fichiers sont dans ai-engine/models/secondary/. Construire via: bash scripts/build-secondary-models.sh",
+  "description": "Registre des modèles d'inférence secondaire (habitacle conducteur). Les fichiers sont dans ai-engine/models/secondary/. Construire via: bash scripts/build-secondary-models.sh. Pour ajouter un modèle: dupliquer une entrée models[] — install-ai-models.sh le prendra en charge automatiquement.",
   "models": [
     {
       "id": "driver_phone",
+      "required": true,
       "task": "classification",
       "behavior": "phone_use",
       "event_type": "phone_use_violation",
@@ -30,6 +31,7 @@
     },
     {
       "id": "seatbelt",
+      "required": true,
       "task": "detection",
       "behavior": "seatbelt",
       "event_type": "seatbelt_violation",

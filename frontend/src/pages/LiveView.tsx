@@ -96,7 +96,7 @@ export default function LiveView() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div id="live-view-sidebar" className="space-y-4">
           <div className="cv-card p-4">
             <h3 className="font-display text-sm font-semibold mb-3">{t('liveView.selectCamera')}</h3>
             <div className="space-y-1 max-h-48 overflow-y-auto">

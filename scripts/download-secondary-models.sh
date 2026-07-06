@@ -57,10 +57,20 @@ for line in "${MODELS[@]}"; do
   fi
 
   if [[ -z "$url" ]]; then
-    if [[ -f "$out" ]]; then
-      echo "[OK] $id present (built locally, no URL)"; OK=$((OK+1)); continue
+    if [[ -f "$out" ]] && [[ "$(stat -c%s "$out" 2>/dev/null || echo 0)" -gt 5000 ]]; then
+      if [[ -n "$sha" ]]; then
+        got="$(sha256_of "$out")"
+        if [[ "$got" != "$sha" ]]; then
+          echo "[WARN] $id sha256 drift (built artifact) — accepted ($got)"
+        else
+          echo "[OK] $id present + sha256 verified (local build)"
+        fi
+      else
+        echo "[OK] $id present (built locally, no URL)"
+      fi
+      OK=$((OK+1)); continue
     fi
-    echo "[SKIP] $id has no URL — place $file manually in $DEST"; FAIL=$((FAIL+1)); continue
+    echo "[SKIP] $id has no URL — run: bash scripts/build-secondary-models.sh"; FAIL=$((FAIL+1)); continue
   fi
 
   echo "==> Downloading $id from $url"
@@ -82,5 +92,8 @@ for line in "${MODELS[@]}"; do
 done
 
 echo "==> Secondary models: $OK ok, $FAIL missing/failed"
-# Non-fatal: the AI engine degrades honestly when a model is absent.
+if (( FAIL > 0 )); then
+  echo "[ERR] Missing secondary models — run: bash scripts/build-secondary-models.sh --fix"
+  exit 1
+fi
 exit 0

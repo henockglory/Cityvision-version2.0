@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Copy, Pencil, Plus, Power, PowerOff, Trash2 } from 'lucide-react';
 import IconBadge from '@/components/ui/IconBadge';
 import SeverityBadge from '@/components/ui/SeverityBadge';
-import { explainRule } from '@/lib/ruleExplainability';
+import { explainRule, ruleBindingSummary } from '@/lib/ruleExplainability';
+import { useCameras } from '@/hooks/api/queries';
 import { evidencePolicyChip, type EvidencePolicy } from '@/lib/evidencePolicy';
 import { iconForTemplate } from '@/lib/iconMap';
 import type { Rule } from '@/types';
@@ -42,6 +43,7 @@ export default function ActiveRulesPanel({
   onHighlight,
 }: ActiveRulesPanelProps) {
   const { t } = useTranslation();
+  const { data: cameras = [] } = useCameras();
   const [filter, setFilter] = useState<Filter>('all');
   const [announce, setAnnounce] = useState('');
 
@@ -140,13 +142,14 @@ export default function ActiveRulesPanel({
                       {evidencePolicyChip(evPolicy)}
                     </button>
                   </div>
+                  <p className="text-[11px] text-cv-accent/80 font-medium">{ruleBindingSummary(rule, cameras)}</p>
                   <p className="text-xs text-cv-muted leading-relaxed line-clamp-2">{explainRule(rule)}</p>
                 </div>
                 <div className="flex gap-1 shrink-0 pt-0.5">
                   <button type="button" onClick={() => onEdit(rule)} className="cv-btn-ghost p-2" title={t('common.edit')}>
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button type="button" onClick={() => onDuplicate(rule)} className="cv-btn-ghost p-2" title={t('rules.duplicate')}>
+                  <button type="button" onClick={() => onDuplicate(rule)} className="cv-btn-ghost p-2" title={t('rules.duplicateTip', { defaultValue: 'Dupliquer puis ajuster caméra / zone / ligne' })}>
                     <Copy className="w-4 h-4" />
                   </button>
                   <button type="button" onClick={() => onDelete(rule)} className="cv-btn-ghost p-2 text-red-500" title={t('common.delete')}>

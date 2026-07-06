@@ -1,65 +1,137 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { driver, type Driver } from 'driver.js';
-import 'driver.js/dist/driver.css';
+
+import { type Driver } from 'driver.js';
+
 import { useTranslation } from 'react-i18next';
+
+import { createTourDriver, runTour } from '@/lib/tourEngine';
+
 import { getTourSteps, type TourId } from '@/lib/tourRegistry';
+
 import { useUiStore } from '@/stores/uiStore';
 
-function createDriver(t: (k: string) => string, onDone: () => void) {
-  return driver({
-    showProgress: true,
-    animate: true,
-    overlayColor: 'rgba(5, 10, 18, 0.85)',
-    popoverClass: 'cv-driver-popover',
-    nextBtnText: t('onboarding.next'),
-    prevBtnText: t('onboarding.prev'),
-    doneBtnText: t('onboarding.done'),
-    progressText: '{{current}} / {{total}}',
-    onDestroyed: onDone,
-  });
+
+
+interface AutoPageTourOptions {
+
+  prepareStep?: (selector: string) => void;
+
 }
 
-export function useAutoPageTour(tourId: TourId) {
+
+
+export function useAutoPageTour(tourId: TourId, options?: AutoPageTourOptions) {
+
   const { t } = useTranslation();
+
+  const toursEnabled = useUiStore((s) => s.toursEnabled);
+
   const toursAutoStart = useUiStore((s) => s.toursAutoStart);
+
   const completed = useUiStore((s) => s.completedTours[tourId]);
+
   const completeTour = useUiStore((s) => s.completeTour);
+
   const driverRef = useRef<Driver | null>(null);
+
   const startedRef = useRef(false);
 
+  const prepareStep = options?.prepareStep;
+
+
+
   const startTour = useCallback(() => {
+
+    if (!toursEnabled) return;
+
     const steps = getTourSteps(tourId, (k) => t(k));
-    if (steps.length === 0) return;
+
     driverRef.current?.destroy();
-    driverRef.current = createDriver(t, () => completeTour(tourId));
-    driverRef.current.setSteps(steps);
-    driverRef.current.drive();
-  }, [t, tourId, completeTour]);
+
+    driverRef.current = createTourDriver({
+
+      t,
+
+      onDone: () => completeTour(tourId),
+
+      prepareStep,
+
+    });
+
+    runTour(driverRef.current, steps);
+
+  }, [t, tourId, completeTour, toursEnabled, prepareStep]);
+
+
 
   useEffect(() => {
+
     if ((window as unknown as { __CV_E2E__?: boolean }).__CV_E2E__) return;
-    if (!toursAutoStart || completed || startedRef.current) return;
+
+    if (!toursEnabled || !toursAutoStart || completed || startedRef.current) return;
+
     const steps = getTourSteps(tourId, (k) => t(k));
+
     if (steps.length === 0) return;
+
     startedRef.current = true;
-    const timer = window.setTimeout(() => startTour(), 600);
+
+    const timer = window.setTimeout(() => startTour(), 800);
+
     return () => window.clearTimeout(timer);
-  }, [toursAutoStart, completed, tourId, startTour, t]);
+
+  }, [toursEnabled, toursAutoStart, completed, tourId, startTour, t]);
+
+
+
+  useEffect(() => () => {
+
+    driverRef.current?.destroy();
+
+  }, []);
+
+
 
   return startTour;
+
 }
+
+
 
 export function useRunTour() {
+
   const { t } = useTranslation();
+
+  const toursEnabled = useUiStore((s) => s.toursEnabled);
+
   const completeTour = useUiStore((s) => s.completeTour);
+
   const driverRef = useRef<Driver | null>(null);
 
-  return useCallback((tourId: TourId) => {
+
+
+  return useCallback((tourId: TourId, options?: AutoPageTourOptions) => {
+
+    if (!toursEnabled) return;
+
     const steps = getTourSteps(tourId, (k) => t(k));
-    if (steps.length === 0) return;
+
     driverRef.current?.destroy();
-    driverRef.current = createDriver(t, () => completeTour(tourId));
-    driverRef.current.setSteps(steps);
-    driverRef.current.drive();
-  }, [t, completeTour]);
+
+    driverRef.current = createTourDriver({
+
+      t,
+
+      onDone: () => completeTour(tourId),
+
+      prepareStep: options?.prepareStep,
+
+    });
+
+    runTour(driverRef.current, steps);
+
+  }, [t, completeTour, toursEnabled]);
+
 }
+
+

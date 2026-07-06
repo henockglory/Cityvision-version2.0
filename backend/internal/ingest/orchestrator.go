@@ -36,7 +36,7 @@ func NewAIClient(cfg *config.Config) *AIClient {
 	}
 	return &AIClient{
 		baseURL: fmt.Sprintf("http://%s:%d", host, cfg.AIEnginePort),
-		httpClient: &http.Client{Timeout: 15 * time.Second},
+		httpClient: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
@@ -61,6 +61,7 @@ type StartCameraRequest struct {
 	AnalyticsThresholds  AnalyticsThresholds      `json:"analytics_thresholds,omitempty"`
 	EvidenceCaptureRules []map[string]interface{} `json:"evidence_capture_rules,omitempty"`
 	CapabilityProfiles   []map[string]interface{} `json:"capability_profiles,omitempty"`
+	CapabilityManifest   *CapabilityManifest    `json:"capability_manifest,omitempty"`
 }
 
 func (c *AIClient) StartCamera(ctx context.Context, cameraID string, req StartCameraRequest) error {
@@ -130,6 +131,50 @@ func (c *AIClient) Healthy(ctx context.Context) bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode < 500
+}
+
+// FetchHealth returns AI /health as string map (all keys stringified).
+func (c *AIClient) FetchHealth(ctx context.Context) (map[string]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ai health: %s", string(b))
+	}
+	var raw map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		out[k] = fmt.Sprint(v)
+	}
+	return out, nil
+}
+
+// ReloadSecondaryModels asks the AI engine to reload secondary/org ONNX models.
+func (c *AIClient) ReloadSecondaryModels(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/admin/reload-secondary-models", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ai reload: %s", string(b))
+	}
+	return nil
 }
 
 // ListRunningCameras returns camera IDs currently ingesting on the AI engine.
@@ -241,7 +286,12 @@ func (o *Orchestrator) InvalidateConfigHashes() {
 }
 
 // SyncNow runs one orchestrator sync immediately (e.g. after spatial seed).
+// It also clears the aiDownUntil backoff so a manual resync-spatial always
+// reaches the AI even if it was recently detected as unreachable.
 func (o *Orchestrator) SyncNow(ctx context.Context) {
+	o.mu.Lock()
+	o.aiDownUntil = time.Time{}
+	o.mu.Unlock()
 	o.sync(ctx)
 }
 
@@ -307,7 +357,7 @@ func (o *Orchestrator) sync(ctx context.Context) {
 	o.aiDownUntil = time.Time{}
 	o.reconcileWithAI(ctx)
 	rows, err := o.pool.Query(ctx, `
-		SELECT c.id, c.org_id
+		SELECT c.id, c.org_id, c.metadata
 		FROM cameras c WHERE c.is_active = TRUE`)
 	if err != nil {
 		o.log.Error("orchestrator query failed", "error", err)
@@ -318,7 +368,21 @@ func (o *Orchestrator) sync(ctx context.Context) {
 	seen := make(map[uuid.UUID]bool)
 	for rows.Next() {
 		var id, orgID uuid.UUID
-		if err := rows.Scan(&id, &orgID); err != nil {
+		var meta json.RawMessage
+		if err := rows.Scan(&id, &orgID, &meta); err != nil {
+			continue
+		}
+		if o.skipInactiveDemoCamera(ctx, orgID, id, meta) {
+			o.mu.Lock()
+			wasActive := o.active[id]
+			if wasActive {
+				o.mu.Unlock()
+				_ = o.ai.StopCamera(ctx, id.String())
+				o.mu.Lock()
+				delete(o.active, id)
+				delete(o.configHash, id)
+			}
+			o.mu.Unlock()
 			continue
 		}
 		seen[id] = true
@@ -342,6 +406,7 @@ func (o *Orchestrator) sync(ctx context.Context) {
 		thresholds := o.mergeAnalyticsThresholds(ctx, orgID, id)
 		evidenceRules := o.buildEvidenceCaptureRulesForCamera(ctx, orgID, id)
 		capProfiles := o.buildCapabilityProfiles(ctx, orgID, id)
+		manifest := o.buildCapabilityManifest(ctx, orgID, id, spatialCfg, capProfiles, evidenceRules)
 		req := StartCameraRequest{
 			OrgID:                orgID.String(),
 			SpatialRules:         spatialCfg,
@@ -352,6 +417,7 @@ func (o *Orchestrator) sync(ctx context.Context) {
 			AnalyticsThresholds:  thresholds,
 			EvidenceCaptureRules: evidenceRules,
 			CapabilityProfiles:   capProfiles,
+			CapabilityManifest:   &manifest,
 		}
 		if videoFile != "" {
 			req.VideoFile = videoFile
@@ -507,7 +573,7 @@ func (o *Orchestrator) buildSpatialConfig(ctx context.Context, orgID, cameraID u
 		if z.CameraID != nil && *z.CameraID != cameraID {
 			continue
 		}
-		var polygon []map[string]float64
+		var polygon []map[string]interface{}
 		_ = json.Unmarshal(z.Polygon, &polygon)
 		loiterSec := 30
 		if strings.HasPrefix(z.Name, "e2e-") || os.Getenv("E2E_MODE") == "1" {
@@ -525,6 +591,7 @@ func (o *Orchestrator) buildSpatialConfig(ctx context.Context, orgID, cameraID u
 			"loiter_threshold": loiterSec,
 		})
 	}
+	o.applyRuleSpeedLimitsToZones(ctx, orgID, cameraID, zoneList)
 
 	lineList := make([]map[string]interface{}, 0)
 	for _, l := range lines {
@@ -538,12 +605,25 @@ func (o *Orchestrator) buildSpatialConfig(ctx context.Context, orgID, cameraID u
 		if l.Direction != nil {
 			dir = *l.Direction
 		}
+		// Parse the rich behavior config (mirrors zones). class_filter on the line
+		// is the single source of truth for what the counter counts ([C.27]/[C.30]).
+		lineBehavior, lineBehaviorConfig := parseZoneBehavior(l.BehaviorConfig, "line_cross")
+		classFilter := "any"
+		if cf, ok := lineBehaviorConfig["class_filter"].(string); ok && cf != "" {
+			classFilter = cf
+		}
+		if bdir, ok := lineBehaviorConfig["direction"].(string); ok && bdir != "" && dir == "unknown" {
+			dir = bdir
+		}
 		lineList = append(lineList, map[string]interface{}{
-			"line_id":    l.Name,
-			"name":       l.Name,
-			"start":      start,
-			"end":        end,
-			"direction":  dir,
+			"line_id":         l.Name,
+			"name":            l.Name,
+			"start":           start,
+			"end":             end,
+			"direction":       dir,
+			"behavior":        lineBehavior,
+			"behavior_config": lineBehaviorConfig,
+			"class_filter":    classFilter,
 		})
 	}
 
@@ -575,6 +655,73 @@ func parseZoneBehavior(raw json.RawMessage, zoneKind string) (string, map[string
 		behavior = zoneKind
 	}
 	return behavior, cfg
+}
+
+// applyRuleSpeedLimitsToZones overlays speed_limit_kmh from enabled speeding rules
+// (bindings.speed_kmh + zone_name) so the AI zone engine uses the same threshold as the UI rule.
+func (o *Orchestrator) applyRuleSpeedLimitsToZones(
+	ctx context.Context,
+	orgID, cameraID uuid.UUID,
+	zones []map[string]interface{},
+) {
+	rows, err := o.pool.Query(ctx, `
+		SELECT definition FROM rules
+		WHERE org_id = $1 AND is_enabled = TRUE`, orgID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	camStr := cameraID.String()
+	zoneLimits := map[string]float64{}
+	for rows.Next() {
+		var defRaw []byte
+		if err := rows.Scan(&defRaw); err != nil {
+			continue
+		}
+		var def map[string]interface{}
+		if err := json.Unmarshal(defRaw, &def); err != nil {
+			continue
+		}
+		if !ruleAppliesToCamera(def, camStr) {
+			continue
+		}
+		bindings, _ := def["bindings"].(map[string]interface{})
+		if bindings == nil {
+			continue
+		}
+		zoneName, _ := bindings["zone_name"].(string)
+		if zoneName == "" {
+			continue
+		}
+		limit, ok := toFloat64(bindings["speed_kmh"])
+		if !ok || limit <= 0 {
+			continue
+		}
+		// Lowest active limit wins when multiple rules target the same zone.
+		if prev, exists := zoneLimits[zoneName]; !exists || limit < prev {
+			zoneLimits[zoneName] = limit
+		}
+	}
+	if len(zoneLimits) == 0 {
+		return
+	}
+	for _, z := range zones {
+		name, _ := z["name"].(string)
+		if name == "" {
+			name, _ = z["zone_id"].(string)
+		}
+		limit, ok := zoneLimits[name]
+		if !ok {
+			continue
+		}
+		cfg, _ := z["behavior_config"].(map[string]interface{})
+		if cfg == nil {
+			cfg = map[string]interface{}{}
+		}
+		cfg["speed_limit_kmh"] = limit
+		z["behavior_config"] = cfg
+	}
 }
 
 var presenceRuleTemplates = map[string]bool{

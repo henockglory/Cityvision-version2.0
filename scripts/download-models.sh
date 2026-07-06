@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Télécharge les modèles IA requis : YOLO, InsightFace (buffalo_l), PaddleOCR
+# Télécharge les modèles IA primaires : YOLO, InsightFace (buffalo_l), PaddleOCR.
+# Les modèles secondaires (phone, seatbelt) sont construits par install-ai-models.sh
+# via build-secondary-models.sh — pas ici (pas d'URL de téléchargement directe).
 # Usage: bash scripts/download-models.sh [--skip-yolo]
 set -euo pipefail
 
@@ -46,21 +48,7 @@ fi
 
 echo "==> Downloading InsightFace buffalo_l"
 _ensure_pip_extra insightface identity
-if [[ -d "$IFACE_DIR/models/buffalo_l" ]] || [[ -d "$HOME/.insightface/models/buffalo_l" ]]; then
-  echo "[OK] InsightFace buffalo_l already present"
-else
-  "$PYTHON" - <<PY
-from pathlib import Path
-root = Path("${ROOT}")
-try:
-    from insightface.app import FaceAnalysis
-    app = FaceAnalysis(name="buffalo_l", root=str(root / "ai-engine" / "models" / "insightface"))
-    app.prepare(ctx_id=-1)
-    print("[OK] InsightFace buffalo_l downloaded")
-except Exception as e:
-    raise SystemExit(f"[ERR] InsightFace download failed: {e}")
-PY
-fi
+bash "$ROOT/scripts/download-insightface.sh"
 
 echo "==> Initializing PaddleOCR models"
 _ensure_pip_extra paddleocr anpr
@@ -70,14 +58,14 @@ if ! "$PYTHON" -c "import paddleocr" 2>/dev/null; then
 fi
 "$PYTHON" - <<'PY'
 try:
-    from paddleocr import PaddleOCR
-    PaddleOCR(use_angle_cls=True, lang="en")
-    print("[OK] PaddleOCR models ready")
+    import numpy as np
+    from citevision_ai.utils.paddle_ocr_compat import create_paddle_ocr, parse_ocr_lines, run_ocr
+    ocr = create_paddle_ocr()
+    run_ocr(ocr, np.zeros((48, 160, 3), dtype=np.uint8))
+    parse_ocr_lines([])
+    print("[OK] PaddleOCR models ready + inference smoke ok")
 except Exception as e:
     raise SystemExit(f"[ERR] PaddleOCR init failed: {e}")
 PY
 
-echo "==> Downloading secondary models (driver phone, seatbelt)"
-bash "$ROOT/scripts/download-secondary-models.sh" || echo "[WARN] secondary models step reported issues (honest degradation applies)"
-
-echo "==> All AI models download step complete"
+echo "==> Primary models download step complete"

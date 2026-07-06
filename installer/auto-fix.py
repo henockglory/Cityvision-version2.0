@@ -18,7 +18,14 @@ IS_WINDOWS = platform.system() == "Windows"
 MAX_ROUNDS = 8
 AI_HEALTH_URL = "http://localhost:8001/health"
 
-HEALTH_KEYS = ("yolo_loaded", "face_loaded", "plate_loaded")
+HEALTH_KEYS = (
+    "yolo_loaded",
+    "face_loaded",
+    "plate_loaded",
+    "yolo_cuda",
+    "driver_phone_model_loaded",
+    "seatbelt_model_loaded",
+)
 
 
 def _to_wsl_path(win_path: Path) -> str:
@@ -97,8 +104,8 @@ def remediate_stream(missing: list[str]) -> Iterator[str]:
             yield "Première passe ensure-ai-stack — nouvelle tentative…"
 
     if any(k in missing for k in HEALTH_KEYS) or "ai_down" in missing:
-        yield "Téléchargement / initialisation des modèles IA…"
-        rc, out = _run_bash("scripts/download-models.sh", "--skip-yolo", timeout=600)
+        yield "Installation / réparation complète des modèles IA…"
+        rc, out = _run_bash("scripts/install-ai-models.sh", "--fix", timeout=3600)
         for line in out.splitlines()[-15:]:
             if line.strip():
                 yield line.strip()
@@ -157,7 +164,7 @@ def ensure_launch_ai_stream(max_rounds: int = MAX_ROUNDS) -> Iterator[dict]:
         if not missing:
             yield {
                 "event": "ai_ready",
-                "message": "AI Engine opérationnel — YOLO, InsightFace et PaddleOCR chargés",
+                "message": "AI Engine opérationnel — tous les modèles IA chargés (registry)",
             }
             return
 
@@ -165,6 +172,9 @@ def ensure_launch_ai_stream(max_rounds: int = MAX_ROUNDS) -> Iterator[dict]:
             "yolo_loaded": "YOLO",
             "face_loaded": "InsightFace",
             "plate_loaded": "PaddleOCR",
+            "yolo_cuda": "CUDA GPU",
+            "driver_phone_model_loaded": "Téléphone (ONNX)",
+            "seatbelt_model_loaded": "Ceinture (ONNX)",
             "ai_down": "AI Engine",
         }
         miss_txt = ", ".join(labels.get(m, m) for m in missing)
@@ -188,7 +198,7 @@ def ensure_launch_ai_stream(max_rounds: int = MAX_ROUNDS) -> Iterator[dict]:
             if not diagnose(health):
                 yield {
                     "event": "ai_ready",
-                    "message": "AI Engine opérationnel — YOLO, InsightFace et PaddleOCR chargés",
+                    "message": "AI Engine opérationnel — tous les modèles IA chargés (registry)",
                 }
                 return
             time.sleep(3)

@@ -67,6 +67,7 @@ export function evidenceQuality(
     clip?: { loading: boolean; error: boolean; blobUrl?: string; duration?: number };
     scene?: { loading: boolean; error: boolean; blobUrl?: string };
     subject?: { loading: boolean; error: boolean; blobUrl?: string };
+    plate?: { loading: boolean; error: boolean; blobUrl?: string };
   },
 ): EvidenceQuality {
   const slots = evidenceMediaSlots(snapshot, orgId);
@@ -81,8 +82,9 @@ export function evidenceQuality(
 
   const anyLoading = Boolean(
     (slots.urls.clip && mediaState?.clip?.loading)
-    || (slots.urls.scene && mediaState?.scene?.loading)
-    || (slots.urls.subject && mediaState?.subject?.loading),
+    ||     (slots.urls.scene && mediaState?.scene?.loading)
+    || (slots.urls.subject && mediaState?.subject?.loading)
+    || (slots.urls.plate && mediaState?.plate?.loading),
   );
   if (anyLoading) {
     return { state: 'loading', loaded: 0, expected, clipDurationOk: false };
@@ -94,11 +96,13 @@ export function evidenceQuality(
   if (slots.urls.clip && mediaState?.clip?.blobUrl && !mediaState.clip.error && clipDurationOk) loaded += 1;
   if (slots.urls.scene && mediaState?.scene?.blobUrl && !mediaState.scene.error) loaded += 1;
   if (slots.urls.subject && mediaState?.subject?.blobUrl && !mediaState.subject.error) loaded += 1;
+  if (slots.urls.plate && mediaState?.plate?.blobUrl && !mediaState.plate.error) loaded += 1;
 
   const anyError = Boolean(
     (slots.urls.clip && mediaState?.clip?.error)
     || (slots.urls.scene && mediaState?.scene?.error)
-    || (slots.urls.subject && mediaState?.subject?.error),
+    || (slots.urls.subject && mediaState?.subject?.error)
+    || (slots.urls.plate && mediaState?.plate?.error),
   );
 
   if (loaded === expected && expected > 0) {
@@ -180,25 +184,42 @@ export function evidenceMediaSlots(
 ): {
   total: number;
   have: number;
-  urls: { clip?: string; scene?: string; subject?: string };
+  urls: { clip?: string; scene?: string; subject?: string; plate?: string };
 } {
   const p = normalizeEvidencePolicy(policy);
   const ev = parseEvidenceSnapshot(snapshot as EvidenceSnapshot | undefined);
   const pkg = ev.package;
   const scene = pkg?.images?.find((i) => i.role === 'scene');
   const subject = pkg?.images?.find((i) => i.role === 'subject');
-  const clipUrl = p.clip_seconds > 0 ? resolveEvidenceMediaUrl(pkg?.clip?.url, pkg?.clip?.asset_id, orgId) : undefined;
-  const sceneUrl = p.images.some((i) => i.role === 'scene')
+  const plate = pkg?.images?.find((i) => i.role === 'plate');
+  const pkgHasClip = Boolean(pkg?.clip?.url || pkg?.clip?.asset_id);
+  const pkgHasScene = Boolean(scene?.url || scene?.asset_id);
+  const pkgHasSubject = Boolean(subject?.url || subject?.asset_id);
+  const pkgHasPlate = Boolean(plate?.url || plate?.asset_id);
+  const clipUrl = p.clip_seconds > 0 && pkgHasClip
+    ? resolveEvidenceMediaUrl(pkg?.clip?.url, pkg?.clip?.asset_id, orgId)
+    : undefined;
+  const sceneUrl = p.images.some((i) => i.role === 'scene') && pkgHasScene
     ? resolveEvidenceMediaUrl(scene?.url, scene?.asset_id, orgId)
     : undefined;
-  const subjectUrl = p.images.some((i) => i.role === 'subject')
+  const subjectUrl = p.images.some((i) => i.role === 'subject') && pkgHasSubject
     ? resolveEvidenceMediaUrl(subject?.url, subject?.asset_id, orgId)
     : undefined;
-  const have = [clipUrl, sceneUrl, subjectUrl].filter(Boolean).length;
+  const plateUrl = p.images.some((i) => i.role === 'plate') && pkgHasPlate
+    ? resolveEvidenceMediaUrl(plate?.url, plate?.asset_id, orgId)
+    : undefined;
+  const have = [clipUrl, sceneUrl, subjectUrl, plateUrl].filter(Boolean).length;
+  let total = 0;
+  if (pkg && (pkgHasClip || pkgHasScene || pkgHasSubject || pkgHasPlate)) {
+    if (p.clip_seconds > 0 && pkgHasClip) total += 1;
+    if (p.images.some((i) => i.role === 'scene') && pkgHasScene) total += 1;
+    if (p.images.some((i) => i.role === 'subject') && pkgHasSubject) total += 1;
+    if (p.images.some((i) => i.role === 'plate') && pkgHasPlate) total += 1;
+  }
   return {
-    total: requiredEvidenceSlots(p),
+    total,
     have,
-    urls: { clip: clipUrl, scene: sceneUrl, subject: subjectUrl },
+    urls: { clip: clipUrl, scene: sceneUrl, subject: subjectUrl, plate: plateUrl },
   };
 }
 

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -55,6 +56,9 @@ func (a *API) PatchDemoSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if a.Orchestrator != nil && (req.ActiveVideoID != nil || req.ActiveCameraID != nil) {
+		go a.Orchestrator.SyncNow(context.Background())
 	}
 	writeJSON(w, http.StatusOK, st)
 }

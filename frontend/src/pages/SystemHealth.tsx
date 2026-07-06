@@ -1,11 +1,14 @@
 import { useTranslation } from 'react-i18next';
-import { Activity, Cpu, MemoryStick, HardDrive, Wifi, Server, Eye, ScanLine, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Activity, Cpu, MemoryStick, HardDrive, Wifi, Server, Eye, ScanLine, CheckCircle2, XCircle, AlertTriangle, Upload } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
-import { useHealth, useAiHealth } from '@/hooks/api/queries';
+import ModelImportWizard from '@/components/aimodels/ModelImportWizard';
+import { useHealth, useAiHealth, useModelPack } from '@/hooks/api/queries';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
+import { useAuthStore } from '@/stores/authStore';
 import type { SystemHealthMetric } from '@/types';
 
 const metricIcons: Record<string, typeof Cpu> = {
@@ -110,10 +113,25 @@ function ModelRow({ icon: Icon, label, loaded, hint }: ModelRowProps) {
 }
 
 export default function SystemHealth() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const orgId = useAuthStore((s) => s.orgId);
   const startTour = useAutoPageTour('health');
   const { data: health = [], isLoading, isError, refetch } = useHealth();
   const { data: aiHealth, refetch: refetchAi } = useAiHealth();
+  const { data: modelPack, refetch: refetchPack } = useModelPack();
+  const lang = i18n.language.startsWith('en') ? 'en' : 'fr';
+  const wizardOpen = searchParams.get('wizard') === 'import-model';
+
+  const closeWizard = () => {
+    searchParams.delete('wizard');
+    setSearchParams(searchParams, { replace: true });
+  };
+
+  const openWizard = () => {
+    searchParams.set('wizard', 'import-model');
+    setSearchParams(searchParams, { replace: true });
+  };
 
   if (isLoading) return <LoadingState />;
 
@@ -135,7 +153,7 @@ export default function SystemHealth() {
           hint={t('systemHealth.emptyHint')}
           icon={Activity}
           action={
-            <button className="cv-btn-secondary inline-flex items-center gap-2" onClick={() => { void refetch(); void refetchAi(); }}>
+            <button className="cv-btn-secondary inline-flex items-center gap-2" onClick={() => { void refetch(); void refetchAi(); void refetchPack(); }}>
               Relancer la vérification
             </button>
           }
@@ -156,35 +174,66 @@ export default function SystemHealth() {
         ))}
       </div>
 
-      <h2 className="font-display text-sm font-semibold text-cv-muted uppercase tracking-wider mt-8 mb-3">
-        {t('systemHealth.aiModels')}
+      <h2 className="font-display text-sm font-semibold text-cv-muted uppercase tracking-wider mt-8 mb-3 flex items-center justify-between gap-3 flex-wrap">
+        <span>{t('systemHealth.aiModels')}</span>
+        {orgId && (
+          <button type="button" data-tour="import-model" className="cv-btn-primary text-xs inline-flex items-center gap-1.5" onClick={openWizard}>
+            <Upload className="w-3.5 h-3.5" />
+            {t('modelImport.openWizard', 'Importer un modèle ONNX')}
+          </button>
+        )}
       </h2>
+      {modelPack?.gpu_health_key && (
+        <div className={`mb-3 text-xs rounded-lg px-3 py-2 border ${
+          modelPack.gpu_loaded
+            ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+            : 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+        }`}>
+          {modelPack.gpu_loaded
+            ? t('systemHealth.gpuOk', { defaultValue: "GPU CUDA actif pour l'inférence YOLO." })
+            : t('systemHealth.gpuMissing', { defaultValue: 'GPU CUDA indisponible — inférence CPU (repli).' })}
+        </div>
+      )}
       {aiHealth && !aiHealth.reachable ? (
         <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
           <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           <span>{t('systemHealth.aiUnreachable', 'Moteur IA non joignable — les modèles ne peuvent pas être vérifiés.')}</span>
         </div>
+      ) : modelPack?.models?.length ? (
+        <div id="health-ai-models" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {modelPack.models.map((m) => (
+            <ModelRow
+              key={m.id}
+              icon={m.kind === 'secondary' ? ScanLine : m.id === 'insightface' ? Eye : Cpu}
+              label={lang === 'en' ? (m.label_en || m.id) : (m.label_fr || m.id)}
+              loaded={m.loaded}
+              hint={!m.loaded ? (m.notes || t('systemHealth.modelMissingHint')) : undefined}
+            />
+          ))}
+        </div>
       ) : (
         <div id="health-ai-models" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <ModelRow
-            icon={Cpu}
-            label="YOLO (détection)"
-            loaded={aiHealth?.yolo ?? false}
-            hint={t('systemHealth.modelMissingHint')}
-          />
-          <ModelRow
-            icon={Eye}
-            label={t('systemHealth.faceModel', 'Reconnaissance faciale')}
-            loaded={aiHealth?.face ?? false}
-            hint={t('systemHealth.modelMissingHint')}
-          />
-          <ModelRow
-            icon={ScanLine}
-            label={t('systemHealth.plateModel', 'Lecture de plaques (OCR)')}
-            loaded={aiHealth?.plate ?? false}
-            hint={t('systemHealth.modelMissingHint')}
-          />
+          <ModelRow icon={Cpu} label="YOLO (détection)" loaded={aiHealth?.yolo ?? false} hint={t('systemHealth.modelMissingHint')} />
+          <ModelRow icon={Eye} label={t('systemHealth.faceModel', 'Reconnaissance faciale')} loaded={aiHealth?.face ?? false} hint={t('systemHealth.modelMissingHint')} />
+          <ModelRow icon={ScanLine} label={t('systemHealth.plateModel', 'Lecture de plaques (OCR)')} loaded={aiHealth?.plate ?? false} hint={t('systemHealth.modelMissingHint')} />
         </div>
+      )}
+      {modelPack?.install_command && (
+        <p className="text-[10px] text-cv-muted mt-3 font-mono">
+          {t('systemHealth.modelPackInstall', { defaultValue: 'Installation / vérif' })}: {modelPack.install_command}
+          {modelPack.verify_command ? ` · ${modelPack.verify_command}` : ''}
+        </p>
+      )}
+      {orgId && (
+        <ModelImportWizard
+          orgId={orgId}
+          open={wizardOpen}
+          onClose={closeWizard}
+          onSuccess={() => {
+            void refetchAi();
+            void refetchPack();
+          }}
+        />
       )}
     </div>
   );

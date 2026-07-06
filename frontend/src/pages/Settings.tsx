@@ -50,8 +50,10 @@ export default function Settings() {
   const toggleSoundAlerts = useUiStore((s) => s.toggleSoundAlerts);
   const toggleNetworkEffect = useUiStore((s) => s.toggleNetworkEffect);
   const toggleToursAutoStart = useUiStore((s) => s.toggleToursAutoStart);
+  const toggleToursEnabled = useUiStore((s) => s.toggleToursEnabled);
   const resetAllTours = useUiStore((s) => s.resetAllTours);
   const toursAutoStart = useUiStore((s) => s.toursAutoStart);
+  const toursEnabled = useUiStore((s) => s.toursEnabled);
   const { playClick } = useSound();
   const runTour = useRunTour();
   const startSettingsTour = useAutoPageTour('settings');
@@ -189,12 +191,20 @@ export default function Settings() {
                 </button>
               } />
               <Row label={t('settings.sound')} custom={<MuteToggle />} />
-              <div className="border-t border-cv-border pt-4 mt-2">
+              <div id="settings-tours" className="border-t border-cv-border pt-4 mt-2">
                 <p className="text-sm font-medium mb-2">{t('settings.toursTitle')}</p>
+                <Row
+                  label={t('settings.toursEnabled')}
+                  custom={
+                    <button type="button" onClick={() => { playClick(); toggleToursEnabled(); }} className="cv-btn-secondary text-xs">
+                      {toursEnabled ? t('settings.toursEnabledOn') : t('settings.toursEnabledOff')}
+                    </button>
+                  }
+                />
                 <Row
                   label={t('settings.toursAutoStart')}
                   custom={
-                    <button type="button" onClick={() => { playClick(); toggleToursAutoStart(); }} className="cv-btn-secondary text-xs">
+                    <button type="button" onClick={() => { playClick(); toggleToursAutoStart(); }} className="cv-btn-secondary text-xs" disabled={!toursEnabled}>
                       {toursAutoStart ? t('settings.toursAutoOn') : t('settings.toursAutoOff')}
                     </button>
                   }
@@ -205,6 +215,7 @@ export default function Settings() {
                       key={id}
                       type="button"
                       className="cv-btn-secondary text-xs"
+                      disabled={!toursEnabled}
                       onClick={() => { playClick(); runTour(id); }}
                     >
                       {t(TOUR_LABELS[id])}
@@ -287,7 +298,7 @@ export default function Settings() {
               <div className="border-t border-cv-border pt-4 mt-4">
                 <p className="text-sm font-medium mb-2 flex items-center gap-1">
                   Authentification à deux facteurs
-                  <InfoTip content="Protège votre compte avec un code TOTP (Google Authenticator, etc.)" />
+                  <InfoTip helpKey="totp2fa" content="Protège votre compte avec un code TOTP (Google Authenticator, etc.)" />
                 </p>
                 {totpSecret && <p className="text-xs font-mono bg-cv-deep/50 p-2 rounded mb-2 break-all">{totpSecret}</p>}
                 <div className="flex gap-2 flex-wrap">

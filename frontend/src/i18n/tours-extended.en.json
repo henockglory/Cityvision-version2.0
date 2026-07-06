@@ -1,0 +1,829 @@
+{
+  "tours": {
+    "common": {
+      "tip": "Tip",
+      "procedure": "Steps",
+      "waitSeconds": "Take your time… {{n}} s",
+      "progress": "{{current}} / {{total}}",
+      "fieldTitle": "Field help",
+      "fieldAria": "Open detailed help"
+    },
+    "labels": {
+      "login": "Sign in",
+      "addUser": "Invite user",
+      "setup": "Initial setup",
+      "redLightAssistant": "Red light assistant",
+      "confirmDialog": "Confirmation",
+      "ruleActivation": "Rule activation wizard",
+      "cameraWizard": "Camera wizard",
+      "modelImport": "ONNX model import",
+      "evidenceViewer": "Evidence viewer"
+    },
+    "global": {
+      "sidebar": "Main menu",
+      "sidebarDesc": "The left menu lists all CitéVision sections: dashboard, cameras, rules, alerts, and more. Each icon opens a dedicated page.",
+      "sidebarTip": "On mobile, open the menu with the ☰ button at the top. On large screens you can collapse it to save space.",
+      "sidebarSteps": [
+        "Find the groups: Surveillance, Analysis, Administration.",
+        "Click an entry to switch pages.",
+        "Use the bottom button to collapse or expand the menu."
+      ],
+      "search": "Quick search",
+      "searchDesc": "Type a camera, rule, or alert name to jump there without browsing menus.",
+      "searchTip": "Click the bar and type the first letters of what you need.",
+      "searchSteps": [
+        "Click the search bar at the top.",
+        "Type at least 2 characters.",
+        "Pick a result from the list."
+      ],
+      "theme": "Light / dark theme",
+      "themeDesc": "Switch between dark mode (comfort) and light mode (daylight readability). Your choice is remembered.",
+      "themeTip": "Tutorials and pop-ups adapt automatically to the active theme.",
+      "content": "Work area",
+      "contentDesc": "Page content appears here. A small ? button top-right replays the detailed tutorial for the current page.",
+      "contentTip": "Read each step calmly: a 4-second pause helps you absorb the information.",
+      "contentSteps": [
+        "Navigate via the side menu.",
+        "Read the page title and subtitle.",
+        "Click ? anytime to replay the guide."
+      ]
+    },
+    "login": {
+      "brand": "Welcome to CitéVision",
+      "brandDesc": "CitéVision is the intelligent video platform: cameras, zones, AI rules, and evidence-backed alerts. This page is only for signing in.",
+      "brandTip": "Light/dark theme (top right) also applies to tutorials.",
+      "form": "Sign-in form",
+      "formDesc": "Enter the email and password from your administrator. After sign-in you land on the demo center or dashboard.",
+      "formTip": "If you see « server unreachable », check that the stack is running (scripts/start-linux.sh).",
+      "formSteps": [
+        "Enter your work email.",
+        "Type your password.",
+        "Click Sign in."
+      ],
+      "email": "Email address",
+      "emailDesc": "Unique account identifier. Must match exactly what is registered in CitéVision.",
+      "emailTip": "Use the full email, not just a first name.",
+      "password": "Password",
+      "passwordDesc": "Personal secret. Click the eye icon to verify typing without leaving it visible.",
+      "passwordTip": "After repeated failures, ask an admin to reset your password.",
+      "submit": "Sign in button",
+      "submitDesc": "Sends credentials to the server. If valid, you are redirected into the app.",
+      "submitTip": "Never share your password over chat or email.",
+      "submitSteps": [
+        "Double-check email and password.",
+        "Click Sign in.",
+        "Wait for redirect (1–2 seconds)."
+      ]
+    },
+    "setup": {
+      "brand": "First-time setup",
+      "brandDesc": "This page appears only once when CitéVision is deployed on a fresh server. You create the organization and administrator account.",
+      "brandTip": "Save the admin password — you need it for the first sign-in.",
+      "progress": "Setup steps",
+      "progressDesc": "Three steps: organization name, admin account, summary before validation.",
+      "progressTip": "You can go back without losing what you already entered.",
+      "progressSteps": [
+        "Step 1: organization name.",
+        "Step 2: admin email and password.",
+        "Step 3: review then Finish."
+      ],
+      "step1": "Organization",
+      "step1Desc": "Name shown in the UI (e.g. « City operations », « North warehouse »). You can change it later in Settings.",
+      "step1Tip": "Pick a name your team will recognize.",
+      "step2": "Administrator account",
+      "step2Desc": "Sign-in email and strong password (12+ chars, upper, lower, digit). This account has full rights.",
+      "step2Tip": "Confirm the password twice to avoid typos.",
+      "step2Steps": [
+        "Enter admin email.",
+        "Choose a strong password.",
+        "Repeat it in Confirm."
+      ],
+      "step3": "Summary",
+      "step3Desc": "Review organization and email before validating. After Finish you are redirected to sign-in.",
+      "step3Tip": "Setup fails if the backend server is not running.",
+      "step3Steps": [
+        "Check organization and email.",
+        "Click Finish.",
+        "Sign in with the same email and password."
+      ],
+      "submit": "Next / Finish button",
+      "submitDesc": "Moves to the next step or runs final creation on step 3.",
+      "submitTip": "A spinner means the server is working — please wait."
+    },
+    "dashboard": {
+      "statsTip": "Hover each card for a short explanation.",
+      "statsSteps": [
+        "Check how many cameras are active.",
+        "Review unacknowledged alerts.",
+        "See recent event volume.",
+        "Confirm how many rules are enabled."
+      ],
+      "alertsTip": "Red or orange alerts often need a quick response.",
+      "alertsSteps": [
+        "Read each alert message.",
+        "Click a row to open details.",
+        "Acknowledge once handled."
+      ],
+      "liveTip": "Detections appear only when a camera streams and a rule is enabled.",
+      "liveSteps": [
+        "Confirm a camera is online.",
+        "Enable at least one rule in Rules.",
+        "Wait 30–60 seconds for first events."
+      ],
+      "navAlerts": "Alerts shortcut",
+      "navAlertsDesc": "Opens the full alerts page with filters, evidence, and acknowledgement.",
+      "navAlertsTip": "Use this when the dashboard summary is not enough."
+    },
+    "map": {
+      "modesTip": "Start with “Plan” if you are new — simpler than the 3D globe.",
+      "modesSteps": [
+        "Choose Map, Plan, or Globe.",
+        "Zoom with the wheel or + / − buttons.",
+        "Return to plan view to reposition a camera."
+      ],
+      "canvasTip": "A misplaced map marker does not affect AI — only the video stream matters.",
+      "canvasSteps": [
+        "Hover a marker for live preview.",
+        "Click to open the camera card.",
+        "Drag the marker to fix GIS position."
+      ]
+    },
+    "rules": {
+      "catalogTip": "Filter by scale (national, enterprise, domestic) for your context.",
+      "catalogSteps": [
+        "Browse the illustrated catalog.",
+        "Read the real / partial / beta badge.",
+        "Click Configure on the rule you need."
+      ],
+      "activeTip": "Only rules listed here are actually monitored by the engine.",
+      "activeSteps": [
+        "Check the Enabled / Disabled toggle.",
+        "Open a rule to edit zones or thresholds.",
+        "Disable temporarily without deleting."
+      ],
+      "helpBtn": "Help button",
+      "helpBtnDesc": "This ? button replays the full Rules page tutorial anytime.",
+      "helpBtnTip": "Handy after an update or when onboarding a teammate."
+    },
+    "alerts": {
+      "filtersTip": "Combine filters to isolate one incident.",
+      "filtersSteps": [
+        "Pick a time range (today, 7 days…).",
+        "Filter by camera or rule type.",
+        "Sort by severity if the list is long."
+      ],
+      "list": "Alert list",
+      "listDesc": "Each row summarizes an incident: time, camera, triggered rule, and message. Alerts with evidence show a thumbnail.",
+      "listTip": "Click an alert to open details and download evidence.",
+      "listSteps": [
+        "Note the severity color.",
+        "Open the alert for clip and images.",
+        "Acknowledge when done."
+      ]
+    },
+    "videoWall": {
+      "layoutTip": "Start with 4 tiles — good balance of clarity and coverage.",
+      "layoutSteps": [
+        "Choose 1, 4, 9, or 16 tiles.",
+        "Assign one camera per tile.",
+        "Go fullscreen on one tile if needed."
+      ],
+      "gridTip": "A black tile usually means offline camera or broken RTSP.",
+      "gridSteps": [
+        "Check status on the Cameras page.",
+        "Wait 5 s for reconnect.",
+        "Swap in another camera if needed."
+      ]
+    },
+    "liveView": {
+      "playerTip": "The displayed stream is the same source analyzed by AI.",
+      "playerSteps": [
+        "Select a camera in the list.",
+        "Wait for the LIVE badge.",
+        "Use PTZ controls if supported."
+      ],
+      "sidebar": "Camera list",
+      "sidebarDesc": "All cameras one click away. Online / offline status is shown with a colored dot.",
+      "sidebarTip": "Camera names often include the site for easier scanning."
+    },
+    "cameras": {
+      "listTip": "“Offline” may be a network issue, not always hardware failure.",
+      "listSteps": [
+        "Verify IP address and RTSP port.",
+        "Test from Cameras → Edit.",
+        "Check System Health if many cameras drop."
+      ],
+      "wizardTip": "Have RTSP login and password ready before starting the wizard.",
+      "wizardSteps": [
+        "Click + Add camera.",
+        "Network scan or manual RTSP URL.",
+        "Test the stream before saving."
+      ]
+    },
+    "cameraWizard": {
+      "intro": "Camera wizard",
+      "introDesc": "This 4-step assistant connects an IP camera (RTSP) to CitéVision. No advanced networking skills required — follow the steps in order.",
+      "introTip": "Keep manufacturer credentials handy (often admin / camera password).",
+      "introSteps": [
+        "Step 1: find the camera on the network or enter URL.",
+        "Step 2: enter username and password.",
+        "Step 3: test the connection.",
+        "Step 4: confirm live preview."
+      ],
+      "step1": "Network discovery",
+      "step1Desc": "Enter the subnet (e.g. 192.168.1.0/24) and scan. Or switch to manual RTSP URL entry.",
+      "step1Tip": "Hikvision and Dahua often pre-fill the URL; check the manual for other brands.",
+      "step1Steps": [
+        "Enter your LAN subnet.",
+        "Click Scan.",
+        "Select the detected device."
+      ],
+      "step2": "Credentials",
+      "step2Desc": "Enter the camera RTSP username and password. They are stored securely for continuous streaming.",
+      "step2Tip": "If the test fails, ensure the account has “video stream” rights on the camera UI.",
+      "step3": "Connection test",
+      "step3Desc": "CitéVision tries to open the RTSP stream. Success means URL and credentials are correct.",
+      "step3Tip": "Common failure: wrong port (554 default) or RTSP disabled on the camera.",
+      "step4": "Preview and save",
+      "step4Desc": "Check the live image, give the camera a clear name, then confirm. It will appear in all lists and accept zones.",
+      "step4Tip": "Name by physical location (e.g. “North entrance”) for clearer alerts.",
+      "step4Steps": [
+        "Confirm the image is sharp.",
+        "Enter a clear name.",
+        "Click Finish."
+      ]
+    },
+    "zones": {
+      "toolbar": "Zone toolbar",
+      "toolbarDesc": "Pick Zone (polygon) or Line (counting) mode, select the source camera, then save your drawings.",
+      "toolbarTip": "A poorly named zone may prevent the right AI rule from applying.",
+      "toolbarSteps": [
+        "Select the camera to edit.",
+        "Switch Zone or Line as needed.",
+        "Save after each change."
+      ],
+      "canvasTip": "Minimum 3 clicks for a zone; 2 clicks for a counting line.",
+      "canvasSteps": [
+        "Click each polygon corner on the video.",
+        "Click Close polygon.",
+        "Drag points to adjust if needed."
+      ],
+      "behavior": "AI behavior",
+      "behaviorDesc": "Assign a semantic type (speed, counting, phone use, etc.). This determines which catalog rules can attach.",
+      "behaviorTip": "Menu options come from AI capabilities actually loaded on your server.",
+      "behaviorSteps": [
+        "Open the behavior selector.",
+        "Read the description under each option.",
+        "Save then enable the matching rule."
+      ]
+    },
+    "events": {
+      "filtersTip": "Filter by type (speed, crossing, presence…) to find one incident.",
+      "filtersSteps": [
+        "Choose the camera.",
+        "Select one or more event types.",
+        "Narrow the time range if the list is long."
+      ],
+      "timelineTip": "Each event is a raw AI detection — not always a final alert.",
+      "timelineSteps": [
+        "Click an event in the list.",
+        "Check timestamp and camera.",
+        "Open evidence in the right panel."
+      ],
+      "detail": "Detail and evidence",
+      "detailDesc": "The right panel shows the video clip (often 6 s), still images, and metadata (speed, object class, etc.).",
+      "detailTip": "Missing clip or images may mean evidence policy was not met at detection time."
+    },
+    "users": {
+      "tableTip": "Each role limits visible menu pages.",
+      "tableSteps": [
+        "Note the role (admin, operator, viewer…).",
+        "Edit via the Actions column.",
+        "Disable rather than delete to keep history."
+      ],
+      "add": "Add user",
+      "addDesc": "Create an account with email, password, and role. The user gets permissions matching their profile.",
+      "addTip": "Start with the least permissive role needed (least privilege).",
+      "addSteps": [
+        "Click Add at the top right.",
+        "Fill in the invitation form.",
+        "Share the temporary password securely."
+      ]
+    },
+    "addUser": {
+      "intro": "Invite a colleague",
+      "introDesc": "Create an account for a new operator or viewer. Only administrators can add users.",
+      "introTip": "The temporary password should be changed on first login if your policy requires it.",
+      "introSteps": [
+        "Enter full name (shown in audit logs).",
+        "Provide a valid email.",
+        "Pick the role that matches the job."
+      ],
+      "name": "Full name",
+      "nameDesc": "First and last name as shown in audit logs and user lists.",
+      "nameTip": "Avoid nicknames: prefer « Jane Doe » over « JD ».",
+      "email": "Account email",
+      "emailDesc": "Used as sign-in ID. Each email can be used only once in the organization.",
+      "emailTip": "Check spelling: a typo blocks sign-in.",
+      "password": "Temporary password",
+      "passwordDesc": "Minimum 12 characters. The user can change it under Settings → Profile after sign-in.",
+      "passwordTip": "Use a password manager to generate a strong value.",
+      "passwordSteps": [
+        "Generate at least 12 characters.",
+        "Share it over a secure channel.",
+        "Ask the user to change it quickly."
+      ],
+      "role": "RBAC role",
+      "roleDesc": "Admin: full access. Operator: cameras, rules, alerts. Viewer: read-only, no changes.",
+      "roleTip": "A viewer cannot enable rules or archive alerts.",
+      "roleSteps": [
+        "Read the three roles.",
+        "Pick the minimum needed.",
+        "Confirm with Create account."
+      ],
+      "submit": "Create account",
+      "submitDesc": "Saves the user immediately. They can sign in as soon as the server responds.",
+      "submitTip": "If it fails, check whether the email already exists."
+    },
+    "audit": {
+      "logTip": "Useful for security audits or disputes about operator actions.",
+      "logSteps": [
+        "Filter by date if the log is large.",
+        "Find author and action (login, rule, camera…).",
+        "Export or copy for external reports."
+      ]
+    },
+    "health": {
+      "servicesTip": "Red = stopped or unreachable. Restart via indicated scripts or contact admin.",
+      "servicesSteps": [
+        "Check Backend, AI engine, Rules engine, go2rtc.",
+        "Click a red service for instructions.",
+        "Wait 30 s after restart before retesting."
+      ],
+      "aiModelsTip": "Without YOLO, no object detection; without PaddleOCR, no plate reading.",
+      "aiModelsSteps": [
+        "Ensure each model shows “loaded”.",
+        "Import a custom ONNX model if needed.",
+        "Restart the AI engine after import."
+      ],
+      "importModel": "ONNX model import",
+      "importModelDesc": "Add a custom model (phone, seatbelt, etc.) to enrich zone behavior menus.",
+      "importModelTip": "The file must be a real exported .onnx, not a placeholder.",
+      "importModelSteps": [
+        "Click Import model.",
+        "Follow the 5-step wizard.",
+        "Confirm the model appears in System Health."
+      ]
+    },
+    "modelImport": {
+      "intro": "ONNX import wizard",
+      "introDesc": "This wizard registers a custom AI model for your organization. Once imported, it appears in zone and line menus and in the capabilities catalog.",
+      "introTip": "Prepare the .onnx file or a direct HTTPS URL to the file.",
+      "introSteps": [
+        "Pick a template or “custom”.",
+        "Provide file or URL.",
+        "Fill identity and classes.",
+        "Confirm — AI engine reloads models."
+      ],
+      "step1": "Template",
+      "step1Desc": "Templates pre-fill fields for phone use, seatbelt, etc. “Custom” leaves everything configurable.",
+      "step1Tip": "A matching template reduces configuration mistakes.",
+      "step2": "File source",
+      "step2Desc": "Upload a .onnx from your computer or provide a public HTTPS link. The server validates format before install.",
+      "step2Tip": "Typical size: a few MB to hundreds of MB depending on the model.",
+      "step2Steps": [
+        "Choose File or HTTPS link.",
+        "Select the .onnx.",
+        "Wait for upload to finish."
+      ],
+      "step3": "Identity",
+      "step3Desc": "Model ID, MQTT event type, FR/EN labels, and scope (zone, line, or both). Shown in the operator UI.",
+      "step3Tip": "Use short IDs without spaces for the technical name.",
+      "step4": "Classes",
+      "step4Desc": "List output classes and which ones trigger an alert (positive classes).",
+      "step4Tip": "For binary classification: negative, positive is a good start.",
+      "step5": "Validation",
+      "step5Desc": "Summary before submit. On success, the backend asks the AI engine to reload secondary models.",
+      "step5Tip": "If reload fails, check AI engine logs (port 8001).",
+      "step5Steps": [
+        "Review ID and event type.",
+        "Click Import.",
+        "Verify the model is loaded in Health."
+      ]
+    },
+    "redLightAssistant": {
+      "intro": "Red light assistant",
+      "introDesc": "This assistant guides you to configure two complementary zones on the same camera, then enable the red-light rule with evidence.",
+      "introTip": "Without both zones, the rule cannot work correctly.",
+      "introSteps": [
+        "Traffic-light zone: detects signal color.",
+        "Observation zone: detects crossing.",
+        "Step 3: enable the catalog rule."
+      ],
+      "step1": "Traffic-light zone (ROI)",
+      "step1Desc": "Draw a polygon on the traffic light in ZoneEditor and assign behavior traffic_light_color.",
+      "step1Tip": "Cover only the light, not the whole intersection.",
+      "step2": "Observation zone",
+      "step2Desc": "Draw the intersection zone (red_light_observation) where vehicles are monitored when the light is red.",
+      "step2Tip": "Same camera as the light zone — otherwise correlation fails.",
+      "step3": "Rule and evidence",
+      "step3Desc": "Once both zones show ✓ green, enable tpl-red-light with 6 s clip, 2 images, and plate reading.",
+      "step3Tip": "The button stays disabled until a zone is missing.",
+      "step3Steps": [
+        "Check both green ✓ marks.",
+        "Click Enable red-light rule.",
+        "Test in the Demo center."
+      ]
+    },
+    "confirmDialog": {
+      "intro": "Confirmation dialog",
+      "introDesc": "This dialog asks for your approval before an important action: delete, disable, reset, etc.",
+      "introTip": "Always read the message before confirming — some actions cannot be undone.",
+      "message": "Message and detail",
+      "messageDesc": "The title summarizes the action. The text explains consequences. A monospace line may name the affected item.",
+      "messageTip": "In danger mode (red), the action deletes or disables permanently.",
+      "actions": "Cancel or confirm",
+      "actionsDesc": "Cancel closes the dialog with no change. Confirm runs the described action.",
+      "actionsTip": "If unsure, click Cancel — you can return later.",
+      "actionsSteps": [
+        "Read title and message.",
+        "Click Cancel to abort.",
+        "Click Confirm only when sure."
+      ]
+    },
+    "settings": {
+      "tabsTip": "Each tab groups a topic: appearance, profile, email, evidence, tutorials…",
+      "tabsSteps": [
+        "General: language, theme, sounds, tutorials.",
+        "Organization: timezone, deployment profile.",
+        "Evidence & capture: clip length, image count."
+      ],
+      "toursPanel": "Guided tutorials",
+      "toursPanelDesc": "Enable or disable mini-tutorials on all pages and pop-ups. You can also manually replay each guide.",
+      "toursPanelTip": "Disabled = no auto-start, but ? stays available when tutorials are enabled.",
+      "toursPanelSteps": [
+        "Tutorials: master ON/OFF switch.",
+        "Auto-start: first visit per page.",
+        "Buttons below: replay a specific guide."
+      ]
+    },
+    "demo": {
+      "bannerTip": "All green chips = demo ready for a client presentation.",
+      "bannerSteps": [
+        "Server: backend API reachable.",
+        "Video: go2rtc stream active.",
+        "AI analysis: detections possible.",
+        "GPU CUDA: optional but recommended."
+      ],
+      "video": "Video panel",
+      "videoDesc": "Upload a test MP4 or pick a real camera. The LIVE badge confirms AI can analyze this stream.",
+      "videoTip": "Only one source is analyzed at a time — explicitly select the video you need.",
+      "videoSteps": [
+        "Upload or select a video.",
+        "Wait for conversion if the file is large.",
+        "Check the LIVE badge on the player."
+      ],
+      "zones": "Demo zones",
+      "zonesDesc": "Below the video, expand the zone panel: 3 clicks for a polygon, then Save. Enabled rules monitor these zones.",
+      "zonesTip": "Without a drawn zone, spatial rules (speed, counting…) cannot trigger.",
+      "zonesSteps": [
+        "Expand the panel under the video.",
+        "Draw at least 3 points.",
+        "Close polygon and save."
+      ],
+      "steps": "4-step journey",
+      "stepsDesc": "This panel summarizes the demo: watch → draw zones → enable a rule → watch alerts and detections.",
+      "stepsTip": "Follow the numbers in order on a first presentation.",
+      "rules": "Rules catalog",
+      "rulesDesc": "Pick an illustrated rule (speed, traffic light, counting, phone, seatbelt…) and click Configure to enable it on your zone.",
+      "rulesTip": "Each rule shows a badge for full (real) or partial support.",
+      "rulesSteps": [
+        "Browse the catalog.",
+        "Click Configure.",
+        "Link the zone and complete the wizard."
+      ],
+      "detections": "Live detections",
+      "detectionsDesc": "Raw AI events for the active video. Click a row for the premium preview (clip + images).",
+      "detectionsTip": "Allow 30–60 s after enabling a rule for first rows.",
+      "alertsFeed": "Live alerts",
+      "alertsFeedDesc": "Finalized alerts with evidence and emails (preview in MailHog). This is the business result of zone → AI → rule → proof.",
+      "alertsFeedTip": "No alert? Check that a rule is enabled and matches the zone.",
+      "alertsFeedSteps": [
+        "Wait for the first trigger.",
+        "Click to open evidence.",
+        "Check MailHog for the alert email."
+      ]
+    },
+    "ruleActivation": {
+      "intro": "Activation studio",
+      "introDesc": "This wizard turns a catalog template into an active rule for your organization. Four steps: target, conditions, evidence, outputs.",
+      "introTip": "Draw the zone or line on the right camera before starting.",
+      "introSteps": [
+        "Step 1: pick camera, zone, or line.",
+        "Step 2: adjust thresholds and classes.",
+        "Step 3: evidence policy.",
+        "Step 4: email, webhook, severity."
+      ],
+      "step1": "Spatial target",
+      "step1Desc": "Select the camera then the zone or line to monitor. Without a spatial link, the rule does not know where to analyze.",
+      "step1Tip": "The menu only offers zones compatible with the rule type.",
+      "step1Steps": [
+        "Choose the camera.",
+        "Select zone or line.",
+        "Check the video preview on the right."
+      ],
+      "step2": "Conditions",
+      "step2Desc": "Fine-tune thresholds (max speed, dwell time, object classes…). Defaults often work for a first activation.",
+      "step2Tip": "Use the logic simulator to see when the rule becomes true.",
+      "step3": "Condition tree",
+      "step3Desc": "View or edit the logic tree (AND / OR). Advanced mode for experienced operators.",
+      "step3Tip": "When unsure, keep the catalog default tree.",
+      "step3Steps": [
+        "Read the plain-language summary.",
+        "Edit only if needed.",
+        "Proceed with no red errors."
+      ],
+      "evidence": "Evidence policy",
+      "evidenceDesc": "Set video clip, image count, plate reading for road rules. A “complete” alert is sent only when these requirements are met.",
+      "evidenceTip": "Demo standard: 6 s clip + 2 images.",
+      "step4": "Outputs and activation",
+      "step4Desc": "Choose email, webhook, severity, and cooldown. Click Activate — the rule appears in Active rules and starts monitoring.",
+      "step4Tip": "A long cooldown can make the rule feel inactive.",
+      "step4Steps": [
+        "Check desired channels.",
+        "Set severity.",
+        "Click Activate and wait 30–60 s."
+      ]
+    },
+    "evidenceViewer": {
+      "intro": "Evidence viewer",
+      "introDesc": "This screen gathers all proof material for an alert or event: video clip, HD images, and metadata (plate, speed, etc.).",
+      "introTip": "Evidence is captured at detection time, not reconstructed later.",
+      "introSteps": [
+        "Read the summary banner at the top.",
+        "Play the clip to review the action.",
+        "Download or share if your role allows."
+      ],
+      "clip": "Video clip",
+      "clipDesc": "Short excerpt (often 6 seconds) centered on the detection moment. Controls support pause, seek, and fullscreen.",
+      "clipTip": "Missing clip may mark the alert incomplete per policy.",
+      "images": "Still images",
+      "imagesDesc": "One or more high-resolution captures complement the clip to identify people, vehicles, or plates.",
+      "imagesTip": "Click a thumbnail to enlarge."
+    },
+    "fields": {
+      "alertSeverity": {
+        "title": "Severity filter",
+        "desc": "Limits the list to Low, Medium, High, or Critical alerts. Helps prioritize urgent cases.",
+        "tip": "Critical = sound + red banner; Low = discreet notification.",
+        "steps": [
+          "Pick a level or leave « All ».",
+          "Combine with a camera to target one site.",
+          "Open an alert to view evidence."
+        ]
+      },
+      "alertCamera": {
+        "title": "Camera filter",
+        "desc": "Shows only alerts from one camera. Useful when several sites share one organization.",
+        "tip": "Camera names often include the physical location (e.g. « North entrance »).",
+        "steps": [
+          "Select the relevant camera.",
+          "Add a date range if history is long.",
+          "Archive handled alerts."
+        ]
+      },
+      "loginEmail": {
+        "title": "Sign-in email",
+        "desc": "Your CitéVision account ID. Must match exactly what the administrator registered.",
+        "tip": "Paste from the invitation email to avoid typos.",
+        "steps": [
+          "Enter the full address.",
+          "Check the domain (@…).",
+          "Move to password."
+        ]
+      },
+      "loginPassword": {
+        "title": "Password",
+        "desc": "Personal secret. Never share it, even with someone claiming to be support.",
+        "tip": "The eye icon lets you verify typing without leaving the password visible long.",
+        "steps": [
+          "Type the password provided.",
+          "Use the eye if unsure.",
+          "Click Sign in."
+        ]
+      },
+      "userFullName": {
+        "title": "Display name",
+        "desc": "Full name shown in lists and the audit log.",
+        "tip": "Use the person's official name.",
+        "steps": [
+          "First + last name.",
+          "No abbreviations.",
+          "Continue to email."
+        ]
+      },
+      "userEmail": {
+        "title": "User email",
+        "desc": "Sign-in ID for the new account. Must be unique in the organization.",
+        "tip": "Prefer a monitored work address.",
+        "steps": [
+          "Check spelling.",
+          "Avoid shared aliases.",
+          "Continue to password."
+        ]
+      },
+      "userPassword": {
+        "title": "Temporary password",
+        "desc": "Minimum 12 characters. Share securely with the new user.",
+        "tip": "Generate a random value with a password manager.",
+        "steps": [
+          "At least 12 characters.",
+          "Mix letters, numbers, symbols.",
+          "Do not send in plain public SMS."
+        ]
+      },
+      "userRole": {
+        "title": "Role and permissions",
+        "desc": "Admin = full setup. Operator = daily operations. Viewer = read-only.",
+        "tip": "Least privilege reduces risk if an account is compromised.",
+        "steps": [
+          "Read the three options.",
+          "Pick the minimal role.",
+          "Confirm creation."
+        ]
+      },
+      "zoneBehavior": {
+        "title": "Zone behavior",
+        "desc": "This menu lists what the AI must compute inside the polygon: speed, counting, phone use, etc. Only options actually available on your server are shown.",
+        "tip": "A greyed-out option means a required model is not loaded yet (see System Health).",
+        "steps": [
+          "Pick the behavior that matches your rule.",
+          "Save the zone after any change.",
+          "Then activate the catalog rule that uses this behavior."
+        ]
+      },
+      "lineBehavior": {
+        "title": "Line behavior",
+        "desc": "For a counting line, select the event type emitted when someone or a vehicle crosses the line (count, speed, custom model…).",
+        "tip": "The list stays in sync with AI capabilities and ONNX models imported for your organization.",
+        "steps": [
+          "Draw the line first with 2 clicks on the video.",
+          "Choose a compatible behavior.",
+          "Save then link a counting or crossing rule."
+        ]
+      },
+      "evidencePolicy": {
+        "title": "Evidence policy",
+        "desc": "Defines what CitéVision must capture before sending a “complete” alert: clip length, still image count, plate read for road rules.",
+        "tip": "Common default: 6 s clip + 2 images. Without a clip, the alert may stay partial.",
+        "steps": [
+          "Enable clip and images per legal or operational needs.",
+          "Adjust duration for fast (speed) vs slow (intrusion) scenes.",
+          "Validate on a test alert in the Demo Center."
+        ]
+      },
+      "clipDuration": {
+        "title": "Clip duration",
+        "desc": "Seconds recorded around the detection instant. The clip is centered on the event to show context before and after.",
+        "tip": "6 s fits most road offenses; 10–15 s for crowd scenes.",
+        "steps": [
+          "Enter a value between 3 and 30 seconds.",
+          "Test on a sample alert.",
+          "Reduce if disk space is tight."
+        ]
+      },
+      "imageCount": {
+        "title": "Image count",
+        "desc": "Still captures besides the clip: overview (scene), close-up (subject), plate crop when available.",
+        "tip": "2 images (scene + subject) are enough for most cases.",
+        "steps": [
+          "Choose 1 to 4 images.",
+          "Enable plate for road rules.",
+          "Open an alert to check quality."
+        ]
+      },
+      "sequenceCondition": {
+        "title": "Sequence condition",
+        "desc": "Requires several events in order or within a time window (e.g. presence then crossing).",
+        "tip": "Advanced scenarios only; keep the catalog default if you are new.",
+        "steps": [
+          "Read the plain-language summary under the tree.",
+          "Change only if the business scenario requires it.",
+          "Use the simulator to test logic."
+        ]
+      },
+      "outputChannels": {
+        "title": "Output channels",
+        "desc": "How the alert is delivered: email, webhook to external systems, in-app notification.",
+        "tip": "You can enable several channels in parallel for the same rule.",
+        "steps": [
+          "Check email for operators.",
+          "Add a webhook if a ticket must be created automatically.",
+          "Test with MailHog in demo environments."
+        ]
+      },
+      "notifyEmail": {
+        "title": "Email notification",
+        "desc": "Address that receives a structured message with proof links when the rule fires.",
+        "tip": "Use a distribution list rather than a single person in production.",
+        "steps": [
+          "Enter a valid address.",
+          "Check spam / MailHog in test.",
+          "Adjust the email template in Settings if needed."
+        ]
+      },
+      "catalogConfigure": {
+        "title": "Configure a rule",
+        "desc": "Opens the 4-step wizard: target (camera/zone), conditions, evidence, then activation. The rule appears under Active Rules once saved.",
+        "tip": "Draw the zone on the right camera first to unlock spatial fields.",
+        "steps": [
+          "Click Configure on the desired card.",
+          "Follow the wizard without skipping steps.",
+          "Wait 30–60 s after activation for first alerts."
+        ]
+      },
+      "catalogNotConfigurable": {
+        "title": "Rule not configurable",
+        "desc": "This template needs a missing AI module, zone, or setting. The partial/beta badge or message explains what blocks setup.",
+        "tip": "Check System Health for unloaded models; import ONNX if needed.",
+        "steps": [
+          "Read the reason on the card.",
+          "Fix prerequisites (zone, model, camera).",
+          "Return when the card becomes configurable again."
+        ]
+      },
+      "severity": {
+        "title": "Alert severity",
+        "desc": "Urgency level for operators: Low (subtle), Medium (badge), High (banner), Critical (continuous sound + push).",
+        "tip": "Reserve Critical for dangerous situations so alerts are not ignored.",
+        "steps": [
+          "Pick the level that matches business risk.",
+          "Align with your internal procedure.",
+          "Test visual and sound rendering on a fake alert."
+        ]
+      },
+      "evidenceForward": {
+        "title": "Forward evidence",
+        "desc": "Sends the proof package (clip, images, metadata) to an external channel after ack or manually.",
+        "tip": "Useful for legal archive or ERP; check GDPR compliance.",
+        "steps": [
+          "Choose forward mode (email or webhook).",
+          "Enter the destination.",
+          "Test on an alert with complete proof."
+        ]
+      },
+      "forwardEmail": {
+        "title": "Forward email",
+        "desc": "Address receiving a copy of the proof file. Can differ from the initial alert email.",
+        "tip": "Prefer a monitored functional mailbox.",
+        "steps": [
+          "Enter the destination address.",
+          "Trigger a test forward.",
+          "Verify attachments and links."
+        ]
+      },
+      "forwardWebhook": {
+        "title": "Forward webhook",
+        "desc": "HTTPS URL called with JSON metadata and links to proof files.",
+        "tip": "The endpoint should respond within 5 s to avoid timeouts.",
+        "steps": [
+          "Paste the URL from your IT team.",
+          "Validate expected JSON format.",
+          "Monitor HTTP 2xx codes in test."
+        ]
+      },
+      "totp2fa": {
+        "title": "Two-factor authentication",
+        "desc": "Adds a temporary code (TOTP) after your password. Works with Google Authenticator, Authy, etc.",
+        "tip": "Keep backup codes; without your phone you cannot sign in.",
+        "steps": [
+          "Click Set up 2FA.",
+          "Scan the QR code with the app.",
+          "Enter the 6-digit code to confirm."
+        ]
+      },
+      "schema": {
+        "speed_limit_kmh": {
+          "title": "Speed limit",
+          "desc": "Threshold in km/h above which the rule treats a vehicle as speeding in the calibrated zone.",
+          "tip": "Calibrate zone edges (real length) first for reliable speeds.",
+          "steps": [
+            "Enter the legal or internal limit.",
+            "Test with a known vehicle in demo.",
+            "Adjust if readings seem consistently high/low."
+          ]
+        },
+        "min_duration_sec": {
+          "title": "Minimum duration",
+          "desc": "Minimum presence or offense time before triggering. Filters very short false positives.",
+          "tip": "2–3 s often enough for phone or seatbelt; more for parking.",
+          "steps": [
+            "Start from the catalog default.",
+            "Increase if too many nuisance alerts.",
+            "Decrease if short offenses are missed."
+          ]
+        }
+      }
+    }
+  }
+}

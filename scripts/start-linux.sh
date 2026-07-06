@@ -106,7 +106,7 @@ bash "$ROOT/scripts/ensure-rules-sync-env.sh" --resolve-org
 load_dotenv "$ENV_FILE"
 
 start_bg rules-engine "$ROOT/rules-engine" "$GO_BIN run ./cmd/rules-engine" "$LOGDIR" "$ENV_FILE"
-start_bg ai-engine "$ROOT/ai-engine" "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} $ROOT/ai-engine/.venv/bin/uvicorn citevision_ai.main:app --host 0.0.0.0 --port $AI_PORT" "$LOGDIR" "$ENV_FILE"
+start_bg ai-engine "$ROOT" "bash scripts/run-ai-engine.sh" "$LOGDIR" "$ENV_FILE"
 
 echo ""
 echo "[INFO] Waiting for AI Engine (first run compiles ONNX session)..."
@@ -130,6 +130,18 @@ if ! wait_service_with_retry rules-engine "http://localhost:$RULES_PORT/health" 
     "$LOGDIR/rules-engine.pid" "$GO_BIN run ./cmd/rules-engine" "$ROOT/rules-engine" "$LOGDIR" "$ENV_FILE" 30 2; then
   exit 1
 fi
+
+echo "[INFO] Sync spatial config → AI ingest (demo pipeline)"
+curl -sf -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/internal/ingest/resync-spatial" \
+  -H "X-Internal-Key: ${INTERNAL_API_KEY:-changeme_internal_service_key}" >/dev/null || true
+sleep 15
+
+bash "$ROOT/scripts/verify-ai-ingest.sh" || {
+  echo "[WARN] ingest slow on first pass — one AI restart"
+  bash "$ROOT/scripts/restart-ai-engine.sh"
+  sleep 15
+  bash "$ROOT/scripts/verify-ai-ingest.sh"
+}
 
 free_port 5174 5175 5176 5177
 sleep 1
@@ -161,4 +173,9 @@ if [[ "${WATCH_BACKEND:-1}" != "0" ]]; then
   stop_from_pid "$LOGDIR/watch-backend.pid"
   start_bg watch-backend "$ROOT" "bash scripts/watch-backend.sh" "$LOGDIR" "$ENV_FILE"
   echo "[OK] Backend watchdog (auto-restart on crash)"
+fi
+if [[ "${WATCH_AI_INGEST:-1}" != "0" ]]; then
+  stop_from_pid "$LOGDIR/watch-ai-ingest.pid"
+  start_bg watch-ai-ingest "$ROOT" "bash scripts/watch-ai-ingest.sh" "$LOGDIR" "$ENV_FILE"
+  echo "[OK] AI ingest watchdog (auto-restart if frozen)"
 fi

@@ -23,8 +23,8 @@ import (
 
 const (
 	MaxVideosPerOrg   = 5
-	RetentionMinutes  = 10
-	MaxDemoEventsTotal = 20
+	RetentionMinutes   = 60
+	MaxDemoEventsTotal = 2000
 	DefaultNavLabel   = "Démo Kinshasa"
 	DefaultContext    = "Ministère · Urbanisme & Transport · Kinshasa"
 	DefaultTitle      = "Démonstration CitéVision"

@@ -30,6 +30,13 @@ func scanZone(row pgx.Row, z *models.Zone) error {
 	return row.Scan(&z.ID, &z.OrgID, &z.SiteID, &z.CameraID, &z.Name, &z.Polygon, &z.Color, &z.ZoneKind, &z.BehaviorConfig, &z.IsActive, &z.CreatedAt, &z.UpdatedAt)
 }
 
+// lineColumns is the canonical ordered column list scanned into models.Line.
+const lineColumns = `id, org_id, site_id, camera_id, name, start_point, end_point, direction, behavior_config, is_active, created_at, updated_at`
+
+func scanLine(row pgx.Row, l *models.Line) error {
+	return row.Scan(&l.ID, &l.OrgID, &l.SiteID, &l.CameraID, &l.Name, &l.StartPoint, &l.EndPoint, &l.Direction, &l.BehaviorConfig, &l.IsActive, &l.CreatedAt, &l.UpdatedAt)
+}
+
 type ZoneRequest struct {
 	OrgID          uuid.UUID       `json:"org_id"`
 	SiteID         uuid.UUID       `json:"site_id"`
@@ -84,28 +91,33 @@ func (s *Service) ListZones(ctx context.Context, orgID uuid.UUID, siteID *uuid.U
 }
 
 type LineRequest struct {
-	OrgID      uuid.UUID       `json:"org_id"`
-	SiteID     uuid.UUID       `json:"site_id"`
-	CameraID   *uuid.UUID      `json:"camera_id,omitempty"`
-	Name       string          `json:"name"`
-	StartPoint json.RawMessage `json:"start_point"`
-	EndPoint   json.RawMessage `json:"end_point"`
-	Direction  *string         `json:"direction,omitempty"`
+	OrgID          uuid.UUID       `json:"org_id"`
+	SiteID         uuid.UUID       `json:"site_id"`
+	CameraID       *uuid.UUID      `json:"camera_id,omitempty"`
+	Name           string          `json:"name"`
+	StartPoint     json.RawMessage `json:"start_point"`
+	EndPoint       json.RawMessage `json:"end_point"`
+	Direction      *string         `json:"direction,omitempty"`
+	BehaviorConfig json.RawMessage `json:"behavior_config,omitempty"`
 }
 
 func (s *Service) CreateLine(ctx context.Context, req LineRequest) (*models.Line, error) {
+	behavior := req.BehaviorConfig
+	if len(behavior) == 0 {
+		behavior = json.RawMessage(`{}`)
+	}
 	var l models.Line
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO lines (org_id, site_id, camera_id, name, start_point, end_point, direction)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		RETURNING id, org_id, site_id, camera_id, name, start_point, end_point, direction, is_active, created_at, updated_at`,
-		req.OrgID, req.SiteID, req.CameraID, req.Name, req.StartPoint, req.EndPoint, req.Direction,
-	).Scan(&l.ID, &l.OrgID, &l.SiteID, &l.CameraID, &l.Name, &l.StartPoint, &l.EndPoint, &l.Direction, &l.IsActive, &l.CreatedAt, &l.UpdatedAt)
+	err := scanLine(s.pool.QueryRow(ctx, `
+		INSERT INTO lines (org_id, site_id, camera_id, name, start_point, end_point, direction, behavior_config)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		RETURNING `+lineColumns,
+		req.OrgID, req.SiteID, req.CameraID, req.Name, req.StartPoint, req.EndPoint, req.Direction, behavior,
+	), &l)
 	return &l, err
 }
 
 func (s *Service) ListLines(ctx context.Context, orgID uuid.UUID, siteID *uuid.UUID) ([]models.Line, error) {
-	q := `SELECT id, org_id, site_id, camera_id, name, start_point, end_point, direction, is_active, created_at, updated_at FROM lines WHERE org_id = $1`
+	q := `SELECT ` + lineColumns + ` FROM lines WHERE org_id = $1`
 	args := []interface{}{orgID}
 	if siteID != nil {
 		q += ` AND site_id = $2`
@@ -119,7 +131,7 @@ func (s *Service) ListLines(ctx context.Context, orgID uuid.UUID, siteID *uuid.U
 	var list []models.Line
 	for rows.Next() {
 		var l models.Line
-		if err := rows.Scan(&l.ID, &l.OrgID, &l.SiteID, &l.CameraID, &l.Name, &l.StartPoint, &l.EndPoint, &l.Direction, &l.IsActive, &l.CreatedAt, &l.UpdatedAt); err != nil {
+		if err := scanLine(rows, &l); err != nil {
 			return nil, err
 		}
 		list = append(list, l)
@@ -142,10 +154,11 @@ type ZonePatchRequest struct {
 	Name           *string         `json:"name,omitempty"`
 	ZoneKind       *string         `json:"zone_kind,omitempty"`
 	BehaviorConfig json.RawMessage `json:"behavior_config,omitempty"`
+	Polygon        json.RawMessage `json:"polygon,omitempty"`
 }
 
 func (s *Service) UpdateZone(ctx context.Context, orgID, id uuid.UUID, patch ZonePatchRequest) (*models.Zone, error) {
-	if patch.Name == nil && patch.ZoneKind == nil && len(patch.BehaviorConfig) == 0 {
+	if patch.Name == nil && patch.ZoneKind == nil && len(patch.BehaviorConfig) == 0 && len(patch.Polygon) == 0 {
 		return s.GetZone(ctx, orgID, id)
 	}
 	// behaviorArg is nil when not provided so COALESCE keeps the existing value.
@@ -153,16 +166,21 @@ func (s *Service) UpdateZone(ctx context.Context, orgID, id uuid.UUID, patch Zon
 	if len(patch.BehaviorConfig) > 0 {
 		behaviorArg = patch.BehaviorConfig
 	}
+	var polygonArg interface{}
+	if len(patch.Polygon) > 0 {
+		polygonArg = patch.Polygon
+	}
 	var z models.Zone
 	err := scanZone(s.pool.QueryRow(ctx, `
 		UPDATE zones SET
 			name = COALESCE($3, name),
 			zone_kind = COALESCE($4, zone_kind),
 			behavior_config = COALESCE($5, behavior_config),
+			polygon = COALESCE($6, polygon),
 			updated_at = NOW()
 		WHERE id = $1 AND org_id = $2
 		RETURNING `+zoneColumns,
-		id, orgID, patch.Name, patch.ZoneKind, behaviorArg,
+		id, orgID, patch.Name, patch.ZoneKind, behaviorArg, polygonArg,
 	), &z)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -171,28 +189,36 @@ func (s *Service) UpdateZone(ctx context.Context, orgID, id uuid.UUID, patch Zon
 }
 
 type LinePatchRequest struct {
-	Name *string `json:"name,omitempty"`
+	Name           *string         `json:"name,omitempty"`
+	BehaviorConfig json.RawMessage `json:"behavior_config,omitempty"`
 }
 
 func (s *Service) UpdateLine(ctx context.Context, orgID, id uuid.UUID, patch LinePatchRequest) (*models.Line, error) {
-	if patch.Name == nil {
+	if patch.Name == nil && len(patch.BehaviorConfig) == 0 {
 		var l models.Line
-		err := s.pool.QueryRow(ctx, `
-			SELECT id, org_id, site_id, camera_id, name, start_point, end_point, direction, is_active, created_at, updated_at
+		err := scanLine(s.pool.QueryRow(ctx, `
+			SELECT `+lineColumns+`
 			FROM lines WHERE id = $1 AND org_id = $2`, id, orgID,
-		).Scan(&l.ID, &l.OrgID, &l.SiteID, &l.CameraID, &l.Name, &l.StartPoint, &l.EndPoint, &l.Direction, &l.IsActive, &l.CreatedAt, &l.UpdatedAt)
+		), &l)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return &l, err
 	}
+	var behaviorArg interface{}
+	if len(patch.BehaviorConfig) > 0 {
+		behaviorArg = patch.BehaviorConfig
+	}
 	var l models.Line
-	err := s.pool.QueryRow(ctx, `
-		UPDATE lines SET name = $3, updated_at = NOW()
+	err := scanLine(s.pool.QueryRow(ctx, `
+		UPDATE lines SET
+			name = COALESCE($3, name),
+			behavior_config = COALESCE($4, behavior_config),
+			updated_at = NOW()
 		WHERE id = $1 AND org_id = $2
-		RETURNING id, org_id, site_id, camera_id, name, start_point, end_point, direction, is_active, created_at, updated_at`,
-		id, orgID, *patch.Name,
-	).Scan(&l.ID, &l.OrgID, &l.SiteID, &l.CameraID, &l.Name, &l.StartPoint, &l.EndPoint, &l.Direction, &l.IsActive, &l.CreatedAt, &l.UpdatedAt)
+		RETURNING `+lineColumns,
+		id, orgID, patch.Name, behaviorArg,
+	), &l)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

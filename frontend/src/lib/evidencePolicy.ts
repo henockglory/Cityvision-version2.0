@@ -1,5 +1,5 @@
 export interface EvidenceImageSpec {
-  role: 'scene' | 'subject';
+  role: 'scene' | 'subject' | 'plate';
   label?: string;
   crop?: 'full' | 'bbox' | 'bbox_zoom';
   padding_pct?: number;
@@ -46,7 +46,8 @@ export const DEFAULT_EVIDENCE_POLICY: EvidencePolicy = {
   clip_seconds: 6,
   images: [
     { role: 'scene', label: 'Vue d\'ensemble', crop: 'full' },
-    { role: 'subject', label: 'Cible détectée', crop: 'bbox', padding_pct: 10, zoom: 1.0 },
+    { role: 'subject', label: 'Cible détectée', crop: 'full', padding_pct: 8, zoom: 1.0 },
+    { role: 'plate', label: 'Plaque arrière', crop: 'plate_rear', padding_pct: 6, zoom: 1.8 },
   ],
   min_confidence: 0,
   draw_bbox: true,

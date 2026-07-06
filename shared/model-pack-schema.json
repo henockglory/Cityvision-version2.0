@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "description": "Contrat Model Pack Phase D [J.83] — extension de ai-models.json pour modèles ONNX personnalisés org.",
+  "required_fields": ["id", "task", "file", "classes", "positive_classes", "behavior", "event_type"],
+  "optional_fields": ["input_size", "sha256", "url", "license", "size_mb", "notes", "gpu"],
+  "input_sources": ["crop_vehicle", "crop_zone", "full_frame"],
+  "task_types": ["classification", "detection"],
+  "health_key_pattern": "{id}_model_loaded",
+  "upload_pipeline": ["POST /orgs/{orgID}/ai/models", "probe onnxruntime", "reload AI engine", "merge capabilities/menu"],
+  "layer_1": "ONNX sur crop — même pattern que driver_phone / seatbelt [J.84]",
+  "layer_2": "YOLO classes custom org [J.85]",
+  "layer_3": "Vidéo/action multi-frames — hors promesse v1 [J.86]"
+}

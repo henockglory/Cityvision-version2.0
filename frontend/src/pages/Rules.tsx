@@ -1,18 +1,19 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { RuleCatalogTemplate } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, TrafficCone } from 'lucide-react';
 import { loadRuleGuides } from '@/i18n/loadRuleGuides';
 import PageShell from '@/components/ui/PageShell';
 import RuleCatalogPanel from '@/components/rules/RuleCatalogPanel';
 import RuleStudioDialog from '@/components/rules/RuleStudioDialog';
+import RedLightAssistant from '@/components/rules/RedLightAssistant';
 import ActiveRulesPanel from '@/components/rules/ActiveRulesPanel';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { RulesSkeleton } from '@/components/ui/Skeleton';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
-import { orgApi, rulesApi } from '@/api/client';
+import { orgApi, rulesApi, zonesApi } from '@/api/client';
 import { useRules, useRuleCatalog } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
@@ -24,6 +25,7 @@ import type { Rule } from '@/types';
 
 export default function Rules() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { playClick } = useSound();
   const { showUndo, ToastContainer } = useUndoToast();
   const orgId = useAuthStore((s) => s.orgId);
@@ -40,6 +42,8 @@ export default function Rules() {
   const [deploymentScope, setDeploymentScope] = useState<'all' | 'national' | 'enterprise' | 'domestic'>('all');
   const [orgDeployLoaded, setOrgDeployLoaded] = useState(false);
   const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
+  const [redLightOpen, setRedLightOpen] = useState(false);
+  const [assistantZones, setAssistantZones] = useState<Array<{ name: string; behavior?: string }>>([]);
 
   const flashRuleHighlight = (ruleId: string) => {
     setHighlightedRuleId(ruleId);
@@ -61,7 +65,11 @@ export default function Rules() {
   );
 
   const location = useLocation();
-  const navState = location.state as { editRuleId?: string; editStep?: 1 | 2 | 3 | 4 } | null;
+  const navState = location.state as {
+    editRuleId?: string;
+    editStep?: 1 | 2 | 3 | 4;
+    configureTemplateId?: string;
+  } | null;
 
   useEffect(() => {
     if (!navState?.editRuleId || rules.length === 0) return;
@@ -72,6 +80,27 @@ export default function Rules() {
       window.history.replaceState({}, document.title);
     }
   }, [navState?.editRuleId, navState?.editStep, rules]);
+
+  useEffect(() => {
+    if (!navState?.configureTemplateId || !catalog.data?.length) return;
+    const tpl = catalog.data.find((t) => t.id === navState.configureTemplateId);
+    if (tpl) {
+      if (tpl.id === 'tpl-red-light') {
+        setRedLightOpen(true);
+      } else {
+        setConfiguringTemplate(tpl);
+      }
+      window.history.replaceState({}, document.title);
+    }
+  }, [navState?.configureTemplateId, catalog.data]);
+
+  const handleConfigureTemplate = (tpl: RuleCatalogTemplate) => {
+    if (tpl.id === 'tpl-red-light') {
+      setRedLightOpen(true);
+      return;
+    }
+    setConfiguringTemplate(tpl);
+  };
 
   useEffect(() => {
     if (!orgId) return;
@@ -93,6 +122,19 @@ export default function Rules() {
   useEffect(() => {
     void loadRuleGuides();
   }, []);
+
+  useEffect(() => {
+    if (!redLightOpen || !orgId) return;
+    void zonesApi.list(orgId).then((res) => {
+      const rows = res.data ?? [];
+      setAssistantZones(
+        rows.map((z) => {
+          const bc = z.behavior_config as { behavior?: string } | undefined;
+          return { name: z.name, behavior: bc?.behavior };
+        }),
+      );
+    }).catch(() => setAssistantZones([]));
+  }, [redLightOpen, orgId]);
 
   const activeTemplateIds = useMemo(
     () =>
@@ -174,18 +216,27 @@ export default function Rules() {
   const runDuplicate = async (rule: Rule) => {
     if (!orgId) return;
     playClick();
-    await rulesApi.create(orgId, {
-      name: `${rule.name} (${t('rules.copySuffix')})`,
-      definition: rule.definition ?? {},
-      description: rule.description,
-    });
-    void refetch();
+    setInlineError('');
+    try {
+      const res = await rulesApi.create(orgId, {
+        name: `${rule.name} (${t('rules.copySuffix')})`,
+        definition: rule.definition ?? {},
+        description: rule.description,
+      });
+      await rulesApi.disable(orgId, res.data.id);
+      await refetch();
+      setEditInitialStep(1);
+      setEditRule({ ...res.data, enabled: false });
+      flashRuleHighlight(res.data.id);
+    } catch {
+      setInlineError(t('rules.duplicateError', { defaultValue: 'Impossible de dupliquer cette règle.' }));
+    }
   };
 
 
   if (isLoading || catalog.isLoading) {
     return (
-      <PageShell title={t('rules.title')} onHelpTour={startRulesTour}>
+      <PageShell title={t('rules.title')} onHelpTour={startRulesTour} tourTriggerAttr="rules-help">
         <RulesSkeleton />
       </PageShell>
     );
@@ -193,7 +244,7 @@ export default function Rules() {
 
   if (isError || catalog.isError) {
     return (
-      <PageShell title={t('rules.title')} onHelpTour={startRulesTour}>
+      <PageShell title={t('rules.title')} onHelpTour={startRulesTour} tourTriggerAttr="rules-help">
         <ErrorState onRetry={() => { void refetch(); void catalog.refetch(); }} />
       </PageShell>
     );
@@ -204,6 +255,7 @@ export default function Rules() {
       title={t('rules.title')}
       subtitle={t('rules.catalogSubtitle')}
       onHelpTour={startRulesTour}
+      tourTriggerAttr="rules-help"
     >
       <ToastContainer />
 
@@ -230,9 +282,17 @@ export default function Rules() {
       />
 
       <section id="rules-catalog" className="cv-card p-5">
-        <header className="flex items-center gap-3 mb-4">
+        <header className="flex items-center gap-3 mb-4 flex-wrap">
           <BookOpen className="w-5 h-5 text-cv-accent shrink-0" />
-          <h2 className="cv-section-title">{t('rules.catalog')}</h2>
+          <h2 className="cv-section-title flex-1">{t('rules.catalog')}</h2>
+          <button
+            type="button"
+            className="cv-btn-secondary text-xs inline-flex items-center gap-1.5"
+            onClick={() => setRedLightOpen(true)}
+          >
+            <TrafficCone className="w-3.5 h-3.5" />
+            {t('rules.redLightAssistant.launch', { defaultValue: 'Assistant feu rouge' })}
+          </button>
         </header>
 
         <div className="space-y-4">
@@ -252,7 +312,7 @@ export default function Rules() {
           templates={catalog.data ?? []}
           occupiedTemplateIds={occupiedTemplateIds}
           activeTemplateIds={activeTemplateIds}
-          onConfigure={setConfiguringTemplate}
+          onConfigure={handleConfigureTemplate}
           onActivated={() => void refetch()}
           catalogOnly
           deploymentScope={deploymentScope}
@@ -321,7 +381,7 @@ export default function Rules() {
               activeTemplateIds={[]}
               onConfigure={(tpl) => {
                 setPickTemplate(false);
-                setConfiguringTemplate(tpl);
+                handleConfigureTemplate(tpl);
               }}
               onActivated={() => {
                 setPickTemplate(false);
@@ -363,6 +423,17 @@ export default function Rules() {
         danger
         onConfirm={() => void runResetAll()}
         onCancel={() => setConfirm(null)}
+      />
+
+      <RedLightAssistant
+        open={redLightOpen}
+        onClose={() => setRedLightOpen(false)}
+        zones={assistantZones}
+        onOpenZoneEditor={() => navigate('/zones')}
+        onOpenRule={() => {
+          const tpl = (catalog.data ?? []).find((t) => t.id === 'tpl-red-light');
+          if (tpl) setConfiguringTemplate(tpl);
+        }}
       />
     </PageShell>
   );

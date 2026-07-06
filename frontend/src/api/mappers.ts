@@ -182,6 +182,8 @@ export function mapRuleCatalogItem(raw: RuleCatalogTemplate): RuleCatalogTemplat
     tutorial: raw.tutorial,
     prerequisites: raw.prerequisites,
     unsupported_message_fr: raw.unsupported_message_fr,
+    partial_status: raw.partial_status,
+    partial_reason_fr: raw.partial_reason_fr,
   };
 }
 

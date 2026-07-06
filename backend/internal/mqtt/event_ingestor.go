@@ -26,20 +26,30 @@ type EventIngestor struct {
 }
 
 func NewEventIngestor(pool *pgxpool.Pool, eventsSvc *events.Service, demoSvc *demo.Service, broker string, log *slog.Logger) *EventIngestor {
+	e := &EventIngestor{
+		pool:     pool,
+		events:   eventsSvc,
+		demo:     demoSvc,
+		log:      log,
+		orgByCam: make(map[string]uuid.UUID),
+	}
 	opts := mqtt.NewClientOptions().
 		AddBroker(broker).
 		SetClientID("citevision-event-ingestor").
 		SetAutoReconnect(true).
 		SetConnectRetry(true).
 		SetConnectRetryInterval(5 * time.Second)
-	return &EventIngestor{
-		pool:     pool,
-		events:   eventsSvc,
-		demo:     demoSvc,
-		log:      log,
-		client:   mqtt.NewClient(opts),
-		orgByCam: make(map[string]uuid.UUID),
-	}
+	opts.SetOnConnectHandler(func(_ mqtt.Client) {
+		token := e.client.Subscribe("cv/events/#", 1, e.onMessage)
+		token.Wait()
+		if err := token.Error(); err != nil {
+			e.log.Warn("event ingestor subscribe failed", "error", err)
+		} else {
+			e.log.Info("event ingestor subscribed", "topic", "cv/events/#")
+		}
+	})
+	e.client = mqtt.NewClient(opts)
+	return e
 }
 
 func (e *EventIngestor) Start(ctx context.Context) {
@@ -71,14 +81,6 @@ func (e *EventIngestor) Start(ctx context.Context) {
 				if err := token.Error(); err != nil {
 					e.log.Warn("event ingestor mqtt connect failed", "error", err)
 					time.Sleep(5 * time.Second)
-					continue
-				}
-				token = e.client.Subscribe("cv/events/#", 1, e.onMessage)
-				token.Wait()
-				if err := token.Error(); err != nil {
-					e.log.Warn("event ingestor subscribe failed", "error", err)
-				} else {
-					e.log.Info("event ingestor subscribed", "topic", "cv/events/#")
 				}
 			}
 			time.Sleep(10 * time.Second)
@@ -138,7 +140,6 @@ func (e *EventIngestor) onMessage(_ mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	severity := stringField(payload, "severity", "info")
 	var camID *uuid.UUID
 	if id, err := uuid.Parse(cameraIDStr); err == nil {
 		camID = &id
@@ -146,11 +147,20 @@ func (e *EventIngestor) onMessage(_ mqtt.Client, msg mqtt.Message) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	if e.demo != nil && camID != nil && !e.demo.ShouldIngestDemoCamera(ctx, orgID, *camID) {
+		return
+	}
+
+	severity := stringField(payload, "severity", "info")
+
 	if e.demo != nil {
 		e.demo.TagEventPayload(ctx, camID, payload)
 	}
 	raw, _ := json.Marshal(payload)
 	evSnap := evidence.SnapshotFromPayload(payload)
+	// Preserve the AI engine's event_id as DB primary key so evidence patches
+	// (PatchEvidenceSnapshot) can locate the row by the same UUID.
+	externalID, _ := payload["event_id"].(string)
 	_, err := e.events.Ingest(ctx, events.IngestRequest{
 		OrgID:            orgID,
 		CameraID:         camID,
@@ -158,9 +168,10 @@ func (e *EventIngestor) onMessage(_ mqtt.Client, msg mqtt.Message) {
 		Severity:         severity,
 		Payload:          raw,
 		EvidenceSnapshot: evSnap,
+		ExternalID:       externalID,
 	})
 	if err != nil {
-		e.log.Debug("event ingest failed", "error", err, "type", eventType)
+		e.log.Warn("event ingest failed", "error", err, "type", eventType, "camera", cameraIDStr)
 	}
 
 	// Persistent line counter: every crossing increments the counter for its line.

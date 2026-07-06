@@ -14,7 +14,7 @@ class EvidenceUploader:
     def __init__(self) -> None:
         self.backend_url = os.getenv("BACKEND_API_URL", "http://localhost:8081").rstrip("/")
         self.internal_key = os.getenv("INTERNAL_API_KEY", "")
-        self.timeout = float(os.getenv("EVIDENCE_UPLOAD_TIMEOUT", "8"))
+        self.timeout = float(os.getenv("EVIDENCE_UPLOAD_TIMEOUT", "15"))
 
     def upload(
         self,
@@ -25,6 +25,7 @@ class EvidenceUploader:
         subject_jpeg: bytes | None,
         clip_mp4: bytes | None,
         metadata: dict[str, Any] | None = None,
+        plate_jpeg: bytes | None = None,
     ) -> dict[str, Any] | None:
         if not org_id or not camera_id:
             return None
@@ -39,6 +40,8 @@ class EvidenceUploader:
             files["scene"] = ("scene.jpg", scene_jpeg, "image/jpeg")
         if subject_jpeg:
             files["subject"] = ("subject.jpg", subject_jpeg, "image/jpeg")
+        if plate_jpeg:
+            files["plate"] = ("plate.jpg", plate_jpeg, "image/jpeg")
         if not files:
             return None
         data = {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -64,10 +65,18 @@ def zones(token: str) -> list[dict]:
 def main() -> int:
     token = login()
     zlist = zones(token)
-    video = (
-        Path.home()
-        / "citevision-v2/data/videos/demo/e312f375-7442-4089-8022-ed232abc09e8/eb1d2b8e-6c8d-47c5-82fa-e3c24f0425e5_stream.mp4"
-    )
+    video = Path(os.environ.get("DEMO_VIDEO_PATH", ""))
+    if not video:
+        video = (
+            Path("/mnt/c/Users/gheno/citevision/data/videos/demo")
+            / ORG
+            / "eb1d2b8e-6c8d-47c5-82fa-e3c24f0425e5_stream.mp4"
+        )
+    if not video.exists():
+        video = (
+            Path.home()
+            / "citevision-v2/data/videos/demo/e312f375-7442-4089-8022-ed232abc09e8/eb1d2b8e-6c8d-47c5-82fa-e3c24f0425e5_stream.mp4"
+        )
     if not video.exists():
         print("missing video", video)
         return 1

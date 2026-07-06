@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,7 +28,14 @@ func main() {
 	port := getenv("RULES_ENGINE_PORT", "8010")
 	mqttHost := getenv("MQTT_HOST", "localhost")
 	mqttPort := getenv("MQTT_PORT", "1884")
-	dedupTTL := 60
+	// Dedup TTL is env-configurable so a dense demo can lower it (e.g. 10s) without
+	// a rebuild ([D.45]); production keeps the 120s default to suppress alert spam.
+	dedupTTL := 120
+	if v := os.Getenv("RULES_DEDUP_TTL_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			dedupTTL = n
+		}
+	}
 
 	var rulesMu sync.RWMutex
 	activeRules := loadRulesFromEnv()

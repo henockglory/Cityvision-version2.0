@@ -34,6 +34,7 @@ while true; do
     if [[ -x "$ROOT/backend/bin/citevision-api" ]]; then
       start_bg backend "$ROOT/backend" "$ROOT/backend/bin/citevision-api" "$LOGDIR" "$ENV_FILE"
       wait_http_ok "http://localhost:$BACKEND_PORT/health" 90 || true
+      bash "$ROOT/scripts/ensure-demo-pipeline.sh" || true
     else
       echo "[watch-backend] binary missing — run bash scripts/restart-api-frontend.sh" >&2
     fi

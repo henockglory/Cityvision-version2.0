@@ -212,7 +212,7 @@ export default function ConditionTreeVisualEditor({
 
                 {op === 'SEQUENCE' && (
 
-                  <InfoTip content={t('rules.studio.sequenceHint')} />
+                  <InfoTip helpKey="sequenceCondition" content={t('rules.studio.sequenceHint')} />
 
                 )}
 

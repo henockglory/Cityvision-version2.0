@@ -1753,7 +1753,7 @@
       }
     },
     "tpl-scene-occupancy": {
-      "supported": true,
+      "supported": false,
       "capability_id": "crowd_count_threshold",
       "human_description": "Nombre total de personnes dans la scène dépassant le seuil.",
       "tutorial": "Définissez le nombre maximal de personnes toléré dans le champ caméra.",
@@ -1781,7 +1781,7 @@
       }
     },
     "tpl-bottleneck": {
-      "supported": true,
+      "supported": false,
       "capability_id": "scene_density_high",
       "human_description": "Goulot d'étranglement — densité locale élevée dans une zone étroite.",
       "tutorial": "Baissez le seuil de densité pour les couloirs et entrées étroites.",
@@ -1809,7 +1809,7 @@
       }
     },
     "tpl-zone-occupancy": {
-      "supported": true,
+      "supported": false,
       "capability_id": "crowd_count_threshold",
       "human_description": "Trop de personnes présentes simultanément dans une zone définie.",
       "tutorial": "Dessinez la zone puis fixez le nombre maximal de personnes autorisées.",
@@ -1874,7 +1874,7 @@
       "role_summary_fr": "Alerte si une personne reste totalement immobile — peut indiquer un malaise ou un abandon de poste."
     },
     "tpl-face-count": {
-      "supported": true,
+      "supported": false,
       "capability_id": "face_detected",
       "human_description": "Nombre de visages simultanés dépassant le seuil configuré.",
       "tutorial": "Utile pour limiter l'occupation d'un espace fermé.",
@@ -1902,7 +1902,7 @@
       }
     },
     "tpl-face-repeat": {
-      "supported": true,
+      "supported": false,
       "capability_id": "face_detected",
       "human_description": "Même visage détecté plusieurs fois sur une période courte.",
       "tutorial": "Combine avec une liste vide pour journaliser les réapparitions.",
@@ -1989,7 +1989,7 @@
       "role_summary_fr": "Alerte quand une personne court — signal d'urgence ou de poursuite dans un espace protégé."
     },
     "tpl-flow-rate": {
-      "supported": true,
+      "supported": false,
       "capability_id": "crowd_count_threshold",
       "human_description": "Débit piéton élevé — affluence dépassant le seuil de passage.",
       "tutorial": "Placez la caméra en plongée sur un couloir ou une entrée.",
@@ -2062,7 +2062,7 @@
       }
     },
     "tpl-erratic-motion": {
-      "supported": true,
+      "supported": false,
       "capability_id": "erratic_motion",
       "human_description": "Mouvement erratique avec changements de direction répétés.",
       "configSchema": {
@@ -2300,7 +2300,7 @@
       "role_summary_fr": "Détecte un scénario d'accident : arrêt brusque suivi d'immobilisation prolongée — SEQUENCE."
     },
     "tpl-vandalism": {
-      "supported": true,
+      "supported": false,
       "capability_id": "crowd_gathering",
       "human_description": "Vandalisme suspect : groupe + activité rapide.",
       "tutorial": "Seuil foule + détection running/rapid_activity (métadonnée behavior).",
@@ -2674,7 +2674,7 @@
       "role_summary_fr": "Véhicule avec plaque inconnue en zone restreinte"
     },
     "tpl-behavior-anomaly": {
-      "supported": true,
+      "supported": false,
       "capability_id": "behavior_anomaly",
       "human_description": "Comportement anormal générique (fallback heuristiques).",
       "configSchema": {

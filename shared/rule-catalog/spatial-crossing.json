@@ -89,38 +89,8 @@
   },
   {
     "id": "tpl-wrong-direction",
-    "name": "Sens interdit",
-    "description": "Franchissement de ligne dans le mauvais sens",
-    "category": "spatial",
-    "severity": "high",
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "wrong_way"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "high"
-          }
-        },
-        {
-          "type": "record",
-          "config": {
-            "duration_sec": 30
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Détecte les véhicules qui circulent à contre-sens — infraction grave.",
-    "deployment_scopes": [
-      "national",
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "full"
+    "redirect_to": "tpl-wrong-way",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-wrong-way (même événement wrong_way)."
   },
   {
     "id": "tpl-perimeter-breach",

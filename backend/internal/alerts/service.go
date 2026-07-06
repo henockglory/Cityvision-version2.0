@@ -61,10 +61,7 @@ func (s *Service) CreateAlert(ctx context.Context, req CreateAlertRequest) (*mod
 		if err == nil {
 			policy := evidence.PolicyFromDefinition(definition)
 			if evidence.PolicyRequiresProof(policy) && !evidence.IsComplete(evidenceSnap, policy) {
-				if !evidence.IsDemoDefinition(definition) {
-					return nil, ErrIncompleteEvidence
-				}
-				// Demo rules: allow degraded alerts without full premium evidence package.
+				return nil, ErrIncompleteEvidence
 			}
 			var def map[string]interface{}
 			if json.Unmarshal(definition, &def) == nil {

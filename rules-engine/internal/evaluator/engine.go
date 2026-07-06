@@ -257,7 +257,7 @@ func DedupKey(def RuleDefinition, payload map[string]interface{}) string {
 	payload = normalizePayload(payload)
 	fields := def.DedupKeyFields
 	if len(fields) == 0 {
-		fields = []string{"camera_id", "event_type", "track_id"}
+		fields = []string{"camera_id", "event_type", "event_id"}
 	}
 	parts := make([]string, 0, len(fields))
 	for _, f := range fields {

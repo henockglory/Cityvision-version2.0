@@ -24,7 +24,8 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
         timeout: 0,
-        proxyTimeout: 120_000,
+        // Large demo MP4 uploads (up to ~500 Mo) — align with uploadVideo axios timeout (50 min).
+        proxyTimeout: 3_000_000,
       },
       '/health': {
         target: 'http://localhost:8081',
@@ -42,6 +43,11 @@ export default defineConfig({
         target: 'http://localhost:8001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ai-engine/, ''),
+      },
+      '/rules-engine': {
+        target: 'http://localhost:8010',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/rules-engine/, ''),
       },
     },
   },

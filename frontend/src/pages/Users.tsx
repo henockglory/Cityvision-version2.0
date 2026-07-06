@@ -83,6 +83,7 @@ export default function UsersPage() {
         actions={
           <button
             type="button"
+            data-tour="add-user"
             onClick={() => {
               playClick();
               setDialogOpen(true);

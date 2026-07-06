@@ -33,15 +33,17 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
   const ev = useMemo(() => parseEvidenceSnapshot(raw), [raw]);
   const pkg = ev.package;
   const mediaSlots = useMemo(() => evidenceMediaSlots(ev, orgId), [ev, orgId]);
-  const { clip: clipUrl, scene: sceneUrl, subject: subjectUrl } = mediaSlots.urls;
+  const { clip: clipUrl, scene: sceneUrl, subject: subjectUrl, plate: plateUrl } = mediaSlots.urls;
 
   const scene = pkg?.images?.find((i) => i.role === 'scene');
   const subject = pkg?.images?.find((i) => i.role === 'subject');
+  const plateImg = pkg?.images?.find((i) => i.role === 'plate');
 
   const [clipRetry, setClipRetry] = useState(0);
   const clipMedia = useEvidenceMediaUrl(clipUrl, { mimeFallback: 'video/mp4', retryKey: clipRetry });
   const sceneMedia = useEvidenceMediaUrl(sceneUrl, { mimeFallback: 'image/jpeg' });
   const subjectMedia = useEvidenceMediaUrl(subjectUrl, { mimeFallback: 'image/jpeg' });
+  const plateMedia = useEvidenceMediaUrl(plateUrl, { mimeFallback: 'image/jpeg' });
   const [clipDuration, setClipDuration] = useState(0);
 
   useEffect(() => {
@@ -53,8 +55,9 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
       clip: { loading: clipMedia.loading, error: Boolean(clipMedia.error), blobUrl: clipMedia.blobUrl, duration: clipDuration },
       scene: { loading: sceneMedia.loading, error: Boolean(sceneMedia.error), blobUrl: sceneMedia.blobUrl },
       subject: { loading: subjectMedia.loading, error: Boolean(subjectMedia.error), blobUrl: subjectMedia.blobUrl },
+      plate: { loading: plateMedia.loading, error: Boolean(plateMedia.error), blobUrl: plateMedia.blobUrl },
     }),
-    [ev, orgId, clipMedia, sceneMedia, subjectMedia, clipDuration],
+    [ev, orgId, clipMedia, sceneMedia, subjectMedia, plateMedia, clipDuration],
   );
 
   const badgeClass = quality.state === 'complete'
@@ -73,8 +76,12 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
     metadata_only: t('evidence.metadataOnly'),
   }[quality.state];
 
+  const plateValue = formatValue(ev.plate_number);
   const metaFields = [
-    { label: t('evidence.plate'), value: formatValue(ev.plate_number) },
+    {
+      label: t('evidence.plate'),
+      value: plateValue || (plateUrl ? t('evidence.plateUnread') : ''),
+    },
     { label: t('evidence.face'), value: formatValue(ev.face_label) },
     { label: t('evidence.eventType'), value: formatValue(ev.event_type) },
     { label: t('evidence.class'), value: formatValue(ev.class_name) },
@@ -83,7 +90,7 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
     { label: t('evidence.track'), value: formatValue(ev.track_id) },
   ].filter((f) => f.value !== '');
 
-  const hasMediaUrls = Boolean(clipUrl || sceneUrl || subjectUrl);
+  const hasMediaUrls = Boolean(clipUrl || sceneUrl || subjectUrl || plateUrl);
   const thumbApiUrl = evidenceThumbnailUrl(ev, orgId);
   const thumbMedia = useEvidenceMediaUrl(thumbApiUrl);
   const displayClipSec = clipDuration > 0 ? Math.round(clipDuration) : (pkg?.clip?.duration_sec ?? 6);
@@ -95,7 +102,7 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
   }
 
   return (
-    <div className={`space-y-3 ${compact ? '' : 'mt-2'}`}>
+    <div id="evidence-viewer" className={`space-y-3 ${compact ? '' : 'mt-2'}`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="font-medium text-sm text-cv-text flex items-center gap-2">
           <Film className="w-4 h-4 text-cv-accent" />
@@ -107,15 +114,17 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
       </div>
 
       {clipUrl && (
+        <div id="evidence-viewer-clip">
         <EvidenceVideo
           apiUrl={clipUrl}
           durationSec={displayClipSec}
           onDuration={setClipDuration}
         />
+        </div>
       )}
 
-      {(sceneUrl || subjectUrl) && (
-        <div className="grid grid-cols-2 gap-2">
+      {(sceneUrl || subjectUrl || plateUrl) && (
+        <div id="evidence-viewer-images" className={`grid gap-2 ${plateUrl ? 'grid-cols-3' : 'grid-cols-2'}`}>
           {sceneUrl && (
             <EvidenceImageTile
               apiUrl={sceneUrl}
@@ -133,6 +142,13 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
                 subject?.label ?? t('evidence.subject'),
                 subject?.bbox ?? ev.bbox,
               )}
+            />
+          )}
+          {plateUrl && (
+            <EvidenceImageTile
+              apiUrl={plateUrl}
+              label={plateImg?.label ?? t('evidence.plateCrop')}
+              onOpen={() => openLightbox(plateUrl, plateImg?.label ?? t('evidence.plateCrop'))}
             />
           )}
         </div>

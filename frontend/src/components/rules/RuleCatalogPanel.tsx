@@ -146,6 +146,11 @@ function StatusChip({ tpl, subtle = false }: { tpl: RuleCatalogTemplate; subtle?
       label: t('rules.partial.requires_model'),
       cls: 'text-violet-400 bg-violet-400/8 border-violet-400/30',
     },
+    not_emitted: {
+      icon: <FlaskConical className="w-3 h-3 shrink-0" />,
+      label: t('rules.partial.not_emitted'),
+      cls: 'text-slate-400 bg-slate-400/8 border-slate-400/30',
+    },
   } as const;
 
   const item = cfg[ps as keyof typeof cfg];
@@ -210,6 +215,13 @@ function PrerequisitesPanel({ tpl }: { tpl: RuleCatalogTemplate }) {
       ok: false,
       label: t('rules.prereq.model', { defaultValue: 'Modèle IA spécialisé requis (ONNX)' }),
       action: tpl.partial_reason_fr ?? t('rules.prereq.modelHint', { defaultValue: '→ Lancez scripts/download-secondary-models.sh pour installer le modèle' }),
+    });
+  }
+  if (ps === 'not_emitted') {
+    prereqs.push({
+      ok: false,
+      label: t('rules.prereq.notEmitted', { defaultValue: "Événement non émis par le pipeline (Laboratoire)" }),
+      action: tpl.partial_reason_fr ?? t('rules.prereq.notEmittedHint', { defaultValue: '→ Ce comportement n\'est pas encore produit par l\'IA. Indisponible tant qu\'un modèle/heuristique réel ne l\'émet pas.' }),
     });
   }
 
@@ -386,7 +398,9 @@ function RuleCard({
               !operable
                 ? (tpl.partial_reason_fr ?? t('rules.catalogCard.notConfigurableHint', { defaultValue: 'Ce template nécessite des modules ou une configuration supplémentaire' }))
                 : t('rules.catalogCard.configureHint', { defaultValue: 'Cliquez pour configurer et activer cette règle sur une caméra' })
-            }>
+            }
+            helpKey={!operable ? 'catalogNotConfigurable' : 'catalogConfigure'}
+            >
               <button
                 type="button"
                 disabled={!operable}

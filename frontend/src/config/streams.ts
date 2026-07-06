@@ -50,6 +50,8 @@ export const GO2RTC_PLAYER_IFRAME = go2rtcPlayerUrl(DEFAULT_STREAM);
 /** Statut streams — HTTP via proxy Vite (fetch OK) ; WebRTC utilise GO2RTC_ORIGIN direct. */
 export const GO2RTC_STREAMS_API = '/go2rtc/api/streams';
 export const AI_ENGINE_HEALTH = '/ai-engine/health';
+export const AI_ENGINE_CAMERAS = '/ai-engine/cameras';
+export const RULES_ENGINE_HEALTH = '/rules-engine/health';
 
 /** MailHog inbox (demo/test email preview). Override via VITE_MAILHOG_URL. */
 export const MAILHOG_URL =

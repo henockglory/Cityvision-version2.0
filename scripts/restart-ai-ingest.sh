@@ -13,17 +13,20 @@ echo "==> Restart AI engine"
 stop_from_pid "$LOGDIR/ai-engine.pid" 2>/dev/null || true
 free_port "$AI_PORT"
 sleep 2
-# shellcheck source=scripts/lib/cuda-utils.sh
-source "$ROOT/scripts/lib/cuda-utils.sh"
-setup_cuda_library_path "${ROOT}/ai-engine/.venv/bin/python3"
-start_bg ai-engine "$ROOT/ai-engine" \
-  "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} ${ROOT}/ai-engine/.venv/bin/uvicorn citevision_ai.main:app --host 0.0.0.0 --port $AI_PORT" \
-  "$LOGDIR" "$ENV_FILE"
+start_bg ai-engine "$ROOT" "bash scripts/run-ai-engine.sh" "$LOGDIR" "$ENV_FILE"
 
 for _ in $(seq 1 90); do
   if curl -sf "http://127.0.0.1:$AI_PORT/health" | grep -q '"yolo_loaded":"true"'; then
     echo "[OK] AI health"
     curl -sf "http://127.0.0.1:$AI_PORT/health" | python3 -m json.tool
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+      if ! curl -sf "http://127.0.0.1:$AI_PORT/health" | grep -q '"yolo_cuda":"true"'; then
+        echo "[WARN] GPU present but yolo_cuda=false — fixing onnxruntime-gpu…"
+        bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --restart-ai --max-attempts=3 \
+          --health-url="http://127.0.0.1:$AI_PORT/health" || true
+        curl -sf "http://127.0.0.1:$AI_PORT/health" | python3 -m json.tool || true
+      fi
+    fi
     break
   fi
   sleep 2
@@ -47,3 +50,6 @@ done
 echo "==> Wait for camera ingest (orchestrator sync ~30s)"
 sleep 35
 curl -sf "http://127.0.0.1:$AI_PORT/cameras" | python3 -m json.tool | head -30
+
+bash "$ROOT/scripts/ensure-demo-pipeline.sh"
+bash "$ROOT/scripts/ensure-frontend.sh"

@@ -67,6 +67,7 @@ class Settings(BaseSettings):
 
     insightface_model_path: str = ""
     paddleocr_model_dir: str = ""
+    ai_require_all_models: bool = True
 
     postgres_host: str = "localhost"
     postgres_port: int = 5433

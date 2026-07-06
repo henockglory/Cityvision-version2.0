@@ -105,7 +105,10 @@ export default function Alerts() {
       <div id="alerts-filters" className="cv-card p-4 flex flex-wrap gap-3 items-end shrink-0">
         <Filter className="w-4 h-4 text-cv-muted mb-2" />
         <div>
-          <label className="cv-label text-xs">Sévérité</label>
+          <label className="cv-label text-xs flex items-center gap-1">
+            Sévérité
+            <InfoTip helpKey="alertSeverity" content="Filtre par niveau d'urgence de l'alerte." />
+          </label>
           <select className="cv-input text-xs" value={severity} onChange={(e) => setSeverity(e.target.value)}>
             <option value="">Toutes</option>
             <option value="low">Faible</option>
@@ -115,7 +118,10 @@ export default function Alerts() {
           </select>
         </div>
         <div>
-          <label className="cv-label text-xs">Caméra</label>
+          <label className="cv-label text-xs flex items-center gap-1">
+            Caméra
+            <InfoTip helpKey="alertCamera" content="Affiche uniquement les alertes d'une caméra précise." />
+          </label>
           <select className="cv-input text-xs" value={cameraId} onChange={(e) => setCameraId(e.target.value)}>
             <option value="">Toutes</option>
             {cameras.map((c) => (
@@ -174,7 +180,7 @@ export default function Alerts() {
             className="h-full"
             listClassName="!p-0"
             list={
-              <div className="relative pl-6 border-l border-cv-border/60 space-y-3 ml-2 p-2">
+              <div id="alerts-list" className="relative pl-6 border-l border-cv-border/60 space-y-3 ml-2 p-2">
                 {alerts.map((alert) => (
                   <button
               key={alert.id}
@@ -322,12 +328,12 @@ export default function Alerts() {
                   <div className="flex items-center gap-2">
                     <Send className="w-4 h-4 text-cv-accent" />
                     <p className="font-medium text-sm">{t('evidence.forwardTitle')}</p>
-                    <InfoTip content={t('evidence.forwardHint')} />
+                    <InfoTip helpKey="evidenceForward" content={t('evidence.forwardHint')} />
                   </div>
                   <div>
                     <label className="cv-label text-xs flex items-center gap-1">
                       {t('evidence.forwardEmail')}
-                      <InfoTip content={t('evidence.forwardEmailHint')} />
+                      <InfoTip helpKey="forwardEmail" content={t('evidence.forwardEmailHint')} />
                     </label>
                     <input
                       type="email"
@@ -354,7 +360,7 @@ export default function Alerts() {
                   <div>
                     <label className="cv-label text-xs flex items-center gap-1">
                       {t('evidence.forwardWebhook')}
-                      <InfoTip content={t('evidence.forwardWebhookHint')} />
+                      <InfoTip helpKey="forwardWebhook" content={t('evidence.forwardWebhookHint')} />
                     </label>
                     <input
                       type="url"

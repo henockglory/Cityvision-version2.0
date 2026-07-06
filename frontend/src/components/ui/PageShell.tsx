@@ -7,6 +7,7 @@ interface PageShellProps {
   actions?: ReactNode;
   toolbar?: ReactNode;
   onHelpTour?: () => void;
+  tourTriggerAttr?: string;
   className?: string;
   /** Bind page to viewport height so child split panes can scroll independently. */
   fillViewport?: boolean;
@@ -19,6 +20,7 @@ export default function PageShell({
   actions,
   toolbar,
   onHelpTour,
+  tourTriggerAttr,
   className = '',
   fillViewport = false,
   children,
@@ -37,6 +39,7 @@ export default function PageShell({
           subtitle={subtitle}
           actions={actions}
           onHelpTour={onHelpTour}
+          tourTriggerAttr={tourTriggerAttr}
         />
         {toolbar && <div className="flex flex-wrap items-center gap-3 mt-5">{toolbar}</div>}
       </div>

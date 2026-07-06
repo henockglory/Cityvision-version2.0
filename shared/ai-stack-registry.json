@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "description": "Registre extensible des composants IA CitéVision. Ajouter une entrée dans models[] pour qu'elle soit installée et vérifiée avant démarrage de l'AI engine.",
+  "models": [
+    {
+      "id": "yolo",
+      "health_key": "yolo_loaded",
+      "kind": "primary",
+      "required": true,
+      "file": "ai-engine/models/yolov8s.onnx",
+      "file_fallback": "ai-engine/models/yolov8n.onnx",
+      "env_override": "CV_YOLO_MODEL",
+      "notes": "Détection principale véhicules/personnes. Fichier surchargé par generated.env."
+    },
+    {
+      "id": "insightface",
+      "health_key": "face_loaded",
+      "kind": "primary",
+      "required": true,
+      "root": "ai-engine/models/insightface",
+      "model_name": "buffalo_l",
+      "required_glob": "ai-engine/models/insightface/models/buffalo_l/*.onnx",
+      "notes": "Reconnaissance faciale — modèle buffalo_l (5 fichiers .onnx)."
+    },
+    {
+      "id": "paddleocr",
+      "health_key": "plate_loaded",
+      "kind": "primary",
+      "required": true,
+      "notes": "ANPR / lecture de plaques via PaddleOCR + PaddleX."
+    }
+  ],
+  "secondary_registry": "shared/ai-models.json",
+  "secondary_health_suffix": "_model_loaded",
+  "gpu_health_key": "yolo_cuda",
+  "install_command": "bash scripts/install-ai-models.sh --fix",
+  "verify_command": "python ai-engine/scripts/verify_ai_stack.py",
+  "notes": "Pour ajouter un modèle ONNX secondaire: dupliquer une entrée dans shared/ai-models.json (id, file, classes…). install-ai-models.sh et verify_ai_stack.py le détectent automatiquement."
+}

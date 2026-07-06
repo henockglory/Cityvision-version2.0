@@ -187,32 +187,6 @@
     "partial_status": "full"
   },
   {
-    "id": "tpl-behavior-anomaly",
-    "name": "Anomalie comportementale",
-    "category": "behavior",
-    "severity": "medium",
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "behavior_anomaly"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {}
-        }
-      ]
-    },
-    "role_summary_fr": "Détecte les comportements hors norme par rapport à l'activité normale de la scène.",
-    "deployment_scopes": [
-      "national",
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "full"
-  },
-  {
     "id": "tpl-crowd-count",
     "name": "Seuil foule atteint",
     "category": "behavior",

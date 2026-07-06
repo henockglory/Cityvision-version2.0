@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { getAuthCredentials } from '@/lib/authSession';
 import { useAuthHydrated } from '@/hooks/useAuthHydrated';
 import type { UserRole } from '@/types';
+import StackHealthGate from '@/components/StackHealthGate';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -36,5 +37,5 @@ export default function ProtectedRoute({ children, roles }: ProtectedRouteProps)
     return <Navigate to="/" replace />;
   }
 
-  return <>{children}</>;
+  return <StackHealthGate>{children}</StackHealthGate>;
 }

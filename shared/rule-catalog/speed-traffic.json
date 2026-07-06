@@ -1,42 +1,8 @@
 [
   {
     "id": "tpl-speeding",
-    "name": "Excès de vitesse véhicule",
-    "description": "Véhicule dépassant le seuil de vitesse configuré",
-    "category": "speed",
-    "severity": "high",
-    "definition": {
-      "condition": {
-        "op": "ET",
-        "children": [
-          {
-            "op": "eq",
-            "field": "class_name",
-            "value": "car"
-          },
-          {
-            "op": "gt",
-            "field": "speed_kmh",
-            "value": 50
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "high"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Alerte si un véhicule dépasse la vitesse limite configurée — nécessite calibration caméra.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "requires_calibration",
-    "partial_reason_fr": "Nécessite une calibration caméra (homographie) pour mesurer la vitesse en km/h"
+    "redirect_to": "tpl-speeding-premium",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-speeding-premium (règle canonique de la démo, événement 'speeding' calibré). Cette variante « class_name=car AND speed_kmh>50 » faisait double emploi."
   },
   {
     "id": "tpl-sudden-stop",
@@ -69,84 +35,13 @@
   },
   {
     "id": "tpl-running-person",
-    "name": "Course / fuite",
-    "description": "Personne en course rapide",
-    "category": "speed",
-    "severity": "high",
-    "definition": {
-      "condition": {
-        "op": "ET",
-        "children": [
-          {
-            "op": "eq",
-            "field": "class_name",
-            "value": "person"
-          },
-          {
-            "op": "gt",
-            "field": "speed_kmh",
-            "value": 15
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "high"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Alerte quand une personne court — signal d'urgence ou de poursuite dans un espace protégé.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "full"
+    "redirect_to": "tpl-running",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-running (même heuristique de course). La variante « class_name=person AND speed_kmh>15 » faisait double emploi."
   },
   {
     "id": "tpl-traffic-jam",
-    "name": "Embouteillage",
-    "description": "Densité élevée et vitesse faible prolongée",
-    "category": "traffic",
-    "severity": "warning",
-    "definition": {
-      "condition": {
-        "op": "ET",
-        "children": [
-          {
-            "op": "gt",
-            "field": "metadata.vehicle_count",
-            "value": 8
-          },
-          {
-            "op": "lt",
-            "field": "metadata.avg_speed_kmh",
-            "value": 10
-          },
-          {
-            "op": "gt",
-            "field": "duration_seconds",
-            "value": 120
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "notify",
-          "config": {
-            "channel": "ops"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Détecte la formation d'un embouteillage selon le nombre de véhicules immobilisés.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "full"
+    "redirect_to": "tpl-congestion",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-congestion. L'agrégat vehicle_count/avg_speed sur fenêtre n'est pas émis ; la congestion réelle s'appuie sur vehicle_count_threshold."
   },
   {
     "id": "tpl-illegal-parking",
@@ -154,7 +49,6 @@
     "description": "Véhicule stationnaire en zone interdite",
     "category": "traffic",
     "severity": "medium",
-    "supported": true,
     "definition": {
       "condition": {
         "op": "AND",

@@ -324,6 +324,157 @@ export const rulesApi = {
     api.delete(`/orgs/${orgId}/rules/${ruleId}`),
 };
 
+export interface CapabilitiesBehaviorMenuItem {
+  id: string;
+  group: string;
+  applies_to: string;
+  label_fr: string;
+  label_en: string;
+  capability: string;
+  human_description_fr: string;
+  emits: string[];
+  requires: string[];
+  config_fields?: Record<string, unknown>;
+  ready: boolean;
+  ready_reason_fr?: string;
+  compatible_templates?: string[];
+}
+
+export interface CapabilitiesMenuResponse {
+  behaviors: CapabilitiesBehaviorMenuItem[];
+  health: Record<string, string>;
+}
+
+export interface SceneIntentValidation {
+  valid: boolean;
+  errors?: string[];
+  warnings?: string[];
+}
+
+export const capabilitiesApi = {
+  menu: (orgId: string) =>
+    api.get<CapabilitiesMenuResponse>(`/orgs/${orgId}/capabilities/menu`),
+  validateIntent: (orgId: string, definition: Record<string, unknown>) =>
+    api.post<SceneIntentValidation>(`/orgs/${orgId}/scene-intent/validate`, { definition }),
+};
+
+export interface ModelPackEntry {
+  id: string;
+  health_key: string;
+  kind: string;
+  required: boolean;
+  label_fr: string;
+  label_en: string;
+  behavior?: string;
+  event_type?: string;
+  file?: string;
+  loaded: boolean;
+  notes?: string;
+}
+
+export interface ModelPackResponse {
+  version: number;
+  install_command: string;
+  verify_command: string;
+  gpu_health_key?: string;
+  gpu_loaded: boolean;
+  models: ModelPackEntry[];
+  health: Record<string, string>;
+}
+
+export const modelPackApi = {
+  get: (orgId: string) => api.get<ModelPackResponse>(`/orgs/${orgId}/ai/model-pack`),
+};
+
+export interface OrgModelRow {
+  id: string;
+  task: string;
+  file: string;
+  classes: string[];
+  positive_classes: string[];
+  behavior: string;
+  event_type: string;
+  label_fr: string;
+  label_en?: string;
+  applies_to?: string;
+  input_source?: string;
+  input_size?: number;
+  capability?: string;
+  human_description_fr?: string;
+  probe_ok: boolean;
+  health_key: string;
+  loaded: boolean;
+  rule_template_id: string;
+}
+
+export interface OrgModelsListResponse {
+  models: OrgModelRow[];
+  health: Record<string, string>;
+}
+
+export interface UploadOrgModelResponse {
+  id: string;
+  sha256: string;
+  file: string;
+  probe_ok: boolean;
+  health_key: string;
+  behavior: string;
+  event_type: string;
+  rule_template_id: string;
+  applies_to: string;
+  input_source: string;
+  label_fr: string;
+  label_en: string;
+  ai_reload_ok: boolean;
+  ai_reload_message?: string;
+}
+
+export interface ModelUploadPayload {
+  id: string;
+  task: 'classification' | 'detection';
+  event_type: string;
+  label_fr: string;
+  label_en: string;
+  human_description_fr: string;
+  human_description_en?: string;
+  applies_to: 'zone' | 'line' | 'both';
+  input_source: 'crop_vehicle' | 'crop_zone' | 'full_frame';
+  input_size: number;
+  capability: string;
+  behavior?: string;
+  classes: string[];
+  positive_classes: string[];
+  file?: File;
+  download_url?: string;
+}
+
+export const orgModelsApi = {
+  list: (orgId: string) => api.get<OrgModelsListResponse>(`/orgs/${orgId}/ai/models`),
+  upload: (orgId: string, payload: ModelUploadPayload) => {
+    const form = new FormData();
+    form.append('id', payload.id);
+    form.append('task', payload.task);
+    form.append('event_type', payload.event_type);
+    form.append('label_fr', payload.label_fr);
+    form.append('label_en', payload.label_en);
+    form.append('human_description_fr', payload.human_description_fr);
+    if (payload.human_description_en) form.append('human_description_en', payload.human_description_en);
+    form.append('applies_to', payload.applies_to);
+    form.append('input_source', payload.input_source);
+    form.append('input_size', String(payload.input_size));
+    form.append('capability', payload.capability);
+    if (payload.behavior) form.append('behavior', payload.behavior);
+    form.append('classes', JSON.stringify(payload.classes));
+    form.append('positive_classes', JSON.stringify(payload.positive_classes));
+    if (payload.file) form.append('model', payload.file);
+    if (payload.download_url) form.append('download_url', payload.download_url);
+    return api.post<UploadOrgModelResponse>(`/orgs/${orgId}/ai/models`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 600_000,
+    });
+  },
+};
+
 export const alertsApi = {
   list: (orgId: string, filters?: import('@/types').AlertFilters) => {
     const params: Record<string, string | number> = {};
@@ -425,7 +576,12 @@ export const zonesApi = {
   update: (
     orgId: string,
     zoneId: string,
-    body: { name?: string; zone_kind?: string; behavior_config?: Record<string, unknown> },
+    body: {
+      name?: string;
+      zone_kind?: string;
+      behavior_config?: Record<string, unknown>;
+      polygon?: { x: number; y: number; distance_to_next_m?: number }[];
+    },
   ) => api.patch<BackendZone>(`/orgs/${orgId}/zones/${zoneId}`, body),
   delete: (orgId: string, zoneId: string) =>
     api.delete(`/orgs/${orgId}/zones/${zoneId}`),
@@ -435,7 +591,10 @@ export const zonesApi = {
     api.get<BackendLine[]>(`/orgs/${orgId}/lines`, {
       params: cameraId ? { camera_id: cameraId } : undefined,
     }),
-  updateLine: (orgId: string, lineId: string, body: { name?: string }) =>
+  updateLine: (orgId: string, lineId: string, body: {
+    name?: string;
+    behavior_config?: { behavior?: string; config?: Record<string, unknown> };
+  }) =>
     api.patch<BackendLine>(`/orgs/${orgId}/lines/${lineId}`, body),
   deleteLine: (orgId: string, lineId: string) =>
     api.delete(`/orgs/${orgId}/lines/${lineId}`),
@@ -465,12 +624,13 @@ export interface BackendLine {
   camera_id?: string;
   start_point?: { x: number; y: number };
   end_point?: { x: number; y: number };
+  behavior_config?: { behavior?: string; config?: Record<string, unknown> };
 }
 
 export interface BackendZone {
   id: string;
   name: string;
-  polygon: { x: number; y: number }[];
+  polygon: { x: number; y: number; distance_to_next_m?: number }[];
   color?: string;
   camera_id?: string;
   zone_kind?: string;
@@ -570,7 +730,7 @@ export const demoApi = {
     if (name) fd.append('name', name);
     return api.post<DemoVideo>(`/orgs/${orgId}/demo/videos`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 600_000,
+      timeout: 3_000_000,
       onUploadProgress: (e) => {
         if (onProgress && e.total) {
           onProgress(Math.round((e.loaded / e.total) * 30));

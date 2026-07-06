@@ -92,8 +92,8 @@ func demoRuleSpecs() []ruleSpec {
 			cameraMatch: "ceinture",
 			zoneName:    "Zone_bbox",
 			classFilter: "car",
-			// Real ONNX model emits phone_use_violation; heuristic fallback emits phone_driving.
-			eventTypes: []string{"phone_use_violation", "phone_driving"},
+			// [F.58]/[P.134] Canonical ONNX event only; legacy heuristic emits phone_driving when model absent.
+			eventTypes: []string{"phone_use_violation"},
 			withEmail:  true,
 			withClip:   true,
 		},
@@ -103,7 +103,7 @@ func demoRuleSpecs() []ruleSpec {
 			templateID:  "tpl-seatbelt",
 			severity:    "medium",
 			cameraMatch: "ceinture",
-			zoneName:    "Zone_bbox",
+			zoneName:    "Zone_bbox2", // seatbelt behavior runs on Zone_bbox2 ([B.20]/[C.32])
 			classFilter: "car",
 			eventTypes:  []string{"seatbelt_violation"},
 			withEmail:   true,
@@ -282,10 +282,11 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 	}
 
 	def := map[string]interface{}{
-		"camera_id": camID.String(),
-		"condition": condition,
-		"bindings":  bindings,
-		"actions":   actions,
+		"camera_id":        camID.String(),
+		"condition":        condition,
+		"bindings":         bindings,
+		"actions":          actions,
+		"dedup_key_fields": []string{"camera_id", "event_id"},
 	}
 	if spec.withClip {
 		def["evidence"] = map[string]interface{}{
@@ -294,7 +295,8 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 			"draw_bbox":    true,
 			"images": []map[string]interface{}{
 				{"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
-				{"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 10, "zoom": 1.0},
+				{"role": "subject", "label": "Cible détectée", "crop": "full", "padding_pct": 8, "zoom": 1.0},
+				{"role": "plate", "label": "Plaque arrière", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8},
 			},
 		}
 	}

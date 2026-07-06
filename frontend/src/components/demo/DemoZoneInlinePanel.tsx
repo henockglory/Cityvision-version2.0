@@ -21,7 +21,7 @@ export default function DemoZoneInlinePanel({ cameraId, streamSrc, canEdit = fal
 
   if (!cameraId || !streamSrc) {
     return (
-      <div className="cv-card cv-demo-zone-inline p-5">
+      <div id="demo-zones" className="cv-card cv-demo-zone-inline p-5">
         <div className="flex items-center gap-3">
           <div className="cv-demo-step-badge">2</div>
           <div>
@@ -35,7 +35,7 @@ export default function DemoZoneInlinePanel({ cameraId, streamSrc, canEdit = fal
 
   if (!canEdit) {
     return (
-      <div className="cv-card cv-demo-zone-inline p-5">
+      <div id="demo-zones" className="cv-card cv-demo-zone-inline p-5">
         <div className="flex items-center gap-3">
           <div className="cv-demo-step-badge">2</div>
           <div>
@@ -48,7 +48,7 @@ export default function DemoZoneInlinePanel({ cameraId, streamSrc, canEdit = fal
   }
 
   return (
-    <div className="cv-card cv-demo-zone-inline overflow-hidden">
+    <div id="demo-zones" className="cv-card cv-demo-zone-inline overflow-hidden">
       <button
         type="button"
         className="cv-demo-zone-header w-full flex items-center justify-between px-5 py-4"

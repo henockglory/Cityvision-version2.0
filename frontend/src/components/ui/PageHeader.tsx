@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useUiStore } from '@/stores/uiStore';
 import Tooltip from '@/components/ui/Tooltip';
 
 interface PageHeaderProps {
@@ -8,10 +9,13 @@ interface PageHeaderProps {
   subtitle?: ReactNode;
   actions?: ReactNode;
   onHelpTour?: () => void;
+  tourTriggerAttr?: string;
 }
 
-export default function PageHeader({ title, subtitle, actions, onHelpTour }: PageHeaderProps) {
+export default function PageHeader({ title, subtitle, actions, onHelpTour, tourTriggerAttr }: PageHeaderProps) {
   const { t } = useTranslation();
+  const toursEnabled = useUiStore((s) => s.toursEnabled);
+  const showTour = toursEnabled && onHelpTour;
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
       <div className="min-w-0">
@@ -19,12 +23,13 @@ export default function PageHeader({ title, subtitle, actions, onHelpTour }: Pag
         {subtitle && <p className="text-sm text-cv-muted mt-1">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap">
-        {onHelpTour && (
-          <Tooltip content={t('pageHeader.startTour', 'Lancer le tutoriel de cette page')}>
+        {showTour && (
+          <Tooltip content={t('pageHeader.tourHint', 'Guide pas à pas : menus, champs et procédures expliqués simplement.')}>
             <button
               type="button"
               className="cv-btn-ghost p-2"
               onClick={onHelpTour}
+              data-tour={tourTriggerAttr ?? 'page-tour-help'}
               aria-label={t('pageHeader.tourAriaLabel', 'Tutoriel guidé')}
             >
               <HelpCircle className="w-4 h-4" />

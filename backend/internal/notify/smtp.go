@@ -39,7 +39,12 @@ func ParseSMTP(raw json.RawMessage) SMTPConfig {
 		}
 	}
 	if cfg.Port == 0 {
-		cfg.Port = 587
+		host := strings.ToLower(strings.TrimSpace(cfg.Host))
+		if host == "localhost" || host == "127.0.0.1" || host == "mailhog" {
+			cfg.Port = 1025
+		} else {
+			cfg.Port = 587
+		}
 	}
 	if !cfg.UseTLS && strings.EqualFold(os.Getenv("SMTP_USE_TLS"), "true") {
 		cfg.UseTLS = true
@@ -52,6 +57,9 @@ func ParseSMTP(raw json.RawMessage) SMTPConfig {
 	}
 	if cfg.FromAddress == "" {
 		cfg.FromAddress = os.Getenv("SMTP_FROM")
+	}
+	if cfg.FromAddress == "" && cfg.Host != "" {
+		cfg.FromAddress = "alertes@citevision.local"
 	}
 	return cfg
 }

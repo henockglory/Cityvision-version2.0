@@ -74,28 +74,35 @@ _yolo_file_ok() {
 }
 
 _models_ok() {
-  [[ -d "$ROOT/ai-engine/models/insightface/models/buffalo_l" ]] \
-    || [[ -d "$HOME/.insightface/models/buffalo_l" ]] \
-    || return 1
-  "$VENV_PY" -c "from paddleocr import PaddleOCR" 2>/dev/null
+  local n
+  n="$(find "$ROOT/ai-engine/models/insightface/models/buffalo_l" -name '*.onnx' 2>/dev/null | wc -l | tr -d ' ')"
+  [[ "$n" -ge 3 ]] || return 1
+  "$VENV_PY" -c "from paddleocr import PaddleOCR" 2>/dev/null || return 1
+  [[ -f "$ROOT/ai-engine/models/secondary/driver_phone.onnx" ]] || return 1
+  [[ -f "$ROOT/ai-engine/models/secondary/seatbelt.onnx" ]] || return 1
+  return 0
 }
 
 _health_keys_ok() {
   local url="$1"
   [[ "$url" == "none" || "$url" == "skip" ]] && return 0
-  curl -sf "$url" 2>/dev/null | "$VENV_PY" -c "
-import json, sys
-d = json.load(sys.stdin)
-keys = (
-    'yolo_loaded', 'face_loaded', 'plate_loaded',
-    'driver_phone_model_loaded', 'seatbelt_model_loaded',
-)
-missing = [k for k in keys if str(d.get(k, '')).lower() != 'true']
-if missing:
-    print('[WARN] AI health missing:', ', '.join(missing), file=sys.stderr)
-    sys.exit(1)
-sys.exit(0)
-" 2>/dev/null
+  local gpu_flag=()
+  if _gpu_expected; then
+    gpu_flag=(--require-gpu)
+  fi
+  "$VENV_PY" "$ROOT/ai-engine/scripts/check_ai_health.py" --url "$url" "${gpu_flag[@]}"
+}
+
+_gpu_expected() {
+  command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1
+}
+
+_cuda_health_ok() {
+  [[ "$HEALTH_URL" == "none" || "$HEALTH_URL" == "skip" ]] && return 0
+  if ! _gpu_expected; then
+    return 0
+  fi
+  curl -sf "$HEALTH_URL" 2>/dev/null | grep -q '"yolo_cuda":"true"'
 }
 
 verify_stack() {
@@ -105,6 +112,10 @@ verify_stack() {
   if [[ "$HEALTH_URL" != "none" && "$HEALTH_URL" != "skip" ]] \
       && curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
     _health_keys_ok "$HEALTH_URL" || return 1
+    if _gpu_expected && ! _cuda_health_ok; then
+      _log "[WARN] GPU détecté mais yolo_cuda=false (onnxruntime-gpu / cuDNN)"
+      return 1
+    fi
   fi
   return 0
 }
@@ -127,6 +138,7 @@ ensure_pip_extras() {
     while (( attempt <= 3 )); do
       pip install --upgrade pip -q 2>/dev/null || true
       if pip install -e 'ai-engine/.[identity,anpr,dev]' 2>&1; then
+        ensure_ort_gpu_only "${VENV_DIR}/bin/pip"
         touch "$VENV_SENTINEL"
         return 0
       fi
@@ -136,12 +148,14 @@ ensure_pip_extras() {
       sleep 2
     done
     if _imports_ok; then
+      ensure_ort_gpu_only "${VENV_DIR}/bin/pip"
       touch "$VENV_SENTINEL"
       return 0
     fi
     return 1
   fi
   touch "$VENV_SENTINEL"
+  ensure_ort_gpu_only "${VENV_DIR}/bin/pip"
   return 0
 }
 
@@ -162,11 +176,8 @@ ensure_yolo_model() {
 }
 
 ensure_download_models() {
-  _log "[FIX] Téléchargement / init InsightFace + PaddleOCR…"
-  bash "$ROOT/scripts/download-models.sh" --skip-yolo 2>&1
-  _log "[FIX] Modèles secondaires (téléphone / ceinture)…"
-  bash "$ROOT/scripts/build-secondary-models.sh" 2>&1 || \
-    bash "$ROOT/scripts/download-secondary-models.sh" --fix 2>&1 || true
+  _log "[FIX] Installation complète modèles IA…"
+  bash "$ROOT/scripts/install-ai-models.sh" --fix || return 1
 }
 
 restart_ai_engine() {
@@ -174,11 +185,8 @@ restart_ai_engine() {
   stop_from_pid "$LOGDIR/ai-engine.pid"
   free_port "$AI_PORT"
   sleep 2
-  setup_cuda_library_path "${VENV_DIR}/bin/python3"
   mkdir -p "$LOGDIR"
-  start_bg ai-engine "$ROOT/ai-engine" \
-    "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} ${VENV_DIR}/bin/uvicorn citevision_ai.main:app --host 0.0.0.0 --port $AI_PORT" \
-    "$LOGDIR" "$ENV_FILE"
+  start_bg ai-engine "$ROOT" "bash scripts/run-ai-engine.sh" "$LOGDIR" "$ENV_FILE"
   local i=0
   while (( i < 120 )); do
     if wait_http_ok "$HEALTH_URL" 5; then
@@ -192,7 +200,7 @@ restart_ai_engine() {
 
 apply_fixes() {
   ensure_pip_extras || return 1
-  install_ai_cuda_deps "${VENV_PIP}"
+  ensure_ort_gpu_only "${VENV_PIP}"
   setup_cuda_library_path "${VENV_DIR}/bin/python3"
   ensure_yolo_model || return 1
   ensure_download_models || return 1

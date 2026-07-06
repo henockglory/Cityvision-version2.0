@@ -32,6 +32,7 @@
     {
       "id": "",
       "group": "access",
+      "applies_to": "zone",
       "label_fr": "Détection standard (auto)",
       "label_en": "Standard detection (auto)",
       "capability": "real",
@@ -44,6 +45,7 @@
     {
       "id": "presence",
       "group": "access",
+      "applies_to": "zone",
       "label_fr": "Présence soutenue",
       "label_en": "Sustained presence",
       "capability": "real",
@@ -59,6 +61,7 @@
     {
       "id": "perimeter",
       "group": "access",
+      "applies_to": "zone",
       "label_fr": "Périmètre sécurisé",
       "label_en": "Secured perimeter",
       "capability": "real",
@@ -71,6 +74,7 @@
     {
       "id": "controlled_exit",
       "group": "access",
+      "applies_to": "zone",
       "label_fr": "Sortie contrôlée",
       "label_en": "Controlled exit",
       "capability": "real",
@@ -83,6 +87,7 @@
     {
       "id": "parking",
       "group": "traffic",
+      "applies_to": "zone",
       "label_fr": "Stationnement interdit",
       "label_en": "No-parking",
       "capability": "real",
@@ -112,6 +117,7 @@
     {
       "id": "traffic_light_color",
       "group": "traffic",
+      "applies_to": "zone",
       "label_fr": "Couleur du feu (rouge/vert/orange)",
       "label_en": "Traffic light color (red/green/amber)",
       "capability": "real",
@@ -126,6 +132,7 @@
     {
       "id": "red_light_observation",
       "group": "traffic",
+      "applies_to": "zone",
       "label_fr": "Observation feu rouge",
       "label_en": "Red-light observation",
       "capability": "real",
@@ -141,15 +148,15 @@
     {
       "id": "speed_measurement",
       "group": "traffic",
+      "applies_to": "zone",
       "label_fr": "Mesure de vitesse (distance réelle)",
       "label_en": "Speed measurement (real distance)",
       "capability": "real",
-      "human_description_fr": "Mesure la vitesse d'un véhicule via le temps d'entrée→sortie de la zone et la distance réelle qu'elle couvre. Émet un excès au-delà de la limite.",
-      "human_description_en": "Measures vehicle speed from zone entry→exit time and the real distance it covers. Emits speeding above the limit.",
+      "human_description_fr": "Mesure la vitesse d'un véhicule via le temps d'entrée→sortie de la zone. Calibrez chaque segment du polygone (distance réelle en mètres entre deux points consécutifs) pour convertir le parcours en mètres au sol.",
+      "human_description_en": "Measures vehicle speed from zone entry→exit time. Calibrate each polygon segment (real metres between consecutive vertices) to convert the path to ground metres.",
       "emits": ["speeding"],
-      "requires": ["config:distance_m"],
+      "requires": ["polygon:edge_distances"],
       "config_fields": [
-        { "key": "distance_m", "type": "number", "label_fr": "Distance réelle (m)", "label_en": "Real distance (m)", "default": 20, "min": 1, "max": 1000, "hint_fr": "Longueur au sol que la zone couvre dans le sens de circulation." },
         { "key": "speed_limit_kmh", "type": "number", "label_fr": "Limite (km/h)", "label_en": "Limit (km/h)", "default": 20, "min": 1, "max": 300 },
         { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "car" }
       ]
@@ -157,6 +164,7 @@
     {
       "id": "driver_cabin",
       "group": "driver",
+      "applies_to": "zone",
       "label_fr": "Habitacle conducteur (téléphone + ceinture)",
       "label_en": "Driver cabin (phone + seatbelt)",
       "capability": "real",
@@ -171,6 +179,7 @@
     {
       "id": "phone_use",
       "group": "driver",
+      "applies_to": "zone",
       "label_fr": "Téléphone au volant (modèle)",
       "label_en": "Phone use while driving (model)",
       "capability": "real",
@@ -185,6 +194,7 @@
     {
       "id": "seatbelt",
       "group": "driver",
+      "applies_to": "zone",
       "label_fr": "Ceinture non portée (modèle)",
       "label_en": "Seatbelt not worn (model)",
       "capability": "real",
@@ -214,6 +224,7 @@
     {
       "id": "loitering",
       "group": "safety",
+      "applies_to": "zone",
       "label_fr": "Flânerie prolongée",
       "label_en": "Loitering",
       "capability": "real",
@@ -228,6 +239,7 @@
     {
       "id": "abandoned_object",
       "group": "safety",
+      "applies_to": "zone",
       "label_fr": "Objet abandonné",
       "label_en": "Abandoned object",
       "capability": "partial",

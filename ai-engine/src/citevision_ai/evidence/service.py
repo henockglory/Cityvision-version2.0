@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any
-
 from citevision_ai.evidence.buffer import FrameRingBuffer
 from citevision_ai.evidence.capture import bbox_from_event, capture_images_from_policy
 from citevision_ai.evidence.config import CLIP_DURATION_SEC, JPEG_QUALITY, RING_FPS, RING_SECONDS
@@ -38,6 +38,7 @@ class EvidenceCaptureService:
         *,
         force: bool = False,
         policy: dict[str, Any] | None = None,
+        async_upload: bool = True,
     ) -> None:
         if not org_id:
             return
@@ -48,7 +49,37 @@ class EvidenceCaptureService:
                 policy = self._gate.match_policy(camera_id, evt)
         if policy is None:
             return
+        if async_upload:
+            self.attach_evidence_async(camera_id, org_id, evt, frame, policy=policy)
+            return
         self._capture_and_attach(camera_id, org_id, evt, frame, policy)
+
+    def attach_evidence_async(
+        self,
+        camera_id: str,
+        org_id: str,
+        evt: dict[str, Any],
+        frame,
+        *,
+        policy: dict[str, Any],
+    ) -> None:
+        """Capture + upload in background so ingest never blocks on backend HTTP."""
+
+        def _run() -> None:
+            try:
+                self._capture_and_attach(camera_id, org_id, evt, frame, policy)
+            except Exception:
+                logger.exception(
+                    "async evidence failed camera=%s event=%s",
+                    camera_id,
+                    evt.get("event_id"),
+                )
+
+        threading.Thread(
+            target=_run,
+            daemon=True,
+            name=f"evidence-{evt.get('event_id', 'evt')}",
+        ).start()
 
     def capture_retroactive(
         self,
@@ -105,6 +136,7 @@ class EvidenceCaptureService:
             if exported:
                 clip_bytes = exported.data
                 clip_duration = exported.duration_sec
+        plate_jpeg = extras[0] if extras else None
         meta = {
             "bbox": bbox,
             "confidence": evt.get("confidence"),
@@ -113,10 +145,18 @@ class EvidenceCaptureService:
             "track_id": evt.get("track_id"),
             "event_type": evt.get("event_type") or evt.get("event"),
             "clip_duration_sec": clip_duration,
+            "plate_number": evt.get("plate_number"),
+            "plate_confidence": evt.get("plate_confidence"),
         }
         uploaded = self._uploader.upload(
             org_id, camera_id, event_id, scene, subject, clip_bytes, meta,
+            plate_jpeg=plate_jpeg,
         )
+        if not uploaded:
+            uploaded = self._uploader.upload(
+                org_id, camera_id, event_id, scene, subject, clip_bytes, meta,
+                plate_jpeg=plate_jpeg,
+            )
         if uploaded:
             evt["evidence"] = uploaded
             if pkg := uploaded.get("package"):

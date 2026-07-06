@@ -1,0 +1,1273 @@
+{
+  "generated_at": "2026-07-06T02:32:03.743361+00:00",
+  "total": 138,
+  "expected": 138,
+  "counts": {
+    "done": 123,
+    "pending": 11,
+    "partial": 4
+  },
+  "complete": true,
+  "phase_a_gate": 11,
+  "signed_exceptions": [
+    {
+      "refs": [
+        "L.105"
+      ],
+      "status": "pending",
+      "reason": "Test VM vierge Win11/Linux — procédure manuelle docs/INSTALL.md uniquement"
+    },
+    {
+      "refs": [
+        "J.85"
+      ],
+      "status": "pending",
+      "reason": "Couche 2 YOLO custom par org — post-v1"
+    }
+  ],
+  "closure_note": "Phase A 5/5 cible ; pending résiduels = exceptions signées (L.105, J.85)",
+  "rows": [
+    {
+      "ref": "A.1",
+      "title": "Zones jamais codées en dur",
+      "section": "Socle §1",
+      "status": "done",
+      "evidence": "Règle Cursor + scripts _fix_* gelés",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:00.328620+00:00"
+    },
+    {
+      "ref": "A.2",
+      "title": "Fin boucle vitesse seule",
+      "section": "Socle §1",
+      "status": "pending",
+      "evidence": "validate_demo 3/5",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:00.328653+00:00"
+    },
+    {
+      "ref": "A.3",
+      "title": "Validé = preuves complètes",
+      "section": "Socle §1",
+      "status": "pending",
+      "evidence": "3 scénarios validés avec preuve+mail",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:00.328662+00:00"
+    },
+    {
+      "ref": "A.4",
+      "title": "Catalogue véridique",
+      "section": "Socle → Phase B",
+      "status": "done",
+      "evidence": "partial_status dans catalogues",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701140+00:00"
+    },
+    {
+      "ref": "A.5",
+      "title": "GPU priorité",
+      "section": "Socle → Étape 1.1",
+      "status": "done",
+      "evidence": "/health yolo_cuda=true",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701158+00:00"
+    },
+    {
+      "ref": "A.6",
+      "title": "Pas de code superflu",
+      "section": "Socle §1",
+      "status": "done",
+      "evidence": "Scripts _diag_* hors chemin runtime critique",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701161+00:00"
+    },
+    {
+      "ref": "A.7",
+      "title": "Une règle = mécanisme pour toutes",
+      "section": "Socle §1",
+      "status": "pending",
+      "evidence": "Pipeline générique — 3/5 scénarios",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701165+00:00"
+    },
+    {
+      "ref": "A.8",
+      "title": "Continuité tant que règle active",
+      "section": "Socle → 1.7",
+      "status": "pending",
+      "evidence": "Rejeu DB + demo_dense opt-in",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701167+00:00"
+    },
+    {
+      "ref": "A.9",
+      "title": "Preuves avant alerte finale",
+      "section": "Socle → 1.4",
+      "status": "done",
+      "evidence": "executor.go gate",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701388+00:00"
+    },
+    {
+      "ref": "A.10",
+      "title": "Phasage obligatoire",
+      "section": "Socle §1",
+      "status": "partial",
+      "evidence": "Phases B–F avancées hors séquence avant 1.9 close",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701392+00:00"
+    },
+    {
+      "ref": "B.11",
+      "title": "Feu rouge spatial",
+      "section": "Étape 1.6.a",
+      "status": "done",
+      "evidence": "validate_demo feu",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701397+00:00"
+    },
+    {
+      "ref": "B.12",
+      "title": "Feu rouge sorties",
+      "section": "Étape 1.6.a",
+      "status": "done",
+      "evidence": "preuve+mail feu",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701400+00:00"
+    },
+    {
+      "ref": "B.13",
+      "title": "Comptage spatial",
+      "section": "Étape 1.6.b",
+      "status": "done",
+      "evidence": "line_cross",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701402+00:00"
+    },
+    {
+      "ref": "B.14",
+      "title": "Comptage visibilité",
+      "section": "Étape 1.6.b",
+      "status": "done",
+      "evidence": "DemoLineCounterPanel",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701433+00:00"
+    },
+    {
+      "ref": "B.15",
+      "title": "Vitesse spatial+calibration",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "ZoneEdgeCalibration + validate_demo",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701436+00:00"
+    },
+    {
+      "ref": "B.16",
+      "title": "Vitesse seuil cohérent",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "orchestrateur overlay",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701438+00:00"
+    },
+    {
+      "ref": "B.17",
+      "title": "Vitesse sorties",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "2 hits vitesse",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701440+00:00"
+    },
+    {
+      "ref": "B.18",
+      "title": "Vitesse arêtes A→B",
+      "section": "Phase F §8",
+      "status": "done",
+      "evidence": "edge_pair_timing + UI + zone_speed",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701544+00:00"
+    },
+    {
+      "ref": "B.19",
+      "title": "Téléphone zone+modèle",
+      "section": "Étape 1.6.c",
+      "status": "pending",
+      "evidence": "ONNX driver_phone",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701548+00:00"
+    },
+    {
+      "ref": "B.20",
+      "title": "Ceinture zone+modèle",
+      "section": "Étape 1.6.d",
+      "status": "pending",
+      "evidence": "validate_demo ceinture",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701550+00:00"
+    },
+    {
+      "ref": "B.21",
+      "title": "Téléphone/ceinture sorties",
+      "section": "Étape 1.6.e",
+      "status": "pending",
+      "evidence": "téléphone + ceinture",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701552+00:00"
+    },
+    {
+      "ref": "B.22",
+      "title": "Workflow démo présentation",
+      "section": "Étape 1.7",
+      "status": "done",
+      "evidence": "script VALIDATE_ONLY + désactivation",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701570+00:00"
+    },
+    {
+      "ref": "B.23",
+      "title": "Quatre vidéos avant RTSP",
+      "section": "Étape 1.0",
+      "status": "done",
+      "evidence": "proxy Vite long + org_demo_videos",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701635+00:00"
+    },
+    {
+      "ref": "B.24",
+      "title": "Une caméra démo active",
+      "section": "Étape 1.7",
+      "status": "done",
+      "evidence": "bannière DemoCenter",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.701818+00:00"
+    },
+    {
+      "ref": "C.25",
+      "title": "behavior_config contrat IA",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "migration + orchestrateur",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.702205+00:00"
+    },
+    {
+      "ref": "C.26",
+      "title": "Catalogue zone-behaviors.json",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "5 champs emits/requires",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.702230+00:00"
+    },
+    {
+      "ref": "C.27",
+      "title": "Lignes behavior_config",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "migration lines",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.702371+00:00"
+    },
+    {
+      "ref": "C.28",
+      "title": "Calibration arêtes",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "UI Frigate-like",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.702481+00:00"
+    },
+    {
+      "ref": "C.29",
+      "title": "Pas vitesse sans géométrie",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "zone_speed + resolve",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.703140+00:00"
+    },
+    {
+      "ref": "C.30",
+      "title": "class_filter propagé",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "ensureSpatialConditions",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.703464+00:00"
+    },
+    {
+      "ref": "C.31",
+      "title": "Sémantique zone vs règle",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "doc + UI",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.703505+00:00"
+    },
+    {
+      "ref": "C.32",
+      "title": "Noms zone clé liaison",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "bindings MQTT",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.703752+00:00"
+    },
+    {
+      "ref": "C.33",
+      "title": "Multi-zones feu",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "synergie traffic_light",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.704399+00:00"
+    },
+    {
+      "ref": "C.34",
+      "title": "Zones utilisateur = vérité",
+      "section": "Étape 1.2",
+      "status": "done",
+      "evidence": "A.1",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.704450+00:00"
+    },
+    {
+      "ref": "D.35",
+      "title": "Sync orchestrateur ~10s",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "orchestrator.go",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.704863+00:00"
+    },
+    {
+      "ref": "D.36",
+      "title": "Pipeline une caméra",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "pipeline.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.705224+00:00"
+    },
+    {
+      "ref": "D.37",
+      "title": "MQTT typé",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "generator.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.705845+00:00"
+    },
+    {
+      "ref": "D.38",
+      "title": "Rules-engine conditions",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "engine.go",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.706100+00:00"
+    },
+    {
+      "ref": "D.39",
+      "title": "Overlay limite vitesse",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "ingest",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.707417+00:00"
+    },
+    {
+      "ref": "D.40",
+      "title": "buildPresenceRulesFromActiveRules",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "orchestrator",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.708724+00:00"
+    },
+    {
+      "ref": "D.41",
+      "title": "capability_profiles",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "gating ANPR",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.709107+00:00"
+    },
+    {
+      "ref": "D.42",
+      "title": "Evidence gate",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "gate.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.710183+00:00"
+    },
+    {
+      "ref": "D.43",
+      "title": "Lien plaque infraction",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "pipeline.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.711475+00:00"
+    },
+    {
+      "ref": "D.44",
+      "title": "Backend ingest",
+      "section": "Étape 1.3",
+      "status": "done",
+      "evidence": "persist events",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.711966+00:00"
+    },
+    {
+      "ref": "D.45",
+      "title": "Dédup règles spatial",
+      "section": "Étape 1.7",
+      "status": "done",
+      "evidence": "zone_speed + rules-engine",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713026+00:00"
+    },
+    {
+      "ref": "E.46",
+      "title": "Entrée zone",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "zone_speed.py + validate_demo",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713050+00:00"
+    },
+    {
+      "ref": "E.47",
+      "title": "Sortie zone",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "zone_speed.py + validate_demo",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713059+00:00"
+    },
+    {
+      "ref": "E.48",
+      "title": "Formule vitesse",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "zone_speed.py + validate_demo",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713072+00:00"
+    },
+    {
+      "ref": "E.49",
+      "title": "Filtre limite",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "zone_speed.py + validate_demo",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713077+00:00"
+    },
+    {
+      "ref": "E.50",
+      "title": "Zone mal positionnée",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "zone_speed.py + validate_demo",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713081+00:00"
+    },
+    {
+      "ref": "E.51",
+      "title": "Métadonnées riches",
+      "section": "Étape 1.5",
+      "status": "done",
+      "evidence": "zone_speed.py + validate_demo",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713086+00:00"
+    },
+    {
+      "ref": "E.52",
+      "title": "Mode démo dense",
+      "section": "Étape 1.7",
+      "status": "done",
+      "evidence": "zone_speed.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713427+00:00"
+    },
+    {
+      "ref": "F.53",
+      "title": "traffic_light_color",
+      "section": "Étape 1.6.a",
+      "status": "done",
+      "evidence": "traffic_light.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.713761+00:00"
+    },
+    {
+      "ref": "F.54",
+      "title": "red_light_observation",
+      "section": "Étape 1.6.a",
+      "status": "done",
+      "evidence": "red_light",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.714623+00:00"
+    },
+    {
+      "ref": "F.55",
+      "title": "disable_red_light legacy",
+      "section": "Étape 1.6.a",
+      "status": "done",
+      "evidence": "disable_red_light",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.716105+00:00"
+    },
+    {
+      "ref": "F.56",
+      "title": "ONNX secondaire",
+      "section": "Étape 1.6.c",
+      "status": "done",
+      "evidence": "SecondaryInferenceEngine",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.717625+00:00"
+    },
+    {
+      "ref": "F.57",
+      "title": "Repli OpenCV désactivé",
+      "section": "Étape 1.6.c",
+      "status": "done",
+      "evidence": "disable_phone",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.719547+00:00"
+    },
+    {
+      "ref": "F.58",
+      "title": "event_type téléphone unifié",
+      "section": "Étape 1.6.c",
+      "status": "done",
+      "evidence": "phone_use_violation",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.721013+00:00"
+    },
+    {
+      "ref": "F.59",
+      "title": "line_cross directionnel",
+      "section": "Étape 1.6.b",
+      "status": "done",
+      "evidence": "line_cross",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.721809+00:00"
+    },
+    {
+      "ref": "F.60",
+      "title": "Persistance compteur",
+      "section": "Étape 1.6.b",
+      "status": "done",
+      "evidence": "line_counters",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.721997+00:00"
+    },
+    {
+      "ref": "G.61",
+      "title": "YOLO CUDA",
+      "section": "Étape 1.1",
+      "status": "done",
+      "evidence": "/health keys",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.722971+00:00"
+    },
+    {
+      "ref": "G.62",
+      "title": "InsightFace GPU",
+      "section": "Étape 1.1",
+      "status": "done",
+      "evidence": "/health keys",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.722982+00:00"
+    },
+    {
+      "ref": "G.63",
+      "title": "PaddleOCR ANPR",
+      "section": "Étape 1.1",
+      "status": "done",
+      "evidence": "/health keys",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.722985+00:00"
+    },
+    {
+      "ref": "G.64",
+      "title": "Modèles secondaires obligatoires",
+      "section": "Étape 1.1",
+      "status": "done",
+      "evidence": "/health keys",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.722988+00:00"
+    },
+    {
+      "ref": "G.65",
+      "title": "Registry unifié",
+      "section": "Étape 1.1",
+      "status": "done",
+      "evidence": "/health keys",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.722991+00:00"
+    },
+    {
+      "ref": "G.66",
+      "title": "Élasticité YOLO GPU",
+      "section": "Étape 1.1",
+      "status": "done",
+      "evidence": "/health keys",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.722994+00:00"
+    },
+    {
+      "ref": "G.67",
+      "title": "Pas faux positifs ONNX",
+      "section": "Étape 1.1",
+      "status": "done",
+      "evidence": "/health keys",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.722997+00:00"
+    },
+    {
+      "ref": "G.68",
+      "title": "Frame skip intelligent",
+      "section": "Étape 1.1",
+      "status": "done",
+      "evidence": "/health keys",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.722999+00:00"
+    },
+    {
+      "ref": "H.69",
+      "title": "Politique preuve démo",
+      "section": "Étape 1.4",
+      "status": "done",
+      "evidence": "evidencePolicy.ts",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.723168+00:00"
+    },
+    {
+      "ref": "H.70",
+      "title": "Subject scène+bbox",
+      "section": "Étape 1.4",
+      "status": "done",
+      "evidence": "capture.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.723330+00:00"
+    },
+    {
+      "ref": "H.71",
+      "title": "Plaque crop lisible",
+      "section": "Étape 1.4",
+      "status": "done",
+      "evidence": "plate",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.723437+00:00"
+    },
+    {
+      "ref": "H.72",
+      "title": "Alerte automatique",
+      "section": "Étape 1.4",
+      "status": "done",
+      "evidence": "alerts/service.go",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.723587+00:00"
+    },
+    {
+      "ref": "H.73",
+      "title": "Mail premium",
+      "section": "Étape 1.4",
+      "status": "done",
+      "evidence": "smtp.go",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.723797+00:00"
+    },
+    {
+      "ref": "H.74",
+      "title": "Suppression alerte sans preuve",
+      "section": "Étape 1.4",
+      "status": "done",
+      "evidence": "policyRequiresProof",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724525+00:00"
+    },
+    {
+      "ref": "H.75",
+      "title": "WebSocket temps réel",
+      "section": "Étape 1.4",
+      "status": "partial",
+      "evidence": "websocket",
+      "notes": "souhait non bloquant",
+      "checked_at": "2026-07-06T02:32:03.724531+00:00"
+    },
+    {
+      "ref": "I.76",
+      "title": "Principe retrait",
+      "section": "Phase B §4",
+      "status": "done",
+      "evidence": "catalogue assaini hors séquence",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724672+00:00"
+    },
+    {
+      "ref": "I.77",
+      "title": "Niveau A 19 templates",
+      "section": "Phase B §4",
+      "status": "done",
+      "evidence": "catalogue assaini hors séquence",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724676+00:00"
+    },
+    {
+      "ref": "I.78",
+      "title": "Niveau B 13 templates",
+      "section": "Phase B §4",
+      "status": "done",
+      "evidence": "catalogue assaini hors séquence",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724680+00:00"
+    },
+    {
+      "ref": "I.79",
+      "title": "Niveau C 2 templates",
+      "section": "Phase B §4",
+      "status": "done",
+      "evidence": "catalogue assaini hors séquence",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724682+00:00"
+    },
+    {
+      "ref": "I.80",
+      "title": "Fusion doublons",
+      "section": "Phase B §4",
+      "status": "done",
+      "evidence": "catalogue assaini hors séquence",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724685+00:00"
+    },
+    {
+      "ref": "I.81",
+      "title": "Badge honnête",
+      "section": "Phase B §4",
+      "status": "done",
+      "evidence": "catalogue assaini hors séquence",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724687+00:00"
+    },
+    {
+      "ref": "I.82",
+      "title": "partial_status généralisé",
+      "section": "Phase B §4",
+      "status": "done",
+      "evidence": "catalogue assaini hors séquence",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724689+00:00"
+    },
+    {
+      "ref": "J.83",
+      "title": "Contrat Model Pack",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "model-pack-schema.json",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.724739+00:00"
+    },
+    {
+      "ref": "J.84",
+      "title": "Couche 1 ONNX crop",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "SecondaryInferenceEngine",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.725455+00:00"
+    },
+    {
+      "ref": "J.85",
+      "title": "Couche 2 YOLO custom",
+      "section": "Phase D §6",
+      "status": "pending",
+      "evidence": "custom yolo",
+      "notes": "Couche 2 YOLO custom par org — post-v1",
+      "checked_at": "2026-07-06T02:32:03.725465+00:00"
+    },
+    {
+      "ref": "J.86",
+      "title": "Couche 3 vidéo/action",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "frame_streak",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.726352+00:00"
+    },
+    {
+      "ref": "J.87",
+      "title": "API upload+probe",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "UploadOrgAIModel",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.727180+00:00"
+    },
+    {
+      "ref": "J.88",
+      "title": "Génération behavior auto",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "custom:",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.728395+00:00"
+    },
+    {
+      "ref": "J.89",
+      "title": "Génération template règle",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "tpl-custom",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.730082+00:00"
+    },
+    {
+      "ref": "J.90",
+      "title": "Activation bloquée sans health",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "model_loaded",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.730731+00:00"
+    },
+    {
+      "ref": "J.91",
+      "title": "Install sync modèles org",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "org-models.json",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.730846+00:00"
+    },
+    {
+      "ref": "J.92",
+      "title": "Wizard import depuis règle",
+      "section": "Phase D §6",
+      "status": "done",
+      "evidence": "wizard=import-model",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.731277+00:00"
+    },
+    {
+      "ref": "K.93",
+      "title": "Scene Intent",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "sceneintent",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.731411+00:00"
+    },
+    {
+      "ref": "K.94",
+      "title": "API capabilities/menu",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "capabilities/menu",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.731513+00:00"
+    },
+    {
+      "ref": "K.95",
+      "title": "Compatibilité emits↔event",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "capabilitiesApi",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.732121+00:00"
+    },
+    {
+      "ref": "K.96",
+      "title": "Validateur croisé",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "sceneintent.Validate",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.732779+00:00"
+    },
+    {
+      "ref": "K.97",
+      "title": "CapabilityManifest",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "manifest.go",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.732887+00:00"
+    },
+    {
+      "ref": "K.98",
+      "title": "Panneau lien zone↔règle",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "ZoneRuleLinkPanel",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.732972+00:00"
+    },
+    {
+      "ref": "K.99",
+      "title": "Assistant feu 3 étapes",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "RedLightAssistant",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.733048+00:00"
+    },
+    {
+      "ref": "K.100",
+      "title": "Parcours je dessine d'abord",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "ZoneRuleSuggestions",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.733124+00:00"
+    },
+    {
+      "ref": "K.101",
+      "title": "Parcours je pars de la règle",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "zoneLinkedToRule",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.733467+00:00"
+    },
+    {
+      "ref": "K.102",
+      "title": "Menus anti-fictif",
+      "section": "Phase C §5",
+      "status": "done",
+      "evidence": "partial_status",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.733962+00:00"
+    },
+    {
+      "ref": "L.103",
+      "title": "check-hardware 3 paliers",
+      "section": "Phase E §7",
+      "status": "done",
+      "evidence": "check-hardware.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.734025+00:00"
+    },
+    {
+      "ref": "L.104",
+      "title": "deps-checker + auto-fix",
+      "section": "Phase E §7",
+      "status": "done",
+      "evidence": "auto-fix.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.734043+00:00"
+    },
+    {
+      "ref": "L.105",
+      "title": "VM vierge Win11/Linux",
+      "section": "Phase E §7",
+      "status": "pending",
+      "evidence": "VM",
+      "notes": "Test VM vierge Win11/Linux — procédure manuelle docs/INSTALL.md uniquement",
+      "checked_at": "2026-07-06T02:32:03.734046+00:00"
+    },
+    {
+      "ref": "L.106",
+      "title": "Messages intelligibles",
+      "section": "Phase E §7",
+      "status": "done",
+      "evidence": "technical",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.734745+00:00"
+    },
+    {
+      "ref": "L.107",
+      "title": "Blocage login stack",
+      "section": "Phase E §7",
+      "status": "done",
+      "evidence": "StackHealthGate",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.734864+00:00"
+    },
+    {
+      "ref": "L.108",
+      "title": "Profil → generated.env",
+      "section": "Phase E §7",
+      "status": "done",
+      "evidence": "apply-hardware-profile",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.735030+00:00"
+    },
+    {
+      "ref": "M.109",
+      "title": "Zéro régression visuelle",
+      "section": "Famille M §3",
+      "status": "done",
+      "evidence": "phase-a-screenshots",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.735256+00:00"
+    },
+    {
+      "ref": "M.110",
+      "title": "Comportements liste riche",
+      "section": "Famille M §3",
+      "status": "done",
+      "evidence": "behaviorsByGroup",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.736127+00:00"
+    },
+    {
+      "ref": "M.111",
+      "title": "ExplanatorySelect partout",
+      "section": "Famille M §3",
+      "status": "done",
+      "evidence": "ExplanatorySelect",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.736369+00:00"
+    },
+    {
+      "ref": "M.112",
+      "title": "Rule Studio 4 étapes",
+      "section": "Famille M §3",
+      "status": "done",
+      "evidence": "RuleStudioDialog",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.736522+00:00"
+    },
+    {
+      "ref": "M.113",
+      "title": "Compteur démo proéminent",
+      "section": "Famille M §3",
+      "status": "done",
+      "evidence": "DemoLineCounterPanel",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.736674+00:00"
+    },
+    {
+      "ref": "M.114",
+      "title": "Centre démo état clair",
+      "section": "Famille M §3",
+      "status": "done",
+      "evidence": "monoCameraIngest",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.737467+00:00"
+    },
+    {
+      "ref": "M.115",
+      "title": "i18n FR/EN",
+      "section": "Famille M §3",
+      "status": "done",
+      "evidence": "stackHealth",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.738808+00:00"
+    },
+    {
+      "ref": "N.116",
+      "title": "validate_demo_five_rules.py",
+      "section": "Étape 1.8",
+      "status": "done",
+      "evidence": "scripts/validate_demo_five_rules.py",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.738882+00:00"
+    },
+    {
+      "ref": "N.117",
+      "title": "Tests fonctionnels 5 règles",
+      "section": "Étape 1.8",
+      "status": "pending",
+      "evidence": "demo-five-rules-final-report",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.738953+00:00"
+    },
+    {
+      "ref": "N.118",
+      "title": "Tests esthétiques",
+      "section": "Étape 1.8",
+      "status": "done",
+      "evidence": "test-results",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739036+00:00"
+    },
+    {
+      "ref": "N.119",
+      "title": "Tests performance",
+      "section": "Étape 1.8",
+      "status": "partial",
+      "evidence": "baseline",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739101+00:00"
+    },
+    {
+      "ref": "N.120",
+      "title": "verify-ai-ingest.sh",
+      "section": "Étape 1.8",
+      "status": "done",
+      "evidence": "scripts/verify-ai-ingest.sh",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739121+00:00"
+    },
+    {
+      "ref": "N.121",
+      "title": "Pas régression CI",
+      "section": "Étape 1.8",
+      "status": "done",
+      "evidence": "pytest",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739363+00:00"
+    },
+    {
+      "ref": "N.122",
+      "title": "Rapport livrable Phase A",
+      "section": "Étape 1.8",
+      "status": "done",
+      "evidence": "demo-five-rules-final-report.json",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739515+00:00"
+    },
+    {
+      "ref": "O.123",
+      "title": "Phase A durée jours",
+      "section": "Phase A",
+      "status": "pending",
+      "evidence": "Phase A 3/5",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739524+00:00"
+    },
+    {
+      "ref": "O.124",
+      "title": "Phase B objectif",
+      "section": "Phase B",
+      "status": "done",
+      "evidence": "Lots B–F implémentés",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739544+00:00"
+    },
+    {
+      "ref": "O.125",
+      "title": "Phase C objectif",
+      "section": "Phase C",
+      "status": "done",
+      "evidence": "Lots B–F implémentés",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739560+00:00"
+    },
+    {
+      "ref": "O.126",
+      "title": "Phase D objectif",
+      "section": "Phase D",
+      "status": "done",
+      "evidence": "Lots B–F implémentés",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739576+00:00"
+    },
+    {
+      "ref": "O.127",
+      "title": "Phase E objectif",
+      "section": "Phase E",
+      "status": "done",
+      "evidence": "Lots B–F implémentés",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739591+00:00"
+    },
+    {
+      "ref": "O.128",
+      "title": "Phase F objectif",
+      "section": "Phase F",
+      "status": "done",
+      "evidence": "Lots B–F implémentés",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739606+00:00"
+    },
+    {
+      "ref": "O.129",
+      "title": "Interdictions Phase A",
+      "section": "Socle §1",
+      "status": "done",
+      "evidence": "O.129 dans socle",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739627+00:00"
+    },
+    {
+      "ref": "P.130",
+      "title": "Seed démo post-réinstall",
+      "section": "Registre P",
+      "status": "partial",
+      "evidence": "seed-demo-spatial",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.739633+00:00"
+    },
+    {
+      "ref": "P.131",
+      "title": "Org/camera IDs live",
+      "section": "Registre P",
+      "status": "done",
+      "evidence": "active_video_id",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.740386+00:00"
+    },
+    {
+      "ref": "P.132",
+      "title": "InsightFace GPU",
+      "section": "Registre P",
+      "status": "done",
+      "evidence": "face_loaded",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.741235+00:00"
+    },
+    {
+      "ref": "P.133",
+      "title": "erratic_motion mort",
+      "section": "Registre P",
+      "status": "done",
+      "evidence": "phase-b-catalog-decisions",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.741471+00:00"
+    },
+    {
+      "ref": "P.134",
+      "title": "phone event_type",
+      "section": "Registre P",
+      "status": "done",
+      "evidence": "phone_use_violation",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.741892+00:00"
+    },
+    {
+      "ref": "P.135",
+      "title": "Scripts _fix_* gelés",
+      "section": "Registre P",
+      "status": "done",
+      "evidence": "citevision-socle",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.742859+00:00"
+    },
+    {
+      "ref": "P.136",
+      "title": "Règle Cursor persistante",
+      "section": "Registre P",
+      "status": "done",
+      "evidence": "citevision-socle.mdc",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.742998+00:00"
+    },
+    {
+      "ref": "P.137",
+      "title": "Proxy Vite uploads",
+      "section": "Registre P",
+      "status": "done",
+      "evidence": "vite.config",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.743121+00:00"
+    },
+    {
+      "ref": "P.138",
+      "title": "WSL source vérité",
+      "section": "Registre P",
+      "status": "done",
+      "evidence": "SOURCE-OF-TRUTH.md",
+      "notes": "",
+      "checked_at": "2026-07-06T02:32:03.743280+00:00"
+    }
+  ]
+}

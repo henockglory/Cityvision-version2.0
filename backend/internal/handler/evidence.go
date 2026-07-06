@@ -53,11 +53,20 @@ func (a *API) InternalEvidenceUpload(w http.ResponseWriter, r *http.Request) {
 		in.Subject = f
 		in.SubjectSz = hdr.Size
 	}
+	if f, hdr, err := r.FormFile("plate"); err == nil {
+		defer f.Close()
+		in.Plate = f
+		in.PlateSz = hdr.Size
+	}
 
 	pkg, err := a.Evidence.UploadPackage(r.Context(), in)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	// Back-fill the event's evidence_snapshot so the demo feed shows the event immediately.
+	if eventID != "" && a.Events != nil {
+		_ = a.Events.PatchEvidenceSnapshot(r.Context(), orgID, eventID, pkg)
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"package":  pkg,

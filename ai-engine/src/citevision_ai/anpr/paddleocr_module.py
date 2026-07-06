@@ -7,6 +7,8 @@ from typing import Any
 
 import numpy as np
 
+from citevision_ai.utils.paddle_ocr_compat import create_paddle_ocr, parse_ocr_lines, run_ocr
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,9 +31,7 @@ class PaddleOcrModule(PlateRecognizer):
             logger.info("PaddleOCR disabled: model dir not configured or missing")
             return
         try:
-            from paddleocr import PaddleOCR  # type: ignore[import-untyped]
-
-            self._ocr = PaddleOCR(use_angle_cls=True, lang="en", det_model_dir=str(self.model_dir))
+            self._ocr = create_paddle_ocr(det_model_dir=str(self.model_dir))
             self._enabled = True
             logger.info("PaddleOCR loaded from %s", self.model_dir)
         except ImportError:
@@ -47,14 +47,11 @@ class PaddleOcrModule(PlateRecognizer):
         if not self._enabled or self._ocr is None:
             return []
         try:
-            results = self._ocr.ocr(frame, cls=True)
+            results = run_ocr(self._ocr, frame)
             plates: list[dict[str, Any]] = []
-            if not results:
-                return plates
-            for line in results[0] or []:
-                text = line[1][0]
-                conf = float(line[1][1])
-                box = line[0]
+            for text, conf, box in parse_ocr_lines(results):
+                if not box:
+                    continue
                 xs = [p[0] for p in box]
                 ys = [p[1] for p in box]
                 plates.append(

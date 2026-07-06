@@ -1,0 +1,2345 @@
+{
+  "generated_at": "2026-07-04T18:33:44.115162+00:00",
+  "total": 138,
+  "expected": 138,
+  "counts": {
+    "done": 137,
+    "pending": 1
+  },
+  "ai_health": {
+    "status": "ok",
+    "service": "citevision-ai-engine",
+    "yolo_loaded": "true",
+    "face_loaded": "true",
+    "plate_loaded": "true",
+    "yolo_provider": "CUDAExecutionProvider",
+    "yolo_cuda": "true",
+    "ffmpeg_available": "true",
+    "traffic_light_ready": "true",
+    "driver_phone_model_loaded": "true",
+    "seatbelt_model_loaded": "true",
+    "models_all_ok": "true",
+    "registry_version": "1"
+  },
+  "api_health": {
+    "status": "ok"
+  },
+  "demo_report": {
+    "passed_rules": 5,
+    "rules": {
+      "line_count": {
+        "status": "pass",
+        "detail": "validate_demo",
+        "new_count": 9
+      },
+      "seatbelt": {
+        "status": "pass",
+        "detail": "DB live",
+        "new_count": 2
+      },
+      "speed": {
+        "status": "pass",
+        "detail": "retest+DB",
+        "new_count": 2
+      },
+      "phone": {
+        "status": "pass",
+        "detail": "DB live",
+        "new_count": 2
+      },
+      "red_light": {
+        "status": "pass",
+        "detail": "DB live",
+        "new_count": 2
+      }
+    }
+  },
+  "rows": [
+    {
+      "ref": "A.1",
+      "title": "Zones jamais codées en dur",
+      "section": "Socle",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "socle.mdc",
+          "ok": true
+        },
+        {
+          "name": "no _fix in runtime",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "A.2",
+      "title": "Fin boucle vitesse seule",
+      "section": "Socle",
+      "status": "done",
+      "passed": 3,
+      "total": 3,
+      "checks": [
+        {
+          "name": "validate 5 rules script",
+          "ok": true
+        },
+        {
+          "name": "5 rule names in script",
+          "ok": true
+        },
+        {
+          "name": "speed pass or 5/5",
+          "ok": true
+        }
+      ],
+      "notes": "speed PASS live 2026-07-04"
+    },
+    {
+      "ref": "A.3",
+      "title": "Validé = preuves complètes",
+      "section": "Socle",
+      "status": "done",
+      "passed": 3,
+      "total": 3,
+      "checks": [
+        {
+          "name": "policyRequiresProof",
+          "ok": true
+        },
+        {
+          "name": "evidence gate",
+          "ok": true
+        },
+        {
+          "name": "demo_pass>=4",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "A.4",
+      "title": "Catalogue véridique",
+      "section": "Socle→B",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "partial_status",
+          "ok": true
+        },
+        {
+          "name": "phase-b doc",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "A.5",
+      "title": "GPU priorité",
+      "section": "Socle→1.1",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "yolo_cuda",
+          "ok": true
+        },
+        {
+          "name": "yolo_loaded",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "A.6",
+      "title": "Pas de code superflu",
+      "section": "Socle",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "_diag not in pipeline",
+          "ok": true
+        }
+      ],
+      "notes": "scripts _diag_* hors runtime OK"
+    },
+    {
+      "ref": "A.7",
+      "title": "Une règle = mécanisme toutes",
+      "section": "Socle",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "executor generic",
+          "ok": true
+        },
+        {
+          "name": "demo_pass>=4",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "A.8",
+      "title": "Continuité règle active",
+      "section": "Socle→1.7",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "ShouldIngestDemoCamera",
+          "ok": true
+        },
+        {
+          "name": "cooldown_sec",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "A.9",
+      "title": "Preuves avant alerte finale",
+      "section": "Socle→1.4",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "policyRequiresProof",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "A.10",
+      "title": "Phasage obligatoire",
+      "section": "Socle",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "phase-a report",
+          "ok": true
+        },
+        {
+          "name": "phase-b doc",
+          "ok": true
+        }
+      ],
+      "notes": "B–F avancées hors séquence — dette documentée"
+    },
+    {
+      "ref": "B.11",
+      "title": "Feu spatial",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 3,
+      "total": 3,
+      "checks": [
+        {
+          "name": "traffic_light_color",
+          "ok": true
+        },
+        {
+          "name": "red_light_observation",
+          "ok": true
+        },
+        {
+          "name": "rule_red_light_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.12",
+      "title": "Feu sorties",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "red_light_violation",
+          "ok": true
+        },
+        {
+          "name": "rule_red_light_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.13",
+      "title": "Comptage spatial",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "line_cross",
+          "ok": true
+        },
+        {
+          "name": "rule_line_count_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.14",
+      "title": "Comptage visibilité",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "DemoLineCounterPanel",
+          "ok": true
+        },
+        {
+          "name": "rule_line_count_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.15",
+      "title": "Vitesse spatial",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 3,
+      "total": 3,
+      "checks": [
+        {
+          "name": "ZoneEdgeCalibration",
+          "ok": true
+        },
+        {
+          "name": "speed_measurement",
+          "ok": true
+        },
+        {
+          "name": "rule_speed_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.16",
+      "title": "Vitesse seuil",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "applyRuleSpeedLimitsToZones",
+          "ok": true
+        },
+        {
+          "name": "rule_speed_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.17",
+      "title": "Vitesse sorties",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "speeding",
+          "ok": true
+        },
+        {
+          "name": "rule_speed_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.18",
+      "title": "Vitesse arêtes A→B",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "EDGE_PAIR_PROXIMITY",
+          "ok": true
+        },
+        {
+          "name": "entry_edge_index",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.19",
+      "title": "Téléphone zone",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 3,
+      "total": 3,
+      "checks": [
+        {
+          "name": "driver_phone",
+          "ok": true
+        },
+        {
+          "name": "phone_use_violation",
+          "ok": true
+        },
+        {
+          "name": "rule_phone_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.20",
+      "title": "Ceinture zone",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 3,
+      "total": 3,
+      "checks": [
+        {
+          "name": "seatbelt",
+          "ok": true
+        },
+        {
+          "name": "seatbelt_violation",
+          "ok": true
+        },
+        {
+          "name": "rule_seatbelt_pass",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.21",
+      "title": "Tél/ceinture sorties",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "seatbelt_violation",
+          "ok": true
+        },
+        {
+          "name": "phone_use_violation",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.22",
+      "title": "Workflow démo",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "validate_demo_five_rules",
+          "ok": true
+        },
+        {
+          "name": "is_enabled",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.23",
+      "title": "Quatre vidéos",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "org_demo_videos",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "B.24",
+      "title": "Mono-caméra",
+      "section": "Phase A",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "ShouldIngestDemoCamera",
+          "ok": true
+        },
+        {
+          "name": "monoCameraIngest",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.25",
+      "title": "behavior_config",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "behavior_config",
+          "ok": true
+        },
+        {
+          "name": "parseZoneBehavior",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.26",
+      "title": "zone-behaviors.json",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "zone-behaviors.json",
+          "ok": true
+        },
+        {
+          "name": "applies_to",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.27",
+      "title": "lines behavior_config",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "000021_line_behaviors",
+          "ok": true
+        },
+        {
+          "name": "behavior_config",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.28",
+      "title": "Calibration arêtes",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "ZoneEdgeCalibration",
+          "ok": true
+        },
+        {
+          "name": "distance_to_next_m",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.29",
+      "title": "Pas vitesse sans géométrie",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "MIN_EXIT_PROGRESS_NORM",
+          "ok": true
+        },
+        {
+          "name": "zone_speed_debug",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.30",
+      "title": "class_filter propagé",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "class_filter",
+          "ok": true
+        },
+        {
+          "name": "ensureSpatialConditions",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.31",
+      "title": "Sémantique zone vs règle",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "zone-behaviors.json",
+          "ok": true
+        },
+        {
+          "name": "human_description",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.32",
+      "title": "Noms zone liaison",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "zone_name",
+          "ok": true
+        },
+        {
+          "name": "bindings",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.33",
+      "title": "Multi-zones feu",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "red_light_observation",
+          "ok": true
+        },
+        {
+          "name": "traffic_light_color",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "C.34",
+      "title": "Zones utilisateur vérité",
+      "section": "Étape 1.2",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "citevision-socle.mdc",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.35",
+      "title": "Sync orchestrateur",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "buildSpatialConfig",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.36",
+      "title": "Pipeline caméra",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "process_frame",
+          "ok": true
+        },
+        {
+          "name": "pipeline.py",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.37",
+      "title": "MQTT typé",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "event_type",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.38",
+      "title": "Rules-engine",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "evaluator/engine.go",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.39",
+      "title": "Overlay vitesse",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "applyRuleSpeedLimitsToZones",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.40",
+      "title": "Presence rules",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "buildPresenceRulesFromActiveRules",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.41",
+      "title": "capability_profiles",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "capability_profiles.go",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.42",
+      "title": "Evidence gate",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "EvidenceCaptureGate",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.43",
+      "title": "Lien plaque",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "_link_plates_to_violations",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.44",
+      "title": "Backend ingest",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "event_ingestor.go",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "D.45",
+      "title": "Dédup spatial",
+      "section": "Étape 1.3/1.7",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "cooldown_sec",
+          "ok": true
+        },
+        {
+          "name": "SPATIAL_DEDUP",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "E.46",
+      "title": "Entrée zone",
+      "section": "Étape 1.5/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "_entry_time",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "E.47",
+      "title": "Sortie zone",
+      "section": "Étape 1.5/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "_finalize_crossing",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "E.48",
+      "title": "Formule vitesse",
+      "section": "Étape 1.5/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "speed_kmh",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "E.49",
+      "title": "Filtre limite",
+      "section": "Étape 1.5/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "speed_kmh <= limit",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "E.50",
+      "title": "Zone mal positionnée",
+      "section": "Étape 1.5/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "zone_speed_debug",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "E.51",
+      "title": "Métadonnées riches",
+      "section": "Étape 1.5/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "distance_m",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "E.52",
+      "title": "Mode démo dense",
+      "section": "Étape 1.5/1.7",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "demo_dense",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "F.53",
+      "title": "traffic_light_color",
+      "section": "Étape 1.6",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "traffic_light.py",
+          "ok": true
+        },
+        {
+          "name": "traffic_light_color",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "F.54",
+      "title": "red_light_observation",
+      "section": "Étape 1.6",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "red_light_observation",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "F.55",
+      "title": "disable_red_light",
+      "section": "Étape 1.6",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "disable_red_light",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "F.56",
+      "title": "ONNX secondaire",
+      "section": "Étape 1.6",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "SecondaryInferenceEngine",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "F.57",
+      "title": "Repli OpenCV off",
+      "section": "Étape 1.6",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "disable_phone",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "F.58",
+      "title": "phone event unifié",
+      "section": "Étape 1.6",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "phone_use_violation",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "F.59",
+      "title": "line_cross",
+      "section": "Étape 1.6",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "line_cross",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "F.60",
+      "title": "line_counters",
+      "section": "Étape 1.6",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "line_counters",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "G.61",
+      "title": "YOLO CUDA",
+      "section": "Étape 1.1",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "yolo_cuda",
+          "ok": true
+        },
+        {
+          "name": "yolo_loaded",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "G.62",
+      "title": "InsightFace GPU",
+      "section": "Étape 1.1",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "face_loaded",
+          "ok": true
+        },
+        {
+          "name": "ctx_id",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "G.63",
+      "title": "PaddleOCR",
+      "section": "Étape 1.1",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "plate_loaded",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "G.64",
+      "title": "Secondaires obligatoires",
+      "section": "Étape 1.1",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "driver_phone required",
+          "ok": true
+        },
+        {
+          "name": "verify_ai_stack",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "G.65",
+      "title": "Registry unifié",
+      "section": "Étape 1.1",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "ai_registry",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "G.66",
+      "title": "Élasticité YOLO",
+      "section": "Étape 1.1",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "apply-hardware-profile",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "G.67",
+      "title": "Pas faux positifs ONNX",
+      "section": "Étape 1.1",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "health=false",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "G.68",
+      "title": "Frame skip intelligent",
+      "section": "Étape 1.1",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "frame_skip",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "H.69",
+      "title": "Politique preuve",
+      "section": "Étape 1.4",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "evidencePolicy.ts",
+          "ok": true
+        },
+        {
+          "name": "DEFAULT_EVIDENCE",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "H.70",
+      "title": "Subject bbox",
+      "section": "Étape 1.4",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "capture.py",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "H.71",
+      "title": "Plaque crop",
+      "section": "Étape 1.4",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "plate",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "H.72",
+      "title": "Alerte auto",
+      "section": "Étape 1.4",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "alerts/service.go",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "H.73",
+      "title": "Mail premium",
+      "section": "Étape 1.4",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "smtp.go",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "H.74",
+      "title": "Suppression sans preuve",
+      "section": "Étape 1.4",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "policyRequiresProof",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "H.75",
+      "title": "WebSocket temps réel",
+      "section": "Étape 1.4",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "websocket",
+          "ok": true
+        },
+        {
+          "name": "WebSocket",
+          "ok": true
+        }
+      ],
+      "notes": "souhait non bloquant"
+    },
+    {
+      "ref": "I.76",
+      "title": "Principe retrait",
+      "section": "Phase B",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "RuleCatalogPanel",
+          "ok": true
+        },
+        {
+          "name": "phase-b doc",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "I.77",
+      "title": "I.77",
+      "section": "Phase B",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "catalog doc",
+          "ok": true
+        },
+        {
+          "name": "partial_status",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "I.78",
+      "title": "I.78",
+      "section": "Phase B",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "catalog doc",
+          "ok": true
+        },
+        {
+          "name": "partial_status",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "I.79",
+      "title": "I.79",
+      "section": "Phase B",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "catalog doc",
+          "ok": true
+        },
+        {
+          "name": "partial_status",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "I.80",
+      "title": "I.80",
+      "section": "Phase B",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "catalog doc",
+          "ok": true
+        },
+        {
+          "name": "partial_status",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "I.81",
+      "title": "I.81",
+      "section": "Phase B",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "catalog doc",
+          "ok": true
+        },
+        {
+          "name": "partial_status",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "I.82",
+      "title": "I.82",
+      "section": "Phase B",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "catalog doc",
+          "ok": true
+        },
+        {
+          "name": "partial_status",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.83",
+      "title": "J.83",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "model-pack-schema",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.84",
+      "title": "J.84",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "SecondaryInferenceEngine",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.85",
+      "title": "J.85",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "custom yolo org",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.86",
+      "title": "J.86",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "frame_streak",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.87",
+      "title": "J.87",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "UploadOrgAIModel",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.88",
+      "title": "J.88",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "custom:",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.89",
+      "title": "J.89",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "tpl-custom",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.90",
+      "title": "J.90",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "model_loaded",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.91",
+      "title": "J.91",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "install-ai-models",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "J.92",
+      "title": "J.92",
+      "section": "Phase D",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "wizard=import-model",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.93",
+      "title": "K.93",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "sceneintent",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.94",
+      "title": "K.94",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "capabilities/menu",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.95",
+      "title": "K.95",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "capabilitiesApi",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.96",
+      "title": "K.96",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "sceneintent.Validate",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.97",
+      "title": "K.97",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "manifest.go",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.98",
+      "title": "K.98",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "ZoneRuleLinkPanel",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.99",
+      "title": "K.99",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "RedLightAssistant",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.100",
+      "title": "K.100",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "ZoneRuleSuggestions",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.101",
+      "title": "K.101",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "zoneLinkedToRule",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "K.102",
+      "title": "K.102",
+      "section": "Phase C",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "partial_status",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "L.103",
+      "title": "L.103",
+      "section": "Phase E",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "check-hardware.py",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "L.104",
+      "title": "L.104",
+      "section": "Phase E",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "auto-fix.py",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "L.105",
+      "title": "L.105",
+      "section": "Phase E",
+      "status": "pending",
+      "passed": 0,
+      "total": 1,
+      "checks": [
+        {
+          "name": "VM vierge",
+          "ok": false
+        }
+      ],
+      "notes": "Test VM manuel docs/INSTALL.md"
+    },
+    {
+      "ref": "L.106",
+      "title": "L.106",
+      "section": "Phase E",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "technical",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "L.107",
+      "title": "L.107",
+      "section": "Phase E",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "StackHealthGate",
+          "ok": true
+        },
+        {
+          "name": "isLoadedFlag fix",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "L.108",
+      "title": "L.108",
+      "section": "Phase E",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "apply-hardware-profile.py",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "M.109",
+      "title": "M.109",
+      "section": "Famille M",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "phase-a-screenshots",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "M.110",
+      "title": "M.110",
+      "section": "Famille M",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "behaviorsByGroup",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "M.111",
+      "title": "M.111",
+      "section": "Famille M",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "ExplanatorySelect",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "M.112",
+      "title": "M.112",
+      "section": "Famille M",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "RuleStudioDialog",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "M.113",
+      "title": "M.113",
+      "section": "Famille M",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "DemoLineCounterPanel",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "M.114",
+      "title": "M.114",
+      "section": "Famille M",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "monoCameraIngest",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "M.115",
+      "title": "M.115",
+      "section": "Famille M",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "stackHealth",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "N.116",
+      "title": "validate_demo script",
+      "section": "Étape 1.8",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "script",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "N.117",
+      "title": "Tests fonctionnels",
+      "section": "Étape 1.8",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "demo_pass>=5",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "N.118",
+      "title": "Tests esthétiques",
+      "section": "Étape 1.8",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "e2e spec",
+          "ok": true
+        },
+        {
+          "name": "screenshots",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "N.119",
+      "title": "Tests performance",
+      "section": "Étape 1.8",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "baseline doc",
+          "ok": true
+        }
+      ],
+      "notes": "baseline partiel"
+    },
+    {
+      "ref": "N.120",
+      "title": "verify-ai-ingest",
+      "section": "Étape 1.8",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "script",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "N.121",
+      "title": "Pas régression CI",
+      "section": "Étape 1.8",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "pytest ai",
+          "ok": true
+        }
+      ],
+      "notes": "CI smoke partiel"
+    },
+    {
+      "ref": "N.122",
+      "title": "Rapport livrable",
+      "section": "Étape 1.8",
+      "status": "done",
+      "passed": 2,
+      "total": 2,
+      "checks": [
+        {
+          "name": "phase-a report",
+          "ok": true
+        },
+        {
+          "name": "final json",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "O.123",
+      "title": "O.123",
+      "section": "Phases",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "doc exists",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "O.124",
+      "title": "O.124",
+      "section": "Phases",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "doc exists",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "O.125",
+      "title": "O.125",
+      "section": "Phases",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "doc exists",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "O.126",
+      "title": "O.126",
+      "section": "Phases",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "doc exists",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "O.127",
+      "title": "O.127",
+      "section": "Phases",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "doc exists",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "O.128",
+      "title": "O.128",
+      "section": "Phases",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "doc exists",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "O.129",
+      "title": "Interdictions Phase A",
+      "section": "Socle",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "socle",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.130",
+      "title": "P.130",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "seed-demo-spatial",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.131",
+      "title": "P.131",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "active_video_id",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.132",
+      "title": "P.132",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "face_loaded GPU",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.133",
+      "title": "P.133",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "phase-b-catalog-decisions",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.134",
+      "title": "P.134",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "phone_use_violation",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.135",
+      "title": "P.135",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "citevision-socle",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.136",
+      "title": "P.136",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "citevision-socle.mdc",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.137",
+      "title": "P.137",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "vite.config proxy",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "ref": "P.138",
+      "title": "P.138",
+      "section": "Registre P",
+      "status": "done",
+      "passed": 1,
+      "total": 1,
+      "checks": [
+        {
+          "name": "SOURCE-OF-TRUTH",
+          "ok": true
+        }
+      ],
+      "notes": ""
+    }
+  ]
+}

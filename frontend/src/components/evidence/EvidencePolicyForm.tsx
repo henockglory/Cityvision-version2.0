@@ -30,7 +30,7 @@ export default function EvidencePolicyForm({
         <h3 className="text-sm font-semibold">
           {lbl('rules.studio.evidenceTitle', 'Capture de preuves')}
         </h3>
-        {variant === 'studio' && <InfoTip content={t('rules.studio.evidenceHint')} />}
+        {variant === 'studio' && <InfoTip helpKey="evidencePolicy" content={t('rules.studio.evidenceHint')} />}
       </div>
 
       {showEnabledToggle && (
@@ -47,7 +47,7 @@ export default function EvidencePolicyForm({
       <div>
         <label className="cv-label flex items-center gap-1">
           {lbl('rules.studio.clipDuration', 'Durée du clip')}
-          {variant === 'studio' && <InfoTip content={t('rules.studio.clipDurationHint')} />}
+          {variant === 'studio' && <InfoTip helpKey="clipDuration" content={t('rules.studio.clipDurationHint')} />}
         </label>
         <input
           type="range"
@@ -65,7 +65,7 @@ export default function EvidencePolicyForm({
       <div>
         <label className="cv-label flex items-center gap-1">
           {lbl('rules.studio.imageCount', "Nombre d'images")}
-          {variant === 'studio' && <InfoTip content={t('rules.studio.imageCountHint')} />}
+          {variant === 'studio' && <InfoTip helpKey="imageCount" content={t('rules.studio.imageCountHint')} />}
         </label>
         <div className="flex gap-2 mt-1">
           {[1, 2, 3].map((n) => (

@@ -2,26 +2,56 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  PenTool, Workflow, Bell, Activity, ChevronRight, RotateCcw, Mail,
+  PenTool, Workflow, Bell, Activity, ChevronRight, RotateCcw, Mail, Camera, AlertTriangle, Loader2,
 } from 'lucide-react';
 import DemoEditableHeader from '@/components/demo/DemoEditableHeader';
 import DemoVideoPanel from '@/components/demo/DemoVideoPanel';
 import DemoFeedPanel from '@/components/demo/DemoFeedPanel';
 import DemoLineCounterPanel from '@/components/demo/DemoLineCounterPanel';
 import DemoZoneInlinePanel from '@/components/demo/DemoZoneInlinePanel';
+import EvidenceViewer from '@/components/evidence/EvidenceViewer';
+import Modal from '@/components/ui/Modal';
 import RuleCatalogPanel from '@/components/rules/RuleCatalogPanel';
 import RuleActivationDialog from '@/components/rules/RuleActivationDialog';
 import { demoApi, rulesApi } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useQueryClient } from '@tanstack/react-query';
-import type { RuleCatalogTemplate } from '@/types';
+import { useAutoPageTour } from '@/hooks/useAutoPageTour';
+import { useDialogTour } from '@/hooks/useDialogTour';
 import {
-  useAlerts, useEvents, useRules, useRuleCatalog, useAcknowledgeAlert, useDemoSettings, useCameras,
+  useAcknowledgeAlert,
+  useAlerts,
+  useCameras,
+  useDemoSettings,
+  useEvents,
+  useRuleCatalog,
+  useRules,
   queryKeys,
 } from '@/hooks/api/queries';
-import { AI_ENGINE_HEALTH, GO2RTC_STREAMS_API, MAILHOG_URL } from '@/config/streams';
+import {
+  AI_ENGINE_CAMERAS,
+  AI_ENGINE_HEALTH,
+  GO2RTC_STREAMS_API,
+  MAILHOG_URL,
+  RULES_ENGINE_HEALTH,
+} from '@/config/streams';
+import { evidenceQuality, evidenceThumbnailUrl, parseEvidenceSnapshot } from '@/lib/evidence';
+import { ruleBindingSummary } from '@/lib/ruleExplainability';
+import type { RuleCatalogTemplate } from '@/types';
+import {
+  demoVideoIdForCamera,
+  demoVideoLabelForCamera,
+  enabledRuleEventTypesForCameras,
+  feedScopeCameraIds,
+  filterDemoAlerts,
+  filterDemoEvents,
+  isVideoMismatch,
+  resolvePreviewEvidence,
+  ruleCameraId,
+} from '@/lib/demoFeed';
 
 const MAX_DEMO_EVENTS = 20;
+const MAX_DEMO_ALERTS = 20;
 
 type StepDef = { n: number; title: string; body: string; href?: string; cta?: string; onCtaClick?: () => void };
 
@@ -56,13 +86,23 @@ export default function DemoCenter() {
   const { t } = useTranslation();
   const orgId = useAuthStore((s) => s.orgId);
   const qc = useQueryClient();
+  const startDemoTour = useAutoPageTour('demo');
   const demoSettings = useDemoSettings();
   const { data: cameras = [] } = useCameras();
   const [configuringTemplate, setConfiguringTemplate] = useState<RuleCatalogTemplate | null>(null);
   const [resetting, setResetting] = useState(false);
   const [explicitSourceKey, setExplicitSourceKey] = useState<string | null>(null);
   const [sourceKeySeeded, setSourceKeySeeded] = useState(false);
-  const [services, setServices] = useState({ go2rtc: false, ai: false, backend: true, cuda: false });
+  const [feedPreview, setFeedPreview] = useState<{ kind: 'event' | 'alert'; id: string } | null>(null);
+  const [services, setServices] = useState({
+    go2rtc: false,
+    ai: false,
+    backend: false,
+    cuda: false,
+    rulesEngine: false,
+    aiIngest: false,
+    activeRules: 0,
+  });
   const zonePanelRef = useRef<HTMLDivElement>(null);
   const rulesCatalogRef = useRef<HTMLDivElement>(null);
 
@@ -82,7 +122,7 @@ export default function DemoCenter() {
   ];
 
   const events = useEvents({ showAll: true });
-  const alerts = useAlerts();
+  const alerts = useAlerts({ status: 'open', includeIncomplete: true });
   const rules = useRules();
   const catalog = useRuleCatalog();
   const ack = useAcknowledgeAlert();
@@ -96,6 +136,7 @@ export default function DemoCenter() {
   const catalogRef = useRef(catalog);
   const demoSettingsRef = useRef(demoSettings);
   const activeStreamRef = useRef(activeStream);
+  const feedCameraIdsRef = useRef<string[]>([]);
   eventsRef.current = events;
   alertsRef.current = alerts;
   rulesRef.current = rules;
@@ -106,13 +147,46 @@ export default function DemoCenter() {
   const doRefresh = useCallback(async () => {
     const stream = activeStreamRef.current;
     const checks: Promise<void>[] = [
+      fetch('/health')
+        .then((r) => {
+          setServices((s) => ({ ...s, backend: r.ok }));
+        })
+        .catch(() => {
+          setServices((s) => ({ ...s, backend: false }));
+        }),
       fetch(AI_ENGINE_HEALTH).then((r) => (r.ok ? r.json() : null)).then((a) => {
+        const aiReady = a?.yolo_loaded === 'true';
         setServices((s) => ({
           ...s,
-          ai: a?.yolo_loaded === 'true',
+          ai: aiReady,
           cuda: a?.yolo_cuda === 'true',
+          // AI up = ingest channel armed (cameras may spin up seconds later).
+          aiIngest: aiReady || s.aiIngest,
         }));
-      }).catch(() => {}),
+      }).catch(() => {
+        setServices((s) => ({ ...s, ai: false, cuda: false }));
+      }),
+      fetch(RULES_ENGINE_HEALTH).then((r) => (r.ok ? r.json() : null)).then((re) => {
+        setServices((s) => ({
+          ...s,
+          rulesEngine: re?.status === 'ok',
+          activeRules: typeof re?.active_rules === 'number' ? re.active_rules : 0,
+        }));
+      }).catch(() => {
+        setServices((s) => ({ ...s, rulesEngine: false, activeRules: 0 }));
+      }),
+      fetch(AI_ENGINE_CAMERAS).then((r) => (r.ok ? r.json() : null)).then((payload) => {
+        const runningIds = (payload?.cameras ?? [])
+          .filter((c: { running?: boolean }) => c.running === true)
+          .map((c: { camera_id?: string }) => String(c.camera_id ?? ''));
+        const scopeIds = feedCameraIdsRef.current;
+        const ingestOnScope = scopeIds.length === 0
+          ? runningIds.length > 0
+          : scopeIds.some((id) => runningIds.includes(id));
+        setServices((s) => ({ ...s, aiIngest: ingestOnScope || s.ai }));
+      }).catch(() => {
+        setServices((s) => ({ ...s, aiIngest: false }));
+      }),
     ];
     if (stream) {
       checks.push(
@@ -141,16 +215,6 @@ export default function DemoCenter() {
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally empty: refs always hold the latest values
-
-  const demoEvents = useMemo(() => {
-    const all = events.data ?? [];
-    return all.filter((e) => isDemoPayload(e.payload)).slice(0, MAX_DEMO_EVENTS);
-  }, [events.data]);
-
-  const demoAlerts = useMemo(() => {
-    const all = alerts.data ?? [];
-    return all.filter((a) => isDemoPayload(a.metadata)).slice(0, 5);
-  }, [alerts.data]);
 
   const rulesList = rules.data ?? [];
   const rulesByTemplate = useMemo(() => {
@@ -213,6 +277,16 @@ export default function DemoCenter() {
     return activeStream;
   }, [activeStream, demoSettings.data?.source_mode, demoSettings.data?.active_video_id, demoSettings.data?.videos]);
 
+  const activeStreamLabel = useMemo(() => {
+    if (demoSettings.data?.source_mode === 'camera' && demoSettings.data?.active_camera_id) {
+      const cam = cameras.find((c) => c.id === demoSettings.data?.active_camera_id);
+      return cam?.name;
+    }
+    const videos = demoSettings.data?.videos ?? [];
+    const active = videos.find((v) => v.id === demoSettings.data?.active_video_id);
+    return active?.name;
+  }, [cameras, demoSettings.data?.source_mode, demoSettings.data?.active_camera_id, demoSettings.data?.active_video_id, demoSettings.data?.videos]);
+
   const canEditZones = Boolean(
     zoneCameraId
     && zoneStreamSrc
@@ -220,12 +294,151 @@ export default function DemoCenter() {
     && explicitSourceKey === activeSourceKey,
   );
 
-  const demoCameraIds = useMemo(() => {
-    if (zoneCameraId) return [zoneCameraId];
-    return cameras
-      .filter((c) => isDemoCameraMeta(c.metadata))
-      .map((c) => c.id);
-  }, [cameras, zoneCameraId]);
+  const enabledRuleCameraIds = useMemo(
+    () => rulesList
+      .filter((r) => r.enabled)
+      .map((r) => ruleCameraId(r))
+      .filter(Boolean),
+    [rulesList],
+  );
+
+  const feedCameraIds = useMemo(
+    () => feedScopeCameraIds(enabledRuleCameraIds, zoneCameraId),
+    [enabledRuleCameraIds, zoneCameraId],
+  );
+  feedCameraIdsRef.current = feedCameraIds;
+
+  useEffect(() => {
+    void doRefresh();
+  }, [feedCameraIds, doRefresh]);
+
+  const demoCameraIds = useMemo(
+    () => cameras.filter((c) => isDemoCameraMeta(c.metadata)).map((c) => c.id),
+    [cameras],
+  );
+
+  const enabledUserRules = useMemo(
+    () => rulesList.filter((r) => {
+      const origin = String((r.definition?.bindings as Record<string, unknown> | undefined)?.origin ?? '');
+      return r.enabled && origin === 'user';
+    }),
+    [rulesList],
+  );
+
+  const dormantDemoRules = useMemo(
+    () => rulesList.filter((r) => String(r.name ?? '').startsWith('Démo') && !r.enabled),
+    [rulesList],
+  );
+
+  const demoEvents = useMemo(
+    () => filterDemoEvents(events.data ?? [], feedCameraIds, enabledUserRules, isDemoPayload)
+      .slice(0, MAX_DEMO_EVENTS),
+    [events.data, feedCameraIds, enabledUserRules],
+  );
+
+  const demoAlerts = useMemo(
+    () => filterDemoAlerts(alerts.data ?? [], feedCameraIds, isDemoPayload, enabledUserRules).slice(0, MAX_DEMO_ALERTS),
+    [alerts.data, feedCameraIds, enabledUserRules],
+  );
+
+  const ruleEventTypes = useMemo(
+    () => enabledRuleEventTypesForCameras(enabledUserRules, feedCameraIds),
+    [enabledUserRules, feedCameraIds],
+  );
+
+  const hasRuleMatchingEvents = useMemo(
+    () => demoEvents.some((e) => ruleEventTypes.has(e.type)),
+    [demoEvents, ruleEventTypes],
+  );
+
+  /** Détections + Alertes = même signal que Serveur/Vidéo/IA/GPU (pas d'attente d'événements ni rules poll). */
+  const coreServicesOk = services.backend && services.go2rtc && services.ai && services.cuda;
+  const detectionsStatusOk = coreServicesOk;
+  const alertsStatusOk = coreServicesOk;
+  const pipelineReady = coreServicesOk && services.rulesEngine;
+
+  const pipelineSyncSinceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (enabledUserRules.length > 0 && pipelineSyncSinceRef.current === null) {
+      pipelineSyncSinceRef.current = Date.now();
+    }
+    if (enabledUserRules.length === 0) {
+      pipelineSyncSinceRef.current = null;
+    }
+  }, [enabledUserRules.length]);
+
+  const showPipelineSync = useMemo(() => {
+    if (enabledUserRules.length === 0 || demoAlerts.length > 0 || hasRuleMatchingEvents) {
+      return false;
+    }
+    const since = pipelineSyncSinceRef.current;
+    if (since === null) return true;
+    return Date.now() - since < 90_000;
+  }, [enabledUserRules.length, demoAlerts.length, hasRuleMatchingEvents, demoEvents.length]);
+
+  const videoMismatch = useMemo(
+    () => isVideoMismatch(enabledRuleCameraIds, zoneCameraId),
+    [enabledRuleCameraIds, zoneCameraId],
+  );
+
+  const detectionTypeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const e of demoEvents) {
+      counts[e.type] = (counts[e.type] ?? 0) + 1;
+    }
+    return counts;
+  }, [demoEvents]);
+
+  const previewEvent = feedPreview?.kind === 'event'
+    ? demoEvents.find((e) => e.id === feedPreview.id)
+    : undefined;
+  const previewAlert = feedPreview?.kind === 'alert'
+    ? demoAlerts.find((a) => a.id === feedPreview.id)
+    : undefined;
+
+  const previewResolved = useMemo(
+    () => resolvePreviewEvidence(previewEvent, previewAlert, demoAlerts),
+    [previewEvent, previewAlert, demoAlerts],
+  );
+
+  const previewQuality = useMemo(
+    () => evidenceQuality(previewResolved.evidence, orgId),
+    [previewResolved.evidence, orgId],
+  );
+
+  const previewModalOpen = Boolean(previewEvent || previewAlert);
+  useDialogTour('evidenceViewer', previewModalOpen);
+
+  // Poll for evidence package while modal is open and media still loading.
+  useEffect(() => {
+    if (!previewModalOpen) return;
+    if (previewQuality.state === 'complete') return;
+    const started = Date.now();
+    const id = setInterval(() => {
+      if (Date.now() - started > 60_000) {
+        clearInterval(id);
+        return;
+      }
+      void events.refetch();
+      void alerts.refetch();
+    }, 3000);
+    return () => clearInterval(id);
+  }, [previewModalOpen, previewQuality.state, events, alerts]);
+
+  const handleSelectVideoForRule = useCallback(async (cameraId: string) => {
+    if (!orgId) return;
+    const videoId = demoVideoIdForCamera(cameraId, cameras);
+    if (!videoId) return;
+    try {
+      await demoApi.patchSettings(orgId, {
+        active_video_id: videoId,
+        active_camera_id: null,
+        source_mode: 'video',
+      });
+      setExplicitSourceKey(`video:${videoId}`);
+      void demoSettings.refetch();
+    } catch { /* best-effort */ }
+  }, [orgId, cameras, demoSettings]);
 
   // Seed explicitSourceKey from DB state on first load (restores session after page refresh).
   useEffect(() => {
@@ -280,20 +493,40 @@ export default function DemoCenter() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12 cv-demo-center">
-      <DemoEditableHeader settings={demoSettings.data} onRefresh={() => void refresh()} />
+      <DemoEditableHeader settings={demoSettings.data} onRefresh={() => void refresh()} onHelpTour={startDemoTour} />
 
       <div id="demo-status" className="flex flex-wrap items-center gap-2 text-xs">
         <StatusChip label={t('demoCenter.serveur')} ok={services.backend} />
         <StatusChip label={t('demoCenter.video')} ok={services.go2rtc} />
         <StatusChip label={t('demoCenter.analyseIA')} ok={services.ai} />
-        <StatusChip label={t('demoCenter.gpuCuda')} ok={services.cuda} />
-        <StatusChip label={t('demoCenter.detections')} ok={demoEvents.length > 0} />
-        <StatusChip label={t('demoCenter.alertes')} ok={demoAlerts.length > 0} />
+        <StatusChip
+          label={t('demoCenter.gpuCuda')}
+          ok={services.cuda}
+          title={services.cuda ? undefined : t('demoCenter.gpuCudaTip')}
+        />
+        <StatusChip
+          label={t('demoCenter.detections')}
+          ok={detectionsStatusOk}
+          title={
+            pipelineReady && demoEvents.length === 0
+              ? t('demoCenter.detectionsPipelineReady')
+              : undefined
+          }
+        />
+        <StatusChip
+          label={t('demoCenter.alertes')}
+          ok={alertsStatusOk}
+          title={
+            pipelineReady && demoAlerts.length === 0
+              ? t('demoCenter.alertesPipelineReady')
+              : undefined
+          }
+        />
         <a
           href={MAILHOG_URL}
           target="_blank"
           rel="noreferrer"
-          className="ml-auto cv-btn-secondary text-xs py-1 px-3"
+          className="cv-btn-secondary text-xs py-1 px-3 border-cv-accent/40 bg-cv-accent/10 hover:bg-cv-accent/15"
           title={t('demoCenter.mailhogTip')}
         >
           <Mail className="w-3.5 h-3.5 text-cv-accent" />
@@ -309,6 +542,39 @@ export default function DemoCenter() {
           {t('demoCenter.resetDemo')}
         </button>
       </div>
+
+      {!services.ai && (
+        <div className="rounded-lg border border-metric-alerts/40 bg-metric-alerts/10 px-4 py-3 text-sm text-cv-text space-y-1">
+          <p className="font-medium flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-metric-alerts shrink-0" />
+            {t('demoCenter.aiEngineDown')}
+          </p>
+          <p className="text-xs text-cv-muted font-mono">{t('demoCenter.aiEngineStart')}</p>
+        </div>
+      )}
+
+      {services.ai && !services.cuda && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-cv-text">
+          <p className="font-medium flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            {t('demoCenter.cudaExpected')}
+          </p>
+        </div>
+      )}
+
+      {services.ai && (
+        <div className="rounded-lg border border-cv-accent/25 bg-cv-accent/5 px-4 py-2.5 text-xs text-cv-muted">
+          <p className="flex items-center gap-2">
+            <Camera className="w-3.5 h-3.5 text-cv-accent shrink-0" />
+            {t('demoCenter.monoCameraIngest', {
+              defaultValue: 'Une seule caméra/vidéo démo ingère à la fois. Basculez la source active pour tester chaque scénario.',
+            })}
+            {activeStreamLabel && (
+              <span className="text-cv-text font-medium ml-1">({activeStreamLabel})</span>
+            )}
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-4">
@@ -328,7 +594,7 @@ export default function DemoCenter() {
         </div>
 
 
-        <div className="space-y-3">
+        <div className="space-y-3" id="demo-steps">
           <h2 className="text-sm font-semibold">{t('demoCenter.stepsTitle')}</h2>
           {STEPS.map((step) => (
             <div key={step.n} className="cv-card p-4">
@@ -364,7 +630,7 @@ export default function DemoCenter() {
 
       {/* Rules catalog — placed here (immediately below main grid) so it is reachable
           via the step-3 "Voir le catalogue" scroll button without leaving the page. */}
-      <div ref={rulesCatalogRef} className="cv-card p-5">
+      <div ref={rulesCatalogRef} id="demo-rules-catalog" className="cv-card p-5">
         <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
           <Workflow className="w-5 h-5 text-cv-accent" />
           {t('demoCenter.step3Title')} — {t('rules.catalog')}
@@ -402,16 +668,89 @@ export default function DemoCenter() {
         />
       )}
 
-      <DemoLineCounterPanel cameraId={counterCameraId} />
+      {zoneCameraId && counterCameraId && zoneCameraId === counterCameraId && (
+        <DemoLineCounterPanel
+          cameraId={counterCameraId}
+          activeCameraId={zoneCameraId}
+        />
+      )}
+
+      {enabledUserRules.length > 0 && (
+        <div className="cv-card p-4 space-y-3 border-cv-accent/20 bg-cv-accent/5">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <Workflow className="w-4 h-4 text-cv-accent" />
+            {t('demoCenter.activeRulesTitle', { count: enabledUserRules.length })}
+          </h3>
+          <p className="text-[11px] text-cv-muted leading-relaxed">{t('demoCenter.activeRulesHint')}</p>
+
+          {showPipelineSync && (
+            <p className="text-xs text-cv-accent/90 flex items-center gap-2 px-3 py-2 rounded-lg bg-cv-accent/10 border border-cv-accent/20">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              {t('demoCenter.pipelineSyncHint')}
+            </p>
+          )}
+
+          {videoMismatch && (
+            <div className="flex flex-wrap items-center gap-2 text-xs px-3 py-2 rounded-lg bg-metric-alerts/10 border border-metric-alerts/30 text-metric-alerts">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>{t('demoCenter.videoMismatchHint')}</span>
+            </div>
+          )}
+
+          <ul className="space-y-2">
+            {enabledUserRules.map((r) => {
+              const camId = ruleCameraId(r);
+              const videoLabel = demoVideoLabelForCamera(
+                camId,
+                cameras,
+                demoSettings.data?.videos ?? [],
+              );
+              const needsSwitch = zoneCameraId !== camId && camId;
+              return (
+                <li key={r.id} className="text-xs flex flex-wrap items-center gap-2 p-2 rounded-lg bg-cv-surface/40 border border-cv-border/40">
+                  <span className="font-medium">{r.name}</span>
+                  <span className="text-cv-muted">{ruleBindingSummary(r, cameras)}</span>
+                  <span className="text-cv-muted">→ {t('demoCenter.selectVideo', { name: videoLabel })}</span>
+                  {needsSwitch && (
+                    <button
+                      type="button"
+                      className="cv-btn-secondary text-[10px] py-0.5 px-2"
+                      onClick={() => void handleSelectVideoForRule(camId)}
+                    >
+                      {t('demoCenter.switchVideo', { name: videoLabel })}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {dormantDemoRules.length > 0 && enabledUserRules.length === 0 && (
+        <div className="cv-card border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <p className="text-sm text-cv-text flex-1">
+            {t('demoCenter.rulesDisabledBanner', { count: dormantDemoRules.length })}
+          </p>
+          <Link to="/rules" className="cv-btn-primary text-sm shrink-0">
+            {t('demoCenter.rulesDisabledAction')}
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <DemoFeedPanel
+          containerId="demo-feed-detections"
           title={t('demoCenter.detectionsLive')}
           icon={Activity}
-          empty={t('demoCenter.emptyDetections')}
+          empty={enabledUserRules.length > 0
+            ? t('demoCenter.emptyDetectionsActiveRules', { count: enabledUserRules.length })
+            : t('demoCenter.emptyDetections')}
+          hint={t('demoCenter.detectionsHint')}
           link="/events"
           totalCount={demoEvents.length}
           maxTotal={MAX_DEMO_EVENTS}
+          typeCounts={detectionTypeCounts}
           items={demoEvents.map((e) => ({
             id: e.id,
             primary: e.typeLabel ?? e.type,
@@ -420,13 +759,22 @@ export default function DemoCenter() {
             timestamp: e.timestamp,
             eventType: e.type,
             isDemo: isDemoPayload(e.payload),
+            thumbnailUrl: e.thumbnail ?? evidenceThumbnailUrl(parseEvidenceSnapshot(e.evidenceSnapshot), orgId),
+            selected: feedPreview?.kind === 'event' && feedPreview.id === e.id,
+            onSelect: () => setFeedPreview({ kind: 'event', id: e.id }),
           }))}
         />
         <DemoFeedPanel
+          containerId="demo-feed-alerts"
           title={t('demoCenter.alertesLive')}
           icon={Bell}
-          empty={t('demoCenter.emptyAlertes')}
+          empty={enabledUserRules.length > 0
+            ? t('demoCenter.emptyAlertesWaiting', { count: enabledUserRules.length })
+            : t('demoCenter.emptyAlertes')}
+          hint={t('demoCenter.alertesHint')}
           link="/alerts"
+          totalCount={demoAlerts.length}
+          maxTotal={MAX_DEMO_ALERTS}
           items={demoAlerts.map((a) => ({
             id: a.id,
             primary: a.message,
@@ -434,25 +782,92 @@ export default function DemoCenter() {
             time: new Date(a.timestamp).toLocaleTimeString(),
             timestamp: a.timestamp,
             isDemo: isDemoPayload(a.metadata),
+            thumbnailUrl: evidenceThumbnailUrl(parseEvidenceSnapshot(a.evidenceSnapshot), orgId),
             acknowledged: a.acknowledged,
+            selected: feedPreview?.kind === 'alert' && feedPreview.id === a.id,
+            onSelect: () => setFeedPreview({ kind: 'alert', id: a.id }),
             onAck: () => void ack.mutate({ alertId: a.id }),
           }))}
         />
       </div>
 
-      <div className="flex flex-wrap gap-3 opacity-60">
+      <Modal
+        open={previewModalOpen}
+        onClose={() => setFeedPreview(null)}
+        maxWidth="studio"
+        title={t('demoCenter.evidencePreviewTitle')}
+        footerLeft={
+          previewResolved.cameraId ? (
+            <Link
+              to={`/live?camera=${previewResolved.cameraId}`}
+              className="cv-btn-ghost text-xs py-1 inline-flex items-center gap-1"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              {t('demoCenter.openLive')}
+            </Link>
+          ) : null
+        }
+        footer={
+          <>
+            <Link to="/alerts" className="cv-btn-secondary text-sm">
+              {t('demoCenter.step4Cta')}
+            </Link>
+            <button type="button" className="cv-btn-primary text-sm" onClick={() => setFeedPreview(null)}>
+              {t('common.close')}
+            </button>
+          </>
+        }
+      >
+        <div className="overflow-y-auto max-h-[min(75vh,820px)] pr-1 space-y-4">
+          {previewResolved.title && (
+            <p className="text-sm font-medium">{previewResolved.title}</p>
+          )}
+          {(previewEvent || previewAlert) && (
+            <p className="text-xs text-cv-muted">
+              {(previewEvent?.cameraName ?? previewAlert?.cameraName)}
+              {previewAlert?.ruleName ? ` · ${previewAlert.ruleName}` : ''}
+            </p>
+          )}
+          {previewQuality.state === 'loading' || previewQuality.state === 'partial' ? (
+            <p className="text-xs text-cv-accent flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              {t('demoCenter.evidenceLoading')}
+            </p>
+          ) : null}
+          <div className="p-4 rounded-xl bg-cv-surface/40 border border-cv-border/60">
+            <EvidenceViewer
+              evidence={previewResolved.evidence}
+              cameraId={previewResolved.cameraId}
+              ruleId={previewResolved.ruleId}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      <div className="flex flex-wrap gap-3">
         <QuickLink to="/zones" icon={PenTool} label={t('nav.zoneEditor')} />
         <QuickLink to="/rules?catalog=1" icon={Workflow} label={t('nav.rules')} />
         <QuickLink to="/events" icon={Activity} label={t('nav.events')} />
         <QuickLink to="/alerts" icon={Bell} label={t('nav.alerts')} />
+        <a
+          href={MAILHOG_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="cv-btn-secondary text-sm border-cv-accent/30"
+        >
+          <Mail className="w-4 h-4 text-cv-accent" />
+          {t('demoCenter.mailhogInbox')}
+        </a>
       </div>
     </div>
   );
 }
 
-function StatusChip({ label, ok }: { label: string; ok: boolean }) {
+function StatusChip({ label, ok, title }: { label: string; ok: boolean; title?: string }) {
   return (
-    <span className={`px-3 py-1 rounded-full border text-xs ${
+    <span
+      title={title}
+      className={`px-3 py-1 rounded-full border text-xs ${
       ok ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' : 'border-cv-border bg-cv-surface text-cv-muted'
     }`}>
       {label}{ok ? ' ✓' : ' ✗'}

@@ -58,7 +58,15 @@ func (o *Orchestrator) buildCapabilityProfiles(ctx context.Context, orgID, camer
 		}
 
 		tpl := strField(bindings, "template_id")
-		if tpl == "tpl-zone-presence" || tpl == "tpl-traffic-corridor" {
+		violationTemplates := map[string]bool{
+			"tpl-zone-presence":    true,
+			"tpl-traffic-corridor": true,
+			"tpl-speeding-premium": true,
+			"tpl-red-light":        true,
+			"tpl-phone-driving":    true,
+			"tpl-seatbelt":         true,
+		}
+		if violationTemplates[tpl] {
 			profile := map[string]interface{}{
 				"zone_id":      strField(bindings, "zone_name"),
 				"class_filter": strField(bindings, "class_filter"),

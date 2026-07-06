@@ -71,17 +71,16 @@ func (s *Service) purgeExpiredDemo(ctx context.Context, orgID uuid.UUID, cutoff 
 	_, err = s.pool.Exec(ctx, `
 		DELETE FROM alerts
 		WHERE org_id = $1 AND metadata->>'demo' = 'true' AND created_at < $2`, orgID, cutoff)
-	if err != nil {
-		return err
-	}
-	if s.minio != nil && s.minio.Available() {
-		prefix := "raw/" + orgID.String() + "/"
-		_, _ = s.minio.RemovePrefix(ctx, prefix)
-	}
-	if s.evidence != nil {
-		_, _ = s.evidence.PurgeDemoPrefix(ctx, orgID)
-	}
-	return nil
+	return err
+}
+
+// demoViolationEventTypes are the high-value events backing the demo rules. They
+// are protected from the count-based trim so real violations stay visible in the
+// live feed even when noisy heuristic events (fighting, vehicle_stopped, …) flood
+// the table.
+var demoViolationEventTypes = []string{
+	"speeding", "red_light_violation", "seatbelt_violation",
+	"phone_use_violation", "line_cross", "traffic_light_state",
 }
 
 func (s *Service) trimDemoEventsTotal(ctx context.Context, orgID uuid.UUID) error {
@@ -96,13 +95,29 @@ func (s *Service) trimDemoEventsTotal(ctx context.Context, orgID uuid.UUID) erro
 	if excess <= 0 {
 		return nil
 	}
+	// Delete the oldest NON-violation (noise) events first so violations survive.
+	_, err = s.pool.Exec(ctx, `
+		DELETE FROM events WHERE id IN (
+			SELECT id FROM events
+			WHERE org_id = $1 AND payload->>'demo' = 'true'
+			  AND event_type <> ALL($3)
+			ORDER BY ingested_at ASC
+			LIMIT $2
+		)`, orgID, excess, demoViolationEventTypes)
+	if err != nil {
+		return err
+	}
+	// If noise alone was not enough to get under the cap, trim oldest remaining.
 	_, err = s.pool.Exec(ctx, `
 		DELETE FROM events WHERE id IN (
 			SELECT id FROM events
 			WHERE org_id = $1 AND payload->>'demo' = 'true'
 			ORDER BY ingested_at ASC
-			LIMIT $2
-		)`, orgID, excess)
+			LIMIT GREATEST((
+				SELECT COUNT(*) FROM events
+				WHERE org_id = $1 AND payload->>'demo' = 'true'
+			) - $2, 0)
+		)`, orgID, MaxDemoEventsTotal)
 	return err
 }
 
@@ -173,6 +188,45 @@ func (s *Service) ResetWorkspace(ctx context.Context, orgID uuid.UUID) (map[stri
 		out["evidence_objects_deleted"] = n
 	}
 	return out, nil
+}
+
+// ActiveDemoCameraID returns the demo camera tied to the selected video/camera in demo settings.
+func (s *Service) ActiveDemoCameraID(ctx context.Context, orgID uuid.UUID) (uuid.UUID, bool) {
+	var sourceMode string
+	var activeVideo, activeCam *uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		SELECT source_mode, active_video_id, active_camera_id
+		FROM org_demo_settings WHERE org_id = $1`, orgID).Scan(&sourceMode, &activeVideo, &activeCam)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	if sourceMode == "camera" && activeCam != nil && *activeCam != uuid.Nil {
+		return *activeCam, true
+	}
+	if activeVideo != nil && *activeVideo != uuid.Nil {
+		var camID uuid.UUID
+		err := s.pool.QueryRow(ctx, `
+			SELECT id FROM cameras
+			WHERE org_id = $1 AND is_active = TRUE
+			  AND metadata->>'demo_video_id' = $2
+			LIMIT 1`, orgID, activeVideo.String()).Scan(&camID)
+		if err == nil {
+			return camID, true
+		}
+	}
+	return uuid.Nil, false
+}
+
+// ShouldIngestDemoCamera is false for demo cameras that are not the active demo selection.
+func (s *Service) ShouldIngestDemoCamera(ctx context.Context, orgID, cameraID uuid.UUID) bool {
+	if !s.IsDemoCamera(ctx, cameraID) {
+		return true
+	}
+	active, ok := s.ActiveDemoCameraID(ctx, orgID)
+	if !ok {
+		return true
+	}
+	return cameraID == active
 }
 
 // TagEventPayload marks payload as demo when the source camera is a demo camera.

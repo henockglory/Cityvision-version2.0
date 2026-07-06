@@ -36,13 +36,13 @@ export default function OutputChannelsPanel({
       <div className="flex items-center gap-2">
         <Send className="w-4 h-4 text-cv-accent" />
         <h3 className="text-sm font-semibold">{t('rules.studio.outputsTitle')}</h3>
-        <InfoTip content={t('rules.studio.outputsHint')} />
+        <InfoTip helpKey="outputChannels" content={t('rules.studio.outputsHint')} />
       </div>
 
       <div>
         <label className="cv-label flex items-center gap-1">
           {t('rules.studio.notifyEmail')}
-          <InfoTip content={t('rules.studio.notifyEmailHint')} />
+          <InfoTip helpKey="notifyEmail" content={t('rules.studio.notifyEmailHint')} />
         </label>
         <input
           type="email"

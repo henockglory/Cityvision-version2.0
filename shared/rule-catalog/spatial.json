@@ -1,46 +1,8 @@
 [
   {
     "id": "tpl-intrusion-zone",
-    "name": "Intrusion zone interdite",
-    "category": "security",
-    "severity": "high",
-    "definition": {
-      "condition": {
-        "op": "AND",
-        "children": [
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "zone_enter"
-          },
-          {
-            "op": "eq",
-            "field": "zone_id",
-            "value": "__ZONE__"
-          },
-          {
-            "op": "matches_class",
-            "field": "class_name",
-            "value": "person"
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "high"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Déclenche une alerte dès qu'une personne ou un véhicule pénètre dans la zone dessinée. Idéal pour protéger un accès restreint ou une zone sensible.",
-    "deployment_scopes": [
-      "national",
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "full"
+    "redirect_to": "tpl-intrusion",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-intrusion (même intrusion zone→personne ; la règle canonique porte le configSchema complet)."
   },
   {
     "id": "tpl-zone-exit",
@@ -63,34 +25,6 @@
       ]
     },
     "role_summary_fr": "Alerte quand un objet quitte la zone surveillée. Détecte les sorties non autorisées.",
-    "deployment_scopes": [
-      "national",
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "full"
-  },
-  {
-    "id": "tpl-zone-occupancy",
-    "name": "Occupation zone élevée",
-    "category": "spatial",
-    "severity": "medium",
-    "definition": {
-      "condition": {
-        "op": "gt",
-        "field": "person_count",
-        "value": 5
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "medium"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Compte les personnes présentes dans la zone et alerte quand le nombre dépasse le seuil configuré.",
     "deployment_scopes": [
       "national",
       "enterprise",

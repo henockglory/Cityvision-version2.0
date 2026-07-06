@@ -8,6 +8,7 @@ import {
   auditApi,
   healthApi,
   aiHealthApi,
+  modelPackApi,
   dashboardApi,
   setupApi,
   demoApi,
@@ -46,6 +47,7 @@ export const queryKeys = {
   users: ['users'] as const,
   audit: ['audit'] as const,
   health: ['health'] as const,
+  modelPack: ['model-pack'] as const,
   dashboard: ['dashboard'] as const,
   demoSettings: ['demo', 'settings'] as const,
 };
@@ -402,6 +404,21 @@ export function useAiHealth() {
         return { yolo: false, face: false, plate: false, provider: 'unknown', cuda: false, ffmpeg: false, reachable: false };
       }
     },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useModelPack() {
+  const orgId = useOrgId();
+  return useQuery({
+    queryKey: [...queryKeys.modelPack, orgId],
+    queryFn: async () => {
+      if (!orgId) return null;
+      const { data } = await modelPackApi.get(orgId);
+      return data;
+    },
+    enabled: Boolean(orgId),
     staleTime: 30_000,
     refetchInterval: 60_000,
   });

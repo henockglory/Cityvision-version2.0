@@ -109,34 +109,6 @@
     "partial_reason_fr": "Nécessite une calibration caméra (homographie) + module ANPR optionnel"
   },
   {
-    "id": "tpl-wrong-way",
-    "name": "Sens interdit",
-    "category": "road-enforcement",
-    "severity": "high",
-    "supported": true,
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "wrong_way"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "high"
-          }
-        }
-      ]
-    },
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "role_summary_fr": "Alerte si une personne ou un véhicule circule dans le mauvais sens sur un axe ou dans une zone.",
-    "partial_status": "full"
-  },
-  {
     "id": "tpl-line-cross-forbidden",
     "name": "Franchissement ligne continue",
     "category": "road-enforcement",
@@ -220,43 +192,8 @@
   },
   {
     "id": "tpl-accident-composite",
-    "name": "Accident (arrêt brutal)",
-    "category": "road-enforcement",
-    "severity": "critical",
-    "supported": true,
-    "definition": {
-      "condition": {
-        "op": "SEQUENCE",
-        "window_seconds": 30,
-        "children": [
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "sudden_stop"
-          },
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "vehicle_stopped"
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "critical"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Scénario accident composite : arrêt brusque + véhicule immobilisé + présence prolongée.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "requires_calibration",
-    "partial_reason_fr": "Détection composite : nécessite calibration caméra pour les métriques de vitesse"
+    "redirect_to": "tpl-accident",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-accident (même SEQUENCE sudden_stop → vehicle_stopped)."
   },
   {
     "id": "tpl-red-light",
@@ -341,7 +278,7 @@
       "condition": {
         "op": "eq",
         "field": "event_type",
-        "value": "phone_driving"
+        "value": "phone_use_violation"
       },
       "actions": [
         {

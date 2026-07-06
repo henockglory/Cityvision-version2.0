@@ -85,6 +85,8 @@ type UploadInput struct {
 	SceneSize int64
 	Subject   io.Reader
 	SubjectSz int64
+	Plate     io.Reader
+	PlateSz   int64
 	Metadata  map[string]interface{}
 }
 
@@ -149,6 +151,16 @@ func (s *Service) UploadPackage(ctx context.Context, in UploadInput) (*Package, 
 			}
 		}
 		pkg.Images = append(pkg.Images, img)
+	}
+	if in.Plate != nil && in.PlateSz > 0 {
+		key := prefix + "/plate.jpg"
+		if _, err := s.client.PutObject(ctx, s.cfg.Bucket, key, in.Plate, in.PlateSz, minio.PutObjectOptions{ContentType: "image/jpeg"}); err != nil {
+			return nil, fmt.Errorf("upload plate: %w", err)
+		}
+		pkg.Images = append(pkg.Images, Image{
+			Role: "plate", AssetID: key, URL: s.assetURL(in.OrgID, key),
+			Label: "Plaque arrière", Mime: "image/jpeg",
+		})
 	}
 	return pkg, nil
 }

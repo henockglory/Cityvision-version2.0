@@ -31,6 +31,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/record"
 	"github.com/citevision/citevision-v2/backend/internal/routing"
 	"github.com/citevision/citevision-v2/backend/internal/rules"
+	"github.com/citevision/citevision-v2/backend/internal/sceneintent"
 	"github.com/citevision/citevision-v2/backend/internal/setup"
 	"github.com/citevision/citevision-v2/backend/internal/spatial"
 	"github.com/citevision/citevision-v2/backend/internal/users"
@@ -739,7 +740,16 @@ func (a *API) CreateRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	rule, err := a.Rules.Create(r.Context(), orgID, req.SiteID, req.Name, req.Description, rules.StampUserOrigin(req.Definition), req.Priority)
+	def := rules.StampUserOrigin(req.Definition)
+	if vr := sceneintent.ValidateDefinition(r.Context(), orgID, def, a.Spatial, a.AI, a.sharedRoot()); !vr.Valid {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":    "scene intent invalide",
+			"details":  vr.Errors,
+			"warnings": vr.Warnings,
+		})
+		return
+	}
+	rule, err := a.Rules.Create(r.Context(), orgID, req.SiteID, req.Name, req.Description, def, req.Priority)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -775,6 +785,14 @@ func (a *API) UpdateRule(w http.ResponseWriter, r *http.Request) {
 	def := req.Definition
 	if len(def) > 0 {
 		def = rules.StampUserOrigin(def)
+		if vr := sceneintent.ValidateDefinition(r.Context(), orgID, def, a.Spatial, a.AI, a.sharedRoot()); !vr.Valid {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+				"error":    "scene intent invalide",
+				"details":  vr.Errors,
+				"warnings": vr.Warnings,
+			})
+			return
+		}
 	}
 	rule, err := a.Rules.Update(r.Context(), orgID, ruleID, req.IsEnabled, req.Priority, req.Name, req.Description, def)
 	if errors.Is(err, rules.ErrNotFound) {
@@ -798,6 +816,10 @@ func (a *API) UpdateRule(w http.ResponseWriter, r *http.Request) {
 		ResourceType: "rule", ResourceID: &rid,
 		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
 	})
+	if a.Orchestrator != nil && (req.IsEnabled != nil || len(def) > 0) {
+		a.Orchestrator.InvalidateConfigHashes()
+		go a.Orchestrator.SyncNow(context.Background())
+	}
 	writeJSON(w, http.StatusOK, rule)
 }
 
@@ -851,7 +873,17 @@ func (a *API) ValidateRule(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"valid": "false", "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"valid": true})
+	orgID := middleware.GetOrgID(r.Context())
+	vr := sceneintent.ValidateDefinition(r.Context(), orgID, req.Definition, a.Spatial, a.AI, a.sharedRoot())
+	if !vr.Valid {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"valid":    false,
+			"errors":   vr.Errors,
+			"warnings": vr.Warnings,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"valid": true, "warnings": vr.Warnings})
 }
 
 func (a *API) EvaluateRule(w http.ResponseWriter, r *http.Request) {

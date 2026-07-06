@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -13,6 +14,26 @@ import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+def _downscale_frames(
+    frames: list[np.ndarray],
+    max_width: int = 1280,
+    max_height: int = 720,
+) -> list[np.ndarray]:
+    """Resize frames so they fit within max_width×max_height (keeps aspect ratio).
+
+    Dramatically speeds up ffmpeg H.264 encoding on 4K camera sources.
+    """
+    if not frames:
+        return frames
+    h, w = frames[0].shape[:2]
+    if w <= max_width and h <= max_height:
+        return frames
+    scale = min(max_width / w, max_height / h)
+    new_w = int(w * scale) & ~1   # ensure even for yuv420p
+    new_h = int(h * scale) & ~1
+    return [cv2.resize(f, (new_w, new_h), interpolation=cv2.INTER_AREA) for f in frames]
 
 
 @dataclass
@@ -29,7 +50,12 @@ class ClipExport:
 
 
 class FrameRingBuffer:
-    """Rolling JPEG frame buffer per camera (~10s at 5 fps)."""
+    """Rolling JPEG frame buffer per camera (~10s at 5 fps).
+
+    Thread-safe: the main ingest loop calls ``maybe_push`` while background
+    evidence threads call ``export_clip_mp4`` / ``get_frame_at_ts``.  A simple
+    RLock protects all deque mutations and reads.
+    """
 
     def __init__(self, max_seconds: float = 10.0, fps: int = 5, jpeg_quality: int = 82) -> None:
         self.max_seconds = max_seconds
@@ -39,6 +65,7 @@ class FrameRingBuffer:
         self._frames: deque[BufferedFrame] = deque()
         self._last_push: float = 0.0
         self._last_bgr: np.ndarray | None = None
+        self._lock = threading.RLock()
 
     def maybe_push(self, frame: np.ndarray) -> None:
         now = time.time()
@@ -47,40 +74,46 @@ class FrameRingBuffer:
         ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality])
         if not ok:
             return
-        self._frames.append(BufferedFrame(jpeg=buf.tobytes(), ts=now))
-        self._last_push = now
-        cutoff = now - self.max_seconds
-        while self._frames and self._frames[0].ts < cutoff:
-            self._frames.popleft()
-        self._last_bgr = frame.copy()
+        with self._lock:
+            self._frames.append(BufferedFrame(jpeg=buf.tobytes(), ts=now))
+            self._last_push = now
+            cutoff = now - self.max_seconds
+            while self._frames and self._frames[0].ts < cutoff:
+                self._frames.popleft()
+            self._last_bgr = frame.copy()
 
     def _decode_frame(self, bf: BufferedFrame) -> np.ndarray | None:
         arr = np.frombuffer(bf.jpeg, dtype=np.uint8)
         return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
     def get_last_frame(self) -> np.ndarray | None:
-        if self._last_bgr is not None:
-            return self._last_bgr
-        if not self._frames:
-            return None
-        return self._decode_frame(self._frames[-1])
+        with self._lock:
+            if self._last_bgr is not None:
+                return self._last_bgr.copy()
+            if not self._frames:
+                return None
+            return self._decode_frame(self._frames[-1])
 
     def get_frame_at_ts(self, event_ts: float | None) -> np.ndarray | None:
         """Return frame closest to event timestamp, or last frame."""
-        if not self._frames:
-            return self.get_last_frame()
-        if event_ts is None or event_ts <= 0:
-            return self.get_last_frame()
-        best = min(self._frames, key=lambda f: abs(f.ts - event_ts))
+        with self._lock:
+            if not self._frames:
+                return self.get_last_frame()
+            if event_ts is None or event_ts <= 0:
+                return self.get_last_frame()
+            snapshot = list(self._frames)
+        best = min(snapshot, key=lambda f: abs(f.ts - event_ts))
         img = self._decode_frame(best)
         return img if img is not None else self.get_last_frame()
 
     def export_clip_mp4(self, duration_sec: float = 6.0, fps: int | None = None) -> ClipExport | None:
-        if not self._frames:
-            return None
+        with self._lock:
+            if not self._frames:
+                return None
+            snapshot = list(self._frames)
         use_fps = fps or self.fps
         frames_bgr: list[np.ndarray] = []
-        for bf in self._frames:
+        for bf in snapshot:
             img = self._decode_frame(bf)
             if img is not None:
                 frames_bgr.append(img)
@@ -99,6 +132,8 @@ class FrameRingBuffer:
                 frames_bgr.append(last.copy())
 
         if shutil.which("ffmpeg"):
+            # Downscale to 1280×720 max to speed up H.264 encoding on 4K sources.
+            frames_bgr = _downscale_frames(frames_bgr, max_width=1280, max_height=720)
             data = self._export_h264_ffmpeg(frames_bgr, use_fps)
             if data is None:
                 return None

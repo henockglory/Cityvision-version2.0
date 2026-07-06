@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pencil, RefreshCw } from 'lucide-react';
+import { HelpCircle, Pencil, RefreshCw } from 'lucide-react';
+import Tooltip from '@/components/ui/Tooltip';
+import { useUiStore } from '@/stores/uiStore';
 import { useQueryClient } from '@tanstack/react-query';
 import { demoApi, type DemoSettings } from '@/api/client';
 import { queryKeys } from '@/hooks/api/queries';
@@ -11,10 +13,12 @@ type Field = 'context_label' | 'title' | 'subtitle' | 'nav_label';
 interface DemoEditableHeaderProps {
   settings?: DemoSettings | null;
   onRefresh?: () => void;
+  onHelpTour?: () => void;
 }
 
-export default function DemoEditableHeader({ settings, onRefresh }: DemoEditableHeaderProps) {
+export default function DemoEditableHeader({ settings, onRefresh, onHelpTour }: DemoEditableHeaderProps) {
   const { t } = useTranslation();
+  const toursEnabled = useUiStore((s) => s.toursEnabled);
   const orgId = useAuthStore((s) => s.orgId);
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Field | null>(null);
@@ -113,12 +117,27 @@ export default function DemoEditableHeader({ settings, onRefresh }: DemoEditable
           />
         </div>
       </div>
-      {onRefresh && (
-        <button type="button" onClick={onRefresh} className="cv-btn-secondary text-sm">
-          <RefreshCw className="w-4 h-4" />
-          {t('demoCenter.refresh')}
-        </button>
-      )}
+      <div className="flex items-center gap-2 shrink-0">
+        {toursEnabled && onHelpTour && (
+          <Tooltip content={t('pageHeader.tourHint', 'Guide pas à pas : menus, champs et procédures expliqués simplement.')}>
+            <button
+              type="button"
+              className="cv-btn-ghost p-2"
+              onClick={onHelpTour}
+              data-tour="page-tour-help"
+              aria-label={t('pageHeader.tourAriaLabel', 'Tutoriel guidé')}
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        )}
+        {onRefresh && (
+          <button type="button" onClick={onRefresh} className="cv-btn-secondary text-sm">
+            <RefreshCw className="w-4 h-4" />
+            {t('demoCenter.refresh')}
+          </button>
+        )}
+      </div>
     </header>
   );
 }

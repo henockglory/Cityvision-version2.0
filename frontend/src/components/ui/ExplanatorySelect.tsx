@@ -10,6 +10,8 @@ export interface ExplanatoryOption {
   howItWorks: string;
   stepUtility: string;
   group?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 export interface ExplanatorySelectProps {
@@ -83,10 +85,12 @@ export default function ExplanatorySelect({
 
   const select = useCallback(
     (v: string) => {
+      const opt = options.find((o) => o.value === v);
+      if (opt?.disabled) return;
       onChange(v);
       close();
     },
-    [onChange, close],
+    [onChange, close, options],
   );
 
   useEffect(() => {
@@ -198,16 +202,19 @@ export default function ExplanatorySelect({
                   const idx = itemIdx;
                   const isSelected = opt.value === value;
                   const isHighlight = idx === highlight;
+                  const isDisabled = Boolean(opt.disabled);
                   return (
                     <button
                       key={`${opt.group ?? ''}-${opt.value}`}
                       type="button"
                       role="option"
                       aria-selected={isSelected}
+                      aria-disabled={isDisabled}
                       data-idx={idx}
-                      className={`cv-explanatory-option w-full text-left ${isSelected ? 'cv-explanatory-option-selected' : ''} ${isHighlight ? 'cv-explanatory-option-highlight' : ''}`}
-                      onMouseEnter={() => setHighlight(idx)}
-                      onClick={() => select(opt.value)}
+                      disabled={isDisabled}
+                      className={`cv-explanatory-option w-full text-left ${isSelected ? 'cv-explanatory-option-selected' : ''} ${isHighlight ? 'cv-explanatory-option-highlight' : ''} ${isDisabled ? 'opacity-45 cursor-not-allowed' : ''}`}
+                      onMouseEnter={() => !isDisabled && setHighlight(idx)}
+                      onClick={() => !isDisabled && select(opt.value)}
                     >
                       <div className="flex items-start gap-2">
                         <div className="flex-1 min-w-0">
@@ -216,7 +223,9 @@ export default function ExplanatorySelect({
                             <span className="text-cv-muted font-normal text-xs">({opt.technicalId})</span>
                           </p>
                           <p className="text-[11px] text-cv-muted/90 mt-1 leading-relaxed">
-                            {formatDescription(opt)}
+                            {isDisabled && opt.disabledReason
+                              ? opt.disabledReason
+                              : formatDescription(opt)}
                           </p>
                         </div>
                         {isSelected && <Check className="w-4 h-4 shrink-0 text-cv-accent mt-0.5" />}
