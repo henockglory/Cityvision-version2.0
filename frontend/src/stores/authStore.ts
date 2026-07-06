@@ -39,8 +39,20 @@ export function getAuthCredentials(): { token: string | null; orgId: string | nu
   };
   return {
     token: token ?? stored.token,
-    orgId: orgId ?? stored.orgId,
+    orgId: orgId ?? stored.orgId ?? readOrgIdFromPersistedAuth(),
   };
+}
+
+/** Sync org id before Zustand cv-auth finishes rehydrating (Zone Editor camera key). */
+export function readOrgIdFromPersistedAuth(): string | null {
+  try {
+    const raw = localStorage.getItem('cv-auth');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { orgId?: string | null } };
+    return parsed.state?.orgId ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function apiLogin(

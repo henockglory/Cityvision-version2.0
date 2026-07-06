@@ -7,6 +7,64 @@ function applyTheme(theme: 'dark' | 'light') {
   document.documentElement.classList.toggle('light', theme === 'light');
 }
 
+const ZONE_EDITOR_CAMERA_KEY = (orgId: string) => `citevision.zoneEditor.camera.${orgId}`;
+
+export function readZoneEditorCameraFromStorage(orgId: string): string | null {
+  try {
+    return localStorage.getItem(ZONE_EDITOR_CAMERA_KEY(orgId));
+  } catch {
+    return null;
+  }
+}
+
+/** Read camera from cv-ui JSON before Zustand rehydration completes. */
+export function readZoneEditorCameraFromCvUi(orgId: string): string | null {
+  try {
+    const raw = localStorage.getItem('cv-ui');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { zoneEditorCameraByOrg?: Record<string, string> } };
+    return parsed.state?.zoneEditorCameraByOrg?.[orgId] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolvePersistedZoneEditorCameraId(
+  orgId: string | null | undefined,
+  fromStore?: string,
+): string | null {
+  if (orgId) {
+    const scoped = fromStore ?? readZoneEditorCameraFromStorage(orgId) ?? readZoneEditorCameraFromCvUi(orgId);
+    if (scoped) return scoped;
+  }
+  try {
+    return localStorage.getItem('citevision.zoneEditor.lastCameraId');
+  } catch {
+    return null;
+  }
+}
+
+function writeZoneEditorCameraToStorage(orgId: string, cameraId: string) {
+  try {
+    localStorage.setItem(ZONE_EDITOR_CAMERA_KEY(orgId), cameraId);
+    localStorage.setItem('citevision.zoneEditor.lastCameraId', cameraId);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+export function writeZoneEditorCameraSelection(orgId: string | null | undefined, cameraId: string) {
+  if (orgId) {
+    writeZoneEditorCameraToStorage(orgId, cameraId);
+    return;
+  }
+  try {
+    localStorage.setItem('citevision.zoneEditor.lastCameraId', cameraId);
+  } catch {
+    /* ignore */
+  }
+}
+
 interface UiStore {
   theme: 'dark' | 'light';
   sidebarCollapsed: boolean;
@@ -87,13 +145,38 @@ export const useUiStore = create<UiStore>()(
       resetAllTours: () => set({ completedTours: {} }),
       toggleToursEnabled: () => set((s) => ({ toursEnabled: !s.toursEnabled })),
       toggleToursAutoStart: () => set((s) => ({ toursAutoStart: !s.toursAutoStart })),
-      setZoneEditorCamera: (orgId, cameraId) =>
+      setZoneEditorCamera: (orgId, cameraId) => {
+        writeZoneEditorCameraToStorage(orgId, cameraId);
         set((s) => ({
           zoneEditorCameraByOrg: { ...s.zoneEditorCameraByOrg, [orgId]: cameraId },
-        })),
+        }));
+      },
     }),
     {
       name: 'cv-ui',
+      partialize: (state) => ({
+        theme: state.theme,
+        sidebarCollapsed: state.sidebarCollapsed,
+        mobileSidebarOpen: state.mobileSidebarOpen,
+        soundMuted: state.soundMuted,
+        soundUiEnabled: state.soundUiEnabled,
+        soundAlertsEnabled: state.soundAlertsEnabled,
+        tooltipsEnabled: state.tooltipsEnabled,
+        networkEffectEnabled: state.networkEffectEnabled,
+        onboardingCompleted: state.onboardingCompleted,
+        toursEnabled: state.toursEnabled,
+        toursAutoStart: state.toursAutoStart,
+        completedTours: state.completedTours,
+        zoneEditorCameraByOrg: state.zoneEditorCameraByOrg,
+      }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as object),
+        zoneEditorCameraByOrg: {
+          ...current.zoneEditorCameraByOrg,
+          ...((persisted as { zoneEditorCameraByOrg?: Record<string, string> })?.zoneEditorCameraByOrg ?? {}),
+        },
+      }),
       onRehydrateStorage: () => (state) => {
         if (state) applyTheme(state.theme);
       },

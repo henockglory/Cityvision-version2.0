@@ -22,7 +22,8 @@ import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 import { useSound } from '@/hooks/useSound';
 
 import { useAuthStore, getAuthCredentials } from '@/stores/authStore';
-import { useUiStore } from '@/stores/uiStore';
+import { useUiStore, resolvePersistedZoneEditorCameraId, writeZoneEditorCameraSelection } from '@/stores/uiStore';
+import { useUiHydrated } from '@/hooks/useUiHydrated';
 
 import { zonesApi, capabilitiesApi, type BackendZone, type BackendLine, type CapabilitiesBehaviorMenuItem } from '@/api/client';
 
@@ -59,20 +60,6 @@ import type { Zone } from '@/types';
 const STAGE_WIDTH = 800;
 
 const STAGE_HEIGHT = 450;
-
-/** Legacy localStorage key — migrated into cv-ui on read */
-const legacyZoneEditorCameraKey = (orgId: string) => `citevision.zoneEditor.camera.${orgId}`;
-
-function readLegacyZoneEditorCameraId(orgId: string | null): string | null {
-  if (!orgId) return null;
-  try {
-    return localStorage.getItem(legacyZoneEditorCameraKey(orgId));
-  } catch {
-    return null;
-  }
-}
-
-
 
 type EditMode = 'zone' | 'line';
 
@@ -207,6 +194,7 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
   const authSiteId = useAuthStore((s) => s.siteId);
   const zoneEditorCameraByOrg = useUiStore((s) => s.zoneEditorCameraByOrg);
   const setZoneEditorCamera = useUiStore((s) => s.setZoneEditorCamera);
+  const uiHydrated = useUiHydrated();
 
   const { data: cameras = [], isLoading } = useCameras();
   const { data: rules = [] } = useRules();
@@ -271,28 +259,31 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const persistedCameraId = orgId ? zoneEditorCameraByOrg[orgId] ?? readLegacyZoneEditorCameraId(orgId) : null;
+  const persistedCameraId = resolvePersistedZoneEditorCameraId(orgId, zoneEditorCameraByOrg[orgId ?? '']);
 
-  // One-time migration from legacy localStorage key into cv-ui persist
   useEffect(() => {
     if (!orgId || zoneEditorCameraByOrg[orgId]) return;
-    const legacy = readLegacyZoneEditorCameraId(orgId);
-    if (!legacy || !cameras.some((c) => c.id === legacy)) return;
-    setZoneEditorCamera(orgId, legacy);
+    const stored = resolvePersistedZoneEditorCameraId(orgId);
+    if (!stored || !cameras.some((c) => c.id === stored)) return;
+    setZoneEditorCamera(orgId, stored);
   }, [orgId, zoneEditorCameraByOrg, cameras, setZoneEditorCamera]);
 
   const activeCameraId = useMemo(() => {
     if (props.fixedCameraId) return props.fixedCameraId;
     const urlId = searchParams.get('camera');
     if (urlId && cameras.some((c) => c.id === urlId)) return urlId;
-    if (persistedCameraId && cameras.some((c) => c.id === persistedCameraId)) return persistedCameraId;
+    if (persistedCameraId) {
+      if (isLoading || !uiHydrated) return null;
+      if (cameras.some((c) => c.id === persistedCameraId)) return persistedCameraId;
+    }
+    if (!uiHydrated || isLoading) return null;
     const demo = cameras.find((c) => {
       const meta = c.metadata as Record<string, unknown> | undefined;
       return meta?.demo === true || meta?.demo === 'true';
     });
     if (demo?.id) return demo.id;
     return embedded ? null : cameras[0]?.id ?? null;
-  }, [props.fixedCameraId, searchParams, persistedCameraId, cameras, embedded]);
+  }, [props.fixedCameraId, searchParams, persistedCameraId, cameras, embedded, uiHydrated, isLoading]);
 
   const selectedCamera = activeCameraId
     ? cameras.find((c) => c.id === activeCameraId)
@@ -958,7 +949,9 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
               value={selectedCamera?.id ?? ''}
               onChange={(id) => {
                 playClick();
-                if (orgId) setZoneEditorCamera(orgId, id);
+                const effectiveOrgId = orgId ?? getAuthCredentials().orgId;
+                writeZoneEditorCameraSelection(effectiveOrgId, id);
+                if (effectiveOrgId) useUiStore.getState().setZoneEditorCamera(effectiveOrgId, id);
                 setSearchParams({ camera: id });
               }}
               options={cameras.map((c) => ({ value: c.id, label: c.name }))}
