@@ -32,7 +32,12 @@ install_ai_cuda_deps() {
   local site_pkg="$venv_root/lib/python3.12/site-packages"
   "$venv_pip" install -q "onnxruntime-gpu==1.19.2" 2>/dev/null || true
   # ORT 1.19.x + WSL: cuDNN 9.23 (torch) breaks cudnnCreate — pin 9.1.x when online.
-  if ! "$venv_pip" install -q "nvidia-cudnn-cu12==9.1.0.70" "nvidia-cublas-cu12" "nvidia-cuda-runtime-cu12" 2>/dev/null; then
+  if ! "$venv_pip" install -q \
+    "nvidia-cudnn-cu12==9.1.0.70" \
+    "nvidia-cublas-cu12" \
+    "nvidia-cuda-runtime-cu12" \
+    "nvidia-curand-cu12" \
+    "nvidia-cufft-cu12" 2>/dev/null; then
     local fallback src dst
     for fallback in \
       "${HOME}/.citevision-v2/ai-engine-venv/lib/python3.12/site-packages/nvidia/cudnn/lib" \

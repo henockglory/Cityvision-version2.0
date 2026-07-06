@@ -22,7 +22,13 @@ fi
 
 command -v docker >/dev/null && pass "docker CLI" || fail "docker CLI missing"
 if command -v docker >/dev/null; then
-  docker info >/dev/null 2>&1 && pass "docker daemon" || fail "docker daemon not running (sudo service docker start)"
+  if docker info >/dev/null 2>&1; then
+    pass "docker daemon"
+  elif is_wsl; then
+    fail "docker daemon not running (lancez Docker Desktop + WSL Integration)"
+  else
+    fail "docker daemon not running (sudo systemctl start docker)"
+  fi
 fi
 
 command -v go >/dev/null && pass "go" || fail "go missing"

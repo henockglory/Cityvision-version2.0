@@ -202,6 +202,7 @@ apply_fixes() {
   ensure_pip_extras || return 1
   ensure_ort_gpu_only "${VENV_PIP}"
   setup_cuda_library_path "${VENV_DIR}/bin/python3"
+  bash "$ROOT/scripts/_copy_working_cudnn.sh" 2>/dev/null || true
   ensure_yolo_model || return 1
   ensure_download_models || return 1
   if [[ "$RESTART_AI" == "true" ]] || curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
@@ -230,6 +231,14 @@ while (( attempt <= MAX_ATTEMPTS )); do
   _log "[FIX] Correction AI stack ($attempt/$MAX_ATTEMPTS)…"
   if ! apply_fixes; then
     _log "[ERR]  apply_fixes échoué (tentative $attempt/$MAX_ATTEMPTS)"
+  elif [[ "$HEALTH_URL" != "none" && "$HEALTH_URL" != "skip" ]] \
+      && curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
+    if ! _health_keys_ok "$HEALTH_URL"; then
+      _log "[ERR]  health keys manquantes:"
+      local gpu_flag=()
+      _gpu_expected && gpu_flag=(--require-gpu)
+      "$VENV_PY" "$ROOT/ai-engine/scripts/check_ai_health.py" --url "$HEALTH_URL" "${gpu_flag[@]}" 2>&1 || true
+    fi
   fi
   ((attempt++)) || true
   sleep 3

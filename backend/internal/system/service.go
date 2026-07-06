@@ -64,18 +64,8 @@ type StreamEvent struct {
 	OK      bool   `json:"ok,omitempty"`
 }
 
-func ProjectRoot() string {
-	if v := os.Getenv("PROJECT_ROOT"); v != "" {
-		return v
-	}
-	if v := os.Getenv("CITEVISION_ROOT"); v != "" {
-		return v
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	dir := cwd
+func findProjectRootFromDir(start string) string {
+	dir := start
 	for i := 0; i < 8; i++ {
 		if fileExists(filepath.Join(dir, "scripts", "uninstall-all.sh")) {
 			return dir
@@ -86,12 +76,48 @@ func ProjectRoot() string {
 		}
 		dir = parent
 	}
-	return cwd
+	return ""
+}
+
+func hasInstallerStartState(root string) bool {
+	if root == "" {
+		return false
+	}
+	return fileExists(filepath.Join(root, "installer", ".service_start_mode")) ||
+		fileExists(filepath.Join(root, "installer", ".startup_configured"))
+}
+
+// ProjectRoot resolves the CitéVision install tree. The runtime cwd tree wins when it
+// carries installer state so Paramètres stays aligned with the path used by start-linux.sh
+// even if .env still points at an old clone (e.g. citevision vs Citevision).
+func ProjectRoot() string {
+	if cwd, err := os.Getwd(); err == nil {
+		if root := findProjectRootFromDir(cwd); root != "" && hasInstallerStartState(root) {
+			return root
+		}
+	}
+	if v := os.Getenv("PROJECT_ROOT"); v != "" {
+		return v
+	}
+	if v := os.Getenv("CITEVISION_ROOT"); v != "" {
+		return v
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if root := findProjectRootFromDir(cwd); root != "" {
+			return root
+		}
+		return cwd
+	}
+	return "."
 }
 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func trimBOM(s string) string {
+	return strings.TrimPrefix(strings.TrimSpace(s), "\ufeff")
 }
 
 func readStartMode(root string) string {
@@ -100,7 +126,7 @@ func readStartMode(root string) string {
 		return "auto"
 	}
 	mode := strings.TrimSpace(string(data))
-	mode = strings.TrimPrefix(mode, "\ufeff")
+	mode = trimBOM(mode)
 	if idx := strings.Index(mode, "|"); idx >= 0 {
 		mode = strings.TrimSpace(mode[:idx])
 	}
@@ -123,6 +149,72 @@ func writeStartMode(root, mode string) error {
 
 func ValidStartMode(mode string) bool {
 	return mode == "auto" || mode == "manual"
+}
+
+// StartModeVerifyResult is returned by install-time verification (installer + internal API).
+type StartModeVerifyResult struct {
+	OK                 bool   `json:"ok"`
+	Expected           string `json:"expected"`
+	StartMode          string `json:"start_mode"`
+	StartModeEffective string `json:"start_mode_effective"`
+	ProjectRoot        string `json:"project_root"`
+	FileOK             bool   `json:"file_ok"`
+	MarkerOK           bool   `json:"marker_ok"`
+	MarkerMode         string `json:"marker_mode,omitempty"`
+	OSEffectiveOK      bool   `json:"os_effective_ok"`
+	ServiceRegistered  bool   `json:"service_registered"`
+	Message            string `json:"message,omitempty"`
+}
+
+// VerifyStartMode checks that the configured and effective modes match expected.
+func VerifyStartMode(expected string) StartModeVerifyResult {
+	if !ValidStartMode(expected) {
+		return StartModeVerifyResult{
+			OK:      false,
+			Message: "invalid expected mode",
+		}
+	}
+	root := ProjectRoot()
+	configured := readStartMode(root)
+	st := GetStatus()
+	fileOK := configured == expected
+	markerPath := filepath.Join(root, "installer", ".startup_configured")
+	markerMode := ""
+	markerOK := fileExists(markerPath)
+	if markerOK {
+		if data, err := os.ReadFile(markerPath); err == nil {
+			parts := strings.SplitN(strings.TrimSpace(string(data)), "|", 2)
+			markerMode = trimBOM(strings.TrimSpace(parts[0]))
+		}
+	}
+	markerMatch := markerOK && markerMode == expected
+	osOK := st.StartModeEffective == expected
+	res := StartModeVerifyResult{
+		Expected:           expected,
+		StartMode:          configured,
+		StartModeEffective: st.StartModeEffective,
+		ProjectRoot:        root,
+		FileOK:             fileOK,
+		MarkerOK:           markerMatch,
+		MarkerMode:         markerMode,
+		OSEffectiveOK:      osOK,
+		ServiceRegistered:  st.ServiceRegistered,
+	}
+	res.OK = fileOK && markerMatch && osOK
+	if !res.OK {
+		var parts []string
+		if !fileOK {
+			parts = append(parts, fmt.Sprintf("fichier=%q", configured))
+		}
+		if !markerMatch {
+			parts = append(parts, fmt.Sprintf("marqueur=%q", markerMode))
+		}
+		if !osOK {
+			parts = append(parts, fmt.Sprintf("effectif=%q", st.StartModeEffective))
+		}
+		res.Message = "désynchronisation: " + strings.Join(parts, ", ")
+	}
+	return res
 }
 
 // isWSL reports whether the backend runs inside WSL (a Linux process on a
@@ -220,6 +312,11 @@ func windowsEffectiveStartMode(root string, configured bool) string {
 	}
 	mode := readStartMode(root)
 	if mode == "manual" {
+		if scheduledTaskExists(windowsAutoStartTask) ||
+			windowsRegistryAutostartEnabled(root) ||
+			windowsStartupFolderAutostartEnabled() {
+			return "auto"
+		}
 		return "manual"
 	}
 	if scheduledTaskExists(windowsAutoStartTask) {

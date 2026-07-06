@@ -372,7 +372,21 @@ class InstallerHandler(BaseHTTPRequestHandler):
             # Legacy endpoint — configures Task Scheduler startup (not services.msc).
             try:
                 dc = _load_module("deps_checker", INSTALLER_DIR / "deps-checker.py")
-                result = dc.register_system_service()
+                parsed = urlparse(self.path)
+                qs = parse_qs(parsed.query)
+                start_mode = qs.get("start_mode", [None])[0]
+                if start_mode in ("auto", "manual"):
+                    ok, msg, verify = dc.apply_install_start_mode(start_mode)
+                    result = {
+                        "ok": ok,
+                        "message": msg,
+                        "start_mode": start_mode,
+                        "verify": verify,
+                        "skipped": False,
+                        "platform": "windows" if dc.IS_WINDOWS else "linux",
+                    }
+                else:
+                    result = dc.register_system_service()
                 _send_json(self, result)
             except Exception as e:
                 import traceback

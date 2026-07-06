@@ -58,6 +58,34 @@ source "$ROOT/scripts/lib/env-utils.sh"
 _log "=== CitéVision v2 WSL/Linux setup ==="
 _log ""
 
+# ── Mode de démarrage (persisté tôt — indépendant du reste de l'installation) ──
+if [[ "$START_MODE" != "auto" && "$START_MODE" != "manual" ]]; then
+  _warn "Mode de démarrage invalide ($START_MODE) — utilisation de 'auto'"
+  START_MODE="auto"
+fi
+_persist_start_mode() {
+  local mode="$1"
+  mkdir -p installer
+  printf '%s' "$mode" > installer/.service_start_mode
+  sync installer/.service_start_mode 2>/dev/null || true
+  local actual=""
+  actual="$(tr -d '\r\n' < installer/.service_start_mode 2>/dev/null || true)"
+  if [[ "$actual" != "$mode" ]]; then
+    if command -v python3 >/dev/null 2>&1; then
+      python3 -c "open('installer/.service_start_mode','w',encoding='utf-8',newline='').write('${mode}')" 2>/dev/null || true
+      actual="$(tr -d '\r\n' < installer/.service_start_mode 2>/dev/null || true)"
+    fi
+  fi
+  if [[ "$actual" != "$mode" ]]; then
+    _err "Échec persistance mode démarrage (attendu: $mode, obtenu: ${actual:-vide})"
+    return 1
+  fi
+  return 0
+}
+_step "Mode de démarrage du service"
+_persist_start_mode "$START_MODE" || exit 1
+_ok "Mode service enregistré ($START_MODE)"
+
 if command -v apt-get &>/dev/null; then
   _step "System packages"
   _info "Updating package lists…"
@@ -71,26 +99,24 @@ if command -v apt-get &>/dev/null; then
     ca-certificates gnupg lsb-release 2>>"${LOG_FILE:-/dev/null}" || true
   _ok "System packages installed"
 
-  # ── Docker ──────────────────────────────────────────────────
-  if ! command -v docker &>/dev/null; then
+  # ── Docker Engine natif WSL (pas Docker Desktop) ─────────────
+  if ! command -v dockerd &>/dev/null; then
     _step "Docker Engine"
-    _info "Installing Docker Engine…"
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-      | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-      | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-    sudo apt-get update -qq 2>>"${LOG_FILE:-/dev/null}"
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-      docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
-      2>>"${LOG_FILE:-/dev/null}"
-    _ok "Docker Engine installed"
+    _info "Installation Docker Engine natif (docker-ce)…"
+    install_docker_engine_native || { _err "Docker Engine natif — échec installation"; exit 1; }
+    _ok "Docker Engine installé"
   else
-    _info "Docker Engine already present — $(docker --version)"
+    _info "Docker Engine natif déjà présent — $(docker --version 2>/dev/null || echo dockerd)"
   fi
 
-  # ── Go ───────────────────────────────────────────────────────
+  sudo usermod -aG docker "$USER" 2>/dev/null || true
+  export CITEVISION_LOGDIR="${ROOT}/logs"
+  mkdir -p "$CITEVISION_LOGDIR"
+  if ! ensure_docker_ready 90 install; then
+    _warn "Docker daemon non prêt — après setup: newgrp docker puis bash scripts/start-linux.sh"
+  else
+    _ok "Docker Engine natif démarré"
+  fi
   if ! command -v go &>/dev/null; then
     _step "Go 1.22"
     _info "Downloading Go 1.22.5…"
@@ -114,9 +140,6 @@ https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_C
   else
     _info "Node.js already present — $(node -v)"
   fi
-
-  sudo usermod -aG docker "$USER" 2>/dev/null || true
-  sudo service docker start 2>/dev/null || _warn "Docker daemon start skipped (may need manual start)"
 fi
 
 # ── .env file ────────────────────────────────────────────────
@@ -192,16 +215,6 @@ else
   _err "AI stack incomplet après remédiation automatique — voir logs/installer.log"
   exit 1
 fi
-
-# ── Mode de démarrage du service (enregistré au premier lancement) ──
-_step "Mode de démarrage du service"
-if [[ "$START_MODE" != "auto" && "$START_MODE" != "manual" ]]; then
-  _warn "Mode de démarrage invalide ($START_MODE) — utilisation de 'auto'"
-  START_MODE="auto"
-fi
-mkdir -p installer
-echo "$START_MODE" > installer/.service_start_mode
-_ok "Mode service enregistré pour le premier lancement ($START_MODE)"
 
 _log ""
 _ok "Setup complete"

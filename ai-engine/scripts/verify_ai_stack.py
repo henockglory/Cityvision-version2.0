@@ -41,7 +41,8 @@ def _setup_cuda_ld() -> None:
         return
     sp = pkg_dirs[0]
     parts = []
-    for rel in ("nvidia/cudnn/lib", "nvidia/cublas/lib", "nvidia/cuda_runtime/lib"):
+    for rel in ("nvidia/cudnn/lib", "nvidia/cublas/lib", "nvidia/cuda_runtime/lib",
+                "nvidia/curand/lib", "nvidia/cufft/lib"):
         p = sp / rel
         if p.is_dir():
             parts.append(str(p))

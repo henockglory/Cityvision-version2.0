@@ -109,10 +109,14 @@ _wait_all_ai_models() {
   local timeout="${2:-300}"
   local venv_py="$ROOT/ai-engine/.venv/bin/python3"
   [[ -x "$venv_py" ]] || return 1
+  local gpu_flag=()
+  if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+    gpu_flag=(--require-gpu)
+  fi
   local i=0
   while (( i < timeout )); do
     if curl -sf "$url" >/dev/null 2>&1 \
-        && "$venv_py" "$ROOT/ai-engine/scripts/check_ai_health.py" --url "$url" --require-gpu 2>/dev/null; then
+        && "$venv_py" "$ROOT/ai-engine/scripts/check_ai_health.py" --url "$url" "${gpu_flag[@]}" 2>/dev/null; then
       return 0
     fi
     sleep 3

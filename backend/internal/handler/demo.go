@@ -244,3 +244,12 @@ func (a *API) ResetDemoWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+func (a *API) InternalRepairDemoStreams(w http.ResponseWriter, r *http.Request) {
+	if a.Demo == nil {
+		writeError(w, http.StatusServiceUnavailable, "demo service unavailable")
+		return
+	}
+	res := a.Demo.RepairAllDemoStreams(r.Context())
+	writeJSON(w, http.StatusOK, res)
+}

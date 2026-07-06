@@ -43,8 +43,12 @@ fi
 if curl -sf "http://127.0.0.1:$AI_PORT/health" >/dev/null 2>&1; then
   pass "ai-engine :$AI_PORT"
   VENV_PY="$ROOT/ai-engine/.venv/bin/python3"
+  GPU_FLAG=()
+  if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+    GPU_FLAG=(--require-gpu)
+  fi
   if [[ -x "$VENV_PY" ]] && "$VENV_PY" "$ROOT/ai-engine/scripts/check_ai_health.py" \
-      --url "http://127.0.0.1:$AI_PORT/health" 2>/dev/null; then
+      --url "http://127.0.0.1:$AI_PORT/health" "${GPU_FLAG[@]}" 2>/dev/null; then
     pass "ai registry health keys"
   else
     fail "ai registry health keys"

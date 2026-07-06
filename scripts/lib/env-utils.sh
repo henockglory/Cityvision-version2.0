@@ -10,6 +10,19 @@ load_dotenv() {
   set +a
 }
 
+# Force PROJECT_ROOT to the runtime tree (fixes Paramètres start_mode when .env points at another clone).
+sync_project_root() {
+  local root="${1:-.}"
+  local env_path="$root/.env"
+  [[ -f "$env_path" ]] || return 0
+  sed -i 's/\r$//' "$env_path" 2>/dev/null || true
+  if grep -q '^PROJECT_ROOT=' "$env_path" 2>/dev/null; then
+    sed -i "s|^PROJECT_ROOT=.*|PROJECT_ROOT=${root}|" "$env_path" 2>/dev/null || true
+  else
+    echo "PROJECT_ROOT=${root}" >>"$env_path"
+  fi
+}
+
 random_hex() {
   local bytes="${1:-16}"
   if command -v openssl >/dev/null 2>&1; then
@@ -173,5 +186,126 @@ ensure_frontend_deps() {
     return 0
   fi
   echo "[FAIL] Bindings Rollup natifs toujours absents après npm install" >&2
+  return 1
+}
+
+is_wsl() {
+  grep -qi microsoft /proc/version 2>/dev/null
+}
+
+has_native_docker_engine() {
+  command -v dockerd >/dev/null 2>&1
+}
+
+# Installe Docker Engine natif (docker-ce) — jamais Docker Desktop.
+install_docker_engine_native() {
+  if has_native_docker_engine; then
+    return 0
+  fi
+  if ! command -v apt-get >/dev/null 2>&1; then
+    echo "[ERR] apt-get requis pour installer Docker Engine natif" >&2
+    return 1
+  fi
+  echo "[INFO] Installation Docker Engine natif (docker-ce)…"
+  echo "[INFO] 2–5 min — patientez, ce n'est pas un blocage."
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+  sudo apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  sudo usermod -aG docker "${USER:-$(whoami)}" 2>/dev/null || true
+  has_native_docker_engine
+}
+
+start_docker_daemon_native() {
+  if docker info >/dev/null 2>&1; then
+    return 0
+  fi
+  if pgrep -x dockerd >/dev/null 2>&1; then
+    return 0
+  fi
+
+  sudo mkdir -p /var/run/docker /etc/docker 2>/dev/null || true
+
+  if command -v systemctl >/dev/null 2>&1 \
+    && systemctl list-unit-files docker.service 2>/dev/null | grep -q docker.service; then
+    echo "[INFO] Démarrage Docker via systemctl…"
+    sudo systemctl start docker 2>/dev/null && return 0
+  fi
+
+  if [[ -x /etc/init.d/docker ]] || [[ -f /lib/systemd/system/docker.service ]]; then
+    echo "[INFO] Démarrage Docker via service docker…"
+    sudo service docker start 2>/dev/null && return 0
+  fi
+
+  if has_native_docker_engine; then
+    local log="${CITEVISION_LOGDIR:-/tmp}/dockerd.log"
+    mkdir -p "$(dirname "$log")" 2>/dev/null || true
+    echo "[INFO] Démarrage dockerd (Docker Engine natif WSL, sans systemd)…"
+    sudo nohup dockerd --host=unix:///var/run/docker.sock >>"$log" 2>&1 &
+    disown 2>/dev/null || true
+    return 0
+  fi
+
+  return 1
+}
+
+# Attend le daemon Docker. WSL = Docker Engine natif uniquement (pas Docker Desktop).
+# Usage: ensure_docker_ready [timeout_sec] [install]
+ensure_docker_ready() {
+  local max_wait="${1:-90}"
+  local do_install="${2:-}"
+
+  if docker info >/dev/null 2>&1; then
+    echo "[OK] Docker ready"
+    return 0
+  fi
+
+  if is_wsl; then
+    echo "[INFO] Docker daemon absent — démarrage Docker Engine natif (WSL)…"
+  else
+    echo "[INFO] Docker daemon absent — démarrage Docker Engine…"
+  fi
+  echo "[INFO] Peut prendre 15–90 s ; les […] confirment que ça avance."
+
+  if ! has_native_docker_engine; then
+    if [[ "$do_install" == "install" ]]; then
+      install_docker_engine_native || true
+    else
+      echo "[ERR] dockerd introuvable — Docker Engine natif non installé." >&2
+      echo "       Lancez: bash scripts/setup-wsl.sh" >&2
+      return 1
+    fi
+  fi
+
+  if ! start_docker_daemon_native; then
+    echo "[ERR] Impossible de démarrer dockerd." >&2
+    return 1
+  fi
+
+  local i=0
+  while (( i < max_wait )); do
+    if docker info >/dev/null 2>&1; then
+      echo "[OK] Docker ready"
+      return 0
+    fi
+    if (( i > 0 && i % 15 == 0 )); then
+      echo "[…]   toujours en cours: attente Docker Engine natif (${i}s/${max_wait}s)…"
+    fi
+    sleep 3
+    ((i += 3)) || true
+  done
+
+  echo "[FAIL] Docker Engine natif non joignable après ${max_wait}s." >&2
+  if is_wsl; then
+    echo "       Vérifiez: bash scripts/setup-wsl.sh  puis  newgrp docker" >&2
+    echo "       Logs dockerd: ${CITEVISION_LOGDIR:-/tmp}/dockerd.log" >&2
+  else
+    echo "       Run: sudo systemctl start docker (ou sudo service docker start)" >&2
+  fi
   return 1
 }

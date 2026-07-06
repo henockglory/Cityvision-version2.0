@@ -131,12 +131,12 @@ func main() {
 	}
 	go demoSvc.StartRetentionJanitor(mqttCtx)
 
-	// Proactively re-register any demo streams that vanished from go2rtc after a restart.
+	// Proactively repair demo video files + go2rtc streams (paths may differ across install roots).
 	go func() {
-		time.Sleep(3 * time.Second) // allow go2rtc to fully start
-		tctx, tcancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		time.Sleep(5 * time.Second)
+		tctx, tcancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer tcancel()
-		demoSvc.EnsureAllOrgsStreamsRegistered(tctx)
+		demoSvc.RepairAllDemoStreams(tctx)
 	}()
 
 	eventsSvc := events.NewService(pool)
@@ -236,6 +236,17 @@ func main() {
 			r.Use(middleware.RequireInternalKey)
 			r.Post("/resync-spatial", api.InternalResyncSpatial)
 			r.Get("/orgs/{orgID}/cameras/{cameraID}/spatial-config", api.InternalDebugSpatialConfig)
+		})
+
+		r.Route("/internal/demo", func(r chi.Router) {
+			r.Use(middleware.RequireInternalKey)
+			r.Post("/repair-streams", api.InternalRepairDemoStreams)
+		})
+
+		r.Route("/internal/system", func(r chi.Router) {
+			r.Use(middleware.RequireInternalKey)
+			r.Get("/verify-start-mode", api.InternalVerifyStartMode)
+			r.Post("/apply-start-mode", api.InternalApplyStartMode)
 		})
 
 		r.Group(func(r chi.Router) {

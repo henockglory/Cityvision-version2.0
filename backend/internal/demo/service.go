@@ -620,23 +620,100 @@ func (s *Service) resolveActiveStream(ctx context.Context, orgID uuid.UUID, st *
 	return ""
 }
 
-// ensureStreamRegistered re-registers a go2rtc stream for a ready video if the stream
-// was lost (e.g. go2rtc restarted and cleared its YAML state).
+// ensureStreamRegistered syncs the stream file into VIDEOS_PATH and re-registers go2rtc.
 func (s *Service) ensureStreamRegistered(ctx context.Context, orgID uuid.UUID, v *videoRow) {
-	if v.Go2rtcSrc == "" || v.LocalPath == "" {
+	if v.Go2rtcSrc == "" {
 		return
 	}
-	if _, err := os.Stat(v.LocalPath); err != nil {
-		s.log.Warn("demo: stream file missing, cannot re-register", "stream", v.Go2rtcSrc, "path", v.LocalPath)
+	canonical, synced := materializeStreamFile(orgID.String(), v.ID.String(), v.LocalPath)
+	if canonical == "" {
+		s.log.Warn("demo: stream file missing on all known paths", "stream", v.Go2rtcSrc, "stored", v.LocalPath)
 		return
+	}
+	if synced || v.LocalPath != canonical {
+		v.LocalPath = canonical
+		_, _ = s.pool.Exec(ctx, `UPDATE org_demo_videos SET local_stream_path=$2, updated_at=NOW() WHERE id=$1`, v.ID, canonical)
+		if synced {
+			s.log.Info("demo: synced stream file into VIDEOS_PATH", "video_id", v.ID, "path", canonical)
+		}
 	}
 	rel := LocalStreamRelPath(orgID.String(), v.ID.String())
 	src := Go2rtcStreamSource(rel)
 	if _, err := s.go2rtc.RegisterStream(ctx, v.Go2rtcSrc, src); err != nil {
-		s.log.Warn("demo: failed to re-register go2rtc stream after restart", "stream", v.Go2rtcSrc, "error", err)
+		s.log.Warn("demo: failed to re-register go2rtc stream", "stream", v.Go2rtcSrc, "error", err)
 		return
 	}
-	s.log.Info("demo: re-registered go2rtc stream after restart", "stream", v.Go2rtcSrc, "video_id", v.ID)
+	s.log.Info("demo: go2rtc stream ready", "stream", v.Go2rtcSrc, "video_id", v.ID)
+}
+
+// RepairResult summarizes demo stream repair at startup.
+type RepairResult struct {
+	Orgs       int `json:"orgs"`
+	Synced     int `json:"files_synced"`
+	Registered int `json:"streams_registered"`
+	Missing    int `json:"files_missing"`
+}
+
+// RepairAllDemoStreams syncs video files into VIDEOS_PATH and registers go2rtc streams.
+func (s *Service) RepairAllDemoStreams(ctx context.Context) RepairResult {
+	var out RepairResult
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT org_id FROM org_demo_videos WHERE status = 'ready'`)
+	if err != nil {
+		s.log.Warn("demo: RepairAllDemoStreams query failed", "error", err)
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var orgID uuid.UUID
+		if err := rows.Scan(&orgID); err != nil {
+			continue
+		}
+		out.Orgs++
+		synced, reg, miss := s.repairOrgStreams(ctx, orgID)
+		out.Synced += synced
+		out.Registered += reg
+		out.Missing += miss
+	}
+	if out.Orgs > 0 {
+		s.log.Info("demo: stream repair complete",
+			"orgs", out.Orgs, "synced", out.Synced, "registered", out.Registered, "missing", out.Missing)
+	}
+	return out
+}
+
+func (s *Service) repairOrgStreams(ctx context.Context, orgID uuid.UUID) (synced, registered, missing int) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, org_id, name, status, progress, COALESCE(go2rtc_src,''), size_bytes, duration_sec,
+			COALESCE(error_message,''), created_at, COALESCE(local_stream_path,''),
+			COALESCE(minio_raw_key,''), COALESCE(minio_stream_key,'')
+		FROM org_demo_videos WHERE org_id = $1 AND status = 'ready'`, orgID)
+	if err != nil {
+		return 0, 0, 0
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v videoRow
+		if err := rows.Scan(&v.ID, &v.OrgID, &v.Name, &v.Status, &v.Progress, &v.Go2rtcSrc, &v.SizeBytes, &v.DurationSec,
+			&v.ErrorMessage, &v.CreatedAt, &v.LocalPath, &v.minioRawKey, &v.minioStreamKey); err != nil {
+			continue
+		}
+		before := v.LocalPath
+		canonical, didSync := materializeStreamFile(orgID.String(), v.ID.String(), v.LocalPath)
+		if canonical == "" {
+			missing++
+			s.log.Warn("demo: repair missing file", "video_id", v.ID, "name", v.Name, "stored", before)
+			continue
+		}
+		if didSync {
+			synced++
+		}
+		needReg := v.Go2rtcSrc == "" || !s.go2rtc.StreamExists(ctx, v.Go2rtcSrc)
+		s.ensureStreamRegistered(ctx, orgID, &v)
+		if needReg || didSync {
+			registered++
+		}
+	}
+	return synced, registered, missing
 }
 
 // EnsureAllOrgsStreamsRegistered iterates all orgs with ready demo videos and

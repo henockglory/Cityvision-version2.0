@@ -11,26 +11,16 @@ source "$ROOT/scripts/lib/cuda-utils.sh"
 
 LOGDIR="$ROOT/logs"
 mkdir -p "$LOGDIR"
+export CITEVISION_LOGDIR="$LOGDIR"
 
 echo "=== Citevision v2 Start (Linux/WSL) ==="
 echo ""
 
 ENV_FILE="$(ensure_env_file "$ROOT")"
+sync_project_root "$ROOT"
 load_dotenv "$ENV_FILE"
 
-if ! docker info >/dev/null 2>&1; then
-  echo "[INFO] Starting Docker daemon..."
-  if command -v service >/dev/null 2>&1; then
-    sudo service docker start || true
-  fi
-  sleep 2
-  if ! docker info >/dev/null 2>&1; then
-    echo "[FAIL] Docker not running. Run: sudo service docker start" >&2
-    echo "       Or: bash scripts/setup-wsl.sh" >&2
-    exit 1
-  fi
-fi
-echo "[OK] Docker ready"
+ensure_docker_ready 120 install || exit 1
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   echo "[OK] NVIDIA GPU detected:"
@@ -40,7 +30,7 @@ else
 fi
 
 echo "[INFO] Starting infrastructure..."
-bash "$ROOT/scripts/ensure-demo-video.sh"
+bash "$ROOT/scripts/ensure-video-storage.sh"
 docker compose -f infra/docker-compose.yml --env-file "$ENV_FILE" up -d
 # minio-init is a one-shot job — do not use `compose --wait` on the full stack
 sleep 5
@@ -102,10 +92,17 @@ if ! wait_service_with_retry backend "http://localhost:$BACKEND_PORT/health" \
   exit 1
 fi
 
+echo "[INFO] Flux vidéo démo — sync fichiers MP4 + enregistrement go2rtc…"
+bash "$ROOT/scripts/ensure-demo-streams.sh" || echo "[WARN] ensure-demo-streams — poursuite"
+
 bash "$ROOT/scripts/ensure-rules-sync-env.sh" --resolve-org
 load_dotenv "$ENV_FILE"
 
 start_bg rules-engine "$ROOT/rules-engine" "$GO_BIN run ./cmd/rules-engine" "$LOGDIR" "$ENV_FILE"
+VENV_PY="${ROOT}/ai-engine/.venv/bin/python3"
+setup_cuda_library_path "$VENV_PY"
+bash "$ROOT/scripts/_copy_working_cudnn.sh" 2>/dev/null || true
+ensure_ort_gpu_only "${ROOT}/ai-engine/.venv/bin/pip" 2>/dev/null || true
 start_bg ai-engine "$ROOT" "bash scripts/run-ai-engine.sh" "$LOGDIR" "$ENV_FILE"
 
 echo ""
@@ -116,11 +113,20 @@ if wait_http_ok "http://localhost:$AI_PORT/health" 120; then
   if bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --restart-ai \
       --health-url="http://127.0.0.1:$AI_PORT/health" --max-attempts=5; then
     AI_GATE_OK=true
-    echo "[OK] YOLO, InsightFace et PaddleOCR chargés (gate IA validée)"
+    echo "[OK] Gate IA validée (registre ai-stack-registry.json + CUDA si GPU)"
   fi
 fi
 if [[ "$AI_GATE_OK" != "true" ]]; then
   echo "[FAIL] Gate IA non validée après remédiation automatique" >&2
+  if [[ -x "$VENV_PY" ]]; then
+    gpu_flag=()
+    if command -v nvidia-smi >/dev/null 2>&1; then
+      gpu_flag=(--require-gpu)
+    fi
+    "$VENV_PY" "$ROOT/ai-engine/scripts/check_ai_health.py" \
+      --url "http://127.0.0.1:$AI_PORT/health" "${gpu_flag[@]}" 2>&1 || true
+  fi
+  echo "       Consultez logs/ai-engine.log — fix: bash scripts/install-ai-models.sh --fix" >&2
   exit 1
 fi
 

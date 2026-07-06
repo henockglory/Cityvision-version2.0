@@ -550,7 +550,10 @@ func (o *Orchestrator) extractVideoFileFromCamera(ctx context.Context, orgID, ca
 			if root == "" {
 				root = "."
 			}
-			return filepath.Join(root, "data", "videos", "benedicte_stream.mp4")
+			candidate := filepath.Join(root, "data", "videos", src)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
 		}
 	}
 	return ""

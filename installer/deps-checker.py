@@ -14,6 +14,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -138,8 +139,8 @@ def check_docker() -> Dep:
             return Dep("docker", "Docker Engine", "ok", out, "≥ 20.10",
                        "Conteneurs PostgreSQL, Redis, MQTT, MinIO, go2rtc")
         return Dep("docker", "Docker Engine", "error", out, "≥ 20.10",
-                   "Docker installé mais daemon non démarré — lancez 'sudo service docker start'",
-                   install_cmd="sudo service docker start")
+                   "Docker installé mais daemon non démarré — relancez via bash scripts/start-linux.sh (démarre dockerd natif WSL)",
+                   install_cmd="bash scripts/start-linux.sh")
     install = "curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER"
     return Dep("docker", "Docker Engine", "missing", "non trouvé", "≥ 20.10",
                "Docker est requis pour tous les services infrastructure (DB, cache, broker, stockage)",
@@ -161,9 +162,9 @@ def check_docker_running() -> Dep:
                    install_cmd="curl -fsSL https://get.docker.com | sh", critical=False)
     return Dep("docker_daemon", "Docker Daemon (actif)", "error", "non démarré",
                "daemon actif",
-               "Docker est installé mais le daemon n'est pas actif. "
-               "Lancez: sudo service docker start (WSL)",
-               install_cmd="sudo service docker start", critical=True)
+               "Docker Engine natif installé mais dockerd inactif. "
+               "Relancez: bash scripts/start-linux.sh (auto-démarre dockerd sur WSL)",
+               install_cmd="bash scripts/start-linux.sh", critical=True)
 
 
 def check_docker_group() -> Dep:
@@ -871,12 +872,215 @@ def read_service_start_mode() -> str:
     mode_file = ROOT / "installer" / ".service_start_mode"
     if mode_file.exists():
         try:
-            mode = mode_file.read_text(encoding="utf-8").strip()
+            mode = _strip_bom(mode_file.read_text(encoding="utf-8").strip())
+            if "|" in mode:
+                mode = mode.split("|", 1)[0].strip()
             if mode in ("auto", "manual"):
                 return mode
         except OSError:
             pass
     return "auto"
+
+
+def _strip_bom(text: str) -> str:
+    return text.lstrip("\ufeff")
+
+
+def write_service_start_mode(mode: str) -> None:
+    """Persiste le mode via Python (fiable sur NTFS, même quand WSL echo échoue)."""
+    if mode not in ("auto", "manual"):
+        raise ValueError(f"invalid start mode: {mode}")
+    mode_file = ROOT / "installer" / ".service_start_mode"
+    mode_file.parent.mkdir(parents=True, exist_ok=True)
+    mode_file.write_text(mode, encoding="utf-8", newline="")
+
+
+def ensure_project_root_env() -> None:
+    """Aligne PROJECT_ROOT dans .env sur l'arborescence d'installation réelle."""
+    env_file = ROOT / ".env"
+    wsl_root = _to_wsl_path(ROOT.resolve()) if IS_WINDOWS else str(ROOT.resolve())
+    lines: list[str] = []
+    found = False
+    if env_file.exists():
+        try:
+            lines = env_file.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lines = []
+    out: list[str] = []
+    for line in lines:
+        if line.startswith("PROJECT_ROOT="):
+            out.append(f"PROJECT_ROOT={wsl_root}")
+            found = True
+        else:
+            out.append(line)
+    if not found:
+        out.append(f"PROJECT_ROOT={wsl_root}")
+    try:
+        env_file.write_text("\n".join(out) + ("\n" if out else ""), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _read_internal_api_key() -> str:
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        try:
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith("INTERNAL_API_KEY="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+        except OSError:
+            pass
+    return os.environ.get("INTERNAL_API_KEY", "changeme_internal_service_key")
+
+
+def _windows_auto_task_exists() -> bool:
+    rc, _, _ = _run(["schtasks", "/Query", "/TN", "CiteVision-AutoStart"], timeout=8)
+    return rc == 0
+
+
+def _windows_registry_autostart() -> bool:
+    rc, out, _ = _run([
+        "powershell", "-NoProfile", "-NonInteractive", "-Command",
+        "(Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' "
+        "-Name 'CiteVision' -ErrorAction SilentlyContinue).CiteVision",
+    ], timeout=12)
+    return rc == 0 and bool((out or "").strip())
+
+
+def _windows_startup_link_exists() -> bool:
+    rc, out, _ = _run([
+        "powershell", "-NoProfile", "-NonInteractive", "-Command",
+        "$s=[Environment]::GetFolderPath('Startup'); "
+        "if($s){Test-Path (Join-Path $s 'CiteVision.lnk')}else{$false}",
+    ], timeout=12)
+    return rc == 0 and (out or "").strip().lower() == "true"
+
+
+def _sync_start_mode_to_backend(mode: str) -> tuple[bool | None, str]:
+    """Applique le mode via l'API interne si le backend tourne déjà (réinstall sur stack active)."""
+    try:
+        key = _read_internal_api_key()
+        payload = json.dumps({"mode": mode}).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:8081/api/v1/internal/system/apply-start-mode",
+            data=payload,
+            headers={
+                "X-Internal-Key": key,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            ok = bool(data.get("ok"))
+            verify = data.get("verify") or {}
+            msg = verify.get("message") or data.get("message") or ("sync ok" if ok else "sync failed")
+            return ok, str(msg)
+    except urllib.error.URLError:
+        return None, "backend non joignable"
+    except Exception as e:
+        return False, str(e)
+
+
+def verify_start_mode_config(expected: str) -> dict:
+    """Vérification bout-en-bout : fichier, marqueur Windows, OS, backend Paramètres."""
+    actual = read_service_start_mode()
+    file_ok = actual == expected
+    marker_path = ROOT / "installer" / ".startup_configured"
+    marker_ok = marker_path.exists()
+    marker_mode = ""
+    if marker_ok:
+        try:
+            marker_mode = _strip_bom(
+                marker_path.read_text(encoding="utf-8").split("|", 1)[0].strip()
+            )
+        except OSError:
+            marker_mode = ""
+    marker_match = marker_ok and marker_mode == expected
+    os_ok = True
+    os_detail = ""
+    if IS_WINDOWS:
+        auto_task = _windows_auto_task_exists()
+        reg_run = _windows_registry_autostart()
+        startup_link = _windows_startup_link_exists()
+        auto_active = auto_task or reg_run or startup_link
+        if expected == "auto":
+            os_ok = auto_active or marker_ok
+            os_detail = "autostart_active" if auto_active else "marker_only"
+        else:
+            os_ok = not auto_active
+            os_detail = "no_autostart" if not auto_active else "autostart_still_active"
+    backend_ok: bool | None = None
+    backend_detail = ""
+    try:
+        key = _read_internal_api_key()
+        url = (
+            "http://127.0.0.1:8081/api/v1/internal/system/verify-start-mode"
+            f"?expected={urllib.parse.quote(expected)}"
+        )
+        req = urllib.request.Request(url, headers={"X-Internal-Key": key})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            backend_ok = bool(data.get("ok"))
+            backend_detail = (
+                f"api={data.get('start_mode')}/{data.get('start_mode_effective')}"
+                f" root={data.get('project_root', '')}"
+            )
+    except Exception:
+        backend_ok = None
+        backend_detail = "backend_offline"
+    all_ok = file_ok and marker_match and os_ok
+    if backend_ok is not None:
+        all_ok = all_ok and backend_ok
+    return {
+        "all_ok": all_ok,
+        "expected": expected,
+        "file_mode": actual,
+        "file_ok": file_ok,
+        "marker_ok": marker_match,
+        "marker_mode": marker_mode,
+        "os_ok": os_ok,
+        "os_detail": os_detail,
+        "backend_ok": backend_ok,
+        "backend_detail": backend_detail,
+    }
+
+
+def apply_install_start_mode(mode: str) -> tuple[bool, str, dict]:
+    """
+    Applique le mode choisi à l'installation : fichier, .env, mécanismes OS, sync backend.
+    Ne stoppe pas la stack en cours.
+    """
+    if mode not in ("auto", "manual"):
+        mode = "auto"
+    write_service_start_mode(mode)
+    ensure_project_root_env()
+    svc = register_system_service(mode)
+    sync_ok, sync_msg = _sync_start_mode_to_backend(mode)
+    verify = verify_start_mode_config(mode)
+    if sync_ok is not None:
+        verify["backend_sync"] = sync_ok
+        verify["backend_sync_detail"] = sync_msg
+        if not sync_ok:
+            verify["all_ok"] = False
+    ok = bool(svc.get("ok")) and bool(verify.get("all_ok"))
+    msg = svc.get("message", "")
+    if not verify.get("all_ok"):
+        parts = []
+        if not verify.get("file_ok"):
+            parts.append(f"fichier={verify.get('file_mode')}")
+        if not verify.get("marker_ok"):
+            parts.append(f"marqueur={verify.get('marker_mode') or 'absent'}")
+        if not verify.get("os_ok"):
+            parts.append(f"os={verify.get('os_detail')}")
+        if verify.get("backend_ok") is False:
+            parts.append(verify.get("backend_detail", "backend"))
+        msg = "Vérification mode démarrage échouée: " + ", ".join(parts)
+    elif sync_msg and sync_ok:
+        msg = f"{msg} — {sync_msg}".strip(" —")
+    return ok, msg, verify
 
 
 def _register_linux_service(start_mode: str) -> tuple[bool, str]:
@@ -944,6 +1148,17 @@ def install_stream(start_mode: str = "auto"):
     yield emit("step", message="Démarrage de l'installation CitéVision v2…")
     mode_label = "automatique" if start_mode == "auto" else "manuel"
     yield emit("info", message=f"Mode de démarrage du service : {mode_label}")
+
+    try:
+        write_service_start_mode(start_mode)
+        ensure_project_root_env()
+        if read_service_start_mode() != start_mode:
+            yield emit("error", message="Échec persistance immédiate du mode de démarrage")
+            return
+        yield emit("ok", message=f"Mode {mode_label} enregistré (fichier + PROJECT_ROOT)")
+    except Exception as e:
+        yield emit("error", message=f"Impossible d'enregistrer le mode de démarrage : {e}")
+        return
 
     setup_script = ROOT / "scripts" / "setup-wsl.sh"
     log_dir = ROOT / "logs"
@@ -1028,6 +1243,28 @@ def install_stream(start_mode: str = "auto"):
         if kind == "done":
             rc = payload
             if rc == 0:
+                yield emit("step", message="Application et vérification du mode de démarrage…")
+                try:
+                    sm_ok, sm_msg, sm_verify = apply_install_start_mode(start_mode)
+                    if sm_ok:
+                        yield emit(
+                            "ok",
+                            message=(
+                                f"Mode {mode_label} synchronisé — fichier, marqueur, OS"
+                                + (
+                                    " et Paramètres"
+                                    if sm_verify.get("backend_ok")
+                                    else " (backend hors ligne — vérifié au prochain démarrage)"
+                                )
+                            ),
+                        )
+                    else:
+                        yield emit("error", message=sm_msg or "Mode de démarrage non synchronisé")
+                        return
+                except Exception as e:
+                    yield emit("error", message=f"Configuration démarrage échouée : {e}")
+                    return
+
                 yield emit("step", message="Validation post-install AI stack…")
                 try:
                     import importlib.util
@@ -1045,36 +1282,20 @@ def install_stream(start_mode: str = "auto"):
                             install_ok = False
                             break
                     if install_ok:
-                        if IS_WINDOWS:
-                            yield emit("step", message="Configuration du demarrage Windows…")
-                            try:
-                                svc = register_system_service(start_mode)
-                                if svc.get("ok"):
-                                    mode_lbl = "automatique" if svc.get("start_mode") == "auto" else "manuel"
-                                    yield emit("ok", message=f"Demarrage Windows configure — mode {mode_lbl}")
-                                else:
-                                    yield emit("warn", message=f"Demarrage Windows : {svc.get('message', 'echec')}")
-                            except Exception as _e:
-                                yield emit("warn", message=f"Configuration demarrage ignoree : {_e}")
-                        else:
-                            yield emit("step", message="Enregistrement du service système…")
-                            try:
-                                svc = register_system_service(start_mode)
-                                if svc.get("ok"):
-                                    mode_lbl = "automatique" if svc.get("start_mode") == "auto" else "manuel"
-                                    yield emit("ok", message=f"Service enregistré — démarrage {mode_lbl}")
-                                elif svc.get("skipped"):
-                                    yield emit("warn", message=svc.get("message", "Service non enregistré (systemd non disponible)"))
-                                else:
-                                    yield emit("warn", message=f"Service non enregistré : {svc.get('message', 'droits insuffisants')}")
-                            except Exception as _e:
-                                yield emit("warn", message=f"Enregistrement service ignoré : {_e}")
                         yield emit("done", message="Installation terminée avec succès !")
                     else:
-                        yield emit("error", message="Installation — AI stack non validé après auto-fix")
+                        yield emit(
+                            "warn",
+                            message="Installation — mode démarrage OK ; AI stack non validé après auto-fix",
+                        )
+                        yield emit("done", message="Installation terminée (mode démarrage validé, IA à corriger)")
                 except Exception as e:
                     import traceback
-                    yield emit("error", message=f"Validation post-install échouée : {e}\n{traceback.format_exc()}")
+                    yield emit(
+                        "warn",
+                        message=f"Validation post-install IA échouée (mode démarrage déjà appliqué) : {e}",
+                    )
+                    yield emit("done", message="Installation terminée (mode démarrage validé)")
             else:
                 yield emit("error", message=f"Erreur lors de l'installation (code {rc})")
             break
@@ -1156,13 +1377,17 @@ def launch_stream():
         return False
 
     def _poll_all_ai_models(url: str, timeout: int = 180) -> tuple[bool, str]:
-        """Poll /health until yolo_loaded, face_loaded and plate_loaded are true."""
+        """Poll /health until all registry keys are true (honest gate)."""
         import json as _json
         labels = {
             "yolo_loaded": "YOLO",
-            "face_loaded": "Reconnaissance faciale (InsightFace)",
-            "plate_loaded": "Lecture de plaques (PaddleOCR)",
+            "face_loaded": "InsightFace",
+            "plate_loaded": "PaddleOCR",
+            "yolo_cuda": "CUDA GPU",
+            "driver_phone_model_loaded": "Téléphone (ONNX)",
+            "seatbelt_model_loaded": "Ceinture (ONNX)",
         }
+        require_keys = list(labels.keys())
         deadline = _time.time() + timeout
         missing: list[str] = list(labels.values())
         while _time.time() < deadline:
@@ -1170,7 +1395,7 @@ def launch_stream():
                 with _urlreq.urlopen(url, timeout=3) as r:
                     data = _json.loads(r.read())
                 missing = [
-                    label for key, label in labels.items()
+                    labels[key] for key in require_keys
                     if str(data.get(key, "")).lower() != "true"
                 ]
                 if not missing:
@@ -1230,6 +1455,8 @@ def launch_stream():
     t.start()
 
     heartbeat_msgs = [
+        "Démarrage Docker Engine natif (WSL)…",
+        "Installation / démarrage dockerd si nécessaire…",
         "Démarrage du backend Go...",
         "Compilation des modules Go (premier démarrage)...",
         "Téléchargement / vérification du modèle YOLO...",
@@ -1320,7 +1547,7 @@ def launch_stream():
                         if gate_ok:
                             yield emit(
                                 "ai_ready",
-                                message="AI Engine opérationnel — YOLO, InsightFace et PaddleOCR chargés",
+                                message="AI Engine opérationnel — registre IA complet (YOLO, InsightFace, PaddleOCR, secondaires, CUDA)",
                             )
                             break
                         miss_txt = missing or "modèles IA"

@@ -109,20 +109,21 @@ resolve_demo_org_from_db() {
 }
 
 resolve_org_id() {
-  DEMO_ORG_DB=""
-  DEMO_ORG_DB="$(resolve_demo_org_from_db || true)"
-  if [[ -n "${DEMO_ORG_ID:-}" ]]; then
-    DEMO_ORG_DB="$DEMO_ORG_ID"
-  fi
-
   CURRENT_ORG="$(grep '^DEFAULT_ORG_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' \r' || true)"
 
-  # Prefer the org that owns demo cameras/rules when it differs from a stale DEFAULT_ORG_ID.
-  if [[ -n "$DEMO_ORG_DB" && -n "$CURRENT_ORG" && "$CURRENT_ORG" != "$DEMO_ORG_DB" ]]; then
-    echo "[FIX] DEFAULT_ORG_ID demo mismatch: $CURRENT_ORG -> $DEMO_ORG_DB"
-    sed -i "s/^DEFAULT_ORG_ID=.*/DEFAULT_ORG_ID=$DEMO_ORG_DB/" "$ENV_FILE"
-    echo "[OK] DEFAULT_ORG_ID=$DEMO_ORG_DB"
-    return 0
+  # Installation neutre : ne pas réécrire l'org depuis des caméras démo legacy.
+  if [[ "${CITEVISION_DEMO_MODE:-0}" == "1" ]]; then
+    DEMO_ORG_DB=""
+    DEMO_ORG_DB="$(resolve_demo_org_from_db || true)"
+    if [[ -n "${DEMO_ORG_ID:-}" ]]; then
+      DEMO_ORG_DB="$DEMO_ORG_ID"
+    fi
+    if [[ -n "$DEMO_ORG_DB" && -n "$CURRENT_ORG" && "$CURRENT_ORG" != "$DEMO_ORG_DB" ]]; then
+      echo "[FIX] DEFAULT_ORG_ID demo mismatch: $CURRENT_ORG -> $DEMO_ORG_DB"
+      sed -i "s/^DEFAULT_ORG_ID=.*/DEFAULT_ORG_ID=$DEMO_ORG_DB/" "$ENV_FILE"
+      echo "[OK] DEFAULT_ORG_ID=$DEMO_ORG_DB"
+      return 0
+    fi
   fi
 
   if [[ -n "$CURRENT_ORG" ]]; then
@@ -136,7 +137,7 @@ resolve_org_id() {
   fi
 
   if ! setup_initialized; then
-    echo "[INFO] Setup wizard pending — rules sync will activate after first configuration"
+    echo "[INFO] Setup wizard pending — DEFAULT_ORG_ID sera résolu après configuration initiale"
     return 0
   fi
 
@@ -148,9 +149,7 @@ resolve_org_id() {
   fi
 
   ORG=""
-  if [[ -n "$DEMO_ORG_DB" ]]; then
-    ORG="$DEMO_ORG_DB"
-  elif [[ -n "$TOKEN" ]]; then
+  if [[ -n "$TOKEN" ]]; then
     ORG="$(curl -sf "$API/api/v1/auth/me" -H "Authorization: Bearer $TOKEN" 2>/dev/null \
       | python3 -c "import sys,json; print(json.load(sys.stdin).get('org_id',''))" 2>/dev/null || true)"
   fi
@@ -165,8 +164,8 @@ resolve_org_id() {
     return 0
   fi
 
-  echo "[WARN] Could not resolve DEFAULT_ORG_ID — rules-engine sync disabled" >&2
-  return 1
+  echo "[INFO] DEFAULT_ORG_ID non résolu — normal avant wizard setup ; rules sync actif après login"
+  return 0
 }
 
 case "$MODE" in

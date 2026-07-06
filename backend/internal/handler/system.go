@@ -73,6 +73,39 @@ func (a *API) SystemServiceAction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+func (a *API) InternalVerifyStartMode(w http.ResponseWriter, r *http.Request) {
+	expected := r.URL.Query().Get("expected")
+	writeJSON(w, http.StatusOK, system.VerifyStartMode(expected))
+}
+
+func (a *API) InternalApplyStartMode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if !system.ValidStartMode(req.Mode) {
+		writeError(w, http.StatusBadRequest, "invalid mode: must be auto or manual")
+		return
+	}
+	res, err := system.SetStartMode(req.Mode)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"ok":      false,
+			"message": err.Error(),
+		})
+		return
+	}
+	verify := system.VerifyStartMode(req.Mode)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":     verify.OK,
+		"apply":  res,
+		"verify": verify,
+	})
+}
+
 func (a *API) SystemUninstallStream(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	mode := q.Get("mode")

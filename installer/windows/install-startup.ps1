@@ -355,7 +355,7 @@ try {
     }
 
     $marker = Join-Path $installerDir '.startup_configured'
-    Set-Content -Path $marker -Value "$StartMode|$mechanism" -Encoding UTF8 -NoNewline
+    Set-Content -Path $marker -Value "$StartMode|$mechanism" -Encoding ascii -NoNewline
     Write-Log "Startup configured (mode: $StartMode, mechanism: $mechanism)"
     Emit-Result -Ok $true -Mechanism $mechanism
 } catch {
@@ -363,7 +363,7 @@ try {
     # Preference may already be saved — still report success so UI never blocks.
     try {
         $marker = Join-Path $Root 'installer\.startup_configured'
-        Set-Content -Path $marker -Value "$StartMode|partial" -Encoding UTF8 -NoNewline
+        Set-Content -Path $marker -Value "$StartMode|partial" -Encoding ascii -NoNewline
     } catch {}
     Emit-Result -Ok $true -Mechanism 'partial' -Err $_.Exception.Message
 }

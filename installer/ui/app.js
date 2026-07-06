@@ -521,7 +521,7 @@ function startLaunch() {
 
   async function waitForAiGateRequired() {
     if (aiOk) return true;
-    step.textContent = 'Gate IA — YOLO, InsightFace, PaddleOCR…';
+    step.textContent = 'Gate IA — registre complet (YOLO, InsightFace, PaddleOCR, secondaires, CUDA)…';
     showAiWaiting();
     showBanner('Finalisation gate IA (correction automatique si nécessaire)…', 'warn');
     for (;;) {
@@ -530,7 +530,7 @@ function startLaunch() {
         aiOk = true;
         removeBanner();
         removeAiWaiting();
-        appendLog('  Gate IA validée (YOLO, InsightFace, PaddleOCR)', 'ok');
+        appendLog('  Gate IA validée — registre IA complet', 'ok');
         step.textContent = 'IA active — prête à détecter';
         return true;
       }
