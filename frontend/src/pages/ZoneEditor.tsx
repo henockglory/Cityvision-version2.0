@@ -59,6 +59,26 @@ const STAGE_WIDTH = 800;
 
 const STAGE_HEIGHT = 450;
 
+const zoneEditorCameraKey = (orgId: string) => `citevision.zoneEditor.camera.${orgId}`;
+
+function getStoredZoneEditorCameraId(orgId: string | null): string | null {
+  if (!orgId) return null;
+  try {
+    return localStorage.getItem(zoneEditorCameraKey(orgId));
+  } catch {
+    return null;
+  }
+}
+
+function storeZoneEditorCameraId(orgId: string | null, cameraId: string) {
+  if (!orgId || !cameraId) return;
+  try {
+    localStorage.setItem(zoneEditorCameraKey(orgId), cameraId);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 
 
 type EditMode = 'zone' | 'line';
@@ -255,16 +275,48 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const restoredCameraRef = useRef(false);
+
+  // Restore last manually selected camera when returning to /zones without ?camera=
+  useEffect(() => {
+    if (embedded || props.fixedCameraId || restoredCameraRef.current) return;
+    if (searchParams.get('camera')) return;
+    if (isLoading || cameras.length === 0) return;
+    const stored = getStoredZoneEditorCameraId(orgId);
+    if (!stored || !cameras.some((c) => c.id === stored)) return;
+    restoredCameraRef.current = true;
+    setSearchParams({ camera: stored }, { replace: true });
+  }, [
+    embedded,
+    props.fixedCameraId,
+    searchParams,
+    setSearchParams,
+    orgId,
+    cameras,
+    isLoading,
+  ]);
+
+  const urlCameraId = searchParams.get('camera');
+  const storedCameraId = !props.fixedCameraId && !urlCameraId
+    ? getStoredZoneEditorCameraId(orgId)
+    : null;
 
   const selectedCamera = props.fixedCameraId
     ? cameras.find((c) => c.id === props.fixedCameraId)
-    : cameras.find((c) => c.id === searchParams.get('camera'))
+    : cameras.find((c) => c.id === urlCameraId)
+    ?? cameras.find((c) => c.id === storedCameraId ?? '')
     ?? cameras.find(
       (c) => {
         const meta = c.metadata as Record<string, unknown> | undefined;
         return meta?.demo === true || meta?.demo === 'true';
       },
     ) ?? (embedded ? undefined : cameras[0]);
+
+  // Keep storage in sync (manual pick or ?camera= deep link)
+  useEffect(() => {
+    if (embedded || props.fixedCameraId || !orgId || !selectedCamera?.id) return;
+    storeZoneEditorCameraId(orgId, selectedCamera.id);
+  }, [embedded, props.fixedCameraId, orgId, selectedCamera?.id]);
 
   const siteId = authSiteId ?? selectedCamera?.siteId;
 
@@ -911,6 +963,7 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
               value={selectedCamera?.id ?? ''}
               onChange={(id) => {
                 playClick();
+                storeZoneEditorCameraId(orgId, id);
                 setSearchParams({ camera: id });
               }}
               options={cameras.map((c) => ({ value: c.id, label: c.name }))}
