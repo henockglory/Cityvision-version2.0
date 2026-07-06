@@ -33,15 +33,14 @@ export function resolvePersistedZoneEditorCameraId(
   orgId: string | null | undefined,
   fromStore?: string,
 ): string | null {
-  if (orgId) {
-    const scoped = fromStore ?? readZoneEditorCameraFromStorage(orgId) ?? readZoneEditorCameraFromCvUi(orgId);
-    if (scoped) return scoped;
-  }
   try {
-    return localStorage.getItem('citevision.zoneEditor.lastCameraId');
+    const last = localStorage.getItem('citevision.zoneEditor.lastCameraId');
+    if (last) return last;
   } catch {
-    return null;
+    /* ignore */
   }
+  if (!orgId) return null;
+  return fromStore ?? readZoneEditorCameraFromStorage(orgId) ?? readZoneEditorCameraFromCvUi(orgId);
 }
 
 function writeZoneEditorCameraToStorage(orgId: string, cameraId: string) {
