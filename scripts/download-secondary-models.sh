@@ -19,7 +19,10 @@ for arg in "$@"; do
 done
 
 PYTHON="$(command -v python3 || command -v python || echo python3)"
+# shellcheck source=scripts/lib/install-progress.sh
+source "$ROOT/scripts/lib/install-progress.sh"
 mkdir -p "$DEST"
+sync_secondary_from_runtime "$ROOT"
 
 if [[ ! -f "$REGISTRY" ]]; then
   echo "[ERR] Registry not found: $REGISTRY"
@@ -50,6 +53,7 @@ for line in "${MODELS[@]}"; do
     if [[ -n "$sha" ]]; then
       got="$(sha256_of "$out")"
       if [[ "$got" == "$sha" ]]; then echo "[OK] $id present + sha256 verified"; OK=$((OK+1)); continue;
+      elif [[ -z "$url" ]]; then : # artefact local — vérifié plus bas
       else echo "[WARN] $id sha256 mismatch (have $got) — re-downloading"; fi
     else
       echo "[OK] $id present (sha256 unpinned)"; OK=$((OK+1)); continue
@@ -70,7 +74,7 @@ for line in "${MODELS[@]}"; do
       fi
       OK=$((OK+1)); continue
     fi
-    echo "[SKIP] $id has no URL — run: bash scripts/build-secondary-models.sh"; FAIL=$((FAIL+1)); continue
+    echo "[SKIP] $id absent (pas d'URL) — le fix lancera build-secondary-models.sh"; FAIL=$((FAIL+1)); continue
   fi
 
   echo "==> Downloading $id from $url"

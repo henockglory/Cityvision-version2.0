@@ -5,7 +5,16 @@ echo [%date% %time%] Start > "%LOG%"
 wsl --shutdown >> "%LOG%" 2>&1
 timeout /t 8 /nobreak >> "%LOG%" 2>&1
 
-set VHDX=C:\Users\gheno\AppData\Local\wsl\{0fa6a1b8-39ef-4ca2-ae78-f6eabf8bb04d}\ext4.vhdx
+for /f "delims=" %%F in ('powershell -NoProfile -Command "Get-ChildItem -LiteralPath 'C:\Users\gheno\AppData\Local\wsl' -Recurse -Filter ext4.vhdx -Force | Where-Object { -not ($_.Attributes -band [IO.FileAttributes]::SparseFile) } | Sort-Object Length -Descending | Select-Object -First 1 -ExpandProperty FullName"') do set VHDX=%%F
+
+if not defined VHDX (
+  echo Aucun ext4.vhdx WSL trouve >> "%LOG%"
+  echo Aucun ext4.vhdx WSL trouve.
+  exit /b 1
+)
+
+echo VHDX: %VHDX% >> "%LOG%"
+echo Cible: %VHDX%
 echo Before: >> "%LOG%"
 dir "%VHDX%" >> "%LOG%" 2>&1
 
@@ -26,3 +35,4 @@ dir "%VHDX%" >> "%LOG%" 2>&1
 
 wmic logicaldisk where "DeviceID='C:'" get FreeSpace,Size >> "%LOG%" 2>&1
 echo Done >> "%LOG%"
+echo Done. Voir %LOG%

@@ -6,6 +6,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/lib/install-progress.sh
+source "$ROOT/scripts/lib/install-progress.sh"
 MODEL_DIR="$ROOT/ai-engine/models"
 IFACE_DIR="$MODEL_DIR/insightface"
 SKIP_YOLO=false
@@ -50,13 +52,16 @@ echo "==> Downloading InsightFace buffalo_l"
 _ensure_pip_extra insightface identity
 bash "$ROOT/scripts/download-insightface.sh"
 
-echo "==> Initializing PaddleOCR models"
+log_slow_step \
+  "Initializing PaddleOCR models" \
+  "Premier chargement PaddleX — 2–8 min ; les modèles sont mis en cache dans ~/.paddlex."
 _ensure_pip_extra paddleocr anpr
 if ! "$PYTHON" -c "import paddleocr" 2>/dev/null; then
-  echo "[FIX] pip install anpr extras…"
-  "$PIP" install --no-cache-dir -e "$ROOT/ai-engine/.[identity,anpr,dev]"
+  log_slow_step "pip install anpr extras" "Peut prendre plusieurs minutes sur /mnt/c."
+  run_with_heartbeat 45 "pip anpr extras" \
+    "$PIP" install --no-cache-dir -e "$ROOT/ai-engine/.[identity,anpr,dev]"
 fi
-"$PYTHON" - <<'PY'
+run_with_heartbeat 30 "PaddleOCR init" "$PYTHON" - <<'PY'
 try:
     import numpy as np
     from citevision_ai.utils.paddle_ocr_compat import create_paddle_ocr, parse_ocr_lines, run_ocr

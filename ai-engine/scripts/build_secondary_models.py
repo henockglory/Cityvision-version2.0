@@ -37,6 +37,7 @@ def hf_download(repo: str, filename: str, dest: Path) -> bool:
 
 
 def export_phone(dest: Path) -> bool:
+    print("==> [phone] Téléchargement / export modèle conducteur (HuggingFace Safe-Drive-TN)…", flush=True)
     try:
         from ultralytics import YOLO
     except ImportError:
@@ -83,6 +84,7 @@ def export_phone(dest: Path) -> bool:
 
 
 def export_seatbelt(dest: Path) -> bool:
+    print("==> [seatbelt] Téléchargement / export modèle ceinture…", flush=True)
     try:
         from ultralytics import YOLO
     except ImportError:

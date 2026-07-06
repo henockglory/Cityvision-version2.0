@@ -7,33 +7,10 @@ function Log($msg) {
     Add-Content $log $msg
 }
 
-Log "=== WSL shutdown ==="
-wsl --shutdown | Out-Null
-Start-Sleep -Seconds 4
-
-# Enable sparse VHD (WSL 2.0+ on Win 11) then compact
-foreach ($distro in @("Ubuntu-24.04", "Ubuntu")) {
-    Log "=== wsl --manage $distro --set-sparse true ==="
-    $r = wsl --manage $distro --set-sparse true 2>&1
-    Log $r
-}
-
-$vhdxMain = "C:\Users\gheno\AppData\Local\wsl\{0fa6a1b8-39ef-4ca2-ae78-f6eabf8bb04d}\ext4.vhdx"
-$vhdxList = @(
-    $vhdxMain,
-    "C:\Users\gheno\AppData\Local\wsl\{38284c04-1ae8-4eaa-8237-45737e4497e2}\ext4.vhdx",
-    "C:\Users\gheno\AppData\Local\Docker\wsl\main\ext4.vhdx"
-)
-
-$cBefore = (Get-PSDrive C).Free
-Log "C: libre avant: $([math]::Round($cBefore/1GB, 2)) GB"
-
-foreach ($vhdx in $vhdxList) {
-    if (-not (Test-Path $vhdx)) { continue }
-    $before = (Get-Item $vhdx).Length
+function Compact-Vhdx($vhdx) {
+    $before = (Get-Item -LiteralPath $vhdx).Length
     Log "`n=== Compact $vhdx ($([math]::Round($before/1GB,2)) GB) ==="
 
-    # Method 1: diskpart
     $dpScript = "C:\Users\gheno\citevision\scripts\diskpart-tmp.txt"
     @(
         "select vdisk file=`"$vhdx`"",
@@ -52,12 +29,44 @@ foreach ($vhdx in $vhdxList) {
     }
     Log "diskpart exit: $($p.ExitCode)"
 
-    $after = (Get-Item $vhdx).Length
+    $after = (Get-Item -LiteralPath $vhdx).Length
     $freed = [math]::Round(($before - $after) / 1GB, 2)
     Log "Result: $([math]::Round($before/1GB,2)) GB -> $([math]::Round($after/1GB,2)) GB (freed $freed GB)"
 }
 
+$cBefore = (Get-PSDrive C).Free
+Log "C: libre avant: $([math]::Round($cBefore/1GB, 2)) GB"
+
+# Step 1: mark deleted blocks inside WSL before shutdown (required for VHD shrink).
+Log "=== fstrim + zero-fill inside WSL ==="
+$trim = wsl -d Ubuntu-24.04 bash -lc "sudo fstrim -av && (dd if=/dev/zero of=/tmp/zero.fill bs=1M 2>/dev/null || true) && rm -f /tmp/zero.fill && sync && df -h /" 2>&1
+Log $trim
+
+Log "=== WSL shutdown ==="
+wsl --shutdown | Out-Null
+Start-Sleep -Seconds 8
+
+$wslRoot = "C:\Users\gheno\AppData\Local\wsl"
+$vhdxList = @()
+if (Test-Path $wslRoot) {
+    $vhdxList += Get-ChildItem -LiteralPath $wslRoot -Recurse -Filter "ext4.vhdx" -Force -ErrorAction SilentlyContinue
+}
+$dockerVhdx = "C:\Users\gheno\AppData\Local\Docker\wsl\main\ext4.vhdx"
+if (Test-Path $dockerVhdx) {
+    $vhdxList += Get-Item -LiteralPath $dockerVhdx
+}
+
+$vhdxList = $vhdxList | Sort-Object Length -Descending | Select-Object -Unique FullName, Length, Attributes
+
+foreach ($item in $vhdxList) {
+    $path = $item.FullName
+    if ($item.Attributes -band [IO.FileAttributes]::SparseFile) {
+        Log "`n=== SKIP (SparseFile) $path ($([math]::Round($item.Length/1GB,2)) GB) ==="
+        continue
+    }
+    Compact-Vhdx $path
+}
+
 $cAfter = (Get-PSDrive C).Free
 Log "`nC: libre apres: $([math]::Round($cAfter/1GB, 2)) GB (gain $([math]::Round(($cAfter-$cBefore)/1GB,2)) GB)"
-
 Log "`nDone."

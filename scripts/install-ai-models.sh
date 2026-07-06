@@ -24,6 +24,8 @@ done
 
 # shellcheck source=scripts/lib/cuda-utils.sh
 source "$ROOT/scripts/lib/cuda-utils.sh"
+# shellcheck source=scripts/lib/install-progress.sh
+source "$ROOT/scripts/lib/install-progress.sh"
 VENV_PY="${ROOT}/ai-engine/.venv/bin/python3"
 VENV_PIP="${ROOT}/ai-engine/.venv/bin/pip"
 
@@ -38,19 +40,29 @@ ensure_secondary_models() {
     echo "[OK] Secondary models present"
     return 0
   fi
-  echo "[FIX] Building secondary ONNX models…"
+  log_slow_step \
+    "Modèles secondaires manquants — lancement build-secondary-models.sh" \
+    "Sync runtime → pip ultralytics → export ONNX. 10–30 min la 1ère fois ; les […] dans le log confirment l'avancement."
   bash "$ROOT/scripts/build-secondary-models.sh"
 }
 
 if [[ "$DO_FIX" == "true" ]]; then
-  echo "=== [FIX] pip extras + ONNX Runtime GPU ==="
+  log_slow_step \
+    "pip extras + ONNX Runtime GPU" \
+    "Installation des dépendances IA — 5–15 min sur /mnt/c ; patientez si peu de lignes s'affichent."
   # shellcheck disable=SC1091
   source "${ROOT}/ai-engine/.venv/bin/activate"
-  pip install -e 'ai-engine/.[identity,anpr,dev]' 2>&1 || pip install --no-cache-dir -e 'ai-engine/.[identity,anpr,dev]'
-  # Paddle 3.3.x + oneDNN PIR crash on CPU — pin stable CPU build.
-  "$VENV_PIP" install --no-cache-dir 'paddlepaddle==3.2.2' 2>&1 || \
-    "$VENV_PIP" install --no-cache-dir 'paddlepaddle>=3.2.1,<3.3.0' 2>&1 || true
-  ensure_ort_gpu_only "$VENV_PIP"
+  run_with_heartbeat 45 "pip ai-engine extras" \
+    pip install -e 'ai-engine/.[identity,anpr,dev]' \
+    || run_with_heartbeat 45 "pip ai-engine extras (no-cache)" \
+      pip install --no-cache-dir -e 'ai-engine/.[identity,anpr,dev]'
+  log_slow_step "paddlepaddle (CPU stable)" "Pin 3.2.x — évite crash oneDNN PIR."
+  run_with_heartbeat 45 "pip paddlepaddle" \
+    "$VENV_PIP" install --no-cache-dir 'paddlepaddle==3.2.2' \
+    || "$VENV_PIP" install --no-cache-dir 'paddlepaddle>=3.2.1,<3.3.0' \
+    || true
+  log_slow_step "ONNX Runtime GPU + cuDNN" "Reconfiguration GPU — 2–5 min."
+  run_with_heartbeat 30 "ort-gpu + cudnn" ensure_ort_gpu_only "$VENV_PIP"
   "$VENV_PIP" uninstall -y onnxruntime 2>/dev/null || true
   install_ai_cuda_deps "$VENV_PIP"
   setup_cuda_library_path "$VENV_PY"

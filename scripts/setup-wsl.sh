@@ -67,7 +67,7 @@ if command -v apt-get &>/dev/null; then
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
     python3.12 python3.12-venv python3-pip \
     build-essential cmake pkg-config \
-    curl jq git rsync ffmpeg \
+    curl jq git rsync ffmpeg unzip \
     ca-certificates gnupg lsb-release 2>>"${LOG_FILE:-/dev/null}" || true
   _ok "System packages installed"
 
