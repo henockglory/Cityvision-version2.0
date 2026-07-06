@@ -20,6 +20,8 @@ interface UiStore {
   toursEnabled: boolean;
   toursAutoStart: boolean;
   completedTours: Partial<Record<TourId, boolean>>;
+  /** Last Zone Editor camera per org — only updated on explicit user pick */
+  zoneEditorCameraByOrg: Record<string, string>;
   toggleTheme: () => void;
   setTheme: (theme: 'dark' | 'light') => void;
   toggleSidebar: () => void;
@@ -36,6 +38,7 @@ interface UiStore {
   resetAllTours: () => void;
   toggleToursEnabled: () => void;
   toggleToursAutoStart: () => void;
+  setZoneEditorCamera: (orgId: string, cameraId: string) => void;
 }
 
 export const useUiStore = create<UiStore>()(
@@ -53,6 +56,7 @@ export const useUiStore = create<UiStore>()(
       toursEnabled: true,
       toursAutoStart: true,
       completedTours: {},
+      zoneEditorCameraByOrg: {},
       toggleTheme: () =>
         set((s) => {
           const next = s.theme === 'dark' ? 'light' : 'dark';
@@ -83,6 +87,10 @@ export const useUiStore = create<UiStore>()(
       resetAllTours: () => set({ completedTours: {} }),
       toggleToursEnabled: () => set((s) => ({ toursEnabled: !s.toursEnabled })),
       toggleToursAutoStart: () => set((s) => ({ toursAutoStart: !s.toursAutoStart })),
+      setZoneEditorCamera: (orgId, cameraId) =>
+        set((s) => ({
+          zoneEditorCameraByOrg: { ...s.zoneEditorCameraByOrg, [orgId]: cameraId },
+        })),
     }),
     {
       name: 'cv-ui',

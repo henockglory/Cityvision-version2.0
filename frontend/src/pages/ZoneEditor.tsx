@@ -21,7 +21,8 @@ import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 
 import { useSound } from '@/hooks/useSound';
 
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, getAuthCredentials } from '@/stores/authStore';
+import { useUiStore } from '@/stores/uiStore';
 
 import { zonesApi, capabilitiesApi, type BackendZone, type BackendLine, type CapabilitiesBehaviorMenuItem } from '@/api/client';
 
@@ -59,23 +60,15 @@ const STAGE_WIDTH = 800;
 
 const STAGE_HEIGHT = 450;
 
-const zoneEditorCameraKey = (orgId: string) => `citevision.zoneEditor.camera.${orgId}`;
+/** Legacy localStorage key — migrated into cv-ui on read */
+const legacyZoneEditorCameraKey = (orgId: string) => `citevision.zoneEditor.camera.${orgId}`;
 
-function getStoredZoneEditorCameraId(orgId: string | null): string | null {
+function readLegacyZoneEditorCameraId(orgId: string | null): string | null {
   if (!orgId) return null;
   try {
-    return localStorage.getItem(zoneEditorCameraKey(orgId));
+    return localStorage.getItem(legacyZoneEditorCameraKey(orgId));
   } catch {
     return null;
-  }
-}
-
-function storeZoneEditorCameraId(orgId: string | null, cameraId: string) {
-  if (!orgId || !cameraId) return;
-  try {
-    localStorage.setItem(zoneEditorCameraKey(orgId), cameraId);
-  } catch {
-    /* ignore quota / private mode */
   }
 }
 
@@ -210,8 +203,10 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
   const startTour = useAutoPageTour('zones');
 
-  const orgId = useAuthStore((s) => s.orgId);
+  const orgId = useAuthStore((s) => s.orgId) ?? getAuthCredentials().orgId;
   const authSiteId = useAuthStore((s) => s.siteId);
+  const zoneEditorCameraByOrg = useUiStore((s) => s.zoneEditorCameraByOrg);
+  const setZoneEditorCamera = useUiStore((s) => s.setZoneEditorCamera);
 
   const { data: cameras = [], isLoading } = useCameras();
   const { data: rules = [] } = useRules();
@@ -275,48 +270,48 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const restoredCameraRef = useRef(false);
 
-  // Restore last manually selected camera when returning to /zones without ?camera=
+  const persistedCameraId = orgId ? zoneEditorCameraByOrg[orgId] ?? readLegacyZoneEditorCameraId(orgId) : null;
+
+  // One-time migration from legacy localStorage key into cv-ui persist
   useEffect(() => {
-    if (embedded || props.fixedCameraId || restoredCameraRef.current) return;
-    if (searchParams.get('camera')) return;
-    if (isLoading || cameras.length === 0) return;
-    const stored = getStoredZoneEditorCameraId(orgId);
-    if (!stored || !cameras.some((c) => c.id === stored)) return;
-    restoredCameraRef.current = true;
-    setSearchParams({ camera: stored }, { replace: true });
+    if (!orgId || zoneEditorCameraByOrg[orgId]) return;
+    const legacy = readLegacyZoneEditorCameraId(orgId);
+    if (!legacy || !cameras.some((c) => c.id === legacy)) return;
+    setZoneEditorCamera(orgId, legacy);
+  }, [orgId, zoneEditorCameraByOrg, cameras, setZoneEditorCamera]);
+
+  const activeCameraId = useMemo(() => {
+    if (props.fixedCameraId) return props.fixedCameraId;
+    const urlId = searchParams.get('camera');
+    if (urlId && cameras.some((c) => c.id === urlId)) return urlId;
+    if (persistedCameraId && cameras.some((c) => c.id === persistedCameraId)) return persistedCameraId;
+    const demo = cameras.find((c) => {
+      const meta = c.metadata as Record<string, unknown> | undefined;
+      return meta?.demo === true || meta?.demo === 'true';
+    });
+    if (demo?.id) return demo.id;
+    return embedded ? null : cameras[0]?.id ?? null;
+  }, [props.fixedCameraId, searchParams, persistedCameraId, cameras, embedded]);
+
+  const selectedCamera = activeCameraId
+    ? cameras.find((c) => c.id === activeCameraId)
+    : undefined;
+
+  // Reflect persisted choice in URL (bookmarkable) without overwriting user store
+  useEffect(() => {
+    if (embedded || props.fixedCameraId || !activeCameraId) return;
+    if (searchParams.get('camera') === activeCameraId) return;
+    if (persistedCameraId !== activeCameraId) return;
+    setSearchParams({ camera: activeCameraId }, { replace: true });
   }, [
     embedded,
     props.fixedCameraId,
+    activeCameraId,
+    persistedCameraId,
     searchParams,
     setSearchParams,
-    orgId,
-    cameras,
-    isLoading,
   ]);
-
-  const urlCameraId = searchParams.get('camera');
-  const storedCameraId = !props.fixedCameraId && !urlCameraId
-    ? getStoredZoneEditorCameraId(orgId)
-    : null;
-
-  const selectedCamera = props.fixedCameraId
-    ? cameras.find((c) => c.id === props.fixedCameraId)
-    : cameras.find((c) => c.id === urlCameraId)
-    ?? cameras.find((c) => c.id === storedCameraId ?? '')
-    ?? cameras.find(
-      (c) => {
-        const meta = c.metadata as Record<string, unknown> | undefined;
-        return meta?.demo === true || meta?.demo === 'true';
-      },
-    ) ?? (embedded ? undefined : cameras[0]);
-
-  // Keep storage in sync (manual pick or ?camera= deep link)
-  useEffect(() => {
-    if (embedded || props.fixedCameraId || !orgId || !selectedCamera?.id) return;
-    storeZoneEditorCameraId(orgId, selectedCamera.id);
-  }, [embedded, props.fixedCameraId, orgId, selectedCamera?.id]);
 
   const siteId = authSiteId ?? selectedCamera?.siteId;
 
@@ -963,7 +958,7 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
               value={selectedCamera?.id ?? ''}
               onChange={(id) => {
                 playClick();
-                storeZoneEditorCameraId(orgId, id);
+                if (orgId) setZoneEditorCamera(orgId, id);
                 setSearchParams({ camera: id });
               }}
               options={cameras.map((c) => ({ value: c.id, label: c.name }))}
