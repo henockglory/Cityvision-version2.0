@@ -868,7 +868,10 @@ def windows_startup_status() -> dict:
 
 
 def read_service_start_mode() -> str:
-    """Lit le mode de démarrage choisi lors de l'installation."""
+    """Lit le mode de démarrage (marqueur install-startup prioritaire)."""
+    marker_mode = _read_start_mode_from_marker()
+    if marker_mode:
+        return marker_mode
     mode_file = ROOT / "installer" / ".service_start_mode"
     if mode_file.exists():
         try:
@@ -886,6 +889,19 @@ def _strip_bom(text: str) -> str:
     return text.lstrip("\ufeff")
 
 
+def _read_start_mode_from_marker() -> str:
+    marker_path = ROOT / "installer" / ".startup_configured"
+    if not marker_path.exists():
+        return ""
+    try:
+        mode = _strip_bom(marker_path.read_text(encoding="utf-8").split("|", 1)[0].strip())
+        if mode in ("auto", "manual"):
+            return mode
+    except OSError:
+        pass
+    return ""
+
+
 def write_service_start_mode(mode: str) -> None:
     """Persiste le mode via Python (fiable sur NTFS, même quand WSL echo échoue)."""
     if mode not in ("auto", "manual"):
@@ -893,6 +909,17 @@ def write_service_start_mode(mode: str) -> None:
     mode_file = ROOT / "installer" / ".service_start_mode"
     mode_file.parent.mkdir(parents=True, exist_ok=True)
     mode_file.write_text(mode, encoding="utf-8", newline="")
+    if mode_file.read_text(encoding="utf-8").strip() != mode:
+        raise OSError(f"write verify failed for {mode_file}")
+
+
+def write_startup_marker(mode: str, mechanism: str = "configured") -> None:
+    marker = ROOT / "installer" / ".startup_configured"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    value = f"{mode}|{mechanism}"
+    marker.write_text(value, encoding="utf-8", newline="")
+    if _strip_bom(marker.read_text(encoding="utf-8").split("|", 1)[0].strip()) != mode:
+        raise OSError(f"write verify failed for {marker}")
 
 
 def ensure_project_root_env() -> None:
@@ -989,15 +1016,8 @@ def verify_start_mode_config(expected: str) -> dict:
     actual = read_service_start_mode()
     file_ok = actual == expected
     marker_path = ROOT / "installer" / ".startup_configured"
+    marker_mode = _read_start_mode_from_marker()
     marker_ok = marker_path.exists()
-    marker_mode = ""
-    if marker_ok:
-        try:
-            marker_mode = _strip_bom(
-                marker_path.read_text(encoding="utf-8").split("|", 1)[0].strip()
-            )
-        except OSError:
-            marker_mode = ""
     marker_match = marker_ok and marker_mode == expected
     os_ok = True
     os_detail = ""
@@ -1058,6 +1078,19 @@ def apply_install_start_mode(mode: str) -> tuple[bool, str, dict]:
     write_service_start_mode(mode)
     ensure_project_root_env()
     svc = register_system_service(mode)
+    # Double persistance Python (NTFS) — install-startup.ps1 peut loguer OK sans écrire le fichier.
+    try:
+        write_service_start_mode(mode)
+        mech = "manual" if mode == "manual" else "windows-startup"
+        if svc.get("ok"):
+            mech = str(svc.get("message", mech))[:120]
+        write_startup_marker(mode, mech)
+    except OSError as exc:
+        return False, f"Persistance mode échouée après configuration OS : {exc}", {
+            "all_ok": False,
+            "expected": mode,
+            "file_mode": read_service_start_mode(),
+        }
     sync_ok, sync_msg = _sync_start_mode_to_backend(mode)
     verify = verify_start_mode_config(mode)
     if sync_ok is not None:

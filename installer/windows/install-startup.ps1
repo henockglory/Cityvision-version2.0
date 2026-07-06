@@ -339,11 +339,25 @@ function Enable-AutoMode {
     return ($methods -join '+')
 }
 
+function Write-InstallerTextFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+    $dir = Split-Path -Parent $Path
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    [System.IO.File]::WriteAllText($Path, $Value, [System.Text.UTF8Encoding]::new($false))
+    $readBack = [System.IO.File]::ReadAllText($Path).Trim().TrimStart([char]0xFEFF)
+    if ($readBack -ne $Value) {
+        throw "Write verify failed for $Path (expected '$Value', got '$readBack')"
+    }
+}
+
 try {
     $modeFile = Join-Path $Root 'installer\.service_start_mode'
     $installerDir = Join-Path $Root 'installer'
     if (-not (Test-Path $installerDir)) { New-Item -ItemType Directory -Force -Path $installerDir | Out-Null }
-    Set-Content -Path $modeFile -Value $StartMode -Encoding ascii -NoNewline
+    Write-InstallerTextFile -Path $modeFile -Value $StartMode
 
     $mechanism = ''
     if ($StartMode -eq 'manual') {
@@ -355,15 +369,19 @@ try {
     }
 
     $marker = Join-Path $installerDir '.startup_configured'
-    Set-Content -Path $marker -Value "$StartMode|$mechanism" -Encoding ascii -NoNewline
+    Write-InstallerTextFile -Path $marker -Value "$StartMode|$mechanism"
     Write-Log "Startup configured (mode: $StartMode, mechanism: $mechanism)"
     Emit-Result -Ok $true -Mechanism $mechanism
 } catch {
     Write-Log "ERROR: $_"
-    # Preference may already be saved — still report success so UI never blocks.
     try {
+        $modeFile = Join-Path $Root 'installer\.service_start_mode'
+        Write-InstallerTextFile -Path $modeFile -Value $StartMode
         $marker = Join-Path $Root 'installer\.startup_configured'
-        Set-Content -Path $marker -Value "$StartMode|partial" -Encoding ascii -NoNewline
-    } catch {}
+        Write-InstallerTextFile -Path $marker -Value "$StartMode|partial"
+    } catch {
+        Write-Log "ERROR (persist fallback): $_"
+        Emit-Result -Ok $false -Mechanism 'failed' -Err $_.Exception.Message -ExitCode 1
+    }
     Emit-Result -Ok $true -Mechanism 'partial' -Err $_.Exception.Message
 }

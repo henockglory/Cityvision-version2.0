@@ -121,12 +121,14 @@ func trimBOM(s string) string {
 }
 
 func readStartMode(root string) string {
+	if mode := readStartModeFromMarker(root); mode != "" {
+		return mode
+	}
 	data, err := os.ReadFile(filepath.Join(root, "installer", ".service_start_mode"))
 	if err != nil {
 		return "auto"
 	}
-	mode := strings.TrimSpace(string(data))
-	mode = trimBOM(mode)
+	mode := trimBOM(string(data))
 	if idx := strings.Index(mode, "|"); idx >= 0 {
 		mode = strings.TrimSpace(mode[:idx])
 	}
@@ -134,6 +136,19 @@ func readStartMode(root string) string {
 		return mode
 	}
 	return "auto"
+}
+
+func readStartModeFromMarker(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "installer", ".startup_configured"))
+	if err != nil {
+		return ""
+	}
+	parts := strings.SplitN(trimBOM(string(data)), "|", 2)
+	mode := trimBOM(parts[0])
+	if mode == "auto" || mode == "manual" {
+		return mode
+	}
+	return ""
 }
 
 func writeStartMode(root, mode string) error {
@@ -179,14 +194,8 @@ func VerifyStartMode(expected string) StartModeVerifyResult {
 	st := GetStatus()
 	fileOK := configured == expected
 	markerPath := filepath.Join(root, "installer", ".startup_configured")
-	markerMode := ""
-	markerOK := fileExists(markerPath)
-	if markerOK {
-		if data, err := os.ReadFile(markerPath); err == nil {
-			parts := strings.SplitN(strings.TrimSpace(string(data)), "|", 2)
-			markerMode = trimBOM(strings.TrimSpace(parts[0]))
-		}
-	}
+	markerMode := readStartModeFromMarker(root)
+	markerOK := markerMode != ""
 	markerMatch := markerOK && markerMode == expected
 	osOK := st.StartModeEffective == expected
 	res := StartModeVerifyResult{
