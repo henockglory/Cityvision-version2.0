@@ -20,7 +20,6 @@ export type TourId =
   | 'health'
   | 'settings'
   | 'demo'
-  | 'redLightAssistant'
   | 'confirmDialog'
   | 'ruleActivation'
   | 'cameraWizard'
@@ -46,7 +45,6 @@ export const TOUR_LABELS: Record<TourId, string> = {
   health: 'tours.labels.health',
   settings: 'tours.labels.settings',
   demo: 'tours.labels.demo',
-  redLightAssistant: 'tours.labels.redLightAssistant',
   confirmDialog: 'tours.labels.confirmDialog',
   ruleActivation: 'tours.labels.ruleActivation',
   cameraWizard: 'tours.labels.cameraWizard',
@@ -484,25 +482,6 @@ export function getTourSteps(tourId: TourId, t: TFn): DriveStep[] {
         richStep('#demo-feed-alerts', 'tours.demo.alertsFeed', 'tours.demo.alertsFeedDesc', t, {
           tipKey: 'tours.demo.alertsFeedTip',
           stepsKey: 'tours.demo.alertsFeedSteps',
-        }),
-      ];
-      break;
-
-    case 'redLightAssistant':
-      steps = [
-        richStep('#red-light-assistant', 'tours.redLightAssistant.intro', 'tours.redLightAssistant.introDesc', t, {
-          tipKey: 'tours.redLightAssistant.introTip',
-          stepsKey: 'tours.redLightAssistant.introSteps',
-        }),
-        richStep('#red-light-step1', 'tours.redLightAssistant.step1', 'tours.redLightAssistant.step1Desc', t, {
-          tipKey: 'tours.redLightAssistant.step1Tip',
-        }),
-        richStep('#red-light-step2', 'tours.redLightAssistant.step2', 'tours.redLightAssistant.step2Desc', t, {
-          tipKey: 'tours.redLightAssistant.step2Tip',
-        }),
-        richStep('#red-light-step3', 'tours.redLightAssistant.step3', 'tours.redLightAssistant.step3Desc', t, {
-          tipKey: 'tours.redLightAssistant.step3Tip',
-          stepsKey: 'tours.redLightAssistant.step3Steps',
         }),
       ];
       break;
