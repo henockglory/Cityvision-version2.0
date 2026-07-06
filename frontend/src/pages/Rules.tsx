@@ -1,19 +1,18 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import type { RuleCatalogTemplate } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, TrafficCone } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { loadRuleGuides } from '@/i18n/loadRuleGuides';
 import PageShell from '@/components/ui/PageShell';
 import RuleCatalogPanel from '@/components/rules/RuleCatalogPanel';
 import RuleStudioDialog from '@/components/rules/RuleStudioDialog';
-import RedLightAssistant from '@/components/rules/RedLightAssistant';
 import ActiveRulesPanel from '@/components/rules/ActiveRulesPanel';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { RulesSkeleton } from '@/components/ui/Skeleton';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
-import { orgApi, rulesApi, zonesApi } from '@/api/client';
+import { orgApi, rulesApi } from '@/api/client';
 import { useRules, useRuleCatalog } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
@@ -25,7 +24,6 @@ import type { Rule } from '@/types';
 
 export default function Rules() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { playClick } = useSound();
   const { showUndo, ToastContainer } = useUndoToast();
   const orgId = useAuthStore((s) => s.orgId);
@@ -42,8 +40,6 @@ export default function Rules() {
   const [deploymentScope, setDeploymentScope] = useState<'all' | 'national' | 'enterprise' | 'domestic'>('all');
   const [orgDeployLoaded, setOrgDeployLoaded] = useState(false);
   const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
-  const [redLightOpen, setRedLightOpen] = useState(false);
-  const [assistantZones, setAssistantZones] = useState<Array<{ name: string; behavior?: string }>>([]);
 
   const flashRuleHighlight = (ruleId: string) => {
     setHighlightedRuleId(ruleId);
@@ -85,20 +81,12 @@ export default function Rules() {
     if (!navState?.configureTemplateId || !catalog.data?.length) return;
     const tpl = catalog.data.find((t) => t.id === navState.configureTemplateId);
     if (tpl) {
-      if (tpl.id === 'tpl-red-light') {
-        setRedLightOpen(true);
-      } else {
-        setConfiguringTemplate(tpl);
-      }
+      setConfiguringTemplate(tpl);
       window.history.replaceState({}, document.title);
     }
   }, [navState?.configureTemplateId, catalog.data]);
 
   const handleConfigureTemplate = (tpl: RuleCatalogTemplate) => {
-    if (tpl.id === 'tpl-red-light') {
-      setRedLightOpen(true);
-      return;
-    }
     setConfiguringTemplate(tpl);
   };
 
@@ -122,19 +110,6 @@ export default function Rules() {
   useEffect(() => {
     void loadRuleGuides();
   }, []);
-
-  useEffect(() => {
-    if (!redLightOpen || !orgId) return;
-    void zonesApi.list(orgId).then((res) => {
-      const rows = res.data ?? [];
-      setAssistantZones(
-        rows.map((z) => {
-          const bc = z.behavior_config as { behavior?: string } | undefined;
-          return { name: z.name, behavior: bc?.behavior };
-        }),
-      );
-    }).catch(() => setAssistantZones([]));
-  }, [redLightOpen, orgId]);
 
   const activeTemplateIds = useMemo(
     () =>
@@ -285,14 +260,6 @@ export default function Rules() {
         <header className="flex items-center gap-3 mb-4 flex-wrap">
           <BookOpen className="w-5 h-5 text-cv-accent shrink-0" />
           <h2 className="cv-section-title flex-1">{t('rules.catalog')}</h2>
-          <button
-            type="button"
-            className="cv-btn-secondary text-xs inline-flex items-center gap-1.5"
-            onClick={() => setRedLightOpen(true)}
-          >
-            <TrafficCone className="w-3.5 h-3.5" />
-            {t('rules.redLightAssistant.launch', { defaultValue: 'Assistant feu rouge' })}
-          </button>
         </header>
 
         <div className="space-y-4">
@@ -425,16 +392,6 @@ export default function Rules() {
         onCancel={() => setConfirm(null)}
       />
 
-      <RedLightAssistant
-        open={redLightOpen}
-        onClose={() => setRedLightOpen(false)}
-        zones={assistantZones}
-        onOpenZoneEditor={() => navigate('/zones')}
-        onOpenRule={() => {
-          const tpl = (catalog.data ?? []).find((t) => t.id === 'tpl-red-light');
-          if (tpl) setConfiguringTemplate(tpl);
-        }}
-      />
     </PageShell>
   );
 }
