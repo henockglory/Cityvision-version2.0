@@ -1,5 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import ModalPortal from '@/components/ui/ModalPortal';
+import { ModalLayerProvider } from '@/components/ui/ModalLayerContext';
+import { LAYER } from '@/lib/layerZIndex';
 
 export interface ModalProps {
   open: boolean;
@@ -51,7 +53,8 @@ export default function Modal({
   return (
     <ModalPortal>
       <div
-        className="cv-modal-overlay fixed inset-0 z-[110] flex items-center justify-center p-4"
+        className="cv-modal-overlay fixed inset-0 flex items-center justify-center p-4"
+        style={{ zIndex: LAYER.modalOverlay }}
         onClick={(e) => {
           if (e.target === e.currentTarget) onClose();
         }}
@@ -64,6 +67,7 @@ export default function Modal({
           aria-modal="true"
           onClick={(e) => e.stopPropagation()}
         >
+          <ModalLayerProvider>
           {title && (
             <h2 className="font-display text-lg font-semibold text-cv-text mb-4 shrink-0">{title}</h2>
           )}
@@ -74,6 +78,7 @@ export default function Modal({
               <div className="flex gap-3 justify-end flex-1">{footer}</div>
             </div>
           )}
+          </ModalLayerProvider>
         </div>
       </div>
     </ModalPortal>

@@ -193,7 +193,6 @@ func VerifyStartMode(expected string) StartModeVerifyResult {
 	configured := readStartMode(root)
 	st := GetStatus()
 	fileOK := configured == expected
-	markerPath := filepath.Join(root, "installer", ".startup_configured")
 	markerMode := readStartModeFromMarker(root)
 	markerOK := markerMode != ""
 	markerMatch := markerOK && markerMode == expected

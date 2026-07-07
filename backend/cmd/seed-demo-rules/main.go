@@ -42,6 +42,8 @@ type ruleSpec struct {
 	eventTypes  []string // condition matches any of these event_type values
 	withEmail   bool     // add notify action (falls back to org default_email_to)
 	withClip    bool     // add record action + evidence policy
+	observation bool     // observation_mode: counter only, no alert/evidence
+	obsKind     string   // observation_kind binding
 }
 
 func demoRuleSpecs() []ruleSpec {
@@ -70,6 +72,8 @@ func demoRuleSpecs() []ruleSpec {
 			eventTypes:  []string{"line_cross"},
 			withEmail:   false,
 			withClip:    false,
+			observation: true,
+			obsKind:     "line_cross",
 		},
 		{
 			name:        "Démo · Excès de vitesse",
@@ -256,14 +260,29 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 	if spec.speedKmh > 0 {
 		bindings["speed_kmh"] = spec.speedKmh
 	}
-
-	actions := []map[string]interface{}{
-		{"type": "alert", "config": map[string]interface{}{"severity": spec.severity}},
+	if spec.observation {
+		bindings["observation_mode"] = true
+		if spec.obsKind != "" {
+			bindings["observation_kind"] = spec.obsKind
+		}
+		bindings["observation_label_fr"] = spec.name
+		bindings["observation_label_en"] = spec.name
 	}
-	if spec.withClip {
+
+	var actions []map[string]interface{}
+	if spec.observation {
+		actions = []map[string]interface{}{
+			{"type": "counter", "config": map[string]interface{}{"delta": 1}},
+		}
+	} else {
+		actions = []map[string]interface{}{
+			{"type": "alert", "config": map[string]interface{}{"severity": spec.severity}},
+		}
+	}
+	if !spec.observation && spec.withClip {
 		actions = append(actions, map[string]interface{}{"type": "record", "config": map[string]interface{}{}})
 	}
-	if spec.withEmail {
+	if !spec.observation && spec.withEmail {
 		to := os.Getenv("ALERT_EMAIL_TO")
 		if to == "" {
 			to = os.Getenv("ADMIN_EMAIL")
@@ -288,7 +307,7 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 		"actions":          actions,
 		"dedup_key_fields": []string{"camera_id", "event_id"},
 	}
-	if spec.withClip {
+	if spec.withClip && !spec.observation {
 		def["evidence"] = map[string]interface{}{
 			"enabled":      true,
 			"clip_seconds": 6,
@@ -298,6 +317,11 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 				{"role": "subject", "label": "Cible détectée", "crop": "full", "padding_pct": 8, "zoom": 1.0},
 				{"role": "plate", "label": "Plaque arrière", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8},
 			},
+		}
+	}
+	if spec.observation {
+		def["evidence"] = map[string]interface{}{
+			"enabled": false, "clip_seconds": 0, "images": []interface{}{}, "draw_bbox": false,
 		}
 	}
 	return def

@@ -7,7 +7,7 @@ import {
 import DemoEditableHeader from '@/components/demo/DemoEditableHeader';
 import DemoVideoPanel from '@/components/demo/DemoVideoPanel';
 import DemoFeedPanel from '@/components/demo/DemoFeedPanel';
-import DemoLineCounterPanel from '@/components/demo/DemoLineCounterPanel';
+import CameraObservationPanel from '@/components/observation/CameraObservationPanel';
 import DemoZoneInlinePanel from '@/components/demo/DemoZoneInlinePanel';
 import EvidenceViewer from '@/components/evidence/EvidenceViewer';
 import Modal from '@/components/ui/Modal';
@@ -257,14 +257,24 @@ export default function DemoCenter() {
     return undefined;
   }, [cameras, demoSettings.data?.source_mode, demoSettings.data?.active_camera_id, demoSettings.data?.active_video_id]);
 
-  /** Line counters always bind to the décompte camera, not the active demo video. */
+  /** Observation counters: décompte camera or any enabled observation/counting rule camera. */
   const counterCameraId = useMemo(() => {
+    const fromRules = rulesList
+      .filter((r) => {
+        if (!r.enabled) return false;
+        const b = r.definition?.bindings as Record<string, unknown> | undefined;
+        const actions = r.definition?.actions as Array<{ type?: string }> | undefined;
+        return b?.observation_mode === true || actions?.some((a) => a.type === 'counter');
+      })
+      .map((r) => ruleCameraId(r))
+      .find(Boolean);
+    if (fromRules) return fromRules;
     const decompte = cameras.find((c) => {
       const n = c.name.toLowerCase();
       return n.includes('décompte') || n.includes('decompte');
     });
     return decompte?.id;
-  }, [cameras]);
+  }, [cameras, rulesList]);
 
   const zoneStreamSrc = useMemo(() => {
     if (!activeStream) return undefined;
@@ -669,7 +679,7 @@ export default function DemoCenter() {
       )}
 
       {zoneCameraId && counterCameraId && zoneCameraId === counterCameraId && (
-        <DemoLineCounterPanel
+        <CameraObservationPanel
           cameraId={counterCameraId}
           activeCameraId={zoneCameraId}
         />

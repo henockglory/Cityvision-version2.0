@@ -8,24 +8,6 @@ type CondNode = {
   children?: CondNode[];
 };
 
-const SPATIAL_NOISE = new Set([
-  'person_stopped',
-  'vehicle_stopped',
-  'zone_enter',
-  'zone_exit',
-  'loitering',
-]);
-
-/** Activity visible while waiting for rule-matching events (e.g. speeding). */
-const VEHICLE_ACTIVITY = new Set([
-  'speeding',
-  'sudden_stop',
-  'running',
-  'vehicle_count_threshold',
-  'vehicle_corridor',
-  'line_cross',
-]);
-
 const PRESENCE_TEMPLATES = new Set([
   'tpl-loitering',
   'tpl-presence',

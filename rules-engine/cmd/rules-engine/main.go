@@ -53,6 +53,7 @@ func main() {
 
 	cache := dedup.NewCache(time.Duration(dedupTTL) * time.Second)
 	seqStore := evaluator.NewSequenceStoreFromEnv()
+	ruleSetStore := evaluator.NewMemoryRuleSetStore()
 	broker := fmt.Sprintf("tcp://%s:%s", mqttHost, mqttPort)
 	publisher := mqttpub.New(broker)
 	executor := actions.New(publisher, backendURL, apiKey)
@@ -97,7 +98,7 @@ func main() {
 					continue
 				}
 			}
-			ok, ruleActions := evaluator.Evaluate(rule, payload, now, seqStore)
+			ok, ruleActions := evaluator.EvaluateWithRuleSet(rule, payload, now, seqStore, ruleSetStore)
 			if !ok {
 				continue
 			}
@@ -142,23 +143,31 @@ func main() {
 			publisher.PublishMatchedEvent(alertOrg, m.rule.RuleID, payload)
 			actionsToRun := m.actions
 			if len(actionsToRun) == 0 {
-				actionsToRun = []evaluator.Action{{Type: "alert", Config: []byte(`{"severity":"medium"}`)}}
+				if evaluator.ObservationMode(m.rule) {
+					actionsToRun = []evaluator.Action{{Type: "counter", Config: []byte(`{"delta":1}`)}}
+				} else {
+					actionsToRun = []evaluator.Action{{Type: "alert", Config: []byte(`{"severity":"medium"}`)}}
+				}
 			}
 			executor.Run(alertOrg, m.rule, payload, actionsToRun)
 		}
 	}
 
 	sub := mqttsub.New(broker, 0, handleEvent)
+	mqttTopics := []string{"cv/events/#", "cv/detections/#", "cv/rules/trigger/#"}
+	sub.RegisterTopics(mqttTopics...)
 
-	if err := sub.Connect(); err != nil {
-		log.Printf("MQTT connect failed (will retry in background): %v", err)
-	} else {
-		if err := sub.Subscribe("cv/events/#", "cv/detections/#", "cv/rules/trigger/#"); err != nil {
-			log.Printf("MQTT subscribe failed: %v", err)
-		} else {
-			log.Printf("Subscribed to cv/events/#, cv/detections/#, cv/rules/trigger/# on %s", broker)
+	go func() {
+		for {
+			if err := sub.Connect(); err != nil {
+				log.Printf("MQTT connect failed: %v — retry in 5s", err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			log.Printf("MQTT connected on %s (topics registered for auto-resubscribe)", broker)
+			return
 		}
-	}
+	}()
 
 	select {}
 }

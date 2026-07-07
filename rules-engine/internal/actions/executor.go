@@ -37,6 +37,7 @@ func (e *Executor) internalOrgURL(orgID, path string) string {
 }
 
 func (e *Executor) Run(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, actions []evaluator.Action) {
+	obsMode := evaluator.ObservationMode(rule)
 	logs := []map[string]interface{}{}
 	var alertActs, otherActs []evaluator.Action
 	for _, act := range actions {
@@ -45,6 +46,9 @@ func (e *Executor) Run(orgID string, rule evaluator.RuleDefinition, payload map[
 		} else {
 			otherActs = append(otherActs, act)
 		}
+	}
+	if obsMode && len(alertActs) == 0 && !evaluator.HasCounterAction(otherActs) {
+		otherActs = append(otherActs, evaluator.Action{Type: "counter", Config: []byte(`{"delta":1}`)})
 	}
 	// Fire alerts first so slow evidence/notify never blocks alert → MQTT → BDD.
 	alertFired := false
@@ -96,7 +100,7 @@ func (e *Executor) runNonAlert(orgID string, rule evaluator.RuleDefinition, payl
 		e.runIncident(orgID, rule, payload, act)
 		entry["status"] = "executed"
 	case "counter":
-		e.runCounter(orgID, rule, act)
+		e.runCounter(orgID, rule, payload, act)
 		entry["status"] = "executed"
 	case "log":
 		e.runLog(orgID, rule, payload, act)
@@ -165,10 +169,7 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 		severity = s
 	}
 	e.ensureEvidencePackage(orgID, rule, payload)
-	evPolicy := defaultEvidencePolicy()
-	if rule.Evidence != nil {
-		evPolicy = rule.Evidence
-	}
+	evPolicy := evidencePolicyForRule(rule)
 	if policyRequiresProof(evPolicy) && !hasEvidencePackage(payload, evPolicy) {
 		log.Printf("alert suppressed: incomplete evidence for rule %s", rule.RuleID)
 		payload["_alert_suppressed"] = true
@@ -178,7 +179,9 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 	evidence := buildEvidenceSnapshot(payload)
 	meta["evidence_snapshot"] = evidence
 	if e.Publisher != nil {
-		e.Publisher.PublishAlert(orgID, rule.RuleID, rule.Name, premiumAlertMessage(rule, payload), severity, meta)
+		if !e.Publisher.PublishAlert(orgID, rule.RuleID, rule.Name, premiumAlertMessage(rule, payload), severity, meta) {
+			return false
+		}
 	} else {
 		log.Printf("alert skipped: no publisher for rule %s", rule.RuleID)
 		return false
@@ -187,9 +190,9 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 }
 
 func (e *Executor) ensureEvidencePackage(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}) {
-	evPolicy := defaultEvidencePolicy()
-	if rule.Evidence != nil {
-		evPolicy = rule.Evidence
+	evPolicy := evidencePolicyForRule(rule)
+	if !policyRequiresProof(evPolicy) {
+		return
 	}
 	if hasEvidencePackage(payload, evPolicy) {
 		return
@@ -368,6 +371,31 @@ func defaultEvidencePolicy() map[string]interface{} {
 	}
 }
 
+func evidencePolicyForRule(rule evaluator.RuleDefinition) map[string]interface{} {
+	if rule.Evidence != nil {
+		return rule.Evidence
+	}
+	tplID := ""
+	if rule.Bindings != nil {
+		tplID, _ = rule.Bindings["template_id"].(string)
+	}
+	if tplID == "tpl-line-cross" || tplID == "tpl-line-cross-bidir" {
+		return map[string]interface{}{
+			"enabled":      false,
+			"clip_seconds": 0,
+			"images":       []interface{}{},
+		}
+	}
+	if rule.Bindings != nil {
+		if v, ok := rule.Bindings["observation_mode"].(bool); ok && v {
+			return map[string]interface{}{
+				"enabled": false, "clip_seconds": 0, "images": []interface{}{},
+			}
+		}
+	}
+	return defaultEvidencePolicy()
+}
+
 func (e *Executor) runRecord(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) {
 	duration := 30
 	var cfg map[string]interface{}
@@ -537,16 +565,27 @@ func (e *Executor) runIncident(orgID string, rule evaluator.RuleDefinition, payl
 	e.postInternal(url, body)
 }
 
-func (e *Executor) runCounter(orgID string, rule evaluator.RuleDefinition, act evaluator.Action) {
+func (e *Executor) runCounter(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) {
 	delta := 1
 	var cfg map[string]interface{}
 	_ = json.Unmarshal(act.Config, &cfg)
 	if d, ok := cfg["delta"].(float64); ok && d != 0 {
 		delta = int(d)
 	}
+	evType, _ := payload["event_type"].(string)
+	if evType == "" {
+		evType, _ = payload["event"].(string)
+	}
+	cls, _ := payload["class_name"].(string)
+	zone, _ := payload["zone_id"].(string)
+	line, _ := payload["line_id"].(string)
 	body, _ := json.Marshal(map[string]interface{}{
-		"rule_id": rule.RuleID,
-		"delta":   delta,
+		"rule_id":         rule.RuleID,
+		"delta":           delta,
+		"last_event_type": evType,
+		"last_class":      cls,
+		"last_zone_id":    zone,
+		"last_line_id":    line,
 	})
 	url := e.internalOrgURL(orgID, "/rules/counter")
 	e.postInternal(url, body)

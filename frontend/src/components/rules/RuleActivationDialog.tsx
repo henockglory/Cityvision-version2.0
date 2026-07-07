@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, Loader2, Settings2, X, MapPin, GitBranch, Zap, Check, AlertTriangle, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -35,6 +35,7 @@ import {
   defaultActionsSelection,
   executedActionsOnly,
   actionsFromRule,
+  RULE_ACTIONS_REGISTRY,
 } from '@/lib/ruleActionsRegistry';
 import ConditionTreeVisualEditor from '@/components/rules/ConditionTreeVisualEditor';
 import ConditionTreeTechnicalMirror from '@/components/rules/ConditionTreeTechnicalMirror';
@@ -43,7 +44,15 @@ import RuleStudioGuideRail from '@/components/rules/RuleStudioGuideRail';
 import RuleFlowBuilder from '@/components/rules/RuleFlowBuilder';
 import EvidencePolicyPanel from '@/components/rules/EvidencePolicyPanel';
 import OutputChannelsPanel from '@/components/rules/OutputChannelsPanel';
-import { DEFAULT_EVIDENCE_POLICY, SPATIAL_TEMPLATES_REQUIRING_CLASS, normalizeEvidencePolicy, type EvidencePolicy } from '@/lib/evidencePolicy';
+import { DEFAULT_EVIDENCE_POLICY, SPATIAL_TEMPLATES_REQUIRING_CLASS, normalizeEvidencePolicy, type EvidencePolicy, evidencePolicyForTemplate, isCountingRuleTemplate, evidencePolicyForPersistence, isObservationEvidenceDefault } from '@/lib/evidencePolicy';
+import { defaultObservationKind } from '@/lib/observationMode';
+import {
+  applyObservationStructure,
+  buildObservationStructureOptions,
+  collectCompatibleEventTypes,
+  structureNeedsEventPicker,
+  type ObservationStructureId,
+} from '@/lib/observationStructures';
 import { orgApi } from '@/api/client';
 import {
   cloneCondition,
@@ -238,7 +247,12 @@ export default function RuleStudioDialog({
   const [enableWebhook, setEnableWebhook] = useState(false);
   const [webhookPreset, setWebhookPreset] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
+  const [observationMode, setObservationMode] = useState(false);
+  const [observationStructure, setObservationStructure] = useState<ObservationStructureId>('manual');
+  const [pendingPatternEvents, setPendingPatternEvents] = useState<string[]>([]);
+  const [showEventPicker, setShowEventPicker] = useState(false);
   const [guideRailCollapsed, setGuideRailCollapsed] = useState(false);
+  const prevCameraIdRef = useRef<string | null>(null);
 
   const prepareTourStep = useCallback((selector: string) => {
     if (selector === '#rule-activation-step1') setStep(1);
@@ -323,6 +337,7 @@ export default function RuleStudioDialog({
 
   useEffect(() => {
     if (!activeTemplate) return;
+    prevCameraIdRef.current = null;
     const defaults = getSchemaDefaults(schema);
     const bindings = (existingRule?.definition?.bindings ?? {}) as Record<string, unknown>;
     const demoCam =
@@ -353,23 +368,40 @@ export default function RuleStudioDialog({
     setSelectedActions(actionsFromRule(defActions));
     const sev = defActions?.find((a) => a.type === 'alert')?.config?.severity;
     setActionSeverity(String(sev ?? activeTemplate.severity ?? 'medium'));
-    const ev = (existingRule?.definition?.evidence ?? {}) as Partial<EvidencePolicy>;
-    setEvidencePolicy({ ...DEFAULT_EVIDENCE_POLICY, ...ev, images: ev.images ?? DEFAULT_EVIDENCE_POLICY.images });
+    const tplId = activeTemplate?.id ?? '';
+    const tplEvidenceDefault = evidencePolicyForTemplate(tplId);
+    const rawEv = existingRule?.definition?.evidence as Partial<EvidencePolicy> | undefined;
+    if (isCountingRuleTemplate(tplId)) {
+      // Comptage : pas de preuve obligatoire ; ignore les defaults hérités par erreur.
+      setEvidencePolicy(
+        rawEv?.enabled === true ? normalizeEvidencePolicy({ ...tplEvidenceDefault, ...rawEv }) : { ...tplEvidenceDefault },
+      );
+    } else if (rawEv && Object.keys(rawEv).length > 0) {
+      setEvidencePolicy(normalizeEvidencePolicy({ ...tplEvidenceDefault, ...rawEv }));
+    } else {
+      setEvidencePolicy(tplEvidenceDefault);
+    }
     const wh = defActions?.find((a) => a.type === 'webhook');
     setEnableWebhook(Boolean(wh));
     setWebhookUrl(String(wh?.config?.url ?? ''));
     setWebhookPreset(String(wh?.config?.preset ?? ''));
     setNotifyEmail(String(defActions?.find((a) => a.type === 'notify')?.config?.to ?? ''));
+    const obs = bindings.observation_mode === true;
+    setObservationMode(obs || isCountingRuleTemplate(tplId));
+    setObservationStructure('manual');
+    setPendingPatternEvents([]);
+    setShowEventPicker(false);
     setError('');
   }, [activeTemplate, schema, cameras, existingRule, initialStep]);
 
   useEffect(() => {
     if (!orgId || isEdit) return;
+    if (isCountingRuleTemplate(activeTemplate?.id)) return;
     void orgApi.get(orgId).then((r) => {
       const raw = (r.data.notification_prefs as Record<string, unknown> | undefined)?.evidence_defaults as Partial<EvidencePolicy> | undefined;
       if (raw) setEvidencePolicy(normalizeEvidencePolicy(raw));
     }).catch(() => undefined);
-  }, [orgId, isEdit]);
+  }, [orgId, isEdit, activeTemplate?.id]);
 
   useEffect(() => {
     if (!orgId || !cameraId) return;
@@ -395,6 +427,38 @@ export default function RuleStudioDialog({
       .finally(() => setLoadingSpatial(false));
   }, [orgId, cameraId]);
 
+  // Changing camera invalidates zone/line bindings from another source (e.g. duplicated demo rule).
+  useEffect(() => {
+    if (!cameraId) return;
+    if (prevCameraIdRef.current !== null && prevCameraIdRef.current !== cameraId) {
+      setValues((v) => ({
+        ...v,
+        zone_name: '',
+        zone_name_2: '',
+        line_name: '',
+      }));
+      const tplCond = activeTemplate?.definition?.condition as ConditionNode | undefined;
+      setConditionTree(cloneCondition(tplCond) ?? createGroup('AND', [createLeaf()]));
+    }
+    prevCameraIdRef.current = cameraId;
+  }, [cameraId, activeTemplate?.definition?.condition]);
+
+  // Keep condition tree aligned with spatial picks on step 1.
+  useEffect(() => {
+    if (step !== 1) return;
+    const zone = String(values.zone_name ?? '').trim();
+    const line = String(values.line_name ?? '').trim();
+    if (!zone && !line) return;
+    setConditionTree((tree) =>
+      ensureSpatialConditions(tree, {
+        cameraId,
+        zoneName: zone || undefined,
+        lineName: line || undefined,
+        classFilter: String(values.class_filter ?? '').trim() || undefined,
+      }),
+    );
+  }, [step, values.zone_name, values.line_name, values.class_filter, cameraId]);
+
   const sortedFields = useMemo(() => {
     const order = ['camera_id', 'class_filter', 'zone_name', 'line_name', 'duration_seconds'];
     return [...schema.fields].sort((a, b) => {
@@ -406,7 +470,15 @@ export default function RuleStudioDialog({
     });
   }, [schema.fields]);
 
-  const activationCfg = useMemo(() => activationConfigFromValues(values), [values]);
+  const activationCfg = useMemo(
+    () =>
+      activationConfigFromValues(values, {
+        observationMode,
+        observationKind: defaultObservationKind(activeTemplate?.id),
+        ruleName: ruleName || activeTemplate?.name,
+      }),
+    [values, observationMode, activeTemplate?.id, ruleName],
+  );
 
   const spatialZoneRows = useMemo(
     () => zones.map((z) => ({ name: z.name, behavior: z.behavior_config?.behavior })),
@@ -449,6 +521,81 @@ export default function RuleStudioDialog({
     [activationCfg, cameras, cameraId],
   );
 
+  const compatibleEventTypes = useMemo(
+    () => collectCompatibleEventTypes(templateEventHint, linkedBehaviors),
+    [templateEventHint, linkedBehaviors],
+  );
+
+  const observationStructureOptions = useMemo(
+    () =>
+      activeTemplate
+        ? buildObservationStructureOptions({
+            lang: i18n.language.startsWith('en') ? 'en' : 'fr',
+            activeTemplate,
+            templateEventHint,
+            linkedBehaviors,
+            activationCfg,
+            t,
+          })
+        : [],
+    [activeTemplate, templateEventHint, linkedBehaviors, activationCfg, i18n.language, t],
+  );
+
+  const applyStructureToTree = (structureId: ObservationStructureId, eventTypes?: string[]) => {
+    if (!activeTemplate) return;
+    const tree = applyObservationStructure(
+      structureId,
+      {
+        lang: i18n.language.startsWith('en') ? 'en' : 'fr',
+        activeTemplate,
+        templateEventHint,
+        linkedBehaviors,
+        activationCfg,
+        t,
+      },
+      eventTypes,
+    );
+    if (!tree) return;
+    setConditionTree(ensureSpatialConditions(tree, activationCfg));
+    if (!observationMode) applyObservationMode(true);
+  };
+
+  const applyObservationStructureSelection = (structureId: ObservationStructureId) => {
+    setObservationStructure(structureId);
+    if (structureId === 'manual') {
+      setShowEventPicker(false);
+      return;
+    }
+    if (structureNeedsEventPicker(structureId)) {
+      setPendingPatternEvents(compatibleEventTypes.length >= 2 ? compatibleEventTypes.slice(0, 2) : [...compatibleEventTypes]);
+      setShowEventPicker(true);
+      return;
+    }
+    setShowEventPicker(false);
+    applyStructureToTree(structureId);
+  };
+
+  const confirmPatternEvents = () => {
+    if (pendingPatternEvents.length < 2) return;
+    applyStructureToTree(observationStructure, pendingPatternEvents);
+    setShowEventPicker(false);
+  };
+
+  const applyObservationMode = (on: boolean) => {
+    setObservationMode(on);
+    const tplId = activeTemplate?.id ?? '';
+    if (on) {
+      setEvidencePolicy({ ...evidencePolicyForTemplate(tplId, true) });
+      const counterKey = actionKey(
+        RULE_ACTIONS_REGISTRY.find((a) => a.type === 'counter' && a.executed) ?? RULE_ACTIONS_REGISTRY[0],
+      );
+      setSelectedActions([counterKey]);
+    } else if (!isCountingRuleTemplate(tplId)) {
+      setEvidencePolicy(evidencePolicyForTemplate(tplId, false));
+      setSelectedActions(defaultActionsSelection());
+    }
+  };
+
   const resolveActionKeys = () => {
     let keys = [...selectedActions];
     if (enableWebhook && !keys.some((k) => k.startsWith('webhook:'))) {
@@ -472,7 +619,7 @@ export default function RuleStudioDialog({
       ),
     };
     const definition = buildConfiguredDefinition(activeTemplate, cfg, cond, { demo: demoMode });
-    definition.evidence = evidencePolicy;
+    definition.evidence = evidencePolicyForPersistence(evidencePolicy);
     return definition;
   };
 
@@ -556,10 +703,14 @@ export default function RuleStudioDialog({
         });
       }
       onActivated();
-      // Show post-activation feedback instead of closing immediately
-      const cam = cameras.find((c) => c.id === cameraId);
-      setFeedbackCamera(cam ? { id: cam.id, name: cam.name } : { id: cameraId, name: cameraId });
-      setShowFeedback(true);
+      // Post-activation polling only for newly created rules (not edit/duplicate saves).
+      if (!isEdit) {
+        const cam = cameras.find((c) => c.id === cameraId);
+        setFeedbackCamera(cam ? { id: cam.id, name: cam.name } : { id: cameraId, name: cameraId });
+        setShowFeedback(true);
+      } else {
+        onClose();
+      }
     } catch {
       setError(t('rules.studio.saveError'));
     } finally {
@@ -569,6 +720,22 @@ export default function RuleStudioDialog({
 
   const actionsOnlyContent = (
     <div className="space-y-4">
+      <label className="flex items-start gap-3 p-3 rounded-lg border border-cv-accent/30 bg-cv-accent/5 cursor-pointer">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={observationMode}
+          onChange={(e) => applyObservationMode(e.target.checked)}
+        />
+        <div>
+          <p className="text-sm font-medium">{t('rules.studio.observationMode', { defaultValue: 'Mode observation (comptage seul)' })}</p>
+          <p className="text-xs text-cv-muted">
+            {t('rules.studio.observationModeHint', {
+              defaultValue: 'Incrémente un compteur sans alerte ni preuve. Idéal pour statistiques de passage, vitesse ou détections custom.',
+            })}
+          </p>
+        </div>
+      </label>
       <p className="text-sm font-medium">{t('rules.studio.actionsTitle')}</p>
       {Object.entries(ACTION_FAMILIES).map(([familyId, familyLabel]) => {
         const acts = executedActionsOnly().filter((a) => a.family === familyId);
@@ -645,7 +812,15 @@ export default function RuleStudioDialog({
         {step3Tab === 'actions' && actionsOnlyContent}
         {step3Tab === 'evidence' && (
           <div id="evidence-policy-panel">
-            <p className="text-xs text-cv-muted mb-2">Clip de preuve automatique (H.264, {evidencePolicy.clip_seconds} s par défaut) — distinct de l&apos;enregistrement long ffmpeg.</p>
+            {isObservationEvidenceDefault(activeTemplate.id, observationMode) && !evidencePolicy.enabled ? (
+              <p className="text-xs text-cv-muted mb-3 cv-callout border-cv-border/50 bg-cv-deep/30">
+                {t('rules.studio.countingEvidenceHint', {
+                  defaultValue: 'Comptage / observation : aucune preuve requise. Activez les preuves ci-dessous seulement si vous le souhaitez.',
+                })}
+              </p>
+            ) : (
+              <p className="text-xs text-cv-muted mb-2">Clip de preuve automatique (H.264, {evidencePolicy.clip_seconds} s par défaut) — distinct de l&apos;enregistrement long ffmpeg.</p>
+            )}
             <EvidencePolicyPanel policy={evidencePolicy} onChange={setEvidencePolicy} />
           </div>
         )}
@@ -936,6 +1111,61 @@ export default function RuleStudioDialog({
           )}
           {step === 2 && (
             <div id="rule-activation-step2" className="space-y-4">
+              {(observationMode || isCountingRuleTemplate(activeTemplate.id)) && (
+                <div className="rounded-lg border border-cv-border/60 bg-cv-deep/20 p-3 space-y-3">
+                  <label className="cv-label text-xs">
+                    {t('rules.studio.observationStructureTitle', { defaultValue: 'Structure de conditions' })}
+                  </label>
+                  <ExplanatorySelect
+                    className="w-full"
+                    value={observationStructure}
+                    onChange={(v) => applyObservationStructureSelection(v as ObservationStructureId)}
+                    options={observationStructureOptions}
+                    searchable={observationStructureOptions.length > 6}
+                  />
+                  {showEventPicker && (
+                    <div className="rounded-lg border border-cv-border/50 bg-cv-surface/40 p-3 space-y-2">
+                      <p className="text-xs text-cv-muted">
+                        {t('rules.studio.observationStructurePickEvents', {
+                          defaultValue: 'Sélectionnez les types d\'événements à combiner (au moins 2) :',
+                        })}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {compatibleEventTypes.map((et) => {
+                          const checked = pendingPatternEvents.includes(et);
+                          return (
+                            <label
+                              key={et}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border cursor-pointer ${
+                                checked ? 'border-cv-accent/50 bg-cv-accent/10' : 'border-cv-border/60'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  setPendingPatternEvents((prev) =>
+                                    e.target.checked ? [...prev, et] : prev.filter((x) => x !== et),
+                                  );
+                                }}
+                              />
+                              {et}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        className="cv-btn-secondary text-xs"
+                        disabled={pendingPatternEvents.length < 2}
+                        onClick={confirmPatternEvents}
+                      >
+                        {t('rules.studio.observationStructureApply', { defaultValue: 'Appliquer la structure' })}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div id="rule-activation-step3">
               <ConditionTreeVisualEditor
                 value={conditionTree}
@@ -974,7 +1204,12 @@ export default function RuleStudioDialog({
                   </div>
                 ) : null;
               })()}
-              <div className="p-3 rounded-lg border border-cv-border/60 bg-cv-deep/20 text-xs">
+              <div className="p-3 rounded-lg border border-cv-border/60 bg-cv-deep/20 text-xs space-y-1">
+                {observationMode && (
+                  <p className="text-cv-accent font-medium">
+                    {t('rules.studio.previewObservation', { defaultValue: 'observation · preuves off · compteur +1' })}
+                  </p>
+                )}
                 <p className="font-medium text-sm mb-1">Preuves configurées</p>
                 <p className="text-cv-muted">
                   Clip {evidencePolicy.clip_seconds}s · {evidencePolicy.images.length} image(s)

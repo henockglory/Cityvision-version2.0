@@ -82,6 +82,8 @@ export default function ConditionTreeVisualEditor({
         and: t('rules.studio.opAnd'),
         or: t('rules.studio.opOr'),
         sequence: t('rules.studio.opSequence', { defaultValue: 'Séquence temporelle' }),
+        ruleSetOr: t('rules.studio.opRuleSetOr', { defaultValue: 'Ensemble événements (OU)' }),
+        ruleSet: t('rules.studio.opRuleSet', { defaultValue: 'Ensemble événements (N-sur-M)' }),
       }),
     [lang, t],
   );

@@ -21,6 +21,8 @@ import {
   type ModelTemplateId,
 } from '@/lib/modelImportTemplates';
 import { orgModelsApi, type UploadOrgModelResponse } from '@/api/client';
+import { ModalLayerProvider } from '@/components/ui/ModalLayerContext';
+import { LAYER } from '@/lib/layerZIndex';
 
 export interface ModelImportWizardProps {
   orgId: string;
@@ -58,6 +60,7 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
   const [inputSize, setInputSize] = useState(224);
   const [classesRaw, setClassesRaw] = useState('negative, positive');
   const [positiveRaw, setPositiveRaw] = useState('positive');
+  const [observationCapable, setObservationCapable] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UploadOrgModelResponse | null>(null);
@@ -197,7 +200,11 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      style={{ zIndex: LAYER.modalOverlay }}
+    >
+      <ModalLayerProvider>
       <div id="model-import-wizard" className="cv-card w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl border border-cv-border/80" role="dialog" aria-modal="true">
         <div className="flex items-start justify-between gap-4 p-5 border-b border-cv-border/60 shrink-0">
           <div>
@@ -243,6 +250,19 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
               <input className="cv-input text-sm" placeholder="Libellé FR" value={labelFr} onChange={(e) => setLabelFr(e.target.value)} />
               <input className="cv-input text-sm" placeholder="Libellé EN" value={labelEn} onChange={(e) => setLabelEn(e.target.value)} />
               <textarea className="cv-input text-sm sm:col-span-2 min-h-[72px]" placeholder="Description" value={descFr} onChange={(e) => setDescFr(e.target.value)} />
+              <label className="flex items-start gap-2 sm:col-span-2 p-3 rounded-lg border border-cv-border/60 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={observationCapable}
+                  onChange={(e) => setObservationCapable(e.target.checked)}
+                />
+                <span className="text-xs text-cv-muted leading-relaxed">
+                  {t('modelImport.observationCapable', {
+                    defaultValue: 'Disponible en mode observation (comptage sans alerte ni preuve par défaut)',
+                  })}
+                </span>
+              </label>
               <select className="cv-input text-sm" value={appliesTo} onChange={(e) => setAppliesTo(e.target.value as typeof appliesTo)}>
                 <option value="zone">Zone</option><option value="line">Ligne</option><option value="both">Les deux</option>
               </select>
@@ -264,6 +284,11 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
           {step === 5 && !result && (
             <div id="model-import-step5">
             <p className="text-sm text-cv-muted font-mono">ID: {slugifyModelId(modelId)} · {slugifyEventType(eventType)} · {appliesTo}</p>
+            <p className="text-xs text-cv-muted mt-2">
+              {observationCapable
+                ? t('modelImport.observationCapableOn', { defaultValue: 'Mode observation : activé pour ce modèle' })
+                : t('modelImport.observationCapableOff', { defaultValue: 'Mode observation : désactivé (alertes uniquement)' })}
+            </p>
             </div>
           )}
           {result && <p className="text-sm text-emerald-400">OK — {result.behavior} · reload IA: {String(result.ai_reload_ok)}</p>}
@@ -278,6 +303,7 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
           )}
         </div>
       </div>
+      </ModalLayerProvider>
     </div>,
     document.body,
   );

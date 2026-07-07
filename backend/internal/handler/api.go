@@ -27,6 +27,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/identity"
 	"github.com/citevision/citevision-v2/backend/internal/middleware"
 	"github.com/citevision/citevision-v2/backend/internal/models"
+	"github.com/citevision/citevision-v2/backend/internal/observation"
 	"github.com/citevision/citevision-v2/backend/internal/org"
 	"github.com/citevision/citevision-v2/backend/internal/record"
 	"github.com/citevision/citevision-v2/backend/internal/routing"
@@ -60,6 +61,7 @@ type API struct {
 	Orchestrator *ingest.Orchestrator
 	Routing     *routing.Service
 	Demo        *demo.Service
+	Observation *observation.Service
 }
 
 // auditLog appends an audit entry and logs (does not silently drop) failures,
@@ -704,6 +706,41 @@ func (a *API) ResetLineCounters(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
 }
 
+// ListObservationCounters returns unified line + rule observation counters for a camera.
+func (a *API) ListObservationCounters(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	var camID *uuid.UUID
+	if cf := r.URL.Query().Get("camera_id"); cf != "" {
+		if id, err := uuid.Parse(cf); err == nil {
+			camID = &id
+		}
+	}
+	list, err := a.Observation.ListCounters(r.Context(), orgID, camID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "observation counters failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// ResetObservationCounters clears observation tallies (optional camera_id, kind, id).
+func (a *API) ResetObservationCounters(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	var camID *uuid.UUID
+	if cf := r.URL.Query().Get("camera_id"); cf != "" {
+		if id, err := uuid.Parse(cf); err == nil {
+			camID = &id
+		}
+	}
+	kind := r.URL.Query().Get("kind")
+	id := r.URL.Query().Get("id")
+	if err := a.Observation.ResetCounters(r.Context(), orgID, camID, kind, id); err != nil {
+		writeError(w, http.StatusInternalServerError, "reset failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
 func (a *API) ListRules(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
 	list, _ := a.Rules.List(r.Context(), orgID)
@@ -854,6 +891,15 @@ func (a *API) InternalListActiveRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	list, err := a.Rules.ListActive(r.Context(), orgID, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (a *API) InternalListAllActiveRules(w http.ResponseWriter, r *http.Request) {
+	list, err := a.Rules.ListAllActive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list failed")
 		return

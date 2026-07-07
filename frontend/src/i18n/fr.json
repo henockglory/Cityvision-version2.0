@@ -375,6 +375,21 @@
       "classRequired": "Choisissez l'objet surveillé (personne, véhicule…) pour que la détection soit fiable.",
       "evidenceTitle": "Preuves automatiques",
       "evidenceHint": "À chaque alerte : un court clip vidéo et deux photos (vue d'ensemble + cible zoomée) sont enregistrés comme preuve.",
+      "countingEvidenceHint": "Comptage / observation : aucune preuve requise par défaut. Activez les preuves ci-dessous seulement si vous le souhaitez.",
+      "observationMode": "Mode observation (comptage seul)",
+      "observationModeHint": "Incrémente un compteur sans alerte ni preuve. Idéal pour statistiques de passage, vitesse ou détections custom.",
+      "observationStructureTitle": "Structure de conditions",
+      "observationStructureManual": "Configuration manuelle",
+      "observationStructureFromCatalog": "Depuis le gabarit « {{name}} »",
+      "observationStructureFromBehavior": "Comptage · {{label}}",
+      "observationStructurePatternSingle": "Un événement (gabarit actuel)",
+      "observationStructurePatternOr": "Plusieurs événements (OU)",
+      "observationStructurePatternN": "Combinaison N-sur-M",
+      "observationStructurePickEvents": "Sélectionnez les types d'événements à combiner (au moins 2) :",
+      "observationStructureApply": "Appliquer la structure",
+      "opRuleSetOr": "Ensemble événements (OU)",
+      "opRuleSet": "Ensemble événements (N-sur-M)",
+      "previewObservation": "observation · preuves off · compteur +1",
       "evidenceEnabled": "Capturer clip + images à chaque déclenchement",
       "clipDuration": "Durée du clip vidéo",
       "clipDurationHint": "Entre 3 et 15 secondes. Par défaut 6 s — suffisant pour comprendre la situation.",
@@ -449,7 +464,8 @@
       "group": {
         "andIntro": "Toutes ces conditions doivent être vraies en même temps :",
         "orIntro": "Au moins une de ces situations suffit :",
-        "sequenceIntro": "Ces étapes doivent se produire dans l'ordre :"
+        "sequenceIntro": "Ces étapes doivent se produire dans l'ordre :",
+        "ruleSetIntro": "Au moins {{min}} types d'événements distincts en {{seconds}} s :"
       },
       "leaf": {
         "eventType": "Le système détecte l'événement « {{event}} »",
@@ -557,10 +573,10 @@
     },
     "activation": {
       "successTitle": "Règle activée",
-      "successDesc": "Votre règle surveille {context}. La première alerte devrait arriver en moins de 30 secondes si un événement est détecté.",
-      "contextCamera": "la caméra {cameraName}",
-      "contextZone": "la zone « {zoneName} » sur {cameraName}",
-      "contextLine": "la ligne « {lineName} » sur {cameraName}",
+      "successDesc": "Votre règle surveille {{context}}. La première alerte devrait arriver en moins de 30 secondes si un événement est détecté.",
+      "contextCamera": "la caméra {{cameraName}}",
+      "contextZone": "la zone « {{zoneName}} » sur {{cameraName}}",
+      "contextLine": "la ligne « {{lineName}} » sur {{cameraName}}",
       "watchingTitle": "En attente du premier événement…",
       "watchingDesc": "La règle est active. Le système vérifie le flux vidéo.",
       "noEventTitle": "Aucun événement depuis 3 minutes",
@@ -652,6 +668,15 @@
     "connectingStream": "Connexion au flux…",
     "streamError": "Impossible d'afficher l'image — vérifiez identifiants et que la caméra est sur le même réseau",
     "fallbackMse": "Repli MSE…"
+  },
+  "observation": {
+    "panelTitle": "Compteurs d'observation",
+    "panelSubtitle": "Comptages configurés et activés sur cette caméra.",
+    "panelSubtitleNamed": "Caméra « {{camera}} » — comptages actifs (lignes, règles observation, ensembles).",
+    "reset": "Réinitialiser",
+    "resetConfirm": "Remettre à zéro les compteurs de cette caméra ?",
+    "paused": "Compteurs en pause — sélectionnez la caméra de comptage.",
+    "empty": "Aucun compteur actif. Activez une règle en mode observation ou tracez une ligne de comptage."
   },
   "videoWall": {
     "title": "Mur vidéo",
@@ -804,7 +829,10 @@
     "sourceUrl": "Lien HTTPS",
     "submit": "Importer et activer",
     "uploading": "Import en cours…",
-    "errorGeneric": "Import impossible — vérifiez les champs obligatoires."
+    "errorGeneric": "Import impossible — vérifiez les champs obligatoires.",
+    "observationCapable": "Disponible en mode observation (comptage sans alerte ni preuve par défaut)",
+    "observationCapableOn": "Mode observation : activé pour ce modèle",
+    "observationCapableOff": "Mode observation : désactivé (alertes uniquement)"
   },
   "system": {
     "serviceStatus": "Démarrage CitéVision",

@@ -123,6 +123,28 @@ func (s *Service) ListActive(ctx context.Context, orgID uuid.UUID, siteID *uuid.
 	return list, rows.Err()
 }
 
+func (s *Service) ListAllActive(ctx context.Context) ([]models.Rule, error) {
+	q := `
+		SELECT id, org_id, site_id, name, description, definition, is_enabled, priority, created_at, updated_at
+		FROM rules WHERE is_enabled = TRUE
+		ORDER BY priority DESC, name`
+
+	rows, err := s.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []models.Rule
+	for rows.Next() {
+		var r models.Rule
+		if err := rows.Scan(&r.ID, &r.OrgID, &r.SiteID, &r.Name, &r.Description, &r.Definition, &r.IsEnabled, &r.Priority, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, r)
+	}
+	return list, rows.Err()
+}
+
 func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, isEnabled *bool, priority *int, name *string, desc *string, def json.RawMessage) (*models.Rule, error) {
 	if isEnabled == nil && priority == nil && name == nil && desc == nil && def == nil {
 		return s.Get(ctx, orgID, id)
@@ -244,7 +266,7 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 			}
 		}
 		return len(node.Children) > 0
-	case "OU", "OR":
+	case "OU", "OR", "RULE_SET_OR":
 		for _, c := range node.Children {
 			if evalCondition(c, payload) {
 				return true

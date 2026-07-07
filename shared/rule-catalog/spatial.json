@@ -141,5 +141,43 @@
       "domestic"
     ],
     "partial_status": "full"
+  },
+  {
+    "id": "tpl-observation-rule-set-or",
+    "name": "Comptage ensemble (OU)",
+    "category": "spatial",
+    "severity": "low",
+    "supported": true,
+    "definition": {
+      "condition": {
+        "op": "RULE_SET_OR",
+        "children": []
+      },
+      "actions": [{ "type": "counter", "config": { "delta": 1 } }]
+    },
+    "role_summary_fr": "Compte +1 dès qu'un des événements du groupe correspond (logique OU).",
+    "deployment_scopes": ["national", "enterprise", "domestic"],
+    "partial_status": "full"
+  },
+  {
+    "id": "tpl-observation-rule-set-n",
+    "name": "Comptage ensemble (N-sur-M)",
+    "category": "spatial",
+    "severity": "low",
+    "supported": true,
+    "definition": {
+      "condition": {
+        "op": "RULE_SET",
+        "min_matches": 2,
+        "window_seconds": 300,
+        "key_fields": ["camera_id", "track_id"],
+        "member_event_types": [],
+        "children": []
+      },
+      "actions": [{ "type": "counter", "config": { "delta": 1 } }]
+    },
+    "role_summary_fr": "Compte +1 quand au moins N types d'événements distincts ont été observés dans la fenêtre.",
+    "deployment_scopes": ["national", "enterprise"],
+    "partial_status": "full"
   }
 ]

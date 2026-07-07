@@ -284,8 +284,12 @@ func (a *API) InternalIncrementRuleCounter(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var req struct {
-		RuleID string `json:"rule_id"`
-		Delta  int    `json:"delta"`
+		RuleID        string `json:"rule_id"`
+		Delta         int    `json:"delta"`
+		LastEventType string `json:"last_event_type"`
+		LastClass     string `json:"last_class"`
+		LastZoneID    string `json:"last_zone_id"`
+		LastLineID    string `json:"last_line_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -296,7 +300,13 @@ func (a *API) InternalIncrementRuleCounter(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid rule_id")
 		return
 	}
-	if err := a.Alerts.IncrementRuleCounter(r.Context(), orgID, ruleID, req.Delta); err != nil {
+	meta := &alerts.RuleCounterMeta{
+		LastEventType: req.LastEventType,
+		LastClass:     req.LastClass,
+		LastZoneID:    req.LastZoneID,
+		LastLineID:    req.LastLineID,
+	}
+	if err := a.Alerts.IncrementRuleCounter(r.Context(), orgID, ruleID, req.Delta, meta); err != nil {
 		writeError(w, http.StatusInternalServerError, "counter failed")
 		return
 	}

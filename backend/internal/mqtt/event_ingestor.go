@@ -182,6 +182,7 @@ func (e *EventIngestor) onMessage(_ mqtt.Client, msg mqtt.Message) {
 
 // incrementLineCounter upserts the per-line crossing counter. Direction "in"/"out"
 // bump the matching column; anything else still bumps the total.
+// Increments both global (class_filter='') and per-class rows when class_name is set.
 func (e *EventIngestor) incrementLineCounter(ctx context.Context, orgID uuid.UUID, camID *uuid.UUID, payload map[string]interface{}) {
 	lineID := stringField(payload, "line_id", "")
 	if lineID == "" {
@@ -196,20 +197,27 @@ func (e *EventIngestor) incrementLineCounter(ctx context.Context, orgID uuid.UUI
 	case "out", "exit", "south", "down":
 		outInc = 1
 	}
+	e.bumpLineCounter(ctx, orgID, camID, lineID, "", className, inInc, outInc, direction)
+	if className != "" {
+		e.bumpLineCounter(ctx, orgID, camID, lineID, className, className, inInc, outInc, direction)
+	}
+}
+
+func (e *EventIngestor) bumpLineCounter(ctx context.Context, orgID uuid.UUID, camID *uuid.UUID, lineID, classFilter, lastClass string, inInc, outInc int, direction string) {
 	_, err := e.pool.Exec(ctx, `
-		INSERT INTO line_counters (org_id, camera_id, line_id, count_in, count_out, count_total, last_class, updated_at)
-		VALUES ($1,$2,$3,$4,$5,1,$6,NOW())
-		ON CONFLICT (org_id, camera_id, line_id) DO UPDATE SET
+		INSERT INTO line_counters (org_id, camera_id, line_id, class_filter, count_in, count_out, count_total, last_class, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,1,$7,NOW())
+		ON CONFLICT (org_id, camera_id, line_id, class_filter) DO UPDATE SET
 			count_in = line_counters.count_in + EXCLUDED.count_in,
 			count_out = line_counters.count_out + EXCLUDED.count_out,
 			count_total = line_counters.count_total + 1,
 			last_class = EXCLUDED.last_class,
 			updated_at = NOW()`,
-		orgID, camID, lineID, inInc, outInc, className,
+		orgID, camID, lineID, classFilter, inInc, outInc, lastClass,
 	)
 	if err != nil {
-		e.log.Debug("line counter increment failed", "error", err, "line", lineID)
+		e.log.Debug("line counter increment failed", "error", err, "line", lineID, "class_filter", classFilter)
 	} else {
-		e.log.Info("line crossing counted", "line", lineID, "direction", direction, "class", className)
+		e.log.Info("line crossing counted", "line", lineID, "class_filter", classFilter, "direction", direction, "class", lastClass)
 	}
 }

@@ -9,6 +9,7 @@ import {
   healthApi,
   aiHealthApi,
   modelPackApi,
+  observationApi,
   dashboardApi,
   setupApi,
   demoApi,
@@ -50,6 +51,7 @@ export const queryKeys = {
   modelPack: ['model-pack'] as const,
   dashboard: ['dashboard'] as const,
   demoSettings: ['demo', 'settings'] as const,
+  observationCounters: ['observation-counters'] as const,
 };
 
 export function useSetupStatus() {
@@ -486,5 +488,19 @@ export function useDemoSettings() {
       const processing = videos.some((v) => v.status === 'uploading' || v.status === 'processing');
       return processing ? 2_000 : 15_000;
     },
+  });
+}
+
+export function useObservationCounters(cameraId?: string, enabled = true) {
+  const orgId = useOrgId();
+  return useQuery({
+    queryKey: [...queryKeys.observationCounters, orgId, cameraId ?? 'all'] as const,
+    queryFn: async () => {
+      if (!orgId) return [];
+      const { data } = await observationApi.listCounters(orgId, cameraId);
+      return data;
+    },
+    enabled: Boolean(orgId && cameraId && enabled),
+    refetchInterval: enabled ? 3000 : false,
   });
 }

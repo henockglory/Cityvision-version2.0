@@ -49,6 +49,12 @@ func New(broker string, port int, handler Handler) *Subscriber {
 	return s
 }
 
+func (s *Subscriber) RegisterTopics(topics ...string) {
+	s.mu.Lock()
+	s.topics = append(s.topics, topics...)
+	s.mu.Unlock()
+}
+
 func (s *Subscriber) Connect() error {
 	token := s.client.Connect()
 	token.Wait()
@@ -56,9 +62,7 @@ func (s *Subscriber) Connect() error {
 }
 
 func (s *Subscriber) Subscribe(topics ...string) error {
-	s.mu.Lock()
-	s.topics = append(s.topics, topics...)
-	s.mu.Unlock()
+	s.RegisterTopics(topics...)
 	for _, topic := range topics {
 		topic := topic
 		token := s.client.Subscribe(topic, 1, func(_ mqtt.Client, msg mqtt.Message) {

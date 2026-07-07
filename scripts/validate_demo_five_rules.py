@@ -213,6 +213,16 @@ def resolve_counter_camera(token: str, org: str, hint: str, rule: dict | None) -
     return None
 
 
+def count_observation_counter(token: str, org: str, camera_id: str) -> int:
+    try:
+        rows = req("GET", f"{API}/api/v1/orgs/{org}/observations/counters?camera_id={camera_id}", token)
+    except Exception:
+        return 0
+    if not isinstance(rows, list):
+        return 0
+    return sum(int(r.get("count", 0)) for r in rows)
+
+
 def count_line_counter(token: str, org: str, camera_id: str) -> int:
     try:
         rows = req("GET", f"{API}/api/v1/orgs/{org}/lines/counters?camera_id={camera_id}", token)
@@ -433,7 +443,10 @@ def main() -> int:
 
         evt_baseline = count_demo_events(token, org, event_types)
         ctr_baseline = (
-            count_line_counter(token, org, spec["camera_id"])
+            max(
+                count_line_counter(token, org, spec["camera_id"]),
+                count_observation_counter(token, org, spec["camera_id"]),
+            )
             if spec.get("counter") and spec.get("camera_id")
             else 0
         )
@@ -459,7 +472,10 @@ def main() -> int:
             evt_now = count_demo_events(token, org, event_types)
             new_count = max(0, evt_now - evt_baseline)
             if spec.get("counter") and spec.get("camera_id"):
-                ctr_now = count_line_counter(token, org, spec["camera_id"])
+                ctr_now = max(
+                    count_line_counter(token, org, spec["camera_id"]),
+                    count_observation_counter(token, org, spec["camera_id"]),
+                )
                 new_count = max(new_count, max(0, ctr_now - ctr_baseline))
             if new_count >= TARGET:
                 break

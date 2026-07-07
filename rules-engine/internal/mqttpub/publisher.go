@@ -16,14 +16,19 @@ func New(broker string) *Publisher {
 	opts := mqtt.NewClientOptions().
 		AddBroker(broker).
 		SetClientID("citevision-rules-publisher").
-		SetAutoReconnect(true)
+		SetAutoReconnect(true).
+		SetResumeSubs(true)
 	client := mqtt.NewClient(opts)
-	token := client.Connect()
-	token.Wait()
-	if err := token.Error(); err != nil {
-		log.Printf("rules mqtt publisher connect failed: %v", err)
-		return &Publisher{client: client}
+	for attempt := 1; attempt <= 24; attempt++ {
+		token := client.Connect()
+		token.Wait()
+		if err := token.Error(); err == nil {
+			return &Publisher{client: client}
+		}
+		log.Printf("rules mqtt publisher connect failed (attempt %d): %v", attempt, token.Error())
+		time.Sleep(5 * time.Second)
 	}
+	log.Printf("rules mqtt publisher: giving up after retries; alerts will retry on publish")
 	return &Publisher{client: client}
 }
 
@@ -61,10 +66,18 @@ func (p *Publisher) PublishRuleTrigger(orgID, targetRuleID string, payload map[s
 	token.Wait()
 }
 
-func (p *Publisher) PublishAlert(orgID, ruleID, title, message, severity string, metadata map[string]interface{}) {
-	if p == nil || p.client == nil || !p.client.IsConnected() {
+func (p *Publisher) PublishAlert(orgID, ruleID, title, message, severity string, metadata map[string]interface{}) bool {
+	if p == nil || p.client == nil {
+		log.Printf("mqtt alert publish skipped (no client) rule=%s org=%s", ruleID, orgID)
+		return false
+	}
+	if !p.client.IsConnected() {
+		token := p.client.Connect()
+		token.Wait()
+	}
+	if !p.client.IsConnected() {
 		log.Printf("mqtt alert publish skipped (disconnected) rule=%s org=%s", ruleID, orgID)
-		return
+		return false
 	}
 	payload := map[string]interface{}{
 		"org_id":   orgID,
@@ -79,4 +92,5 @@ func (p *Publisher) PublishAlert(orgID, ruleID, title, message, severity string,
 	topic := "cv/alerts/" + orgID
 	token := p.client.Publish(topic, 1, false, b)
 	token.Wait()
+	return token.Error() == nil
 }

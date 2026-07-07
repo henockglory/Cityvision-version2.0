@@ -370,6 +370,21 @@
       "opAnd": "AND (all)",
       "opOr": "OR (at least one)",
       "classRequired": "Choose the monitored object type (person, vehicle…) for reliable detection.",
+      "countingEvidenceHint": "Counting / observation: no evidence required by default. Enable below only if needed.",
+      "observationMode": "Observation mode (count only)",
+      "observationModeHint": "Increments a counter without alert or evidence. Ideal for line crossing, speed or custom detections.",
+      "observationStructureTitle": "Condition structure",
+      "observationStructureManual": "Manual configuration",
+      "observationStructureFromCatalog": "From template « {{name}} »",
+      "observationStructureFromBehavior": "Count · {{label}}",
+      "observationStructurePatternSingle": "Single event (current template)",
+      "observationStructurePatternOr": "Multiple events (OR)",
+      "observationStructurePatternN": "N-of-M combination",
+      "observationStructurePickEvents": "Select event types to combine (at least 2):",
+      "observationStructureApply": "Apply structure",
+      "opRuleSetOr": "Event set (OR)",
+      "opRuleSet": "Event set (N-of-M)",
+      "previewObservation": "observation · evidence off · counter +1",
       "evidenceTitle": "Automatic evidence",
       "evidenceHint": "On each alert: a short video clip and two photos (overview + zoomed target) are saved as evidence.",
       "evidenceEnabled": "Capture clip + images on each trigger",
@@ -446,7 +461,8 @@
       "group": {
         "andIntro": "All of these must be true at the same time:",
         "orIntro": "At least one of these situations is enough:",
-        "sequenceIntro": "These steps must occur in order:"
+        "sequenceIntro": "These steps must occur in order:",
+        "ruleSetIntro": "At least {{min}} distinct event types within {{seconds}} s:"
       },
       "leaf": {
         "eventType": "The system detects event « {{event}} »",
@@ -554,10 +570,10 @@
     },
     "activation": {
       "successTitle": "Rule activated",
-      "successDesc": "Your rule is monitoring {context}. The first alert should arrive within 30 seconds if an event is detected.",
-      "contextCamera": "camera {cameraName}",
-      "contextZone": "zone « {zoneName} » on {cameraName}",
-      "contextLine": "line « {lineName} » on {cameraName}",
+      "successDesc": "Your rule is monitoring {{context}}. The first alert should arrive within 30 seconds if an event is detected.",
+      "contextCamera": "camera {{cameraName}}",
+      "contextZone": "zone « {{zoneName}} » on {{cameraName}}",
+      "contextLine": "line « {{lineName}} » on {{cameraName}}",
       "watchingTitle": "Waiting for the first event…",
       "watchingDesc": "The rule is active. The system is checking the video stream.",
       "noEventTitle": "No event for 3 minutes",
@@ -638,6 +654,15 @@
     "connectingStream": "Connecting to stream…",
     "streamError": "Cannot display video — check credentials and that the camera is on the same network",
     "fallbackMse": "MSE fallback…"
+  },
+  "observation": {
+    "panelTitle": "Observation counters",
+    "panelSubtitle": "Configured and active counts on this camera.",
+    "panelSubtitleNamed": "Camera « {{camera}} » — active counts (lines, observation rules, sets).",
+    "reset": "Reset",
+    "resetConfirm": "Reset all counters for this camera?",
+    "paused": "Counters paused — select the counting camera.",
+    "empty": "No active counter. Enable an observation rule or draw a counting line."
   },
   "videoWall": {
     "title": "Video Wall",
@@ -781,7 +806,10 @@
     "sourceUrl": "HTTPS link",
     "submit": "Import and activate",
     "uploading": "Importing…",
-    "errorGeneric": "Import failed — check required fields."
+    "errorGeneric": "Import failed — check required fields.",
+    "observationCapable": "Available in observation mode (count without alert or evidence by default)",
+    "observationCapableOn": "Observation mode: enabled for this model",
+    "observationCapableOff": "Observation mode: disabled (alerts only)"
   },
   "system": {
     "serviceStatus": "CitéVision Startup",

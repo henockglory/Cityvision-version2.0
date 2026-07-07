@@ -28,6 +28,7 @@ type BehaviorMenuItem struct {
 	Ready            bool     `json:"ready"`
 	ReadyReasonFR    string   `json:"ready_reason_fr,omitempty"`
 	CompatibleTemplates []string `json:"compatible_templates,omitempty"`
+	ObservationCapable  bool     `json:"observation_capable,omitempty"`
 }
 
 type MenuResponse struct {
@@ -215,6 +216,7 @@ func BuildMenu(ctx context.Context, ai *ingest.AIClient, sharedPath, catalogPath
 				Ready:               ready,
 				ReadyReasonFR:       reason,
 				CompatibleTemplates: templatesForEmits(catalog, emits),
+				ObservationCapable:  true,
 			})
 		}
 	}

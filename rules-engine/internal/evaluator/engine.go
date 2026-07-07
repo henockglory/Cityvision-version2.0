@@ -9,12 +9,14 @@ import (
 
 // ConditionNode represents declarative ET/OU/NON (AND/OR/NOT) trees.
 type ConditionNode struct {
-	Op            string          `json:"op"`
-	Field         string          `json:"field,omitempty"`
-	Value         json.RawMessage `json:"value,omitempty"`
-	Children      []ConditionNode `json:"children,omitempty"`
-	WindowSeconds int             `json:"window_seconds,omitempty"`
-	KeyFields     []string        `json:"key_fields,omitempty"`
+	Op               string          `json:"op"`
+	Field            string          `json:"field,omitempty"`
+	Value            json.RawMessage `json:"value,omitempty"`
+	Children         []ConditionNode `json:"children,omitempty"`
+	WindowSeconds    int             `json:"window_seconds,omitempty"`
+	KeyFields        []string        `json:"key_fields,omitempty"`
+	MinMatches       int             `json:"min_matches,omitempty"`
+	MemberEventTypes []string        `json:"member_event_types,omitempty"`
 }
 
 type Action struct {
@@ -58,6 +60,10 @@ func ValidateDefinition(raw json.RawMessage) error {
 }
 
 func Evaluate(def RuleDefinition, payload map[string]interface{}, now time.Time, store SequenceStore) (bool, []Action) {
+	return EvaluateWithRuleSet(def, payload, now, store, nil)
+}
+
+func EvaluateWithRuleSet(def RuleDefinition, payload map[string]interface{}, now time.Time, seqStore SequenceStore, ruleSetStore RuleSetStore) (bool, []Action) {
 	if !def.Enabled {
 		return false, nil
 	}
@@ -65,8 +71,15 @@ func Evaluate(def RuleDefinition, payload map[string]interface{}, now time.Time,
 	if def.Window != nil && !inTimeWindow(*def.Window, now) {
 		return false, nil
 	}
-	if strings.EqualFold(def.Condition.Op, "SEQUENCE") {
-		if evalSequence(def.Condition, def, payload, now, store) {
+	op := strings.ToUpper(def.Condition.Op)
+	if op == "SEQUENCE" {
+		if evalSequence(def.Condition, def, payload, now, seqStore) {
+			return true, def.Actions
+		}
+		return false, nil
+	}
+	if op == "RULE_SET" {
+		if evalRuleSet(def.Condition, def, payload, now, ruleSetStore) {
 			return true, def.Actions
 		}
 		return false, nil
@@ -89,7 +102,7 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 			}
 		}
 		return true
-	case "OU", "OR":
+	case "OU", "OR", "RULE_SET_OR":
 		for _, c := range node.Children {
 			if evalCondition(c, payload) {
 				return true

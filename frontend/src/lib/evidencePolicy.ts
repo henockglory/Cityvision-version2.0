@@ -1,7 +1,7 @@
 export interface EvidenceImageSpec {
   role: 'scene' | 'subject' | 'plate';
   label?: string;
-  crop?: 'full' | 'bbox' | 'bbox_zoom';
+  crop?: 'full' | 'bbox' | 'bbox_zoom' | 'plate_rear';
   padding_pct?: number;
   zoom?: number;
 }
@@ -34,6 +34,15 @@ export function evidencePolicyChip(policy?: Partial<EvidencePolicy> | null): str
 
 export function normalizeEvidencePolicy(raw?: Partial<EvidencePolicy> | null): EvidencePolicy {
   if (!raw) return { ...DEFAULT_EVIDENCE_POLICY, images: [...DEFAULT_EVIDENCE_POLICY.images] };
+  if (raw.enabled === false) {
+    return {
+      enabled: false,
+      clip_seconds: raw.clip_seconds ?? 0,
+      images: raw.images ?? [],
+      min_confidence: raw.min_confidence ?? 0,
+      draw_bbox: raw.draw_bbox ?? false,
+    };
+  }
   return {
     ...DEFAULT_EVIDENCE_POLICY,
     ...raw,
@@ -52,6 +61,50 @@ export const DEFAULT_EVIDENCE_POLICY: EvidencePolicy = {
   min_confidence: 0,
   draw_bbox: true,
 };
+
+/** Comptage / franchissement : l'événement line_cross suffit ; pas de clip obligatoire par défaut. */
+export const COUNTING_EVIDENCE_POLICY: EvidencePolicy = {
+  enabled: false,
+  clip_seconds: 0,
+  images: [],
+  draw_bbox: false,
+};
+
+const LINE_COUNTING_TEMPLATES = new Set([
+  'tpl-line-cross',
+  'tpl-line-cross-bidir',
+]);
+
+const OBSERVATION_TEMPLATES = new Set([
+  ...LINE_COUNTING_TEMPLATES,
+  'tpl-speeding-premium',
+  'tpl-observation-rule-set-or',
+  'tpl-observation-rule-set-n',
+]);
+
+export function evidencePolicyForTemplate(templateId?: string | null, observationMode?: boolean): EvidencePolicy {
+  if (observationMode || (templateId && OBSERVATION_TEMPLATES.has(templateId))) {
+    return { ...COUNTING_EVIDENCE_POLICY };
+  }
+  if (templateId && LINE_COUNTING_TEMPLATES.has(templateId)) {
+    return { ...COUNTING_EVIDENCE_POLICY };
+  }
+  return { ...DEFAULT_EVIDENCE_POLICY, images: [...DEFAULT_EVIDENCE_POLICY.images] };
+}
+
+export function isCountingRuleTemplate(templateId?: string | null): boolean {
+  return Boolean(templateId && OBSERVATION_TEMPLATES.has(templateId));
+}
+
+export function isObservationEvidenceDefault(templateId?: string | null, observationMode?: boolean): boolean {
+  return Boolean(observationMode || (templateId && OBSERVATION_TEMPLATES.has(templateId)));
+}
+
+/** Persist explicit disabled policy so backend does not fall back to default proof requirements. */
+export function evidencePolicyForPersistence(policy: EvidencePolicy): EvidencePolicy {
+  if (policy.enabled) return normalizeEvidencePolicy(policy);
+  return { enabled: false, clip_seconds: 0, images: [], draw_bbox: false, min_confidence: 0 };
+}
 
 export const SPATIAL_TEMPLATES_REQUIRING_CLASS = new Set([
   'tpl-zone-presence',

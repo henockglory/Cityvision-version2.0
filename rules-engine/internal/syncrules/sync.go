@@ -22,13 +22,21 @@ type dbRule struct {
 
 // PollActiveRules refreshes evaluator rules from the backend API on an interval.
 func PollActiveRules(orgID, backendURL, apiKey string, interval time.Duration, apply func([]evaluator.RuleDefinition)) {
-	if orgID == "" || backendURL == "" || apiKey == "" {
-		log.Printf("rules sync disabled: set DEFAULT_ORG_ID, BACKEND_API_URL, INTERNAL_API_KEY")
+	if backendURL == "" || apiKey == "" {
+		log.Printf("rules sync disabled: set BACKEND_API_URL, INTERNAL_API_KEY")
 		return
 	}
-	url := strings.TrimRight(backendURL, "/") + "/api/v1/internal/orgs/" + orgID + "/rules/active"
+	urlAll := strings.TrimRight(backendURL, "/") + "/api/v1/internal/rules/active"
+	urlOrg := ""
+	if orgID != "" {
+		urlOrg = strings.TrimRight(backendURL, "/") + "/api/v1/internal/orgs/" + orgID + "/rules/active"
+	}
 
 	fetch := func() {
+		url := urlAll
+		if urlOrg != "" && os.Getenv("RULES_SYNC_SINGLE_ORG") == "1" {
+			url = urlOrg
+		}
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			return

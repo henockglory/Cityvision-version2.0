@@ -14,6 +14,7 @@ import { useCameras } from '@/hooks/api/queries';
 import { useSound } from '@/hooks/useSound';
 import { AI_ENGINE_HEALTH } from '@/config/streams';
 import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
+import CameraObservationPanel from '@/components/observation/CameraObservationPanel';
 import { go2rtcStreamSrc } from '@/config/streams';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 
@@ -94,6 +95,7 @@ export default function LiveView() {
               </div>
             </div>
           </div>
+          {activeId && <CameraObservationPanel cameraId={activeId} className="mt-4" />}
         </div>
 
         <div id="live-view-sidebar" className="space-y-4">

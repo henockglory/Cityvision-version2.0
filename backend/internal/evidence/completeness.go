@@ -23,6 +23,39 @@ func DefaultPolicy() Policy {
 	}
 }
 
+// CountingPolicy matches COUNTING_EVIDENCE_POLICY — line_cross alerts need no clip/images.
+func CountingPolicy() Policy {
+	return Policy{Enabled: false, ClipSeconds: 0, Images: nil}
+}
+
+func templateIDFromDefinition(root map[string]interface{}) string {
+	bindings, _ := root["bindings"].(map[string]interface{})
+	if bindings == nil {
+		return ""
+	}
+	id, _ := bindings["template_id"].(string)
+	return id
+}
+
+func isCountingTemplate(templateID string) bool {
+	switch templateID {
+	case "tpl-line-cross", "tpl-line-cross-bidir", "tpl-speeding-premium",
+		"tpl-observation-rule-set-or", "tpl-observation-rule-set-n":
+		return true
+	default:
+		return false
+	}
+}
+
+func observationModeFromDefinition(root map[string]interface{}) bool {
+	bindings, _ := root["bindings"].(map[string]interface{})
+	if bindings == nil {
+		return false
+	}
+	v, _ := bindings["observation_mode"].(bool)
+	return v
+}
+
 // PolicyFromDefinition extracts evidence policy from a rule definition JSON blob.
 func PolicyFromDefinition(definition json.RawMessage) Policy {
 	if len(definition) == 0 {
@@ -32,17 +65,33 @@ func PolicyFromDefinition(definition json.RawMessage) Policy {
 	if json.Unmarshal(definition, &root) != nil {
 		return DefaultPolicy()
 	}
+	tplID := templateIDFromDefinition(root)
+	if observationModeFromDefinition(root) {
+		return CountingPolicy()
+	}
 	raw, ok := root["evidence"]
 	if !ok || raw == nil {
+		if isCountingTemplate(tplID) {
+			return CountingPolicy()
+		}
 		return DefaultPolicy()
 	}
 	b, err := json.Marshal(raw)
 	if err != nil {
+		if isCountingTemplate(tplID) {
+			return CountingPolicy()
+		}
 		return DefaultPolicy()
 	}
 	var p Policy
 	if json.Unmarshal(b, &p) != nil {
+		if isCountingTemplate(tplID) {
+			return CountingPolicy()
+		}
 		return DefaultPolicy()
+	}
+	if !p.Enabled {
+		return CountingPolicy()
 	}
 	if len(p.Images) == 0 {
 		dp := DefaultPolicy()

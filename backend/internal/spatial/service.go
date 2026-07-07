@@ -238,25 +238,26 @@ func (s *Service) DeleteLine(ctx context.Context, orgID, id uuid.UUID) error {
 
 // LineCounter is a persistent per-line crossing tally.
 type LineCounter struct {
-	LineID     string     `json:"line_id"`
-	CameraID   *uuid.UUID `json:"camera_id,omitempty"`
-	CountIn    int64      `json:"count_in"`
-	CountOut   int64      `json:"count_out"`
-	CountTotal int64      `json:"count_total"`
-	LastClass  string     `json:"last_class"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	LineID       string     `json:"line_id"`
+	ClassFilter  string     `json:"class_filter,omitempty"`
+	CameraID     *uuid.UUID `json:"camera_id,omitempty"`
+	CountIn      int64      `json:"count_in"`
+	CountOut     int64      `json:"count_out"`
+	CountTotal   int64      `json:"count_total"`
+	LastClass    string     `json:"last_class"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // ListLineCounters returns the crossing counters for an org, optionally scoped to a camera.
 func (s *Service) ListLineCounters(ctx context.Context, orgID uuid.UUID, cameraID *uuid.UUID) ([]LineCounter, error) {
-	q := `SELECT line_id, camera_id, count_in, count_out, count_total, last_class, updated_at
+	q := `SELECT line_id, class_filter, camera_id, count_in, count_out, count_total, last_class, updated_at
 		FROM line_counters WHERE org_id = $1`
 	args := []interface{}{orgID}
 	if cameraID != nil {
 		q += ` AND camera_id = $2`
 		args = append(args, *cameraID)
 	}
-	q += ` ORDER BY line_id`
+	q += ` ORDER BY line_id, class_filter`
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -265,7 +266,7 @@ func (s *Service) ListLineCounters(ctx context.Context, orgID uuid.UUID, cameraI
 	out := make([]LineCounter, 0)
 	for rows.Next() {
 		var c LineCounter
-		if err := rows.Scan(&c.LineID, &c.CameraID, &c.CountIn, &c.CountOut, &c.CountTotal, &c.LastClass, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.LineID, &c.ClassFilter, &c.CameraID, &c.CountIn, &c.CountOut, &c.CountTotal, &c.LastClass, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

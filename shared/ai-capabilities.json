@@ -33,6 +33,7 @@
     },
     "line_cross": {
       "label_fr": "Franchissement de ligne",
+      "observation_capable": true,
       "required_config": [
         "camera",
         "line",
@@ -112,6 +113,7 @@
     },
     "speeding": {
       "label_fr": "Excès de vitesse",
+      "observation_capable": true,
       "required_config": [
         "camera",
         "speed_kmh"

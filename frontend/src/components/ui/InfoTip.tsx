@@ -19,7 +19,7 @@ function HelpButton({
   id,
 }: {
   onOpen: () => void;
-  btnRef: React.RefObject<HTMLButtonElement | null>;
+  btnRef: React.RefObject<HTMLButtonElement>;
   id: string;
 }) {
   const { t } = useTranslation();

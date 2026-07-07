@@ -14,6 +14,12 @@ export interface RuleActivationConfig {
   direction?: string;
   schedule?: { from: string; to: string; allDay?: boolean };
   actions?: Array<{ type: string; config: Record<string, unknown> }>;
+  observationMode?: boolean;
+  observationKind?: string;
+  observationLabelFr?: string;
+  observationLabelEn?: string;
+  memberEventTypes?: string[];
+  memberRuleIds?: string[];
 }
 
 export type CondNode = {
@@ -131,6 +137,14 @@ export function buildConfiguredDefinition(
   if (cfg.classFilter) meta.class_filter = cfg.classFilter;
   if (cfg.direction) meta.direction = cfg.direction;
   if (cfg.schedule && !cfg.schedule.allDay) meta.schedule = cfg.schedule;
+  if (cfg.observationMode) {
+    meta.observation_mode = true;
+    if (cfg.observationKind) meta.observation_kind = cfg.observationKind;
+    if (cfg.observationLabelFr) meta.observation_label_fr = cfg.observationLabelFr;
+    if (cfg.observationLabelEn) meta.observation_label_en = cfg.observationLabelEn;
+    if (cfg.memberEventTypes?.length) meta.member_event_types = cfg.memberEventTypes;
+    if (cfg.memberRuleIds?.length) meta.member_rule_ids = cfg.memberRuleIds;
+  }
   if (options?.demo) meta.demo = true;
 
   const actions = cfg.actions?.length
@@ -145,7 +159,10 @@ export function buildConfiguredDefinition(
   };
 }
 
-export function activationConfigFromValues(values: Record<string, unknown>): RuleActivationConfig {
+export function activationConfigFromValues(
+  values: Record<string, unknown>,
+  opts?: { observationMode?: boolean; observationKind?: string; ruleName?: string },
+): RuleActivationConfig {
   return {
     cameraId: String(values.camera_id ?? ''),
     zoneName: values.zone_name ? String(values.zone_name) : undefined,
@@ -158,5 +175,14 @@ export function activationConfigFromValues(values: Record<string, unknown>): Rul
     classFilter: values.class_filter ? String(values.class_filter) : undefined,
     direction: values.direction ? String(values.direction) : undefined,
     schedule: values.schedule ? (values.schedule as RuleActivationConfig['schedule']) : undefined,
+    observationMode: opts?.observationMode,
+    observationKind: opts?.observationKind,
+    observationLabelFr: opts?.observationMode && opts?.ruleName ? opts.ruleName : undefined,
+    observationLabelEn: opts?.observationMode && opts?.ruleName ? opts.ruleName : undefined,
+    memberEventTypes: Array.isArray(values.member_event_types)
+      ? (values.member_event_types as string[])
+      : values.member_event_types
+        ? String(values.member_event_types).split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean)
+        : undefined,
   };
 }

@@ -64,8 +64,17 @@ function leafSentence(node: ConditionNode, ctx: NarrativeContext, t: TFunction):
 
 function groupIntro(node: ConditionNode, t: TFunction): string {
   const op = String(node.op ?? 'AND').toUpperCase();
-  if (op === 'OU' || op === 'OR') return t('rules.narrative.group.orIntro');
+  if (op === 'OU' || op === 'OR' || op === 'RULE_SET_OR') return t('rules.narrative.group.orIntro');
   if (op === 'SEQUENCE') return t('rules.narrative.group.sequenceIntro');
+  if (op === 'RULE_SET') {
+    const min = node.min_matches ?? 2;
+    const win = node.window_seconds ?? 300;
+    return t('rules.narrative.group.ruleSetIntro', {
+      defaultValue: `Au moins ${min} types d'événements distincts en ${win} s :`,
+      min,
+      seconds: win,
+    });
+  }
   return t('rules.narrative.group.andIntro');
 }
 

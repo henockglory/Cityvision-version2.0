@@ -319,15 +319,32 @@ func (s *Service) ArchiveAlert(ctx context.Context, orgID, id uuid.UUID, req Arc
 	return &a, err
 }
 
-func (s *Service) IncrementRuleCounter(ctx context.Context, orgID, ruleID uuid.UUID, delta int) error {
+type RuleCounterMeta struct {
+	LastEventType string
+	LastClass     string
+	LastZoneID    string
+	LastLineID    string
+}
+
+func (s *Service) IncrementRuleCounter(ctx context.Context, orgID, ruleID uuid.UUID, delta int, meta *RuleCounterMeta) error {
 	if delta == 0 {
 		delta = 1
 	}
+	ev, cls, zone, line := "", "", "", ""
+	if meta != nil {
+		ev, cls, zone, line = meta.LastEventType, meta.LastClass, meta.LastZoneID, meta.LastLineID
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO rule_counters (org_id, rule_id, count, updated_at)
-		VALUES ($1, $2, $3, NOW())
-		ON CONFLICT (org_id, rule_id) DO UPDATE SET count = rule_counters.count + $3, updated_at = NOW()`,
-		orgID, ruleID, delta)
+		INSERT INTO rule_counters (org_id, rule_id, count, last_event_type, last_class, last_zone_id, last_line_id, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+		ON CONFLICT (org_id, rule_id) DO UPDATE SET
+			count = rule_counters.count + EXCLUDED.count,
+			last_event_type = CASE WHEN EXCLUDED.last_event_type <> '' THEN EXCLUDED.last_event_type ELSE rule_counters.last_event_type END,
+			last_class = CASE WHEN EXCLUDED.last_class <> '' THEN EXCLUDED.last_class ELSE rule_counters.last_class END,
+			last_zone_id = CASE WHEN EXCLUDED.last_zone_id <> '' THEN EXCLUDED.last_zone_id ELSE rule_counters.last_zone_id END,
+			last_line_id = CASE WHEN EXCLUDED.last_line_id <> '' THEN EXCLUDED.last_line_id ELSE rule_counters.last_line_id END,
+			updated_at = NOW()`,
+		orgID, ruleID, delta, ev, cls, zone, line)
 	return err
 }
 

@@ -29,6 +29,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/ingest"
 	"github.com/citevision/citevision-v2/backend/internal/middleware"
 	mqttsub "github.com/citevision/citevision-v2/backend/internal/mqtt"
+	"github.com/citevision/citevision-v2/backend/internal/observation"
 	"github.com/citevision/citevision-v2/backend/internal/org"
 	"github.com/citevision/citevision-v2/backend/internal/rbac"
 	"github.com/citevision/citevision-v2/backend/internal/record"
@@ -187,6 +188,7 @@ func main() {
 		AI:          aiClient,
 		Orchestrator: orch,
 		Demo:        demoSvc,
+		Observation: observation.NewService(pool),
 	}
 
 	ws.ConfigureOrigins(cfg.WSAllowedOrigins)
@@ -216,6 +218,11 @@ func main() {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/setup/status", api.SetupStatus)
 		r.With(authLimiter.Middleware).Post("/setup/complete", api.SetupComplete)
+
+		r.Route("/internal", func(r chi.Router) {
+			r.Use(middleware.RequireInternalKey)
+			r.Get("/rules/active", api.InternalListAllActiveRules)
+		})
 
 		r.Route("/internal/orgs/{orgID}", func(r chi.Router) {
 			r.Use(middleware.RequireInternalKey)
@@ -333,6 +340,11 @@ func main() {
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Post("/", api.CreateLine)
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Patch("/{lineID}", api.UpdateLine)
 						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Delete("/{lineID}", api.DeleteLine)
+					})
+
+					r.Route("/observations", func(r chi.Router) {
+						r.With(middleware.RequirePermission(rbacSvc, "zones:read")).Get("/counters", api.ListObservationCounters)
+						r.With(middleware.RequirePermission(rbacSvc, "zones:write")).Delete("/counters", api.ResetObservationCounters)
 					})
 
 					r.Route("/surveillance-lists", func(r chi.Router) {

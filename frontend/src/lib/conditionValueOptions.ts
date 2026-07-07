@@ -292,9 +292,12 @@ export function buildConditionOpOptions(
   });
 }
 
-export function buildGroupOpOptions(lang: 'fr' | 'en', labels: { and: string; or: string; sequence: string }): ExplanatoryOption[] {
+export function buildGroupOpOptions(
+  lang: 'fr' | 'en',
+  labels: { and: string; or: string; sequence: string; ruleSetOr?: string; ruleSet?: string },
+): ExplanatoryOption[] {
   const isEn = lang === 'en';
-  return [
+  const base = [
     {
       value: 'AND',
       label: labels.and,
@@ -319,7 +322,24 @@ export function buildGroupOpOptions(lang: 'fr' | 'en', labels: { and: string; or
       howItWorks: isEn ? 'Conditions must occur in order over time.' : 'Les conditions doivent se produire dans l’ordre.',
       stepUtility: isEn ? 'For multi-step scenarios.' : 'Pour scénarios multi-étapes.',
     },
+    {
+      value: 'RULE_SET_OR',
+      label: labels.ruleSetOr ?? (isEn ? 'Event set (OR)' : 'Ensemble événements (OU)'),
+      technicalId: 'RULE_SET_OR',
+      technology: isEn ? 'Observation counting' : 'Comptage observation',
+      howItWorks: isEn ? 'Increment when any child event type matches.' : 'Incrémente dès qu\'un type d\'événement enfant correspond.',
+      stepUtility: isEn ? 'For neutral multi-event counting.' : 'Pour comptage multi-événements neutre.',
+    },
+    {
+      value: 'RULE_SET',
+      label: labels.ruleSet ?? (isEn ? 'Event set (N-of-M)' : 'Ensemble événements (N-sur-M)'),
+      technicalId: 'RULE_SET',
+      technology: isEn ? 'Observation counting' : 'Comptage observation',
+      howItWorks: isEn ? 'Increment when N distinct event types match within a window.' : 'Incrémente quand N types distincts correspondent dans une fenêtre.',
+      stepUtility: isEn ? 'For combined observation patterns.' : 'Pour patterns d\'observation combinés.',
+    },
   ];
+  return base;
 }
 
 export function eventTypeLabel(value: string, lang: 'fr' | 'en'): string {

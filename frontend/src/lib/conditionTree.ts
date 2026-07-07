@@ -3,6 +3,9 @@ export type ConditionNode = {
   field?: string;
   value?: unknown;
   children?: ConditionNode[];
+  min_matches?: number;
+  window_seconds?: number;
+  key_fields?: string[];
 };
 
 export function cloneCondition(node: ConditionNode | undefined): ConditionNode | undefined {
@@ -12,7 +15,7 @@ export function cloneCondition(node: ConditionNode | undefined): ConditionNode |
 
 export function isGroupNode(node: ConditionNode): boolean {
   const op = String(node.op ?? '').toUpperCase();
-  return op === 'AND' || op === 'OR' || op === 'SEQUENCE';
+  return op === 'AND' || op === 'OR' || op === 'SEQUENCE' || op === 'RULE_SET_OR' || op === 'RULE_SET';
 }
 
 export function createLeaf(field = 'event_type', op = 'eq', value = ''): ConditionNode {
@@ -77,4 +80,27 @@ export function opsForField(field: string): typeof CONDITION_OPS {
   const allowed = OPS_FOR_FIELD[field];
   if (!allowed) return CONDITION_OPS;
   return CONDITION_OPS.filter((o) => allowed.includes(o.value));
+}
+
+/** Read zone_id / line_id leaves saved in the condition tree (fallback when form bindings are empty). */
+export function spatialBindingsFromCondition(node: ConditionNode | undefined): {
+  zoneName?: string;
+  lineName?: string;
+} {
+  const out: { zoneName?: string; lineName?: string } = {};
+  const walk = (n: ConditionNode | undefined) => {
+    if (!n) return;
+    if (isGroupNode(n)) {
+      for (const c of n.children ?? []) walk(c);
+      return;
+    }
+    const field = String(n.field ?? '').toLowerCase();
+    const op = String(n.op ?? '').toLowerCase();
+    const val = n.value != null && String(n.value).trim() !== '' ? String(n.value) : '';
+    if (!val) return;
+    if (field === 'zone_id' || op === 'in_zone') out.zoneName = val;
+    if (field === 'line_id' || op === 'cross_line') out.lineName = val;
+  };
+  walk(node);
+  return out;
 }

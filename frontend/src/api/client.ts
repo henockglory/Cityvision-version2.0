@@ -338,6 +338,7 @@ export interface CapabilitiesBehaviorMenuItem {
   ready: boolean;
   ready_reason_fr?: string;
   compatible_templates?: string[];
+  observation_capable?: boolean;
 }
 
 export interface CapabilitiesMenuResponse {
@@ -608,8 +609,40 @@ export const zonesApi = {
     }),
 };
 
+export interface ObservationCounter {
+  id: string;
+  kind: string;
+  label_fr: string;
+  label_en: string;
+  legend_fr: string;
+  legend_en: string;
+  count: number;
+  count_in?: number;
+  count_out?: number;
+  last_class?: string;
+  scope?: Record<string, string>;
+  source_rule_id?: string;
+  updated_at: string;
+}
+
+export const observationApi = {
+  listCounters: (orgId: string, cameraId?: string) =>
+    api.get<ObservationCounter[]>(`/orgs/${orgId}/observations/counters`, {
+      params: cameraId ? { camera_id: cameraId } : undefined,
+    }),
+  resetCounters: (orgId: string, opts?: { cameraId?: string; kind?: string; id?: string }) =>
+    api.delete(`/orgs/${orgId}/observations/counters`, {
+      params: {
+        ...(opts?.cameraId ? { camera_id: opts.cameraId } : {}),
+        ...(opts?.kind ? { kind: opts.kind } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      },
+    }),
+};
+
 export interface LineCounter {
   line_id: string;
+  class_filter?: string;
   camera_id?: string;
   count_in: number;
   count_out: number;

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Search } from 'lucide-react';
 import DropdownPortal from '@/components/ui/DropdownPortal';
+import { useModalLayerZIndex } from '@/components/ui/ModalLayerContext';
+import { LAYER } from '@/lib/layerZIndex';
 
 export interface ExplanatoryOption {
   value: string;
@@ -40,9 +42,11 @@ export default function ExplanatorySelect({
   compact = false,
   searchable,
   disabled = false,
-  zIndex = 120,
+  zIndex: zIndexProp,
   emptyLabel,
 }: ExplanatorySelectProps) {
+  const modalLayerZ = useModalLayerZIndex();
+  const zIndex = zIndexProp ?? modalLayerZ ?? LAYER.dropdown;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
