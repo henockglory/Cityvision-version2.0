@@ -305,7 +305,7 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 		"condition":        condition,
 		"bindings":         bindings,
 		"actions":          actions,
-		"dedup_key_fields": []string{"camera_id", "event_id"},
+		"dedup_key_fields": []string{"camera_id", "zone_id", "track_id"},
 	}
 	if spec.withClip && !spec.observation {
 		def["evidence"] = map[string]interface{}{
@@ -314,8 +314,8 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 			"draw_bbox":    true,
 			"images": []map[string]interface{}{
 				{"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
-				{"role": "subject", "label": "Cible détectée", "crop": "full", "padding_pct": 8, "zoom": 1.0},
-				{"role": "plate", "label": "Plaque arrière", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8},
+				{"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 12, "zoom": 1.0},
+				{"role": "plate", "label": "Plaque", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8},
 			},
 		}
 	}

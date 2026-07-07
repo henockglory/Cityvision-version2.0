@@ -6,6 +6,7 @@ import {
   evidenceMediaSlots,
   evidenceQuality,
   evidenceThumbnailUrl,
+  isValidEvidenceBBox,
   parseEvidenceSnapshot,
   type EvidenceSnapshot,
 } from '@/lib/evidence';
@@ -136,11 +137,11 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
             <EvidenceImageTile
               apiUrl={subjectUrl}
               label={subject?.label ?? t('evidence.subject')}
-              bbox={subject?.bbox ?? ev.bbox}
+              bbox={isValidEvidenceBBox(subject?.bbox ?? ev.bbox) ? (subject?.bbox ?? ev.bbox) : undefined}
               onOpen={() => openLightbox(
                 subjectUrl,
                 subject?.label ?? t('evidence.subject'),
-                subject?.bbox ?? ev.bbox,
+                isValidEvidenceBBox(subject?.bbox ?? ev.bbox) ? (subject?.bbox ?? ev.bbox) : undefined,
               )}
             />
           )}
@@ -152,6 +153,13 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
             />
           )}
         </div>
+      )}
+
+      {!plateUrl && Array.isArray(pkg?.metadata?.missing_roles) && (pkg.metadata.missing_roles as string[]).includes('plate') && (
+        <p className="text-xs text-cv-muted flex items-center gap-1">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          {t('evidence.plateUnavailable', { defaultValue: 'Plaque non disponible (crop impossible sur cette capture).' })}
+        </p>
       )}
 
       {quality.state === 'failed' && hasMediaUrls && (

@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
+import os
+import queue
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass
+class _PendingRequest:
+    frame: np.ndarray
+    result: list[dict] | None = None
+    event: threading.Event = dataclasses.field(default_factory=threading.Event)
 
 COCO_CLASSES = [
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
@@ -51,6 +63,7 @@ class YoloOnnxDetector:
         conf_threshold: float = 0.25,
         iou_threshold: float = 0.45,
         device: str = "cuda",
+        max_batch_size: int | None = None,
     ) -> None:
         self.model_path = Path(model_path)
         self.conf_threshold = conf_threshold
@@ -59,6 +72,30 @@ class YoloOnnxDetector:
         self._session = None
         self._input_name: str | None = None
         self.active_provider: str = "none"
+
+        # A single ONNX session is shared by every camera's inference thread once
+        # RTSP ingest is decoupled from inference (WorkerManager thread pool).
+        # session.run() is not guaranteed thread-safe across providers, so every
+        # call — single or batched — goes through this lock.
+        self._run_lock = threading.Lock()
+
+        # Opportunistic multi-camera micro-batching: concurrent detect() calls
+        # arriving within a short window are coalesced into one detect_batch()
+        # session.run(), amortizing GPU launch/transfer overhead across cameras
+        # instead of paying it once per camera per frame.
+        self._microbatch_enabled = os.environ.get("YOLO_MICROBATCH", "1") != "0"
+        self._batch_window_sec = float(os.environ.get("YOLO_BATCH_WINDOW_MS", "12")) / 1000.0
+        # Priority: explicit constructor arg (hardware tier's settings.batch_size)
+        # > YOLO_MAX_BATCH_SIZE env var > hardcoded fallback. This is what makes
+        # the hardware_profile tier table's "Batch" column an actual runtime limit
+        # instead of a number that only ever lived in documentation.
+        if max_batch_size is not None:
+            self._max_batch_size = max(1, int(max_batch_size))
+        else:
+            self._max_batch_size = max(1, int(os.environ.get("YOLO_MAX_BATCH_SIZE", "16")))
+        self._batch_queue: queue.Queue[_PendingRequest] = queue.Queue()
+        self._batch_thread: threading.Thread | None = None
+        self._batch_thread_lock = threading.Lock()
 
     def load(self) -> None:
         if not self.model_path.exists():
@@ -120,10 +157,62 @@ class YoloOnnxDetector:
     def detect(self, frame: np.ndarray) -> list[dict]:
         if self._session is None:
             return []
+        if not self._microbatch_enabled:
+            return self._detect_single(frame)
 
+        self._ensure_batch_thread()
+        req = _PendingRequest(frame=frame)
+        self._batch_queue.put(req)
+        if not req.event.wait(timeout=2.0):
+            logger.warning("YOLO microbatch timeout — falling back to direct detect()")
+            return self._detect_single(frame)
+        return req.result or []
+
+    def _detect_single(self, frame: np.ndarray) -> list[dict]:
         blob, sx, sy = self.preprocess(frame)
-        outputs = self._session.run(None, {self._input_name: blob})
+        with self._run_lock:
+            outputs = self._session.run(None, {self._input_name: blob})
         return self._postprocess(outputs[0], sx, sy)
+
+    def _ensure_batch_thread(self) -> None:
+        if self._batch_thread is not None and self._batch_thread.is_alive():
+            return
+        with self._batch_thread_lock:
+            if self._batch_thread is not None and self._batch_thread.is_alive():
+                return
+            self._batch_thread = threading.Thread(
+                target=self._batch_loop, daemon=True, name="yolo-microbatch",
+            )
+            self._batch_thread.start()
+
+    def _batch_loop(self) -> None:
+        """Dedicated dispatcher: coalesces concurrent detect() calls from every
+        camera's inference thread into detect_batch() calls, then wakes each
+        waiting caller with its own slice of the batched result."""
+        while True:
+            try:
+                first = self._batch_queue.get(timeout=5.0)
+            except queue.Empty:
+                continue
+            batch = [first]
+            deadline = time.monotonic() + self._batch_window_sec
+            while len(batch) < self._max_batch_size:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    batch.append(self._batch_queue.get(timeout=remaining))
+                except queue.Empty:
+                    break
+            frames = [r.frame for r in batch]
+            try:
+                results = self.detect_batch(frames)
+            except Exception:
+                logger.exception("YOLO microbatch inference failed (batch_size=%d)", len(frames))
+                results = [[] for _ in frames]
+            for r, res in zip(batch, results):
+                r.result = res
+                r.event.set()
 
     def preprocess_batch(
         self, frames: list[np.ndarray]
@@ -150,7 +239,8 @@ class YoloOnnxDetector:
             return [[] for _ in frames]
 
         blob, scales = self.preprocess_batch(frames)
-        outputs = self._session.run(None, {self._input_name: blob})[0]
+        with self._run_lock:
+            outputs = self._session.run(None, {self._input_name: blob})[0]
         # Normalize to a per-image iterable along the batch dimension.
         batched = outputs if outputs.ndim == 3 else outputs[np.newaxis, ...]
         results: list[list[dict]] = []
@@ -161,17 +251,21 @@ class YoloOnnxDetector:
         return results
 
     def benchmark_fps(self, frames: int = 30) -> float:
-        """Measure inference FPS on synthetic frames."""
+        """Measure raw single-frame inference FPS on synthetic frames.
+
+        Bypasses the micro-batching queue on purpose — this reports the model's
+        intrinsic per-call throughput on the active provider (used by /health/gpu),
+        not the coalescing latency that only pays off under real multi-camera load.
+        """
         if self._session is None:
             return 0.0
-        import time
 
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         for _ in range(5):
-            self.detect(frame)
+            self._detect_single(frame)
         start = time.perf_counter()
         for _ in range(frames):
-            self.detect(frame)
+            self._detect_single(frame)
         elapsed = time.perf_counter() - start
         return frames / elapsed if elapsed > 0 else 0.0
 

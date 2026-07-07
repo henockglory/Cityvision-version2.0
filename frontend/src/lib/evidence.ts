@@ -8,6 +8,16 @@ export interface EvidenceBBox {
   height?: number;
 }
 
+/** Normalized bbox (0–1) large enough to render a meaningful overlay. */
+export function isValidEvidenceBBox(bbox?: EvidenceBBox | null): boolean {
+  if (!bbox) return false;
+  const w = Number(bbox.width ?? 0);
+  const h = Number(bbox.height ?? 0);
+  if (w <= 0 || h <= 0) return false;
+  if (w > 1.5 || h > 1.5) return w >= 8 && h >= 8;
+  return w >= 0.02 && h >= 0.02;
+}
+
 export interface EvidenceClip {
   url?: string;
   asset_id?: string;

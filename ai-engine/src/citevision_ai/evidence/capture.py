@@ -55,6 +55,69 @@ def bbox_rear_plate_region(bbox: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def bbox_area_norm(bbox: dict[str, Any] | None, frame_w: int, frame_h: int) -> float:
+    bb = normalize_bbox(bbox, frame_w, frame_h)
+    if not bb:
+        return 0.0
+    return float(bb["width"]) * float(bb["height"])
+
+
+def pick_best_bbox(
+    candidates: list[dict[str, Any] | None],
+    frame_w: int,
+    frame_h: int,
+    *,
+    min_frac: float = 0.02,
+) -> dict[str, Any] | None:
+    """Largest valid normalized bbox — avoids 1px ByteTrack glitches on zone exit."""
+    best: dict[str, Any] | None = None
+    best_area = 0.0
+    for raw in candidates:
+        if not raw:
+            continue
+        bb = normalize_bbox(raw, frame_w, frame_h)
+        if not bb or not bbox_valid(bb, min_frac=min_frac):
+            continue
+        area = float(bb["width"]) * float(bb["height"])
+        if area > best_area:
+            best_area = area
+            best = bb
+    return best
+
+
+def pick_best_bbox_with_ts(
+    candidates: list[tuple[dict[str, Any] | None, float | None]],
+    frame_w: int,
+    frame_h: int,
+    *,
+    min_frac: float = 0.02,
+) -> tuple[dict[str, Any] | None, float | None]:
+    """Like ``pick_best_bbox`` but each candidate carries the wall-clock timestamp
+    of the frame it was observed in, and the timestamp of the winning bbox is
+    returned alongside it.
+
+    This lets evidence capture fetch the *exact* frame that produced the chosen
+    bbox (from the ring buffer or the live frame) instead of a frame captured at
+    event-emission time, which can be hundreds of ms later than the bbox itself
+    (vehicle has moved on) — the root cause of crops landing on empty road.
+    """
+    best: dict[str, Any] | None = None
+    best_ts: float | None = None
+    best_area = 0.0
+    for raw, ts in candidates:
+        if not raw:
+            continue
+        bb = normalize_bbox(raw, frame_w, frame_h)
+        if not bb or not bbox_valid(bb, min_frac=min_frac):
+            continue
+        area = float(bb["width"]) * float(bb["height"])
+        if area > best_area:
+            best_area = area
+            best = bb
+            best_ts = ts
+    return best, best_ts
+
+
 def bbox_valid(bbox: dict[str, Any] | None, min_frac: float = 0.02) -> bool:
     if not bbox:
         return False
@@ -108,12 +171,13 @@ def encode_subject_jpeg(
 
 def bbox_from_event(evt: dict[str, Any]) -> dict[str, Any] | None:
     bb = evt.get("bbox")
-    if isinstance(bb, dict):
-        return bb if bbox_valid(bb, min_frac=0.005) else None
+    if isinstance(bb, dict) and bbox_valid(bb, min_frac=0.02):
+        return bb
     meta = evt.get("metadata")
     if isinstance(meta, dict) and isinstance(meta.get("bbox"), dict):
         bb = meta["bbox"]
-        return bb if bbox_valid(bb, min_frac=0.005) else None
+        if bbox_valid(bb, min_frac=0.02):
+            return bb
     return None
 
 
@@ -122,11 +186,14 @@ def draw_bbox_on_frame(
     bbox: dict[str, Any] | None,
     *,
     color: tuple[int, int, int] = (255, 180, 0),
-    thickness: int = 2,
+    thickness: int = 3,
     min_luminance: float = 12.0,
 ) -> np.ndarray:
-    if not bbox or not bbox_valid(bbox, min_frac=0.005):
+    h, w = frame.shape[:2]
+    norm = normalize_bbox(bbox, w, h) if bbox else None
+    if not norm or not bbox_valid(norm, min_frac=0.02):
         return frame
+    bbox = norm
     if frame_median_luminance(frame) < min_luminance:
         return frame
     out = frame.copy()
@@ -172,29 +239,50 @@ def capture_images_from_policy(
             continue
 
         if role == "subject":
-            # Full scene: the UI draws the bbox overlay using the stored coordinates.
-            # Do NOT crop here — bbox coords are in original frame space.
-            subject = encode_scene_jpeg(frame, quality)
+            use_bbox = norm_bbox if norm_bbox and bbox_valid(norm_bbox, min_frac=0.02) else None
+            if crop == "full" and use_bbox:
+                crop = "bbox"
+            if crop == "bbox" and use_bbox:
+                subject = encode_subject_jpeg(
+                    frame, use_bbox, quality,
+                    padding_pct=max(padding, 12.0), zoom=zoom, crop="bbox", fallback_full=False,
+                )
+            elif crop == "full" or not use_bbox:
+                src = draw_bbox_on_frame(frame, use_bbox) if draw_bbox and use_bbox else frame
+                subject = encode_scene_jpeg(src, quality)
+            else:
+                src = draw_bbox_on_frame(frame, use_bbox) if draw_bbox else frame
+                subject = encode_subject_jpeg(
+                    src, use_bbox, quality,
+                    padding_pct=padding, zoom=zoom, crop="bbox", fallback_full=False,
+                )
+            if subject is None and use_bbox:
+                subject = encode_subject_jpeg(
+                    frame, use_bbox, quality,
+                    padding_pct=15.0, zoom=1.0, crop="bbox", fallback_full=False,
+                )
+            if subject is None:
+                subject = encode_scene_jpeg(frame, quality)
             continue
 
         if role == "plate" or crop in ("plate_rear", "rear_plate"):
             zoom_plate = float(spec.get("zoom") or 1.8)
             padding_plate = float(spec.get("padding_pct") or 6)
             plate_bbox = bbox_rear_plate_region(norm_bbox) if norm_bbox else None
-            # 1st try: rear-plate region crop with zoom
             jpeg = encode_subject_jpeg(
                 frame, plate_bbox, quality,
                 padding_pct=padding_plate, zoom=zoom_plate, crop="bbox", fallback_full=False,
             )
-            # 2nd try: whole vehicle bbox at higher zoom — gives usable plate if vehicle large enough
             if jpeg is None and norm_bbox:
                 jpeg = encode_subject_jpeg(
                     frame, norm_bbox, quality,
-                    padding_pct=0, zoom=3.0, crop="bbox", fallback_full=False,
+                    padding_pct=4, zoom=4.0, crop="bbox", fallback_full=False,
                 )
-            # Last resort: full scene so hasEvidencePackage always finds role "plate"
-            if jpeg is None:
-                jpeg = encode_scene_jpeg(frame, quality)
+            if jpeg is None and norm_bbox:
+                jpeg = encode_subject_jpeg(
+                    frame, norm_bbox, quality,
+                    padding_pct=0, zoom=2.5, crop="bbox", fallback_full=True,
+                )
             if jpeg:
                 extras.append(jpeg)
             continue

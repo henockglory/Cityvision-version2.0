@@ -1,10 +1,18 @@
+export type EvidenceImageRole = 'scene' | 'subject' | 'plate';
+
 export interface EvidenceImageSpec {
-  role: 'scene' | 'subject' | 'plate';
+  role: EvidenceImageRole;
   label?: string;
   crop?: 'full' | 'bbox' | 'bbox_zoom' | 'plate_rear';
   padding_pct?: number;
   zoom?: number;
 }
+
+export const EVIDENCE_IMAGE_ROLE_DEFAULTS: Record<EvidenceImageRole, EvidenceImageSpec> = {
+  scene: { role: 'scene', label: 'Vue d\'ensemble', crop: 'full' },
+  subject: { role: 'subject', label: 'Cible détectée', crop: 'bbox', padding_pct: 12, zoom: 1.0 },
+  plate: { role: 'plate', label: 'Plaque', crop: 'plate_rear', padding_pct: 6, zoom: 1.8 },
+};
 
 export interface EvidencePolicy {
   enabled: boolean;
@@ -14,20 +22,44 @@ export interface EvidencePolicy {
   draw_bbox?: boolean;
 }
 
+const DEFAULT_IMAGE_ROLE_ORDER: EvidenceImageRole[] = ['scene', 'subject', 'plate'];
+
+export function defaultImageSpecForRole(role: EvidenceImageRole): EvidenceImageSpec {
+  const base = EVIDENCE_IMAGE_ROLE_DEFAULTS[role];
+  return { ...base };
+}
+
 export function setEvidenceImageCount(policy: EvidencePolicy, count: number): EvidencePolicy {
   const n = Math.min(3, Math.max(1, count));
-  const defaults = DEFAULT_EVIDENCE_POLICY.images;
   const images: EvidenceImageSpec[] = [];
   for (let i = 0; i < n; i++) {
-    images.push({ ...(defaults[i] ?? defaults[defaults.length - 1]) });
+    const role = DEFAULT_IMAGE_ROLE_ORDER[i] ?? 'scene';
+    images.push(defaultImageSpecForRole(role));
   }
+  return { ...policy, images };
+}
+
+export function setEvidenceImageRole(
+  policy: EvidencePolicy,
+  index: number,
+  role: EvidenceImageRole,
+): EvidencePolicy {
+  const images = [...policy.images];
+  if (index < 0 || index >= images.length) return policy;
+  images[index] = defaultImageSpecForRole(role);
   return { ...policy, images };
 }
 
 export function evidencePolicyChip(policy?: Partial<EvidencePolicy> | null): string {
   const p = normalizeEvidencePolicy(policy);
   if (!p.enabled) return 'preuves off';
-  const parts = [`${p.clip_seconds}s`, `${p.images.length} photo${p.images.length > 1 ? 's' : ''}`];
+  const roleLabels: Record<EvidenceImageRole, string> = {
+    scene: 'scène',
+    subject: 'cible',
+    plate: 'plaque',
+  };
+  const roles = p.images.map((img) => roleLabels[img.role] ?? img.role).join('+');
+  const parts = [`${p.clip_seconds}s`, roles || `${p.images.length} photo${p.images.length > 1 ? 's' : ''}`];
   if (p.draw_bbox) parts.push('cadre');
   return parts.join(' · ');
 }
@@ -53,11 +85,7 @@ export function normalizeEvidencePolicy(raw?: Partial<EvidencePolicy> | null): E
 export const DEFAULT_EVIDENCE_POLICY: EvidencePolicy = {
   enabled: true,
   clip_seconds: 6,
-  images: [
-    { role: 'scene', label: 'Vue d\'ensemble', crop: 'full' },
-    { role: 'subject', label: 'Cible détectée', crop: 'full', padding_pct: 8, zoom: 1.0 },
-    { role: 'plate', label: 'Plaque arrière', crop: 'plate_rear', padding_pct: 6, zoom: 1.8 },
-  ],
+  images: DEFAULT_IMAGE_ROLE_ORDER.map((role) => defaultImageSpecForRole(role)),
   min_confidence: 0,
   draw_bbox: true,
 };
@@ -75,7 +103,8 @@ const LINE_COUNTING_TEMPLATES = new Set([
   'tpl-line-cross-bidir',
 ]);
 
-const OBSERVATION_TEMPLATES = new Set([
+/** Templates that expose the observation structure menu in rule studio. */
+const OBSERVATION_STRUCTURE_TEMPLATES = new Set([
   ...LINE_COUNTING_TEMPLATES,
   'tpl-speeding-premium',
   'tpl-observation-rule-set-or',
@@ -83,7 +112,7 @@ const OBSERVATION_TEMPLATES = new Set([
 ]);
 
 export function evidencePolicyForTemplate(templateId?: string | null, observationMode?: boolean): EvidencePolicy {
-  if (observationMode || (templateId && OBSERVATION_TEMPLATES.has(templateId))) {
+  if (observationMode) {
     return { ...COUNTING_EVIDENCE_POLICY };
   }
   if (templateId && LINE_COUNTING_TEMPLATES.has(templateId)) {
@@ -93,11 +122,11 @@ export function evidencePolicyForTemplate(templateId?: string | null, observatio
 }
 
 export function isCountingRuleTemplate(templateId?: string | null): boolean {
-  return Boolean(templateId && OBSERVATION_TEMPLATES.has(templateId));
+  return Boolean(templateId && OBSERVATION_STRUCTURE_TEMPLATES.has(templateId));
 }
 
 export function isObservationEvidenceDefault(templateId?: string | null, observationMode?: boolean): boolean {
-  return Boolean(observationMode || (templateId && OBSERVATION_TEMPLATES.has(templateId)));
+  return Boolean(observationMode || (templateId && LINE_COUNTING_TEMPLATES.has(templateId)));
 }
 
 /** Persist explicit disabled policy so backend does not fall back to default proof requirements. */

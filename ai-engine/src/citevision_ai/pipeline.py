@@ -20,6 +20,7 @@ from citevision_ai.analytics.scene_correlation import SceneCorrelationEngine
 from citevision_ai.analytics.state import StateEngine
 from citevision_ai.evidence.config import EVIDENCE_WORTHY_TYPES
 from citevision_ai.evidence.gate import default_evidence_policy
+from citevision_ai.evidence.capture import bbox_valid, normalize_bbox, pick_best_bbox_with_ts
 from citevision_ai.behavior.heuristics import BEHAVIOR_EVENT_TYPES, BehaviorHeuristics
 from citevision_ai.budget.resource_budget import ResourceBudgetManager
 from citevision_ai.detection.yolo_onnx import YoloOnnxDetector
@@ -36,6 +37,31 @@ from citevision_ai.mqtt.publisher import MqttPublisher
 from citevision_ai.tracking.bytetrack import ByteTracker
 
 logger = logging.getLogger(__name__)
+
+# Fixed processing rate for priority zones (speed measurement, traffic light state
+# machines) — these need a steady per-tick cadence to time dwell/crossings
+# accurately, but must NOT scale down to "every ingested frame" as more cameras
+# are added: at 16 concurrent cameras, several priority zones each demanding
+# their full configured ai_fps would oversaturate the shared GPU regardless of
+# batching. This cap is independent of ResourceBudgetManager's camera-count-based
+# profile — priority zones always get this fixed budget, no more, no less.
+PRIORITY_ZONE_TARGET_HZ = float(os.environ.get("PRIORITY_ZONE_TARGET_HZ", "8.0"))
+
+
+def priority_zone_skip(source_fps: float) -> int:
+    """Effective frame-skip for priority zones (speed/traffic-light).
+
+    Replaces the old unconditional skip=1 ("process every ingested frame")
+    with a fixed Hz target that stays constant regardless of active camera
+    count. Priority zones intentionally bypass the camera-count-based resource
+    budget (they need a steady per-tick cadence for accurate dwell/crossing
+    timing) — but "every tick" must mean a bounded rate, not an unbounded one
+    that scales with however many priority-zone cameras happen to be active.
+    """
+    if source_fps <= 0:
+        return 1
+    return max(1, round(source_fps / PRIORITY_ZONE_TARGET_HZ))
+
 
 class PipelineService:
     """Orchestrates detection, tracking, analytics, and MQTT publishing."""
@@ -386,6 +412,7 @@ class PipelineService:
         self._frame_counters[camera_id] = frame_id + 1
         self.state_engine.set_fps(source_fps)
         now_ts = time.monotonic()
+        frame_wall_ts = time.time()
         self._timestamps[camera_id] = now_ts
         self.evidence.push_frame(camera_id, frame)
         rt = self._runtime_for(camera_id)
@@ -398,9 +425,11 @@ class PipelineService:
         tl_active = self.traffic_light.camera_has_behavior(zones_cfg)
         zs_active = self.zone_speed.camera_has_behavior(zones_cfg)
         skip = self.budget.frame_skip_interval(source_fps)
-        # State machines (traffic light, zone speed) need a processed frame every tick.
+        # State machines (traffic light, zone speed) need a steady per-tick cadence,
+        # but capped at a fixed Hz — not "every ingested frame" — so priority zones
+        # don't scale their GPU demand with the ingest rate as camera count grows.
         if tl_active or zs_active:
-            skip = 1
+            skip = priority_zone_skip(source_fps)
 
         if frame_id % skip != 0:
             pre_events: list[dict[str, Any]] = []
@@ -460,7 +489,7 @@ class PipelineService:
             if len(hist) > 12:
                 hist.pop(0)
             bbox_hist = self._bbox_history.setdefault(key, [])
-            bbox_hist.append(dict(t.bbox))
+            bbox_hist.append({"bbox": dict(t.bbox), "ts": frame_wall_ts})
             if len(bbox_hist) > 12:
                 bbox_hist.pop(0)
 
@@ -537,7 +566,9 @@ class PipelineService:
             for t in track_dicts
         }
         frame_bbox_histories = {
-            t["track_id"]: self._bbox_history.get((camera_id, t["track_id"]), [])
+            t["track_id"]: [
+                h["bbox"] for h in self._bbox_history.get((camera_id, t["track_id"]), [])
+            ]
             for t in track_dicts
         }
         behavior_signals = self.behavior.evaluate_frame(
@@ -624,7 +655,8 @@ class PipelineService:
         if self.zone_speed.camera_has_behavior(zones_cfg):
             all_events.extend(
                 self.zone_speed.process_frame(
-                    camera_id, track_dicts, zones_cfg, w, h, now_ts, ts
+                    camera_id, track_dicts, zones_cfg, w, h, now_ts, ts,
+                    frame_wall_ts=frame_wall_ts,
                 )
             )
 
@@ -666,18 +698,45 @@ class PipelineService:
                 evt["org_id"] = self._org_ids[camera_id]
             evt.setdefault("event", evt.get("event_type"))
             tid = evt.get("track_id")
-            if tid is not None and evt.get("bbox") is None:
+            fh, fw = frame.shape[:2]
+
+            def _evt_bbox_invalid() -> bool:
+                bb = evt.get("bbox")
+                if bb is None:
+                    return True
+                if isinstance(bb, dict) and not bb:
+                    return True
+                return not bbox_valid(bb, min_frac=0.02)
+
+            if tid is not None:
+                # Pair each bbox candidate with the wall-clock ts of the frame it
+                # came from, so the winner's source frame — not the current/emit
+                # frame — is what evidence capture fetches. Without this, picking
+                # the "largest historical bbox" (up to ~1.5s old at 8fps) while
+                # capturing the *current* frame draws the box on empty road.
+                candidates: list[tuple[dict | None, float | None]] = [
+                    (evt.get("bbox"), frame_wall_ts)
+                ]
                 for t in track_dicts:
                     if t.get("track_id") == tid and t.get("bbox"):
-                        bb = t["bbox"]
-                        fh, fw = frame.shape[:2]
-                        evt["bbox"] = {
-                            "x": bb["x"] / fw,
-                            "y": bb["y"] / fh,
-                            "width": bb["width"] / fw,
-                            "height": bb["height"] / fh,
-                        }
-                        break
+                        candidates.append((t["bbox"], frame_wall_ts))
+                hist = self._bbox_history.get((camera_id, int(tid)), [])
+                candidates.extend(
+                    (h.get("bbox"), h.get("ts")) for h in reversed(hist)
+                )
+                best, best_ts = pick_best_bbox_with_ts(candidates, fw, fh, min_frac=0.02)
+                if best:
+                    evt["bbox"] = best
+                    evt["bbox_ts"] = best_ts if best_ts is not None else frame_wall_ts
+                elif _evt_bbox_invalid():
+                    for t in track_dicts:
+                        if t.get("track_id") == tid and t.get("bbox"):
+                            bb = normalize_bbox(t["bbox"], fw, fh)
+                            if bbox_valid(bb, min_frac=0.02):
+                                evt["bbox"] = bb
+                                evt["bbox_ts"] = frame_wall_ts
+                                break
+            evt.setdefault("bbox_ts", frame_wall_ts)
             org_id = self._org_ids.get(camera_id, "")
             if org_id:
                 et = str(evt.get("event_type") or evt.get("event") or "")
@@ -691,6 +750,7 @@ class PipelineService:
                     if pol is not None:
                         self.evidence.attach_evidence_async(
                             camera_id, org_id, evt, frame.copy(), policy=pol,
+                            frame_ts=frame_wall_ts,
                         )
                 if et in self._EVIDENCE_MANDATORY and not self._event_has_package(evt):
                     evt.setdefault("evidence_status", "pending")

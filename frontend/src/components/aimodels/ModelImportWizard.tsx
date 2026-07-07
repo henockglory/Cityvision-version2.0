@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -15,12 +15,12 @@ import ExplanatorySelect from '@/components/ui/ExplanatorySelect';
 import DialogTourHelpButton from '@/components/ui/DialogTourHelpButton';
 import { useDialogTour } from '@/hooks/useDialogTour';
 import {
-  MODEL_IMPORT_TEMPLATES,
+  buildModelImportStructureOptions,
+  resolveModelImportStructure,
   slugifyEventType,
   slugifyModelId,
-  type ModelTemplateId,
 } from '@/lib/modelImportTemplates';
-import { orgModelsApi, type UploadOrgModelResponse } from '@/api/client';
+import { orgModelsApi, type OrgModelRow, type UploadOrgModelResponse } from '@/api/client';
 import { ModalLayerProvider } from '@/components/ui/ModalLayerContext';
 import { LAYER } from '@/lib/layerZIndex';
 
@@ -45,7 +45,8 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
   const lang = i18n.language.startsWith('en') ? 'en' : 'fr';
 
   const [step, setStep] = useState(1);
-  const [templateId, setTemplateId] = useState<ModelTemplateId>('custom');
+  const [structureId, setStructureId] = useState<string>('custom');
+  const [orgModels, setOrgModels] = useState<OrgModelRow[]>([]);
   const [sourceMode, setSourceMode] = useState<SourceMode>('file');
   const [file, setFile] = useState<File | null>(null);
   const [downloadUrl, setDownloadUrl] = useState('');
@@ -65,49 +66,61 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UploadOrgModelResponse | null>(null);
 
-  const template = useMemo(
-    () => MODEL_IMPORT_TEMPLATES.find((x) => x.id === templateId) ?? MODEL_IMPORT_TEMPLATES[0],
-    [templateId],
+  const structure = useMemo(
+    () => resolveModelImportStructure(structureId, orgModels),
+    [structureId, orgModels],
   );
 
+  useEffect(() => {
+    if (!open || !orgId) return;
+    void orgModelsApi.list(orgId)
+      .then((r) => setOrgModels(r.data.models ?? []))
+      .catch(() => setOrgModels([]));
+  }, [open, orgId]);
+
   const wizardSteps: WizardStep[] = [
-    { n: 1, label: t('modelImport.stepTemplate', 'Gabarit'), icon: Sparkles },
+    { n: 1, label: t('modelImport.stepStructure', 'Structure'), icon: Sparkles },
     { n: 2, label: t('modelImport.stepSource', 'Fichier'), icon: FileUp },
     { n: 3, label: t('modelImport.stepIdentity', 'Identité'), icon: ScanLine },
     { n: 4, label: t('modelImport.stepClasses', 'Classes'), icon: Box },
     { n: 5, label: t('modelImport.stepConfirm', 'Validation'), icon: CheckCircle2 },
   ];
 
-  const applyTemplate = useCallback((id: ModelTemplateId) => {
-    const tpl = MODEL_IMPORT_TEMPLATES.find((x) => x.id === id) ?? MODEL_IMPORT_TEMPLATES[0];
-    setTemplateId(id);
-    setTask(tpl.task);
-    setAppliesTo(tpl.applies_to);
-    setInputSource(tpl.input_source);
-    setInputSize(tpl.input_size);
-    setClassesRaw(tpl.classes.join(', '));
-    setPositiveRaw(tpl.positive_classes.join(', '));
-    if (tpl.event_type) setEventType(tpl.event_type);
-    if (id !== 'custom') {
-      setLabelFr(tpl.label_fr.replace(/^Gabarit · /, ''));
-      setLabelEn(tpl.label_en.replace(/^Template · /, ''));
-      setDescFr(tpl.description_fr);
-      setModelId((prev) => prev || slugifyModelId(id === 'phone_use' ? 'my_phone' : id === 'seatbelt' ? 'my_seatbelt' : id));
-    }
-  }, []);
+  const applyStructure = useCallback(
+    (id: string) => {
+      const tpl = resolveModelImportStructure(id, orgModels);
+      if (!tpl) return;
+      setStructureId(id);
+      setTask(tpl.task);
+      setAppliesTo(tpl.applies_to);
+      setInputSource(tpl.input_source);
+      setInputSize(tpl.input_size);
+      setClassesRaw(tpl.classes.join(', '));
+      setPositiveRaw(tpl.positive_classes.join(', '));
+      if (tpl.fromOrgModel) {
+        const m = tpl.fromOrgModel;
+        setModelId(`${m.id}_v2`);
+        setLabelFr(m.label_fr);
+        setLabelEn(m.label_en ?? m.label_fr);
+        setEventType(m.event_type);
+        setDescFr(m.human_description_fr ?? m.label_fr);
+      } else if (id === 'custom') {
+        /* keep user-entered identity */
+      } else {
+        setModelId('');
+        setLabelFr('');
+        setLabelEn('');
+        setEventType('');
+        setDescFr('');
+      }
+    },
+    [orgModels],
+  );
 
-  const templateOptions = MODEL_IMPORT_TEMPLATES.map((tpl) => ({
-    value: tpl.id,
-    label: lang === 'fr' ? tpl.label_fr : tpl.label_en,
-    technicalId: tpl.task,
-    technology: lang === 'fr' ? `Portée : ${tpl.applies_to}` : `Scope: ${tpl.applies_to}`,
-    howItWorks: lang === 'fr' ? tpl.description_fr : tpl.description_en,
-    stepUtility:
-      lang === 'fr'
-        ? 'Pré-remplit les champs obligatoires — vous devrez fournir le fichier .onnx correspondant.'
-        : 'Pre-fills required fields — you must supply the matching .onnx file.',
-    group: lang === 'fr' ? 'Gabarits' : 'Templates',
-  }));
+  const structureOptions = useMemo(
+    () => buildModelImportStructureOptions(lang, orgModels),
+    [lang, orgModels],
+  );
 
   const step2Valid =
     sourceMode === 'file'
@@ -166,7 +179,7 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
     try {
       const id = slugifyModelId(modelId);
       const ev = slugifyEventType(eventType);
-      const behavior = template.behavior || `custom:${id}`;
+      const behavior = structure?.behavior || `custom:${id}`;
       const res = await orgModelsApi.upload(orgId, {
         id,
         task,
@@ -177,7 +190,7 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
         applies_to: appliesTo,
         input_source: inputSource,
         input_size: inputSize,
-        capability: template.capability,
+        capability: structure?.capability ?? 'beta',
         behavior,
         classes,
         positive_classes: positive,
@@ -227,7 +240,12 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {step === 1 && (
             <div id="model-import-step1">
-            <ExplanatorySelect value={templateId} onChange={(v) => applyTemplate(v as ModelTemplateId)} options={templateOptions} searchable />
+            <ExplanatorySelect
+              value={structureId}
+              onChange={(v) => applyStructure(v)}
+              options={structureOptions}
+              searchable={structureOptions.length > 6}
+            />
             </div>
           )}
           {step === 2 && (

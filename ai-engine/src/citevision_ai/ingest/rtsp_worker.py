@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
 from typing import Any, Callable
@@ -12,7 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class RTSPWorker:
-    """Reads RTSP frames and feeds them into the pipeline."""
+    """Reads RTSP frames and hands them off to a dedicated inference thread.
+
+    The read loop never calls ``process_fn`` (pipeline + GPU inference) itself —
+    it only decodes frames and pushes them onto a small bounded, drop-oldest
+    queue. A separate consumer thread (started alongside the reader) pulls from
+    that queue and runs ``process_fn``. This means a slow/backed-up GPU never
+    stalls the RTSP socket read: at 10-16 concurrent cameras, inference latency
+    no longer causes stream staleness or ByteTrack fragmentation on the read side.
+    """
 
     def __init__(
         self,
@@ -21,6 +30,7 @@ class RTSPWorker:
         process_fn: Callable[[str, np.ndarray, float], Any],
         reconnect_delay: float = 5.0,
         target_fps: float = 8.0,
+        queue_size: int = 2,
     ) -> None:
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
@@ -30,11 +40,18 @@ class RTSPWorker:
         self._min_interval = 1.0 / self.target_fps
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._infer_thread: threading.Thread | None = None
         self._running = False
+        self._frames_read = 0
         self._frames_processed = 0
+        self._frames_dropped = 0
         self._last_error: str | None = None
         self._fps = 25.0
         self._last_process_ts = 0.0
+        self._last_read_ts = 0.0
+        self._last_infer_start_ts = 0.0
+        self._infer_latency_sec = 0.0
+        self._queue: queue.Queue[tuple[np.ndarray, float]] = queue.Queue(maxsize=max(1, queue_size))
 
     @property
     def is_running(self) -> bool:
@@ -46,6 +63,10 @@ class RTSPWorker:
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True, name=f"rtsp-{self.camera_id}")
         self._thread.start()
+        self._infer_thread = threading.Thread(
+            target=self._infer_loop, daemon=True, name=f"infer-{self.camera_id}",
+        )
+        self._infer_thread.start()
         self._running = True
         logger.info("RTSP worker started for camera %s", self.camera_id)
 
@@ -54,7 +75,10 @@ class RTSPWorker:
         self._running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=10)
+        if self._infer_thread and self._infer_thread.is_alive():
+            self._infer_thread.join(timeout=10)
         self._thread = None
+        self._infer_thread = None
         logger.info("RTSP worker stopped for camera %s", self.camera_id)
 
     def status(self) -> dict[str, Any]:
@@ -63,6 +87,10 @@ class RTSPWorker:
             "rtsp_url": self.rtsp_url,
             "running": self.is_running,
             "frames_processed": self._frames_processed,
+            "frames_read": self._frames_read,
+            "frames_dropped": self._frames_dropped,
+            "queue_depth": self._queue.qsize(),
+            "infer_latency_ms": round(self._infer_latency_sec * 1000, 1),
             "fps": round(self._fps, 2),
             "last_error": self._last_error,
         }
@@ -93,12 +121,24 @@ class RTSPWorker:
                     continue
 
                 now = time.monotonic()
+                self._last_read_ts = now
+                self._frames_read += 1
                 if now - self._last_process_ts < self._min_interval:
                     continue
                 self._last_process_ts = now
 
-                self.process_fn(self.camera_id, frame, self._fps)
-                self._frames_processed += 1
+                # Drop-oldest: never let a slow inference thread back-pressure the
+                # RTSP read loop. A stale queued frame is worse than a fresh one.
+                while True:
+                    try:
+                        self._queue.put_nowait((frame, self._fps))
+                        break
+                    except queue.Full:
+                        try:
+                            self._queue.get_nowait()
+                            self._frames_dropped += 1
+                        except queue.Empty:
+                            pass
             except Exception as exc:
                 self._last_error = str(exc)
                 logger.exception("RTSP worker error for %s", self.camera_id)
@@ -109,6 +149,23 @@ class RTSPWorker:
 
         if cap:
             cap.release()
+
+    def _infer_loop(self) -> None:
+        """Dedicated consumer: pulls queued frames and runs the (GPU-bound)
+        pipeline, fully decoupled from the RTSP read loop above."""
+        while not self._stop.is_set():
+            try:
+                frame, fps = self._queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            try:
+                start = time.monotonic()
+                self._last_infer_start_ts = start
+                self.process_fn(self.camera_id, frame, fps)
+                self._infer_latency_sec = time.monotonic() - start
+                self._frames_processed += 1
+            except Exception:
+                logger.exception("RTSP inference consumer error for %s", self.camera_id)
 
 
 class WorkerManager:

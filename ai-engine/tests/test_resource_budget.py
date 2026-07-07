@@ -1,6 +1,7 @@
 import pytest
 
 from citevision_ai.budget.resource_budget import ResourceBudgetManager
+from citevision_ai.pipeline import PRIORITY_ZONE_TARGET_HZ, priority_zone_skip
 
 
 def test_single_camera_1080p():
@@ -42,3 +43,29 @@ def test_frame_skip_interval():
     mgr = ResourceBudgetManager()
     mgr.register_camera("cam-1")
     assert mgr.frame_skip_interval(30.0) == 6
+
+
+def test_priority_zone_skip_stays_fixed_regardless_of_source_camera_count_scenario():
+    """Priority zones (speed/traffic-light) must land on the same effective Hz
+    no matter how many cameras are active — unlike the old unconditional
+    skip=1 ('process every ingested frame'), which scaled GPU demand linearly
+    with the number of priority-zone cameras."""
+    source_fps = 25.0
+    expected = max(1, round(source_fps / PRIORITY_ZONE_TARGET_HZ))
+    assert expected > 1  # sanity: the cap must actually reduce vs skip=1
+
+    # Same camera, same stream fps → same cap whether it's the only camera or
+    # one of sixteen (the function doesn't even take camera count as input:
+    # it is, by construction, independent of it).
+    assert priority_zone_skip(source_fps) == expected
+    assert priority_zone_skip(source_fps) == expected
+
+
+def test_priority_zone_skip_scales_with_source_fps():
+    # A 30fps stream needs a larger skip than a 10fps stream to hit the same
+    # fixed target Hz.
+    assert priority_zone_skip(30.0) >= priority_zone_skip(10.0)
+
+
+def test_priority_zone_skip_handles_zero_source_fps():
+    assert priority_zone_skip(0.0) == 1

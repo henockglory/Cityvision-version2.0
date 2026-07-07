@@ -133,7 +133,7 @@ func (s *Service) UploadPackage(ctx context.Context, in UploadInput) (*Package, 
 		}
 		pkg.Images = append(pkg.Images, Image{
 			Role: "scene", AssetID: key, URL: s.assetURL(in.OrgID, key),
-			Label: "Vue scène", Mime: "image/jpeg",
+			Label: labelFromMeta(in.Metadata, "scene", "Vue d'ensemble"), Mime: "image/jpeg",
 		})
 	}
 	if in.Subject != nil && in.SubjectSz > 0 {
@@ -143,7 +143,7 @@ func (s *Service) UploadPackage(ctx context.Context, in UploadInput) (*Package, 
 		}
 		img := Image{
 			Role: "subject", AssetID: key, URL: s.assetURL(in.OrgID, key),
-			Label: "Cible détectée", Mime: "image/jpeg",
+			Label: labelFromMeta(in.Metadata, "subject", "Cible détectée"), Mime: "image/jpeg",
 		}
 		if in.Metadata != nil {
 			if bb, ok := in.Metadata["bbox"].(map[string]interface{}); ok {
@@ -159,27 +159,60 @@ func (s *Service) UploadPackage(ctx context.Context, in UploadInput) (*Package, 
 		}
 		pkg.Images = append(pkg.Images, Image{
 			Role: "plate", AssetID: key, URL: s.assetURL(in.OrgID, key),
-			Label: "Plaque arrière", Mime: "image/jpeg",
+			Label: labelFromMeta(in.Metadata, "plate", "Plaque"), Mime: "image/jpeg",
 		})
 	}
 	return pkg, nil
 }
 
 func mapToBBox(m map[string]interface{}) *BBox {
+	if m == nil {
+		return nil
+	}
 	b := &BBox{}
-	if v, ok := m["x"].(float64); ok {
+	if v, ok := toFloat64(m["x"]); ok {
 		b.X = v
 	}
-	if v, ok := m["y"].(float64); ok {
+	if v, ok := toFloat64(m["y"]); ok {
 		b.Y = v
 	}
-	if v, ok := m["width"].(float64); ok {
+	if v, ok := toFloat64(m["width"]); ok {
 		b.Width = v
 	}
-	if v, ok := m["height"].(float64); ok {
+	if v, ok := toFloat64(m["height"]); ok {
 		b.Height = v
 	}
+	if b.Width <= 0 || b.Height <= 0 {
+		return nil
+	}
 	return b
+}
+
+func toFloat64(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	default:
+		return 0, false
+	}
+}
+
+func labelFromMeta(meta map[string]interface{}, role, fallback string) string {
+	if meta == nil {
+		return fallback
+	}
+	if labels, ok := meta["image_labels"].(map[string]interface{}); ok {
+		if lbl, ok := labels[role].(string); ok && lbl != "" {
+			return lbl
+		}
+	}
+	return fallback
 }
 
 func (s *Service) assetURL(orgID uuid.UUID, objectKey string) string {

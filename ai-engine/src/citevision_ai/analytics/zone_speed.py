@@ -11,12 +11,15 @@ the same physical vehicle from re-firing when ByteTrack reassigns track_id.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
+import time
 import uuid
 from typing import Any
 
 from citevision_ai.analytics.zone_geometry import edge_midpoint, resolve_speed_distance_m
+from citevision_ai.evidence.capture import bbox_valid, pick_best_bbox_with_ts
 
 SPEED_BEHAVIOR = "speed_measurement"
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle"}
@@ -33,6 +36,9 @@ EDGE_PAIR_PROXIMITY_NORM = 0.04
 # Opt-in only (behavior_config.demo_dense or CV_DEMO_DENSE=1) — never a prod default.
 DENSE_COOLDOWN_SEC = 5.0
 DENSE_SPATIAL_DEDUP_SEC = 3.0
+LIVE_COOLDOWN_SEC = 2.0
+LIVE_SPATIAL_DEDUP_SEC = 4.0
+LIVE_SPATIAL_DEDUP_DIST = 0.04
 
 
 def _edge_pair_indices(cfg: dict) -> tuple[int, int] | None:
@@ -64,6 +70,12 @@ def _demo_dense_enabled(cfg: dict) -> bool:
     return os.getenv("CV_DEMO_DENSE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _live_traffic_enabled(cfg: dict) -> bool:
+    if cfg.get("live_traffic"):
+        return True
+    return str(cfg.get("traffic_profile", "")).strip().lower() == "live_traffic"
+
+
 def _point_in_polygon(px: float, py: float, polygon: list[dict]) -> bool:
     n = len(polygon)
     if n < 3:
@@ -79,6 +91,16 @@ def _point_in_polygon(px: float, py: float, polygon: list[dict]) -> bool:
             inside = not inside
         j = i
     return inside
+
+
+def _bbox_area_px(bbox: dict) -> float:
+    w = float(bbox.get("width", 0))
+    h = float(bbox.get("height", 0))
+    if w <= 0 or h <= 0:
+        return 0.0
+    if w <= 1 and h <= 1:
+        return w * h
+    return w * h
 
 
 def _track_anchor_norm(
@@ -118,6 +140,9 @@ class ZoneSpeedEngine:
         self._inside: dict[tuple[str, str, int], bool] = {}
         self._cooldown: dict[tuple[str, str, int], float] = {}
         self._recent_spatial: dict[tuple[str, str], list[tuple[float, float, float]]] = {}
+        self._last_bbox: dict[tuple[str, str, int], dict] = {}
+        self._best_bbox: dict[tuple[str, str, int], dict] = {}
+        self._last_class: dict[tuple[str, str, int], str] = {}
 
     def reset_camera(self, camera_id: str) -> None:
         for key in list(self._entry_time):
@@ -125,10 +150,15 @@ class ZoneSpeedEngine:
                 self._entry_time.pop(key, None)
                 self._entry_xy.pop(key, None)
                 self._inside.pop(key, None)
-                self._cooldown.pop(key, None)
+                self._last_bbox.pop(key, None)
+                self._best_bbox.pop(key, None)
+                self._last_class.pop(key, None)
         for key in list(self._recent_spatial):
             if key[0] == camera_id:
                 self._recent_spatial.pop(key, None)
+        for key in list(self._cooldown):
+            if key[0] == camera_id:
+                self._cooldown.pop(key, None)
 
     def camera_has_behavior(self, zones: list[dict] | None) -> bool:
         if not zones:
@@ -183,7 +213,10 @@ class ZoneSpeedEngine:
         frame_h: int,
         now_ts: float,
         iso_ts: str,
+        frame_wall_ts: float | None = None,
     ) -> list[dict[str, Any]]:
+        if frame_wall_ts is None:
+            frame_wall_ts = time.time()
         if not zones:
             return []
         speed_zones = [z for z in zones if str(z.get("behavior", "")) == SPEED_BEHAVIOR]
@@ -210,11 +243,27 @@ class ZoneSpeedEngine:
                 spatial_window = float(cfg.get("spatial_dedup_sec", SPATIAL_DEDUP_SEC) or SPATIAL_DEDUP_SEC)
             except (TypeError, ValueError):
                 spatial_window = SPATIAL_DEDUP_SEC
-            # Dense demo mode: explicit opt-in, or the legacy sub-1 km/h forced path.
-            demo_dense = _demo_dense_enabled(cfg) or (limit > 0 and limit <= 1.0)
+            spatial_dist = SPATIAL_DEDUP_DIST
+            live_traffic = _live_traffic_enabled(cfg)
+            if live_traffic:
+                try:
+                    cooldown_sec = float(cfg.get("cooldown_sec", LIVE_COOLDOWN_SEC) or LIVE_COOLDOWN_SEC)
+                except (TypeError, ValueError):
+                    cooldown_sec = LIVE_COOLDOWN_SEC
+                try:
+                    spatial_window = float(cfg.get("spatial_dedup_sec", LIVE_SPATIAL_DEDUP_SEC) or LIVE_SPATIAL_DEDUP_SEC)
+                except (TypeError, ValueError):
+                    spatial_window = LIVE_SPATIAL_DEDUP_SEC
+                try:
+                    spatial_dist = float(cfg.get("spatial_dedup_dist", LIVE_SPATIAL_DEDUP_DIST) or LIVE_SPATIAL_DEDUP_DIST)
+                except (TypeError, ValueError):
+                    spatial_dist = LIVE_SPATIAL_DEDUP_DIST
+            # Dense demo mode: explicit opt-in only (never auto from speed limit).
+            demo_dense = _demo_dense_enabled(cfg)
             if demo_dense:
                 cooldown_sec = min(cooldown_sec, DENSE_COOLDOWN_SEC)
                 spatial_window = min(spatial_window, DENSE_SPATIAL_DEDUP_SEC)
+                spatial_dist = DENSE_SPATIAL_DEDUP_DIST
             cooldown_sec = max(cooldown_sec, MIN_DWELL_SEC)
 
             edge_pair = _edge_pair_indices(cfg)
@@ -232,10 +281,9 @@ class ZoneSpeedEngine:
                 if int(t.get("track_id", -1)) >= 0
             }
             # Debug: log tracks once per 10s to diagnose no-detection issues
-            import time as _time, logging as _logging
-            _dbg_log = _logging.getLogger(__name__)
+            _dbg_log = logging.getLogger(__name__)
             _debug_key = f"_dbg_{camera_id}_{zone_id}"
-            _now_dbg = _time.monotonic()
+            _now_dbg = time.monotonic()
             _last_dbg = getattr(ZoneSpeedEngine, _debug_key, 0)
             if _now_dbg - _last_dbg > 10:
                 setattr(ZoneSpeedEngine, _debug_key, _now_dbg)
@@ -269,6 +317,13 @@ class ZoneSpeedEngine:
                     continue
                 bbox = track.get("bbox") or {}
                 key = (camera_id, zone_id, tid)
+                if bbox_valid(bbox, min_frac=0.01):
+                    self._last_bbox[key] = {"bbox": dict(bbox), "ts": frame_wall_ts}
+                    self._last_class[key] = cls
+                    prev = self._best_bbox.get(key)
+                    prev_bbox = prev.get("bbox") if prev else None
+                    if prev_bbox is None or _bbox_area_px(bbox) > _bbox_area_px(prev_bbox):
+                        self._best_bbox[key] = {"bbox": dict(bbox), "ts": frame_wall_ts}
 
                 if edge_pair is not None and entry_mid is not None and exit_mid is not None:
                     cx, cy = _track_anchor_norm(bbox, frame_w, frame_h, anchor="bottom")
@@ -299,11 +354,13 @@ class ZoneSpeedEngine:
                                 limit=limit,
                                 cooldown_sec=cooldown_sec,
                                 spatial_window=spatial_window,
+                                spatial_dist=spatial_dist,
                                 frame_w=frame_w,
                                 frame_h=frame_h,
                                 track_lost=False,
                                 demo_dense=demo_dense,
                                 edge_pair_mode=True,
+                                frame_wall_ts=frame_wall_ts,
                             )
                         )
                     continue
@@ -335,11 +392,13 @@ class ZoneSpeedEngine:
                         limit=limit,
                         cooldown_sec=cooldown_sec,
                         spatial_window=spatial_window,
+                        spatial_dist=spatial_dist,
                         frame_w=frame_w,
                         frame_h=frame_h,
                         track_lost=False,
                         demo_dense=demo_dense,
                         edge_pair_mode=False,
+                        frame_wall_ts=frame_wall_ts,
                     )
                 )
 
@@ -355,12 +414,22 @@ class ZoneSpeedEngine:
                 if entry is None or entry_xy is None:
                     self._inside.pop(key, None)
                     continue
+                lost_entry = self._best_bbox.get(key) or self._last_bbox.get(key) or {}
+                lost_bbox = lost_entry.get("bbox", {})
+                lost_cls = self._last_class.get(key, "car")
+                lost_track = {"track_id": tid, "class_name": lost_cls, "bbox": lost_bbox}
+                if not bbox_valid(lost_bbox, min_frac=0.01):
+                    self._inside.pop(key, None)
+                    self._last_bbox.pop(key, None)
+                    self._best_bbox.pop(key, None)
+                    self._last_class.pop(key, None)
+                    continue
                 events.extend(
                     self._finalize_crossing(
                         camera_id,
                         zone_id,
                         tid,
-                        {"track_id": tid, "class_name": "car", "bbox": {}},
+                        lost_track,
                         key,
                         entry_xy=entry_xy,
                         exit_xy=entry_xy,
@@ -372,11 +441,13 @@ class ZoneSpeedEngine:
                         limit=limit,
                         cooldown_sec=cooldown_sec,
                         spatial_window=spatial_window,
+                        spatial_dist=spatial_dist,
                         frame_w=frame_w,
                         frame_h=frame_h,
                         track_lost=True,
                         demo_dense=demo_dense,
                         edge_pair_mode=edge_pair is not None,
+                        frame_wall_ts=lost_entry.get("ts", frame_wall_ts),
                     )
                 )
         return events
@@ -399,15 +470,38 @@ class ZoneSpeedEngine:
         limit: float,
         cooldown_sec: float,
         spatial_window: float,
+        spatial_dist: float,
         frame_w: int,
         frame_h: int,
         track_lost: bool,
         demo_dense: bool = False,
         edge_pair_mode: bool = False,
+        frame_wall_ts: float | None = None,
     ) -> list[dict[str, Any]]:
         self._inside[key] = False
         self._entry_time.pop(key, None)
         self._entry_xy.pop(key, None)
+        best_entry = self._best_bbox.get(key)
+        last_entry = self._last_bbox.get(key)
+        best_track_bbox, best_bbox_ts = pick_best_bbox_with_ts(
+            [
+                (track.get("bbox"), frame_wall_ts),
+                (best_entry.get("bbox") if best_entry else None, best_entry.get("ts") if best_entry else None),
+                (last_entry.get("bbox") if last_entry else None, last_entry.get("ts") if last_entry else None),
+            ],
+            frame_w,
+            frame_h,
+            min_frac=0.02,
+        )
+        self._last_bbox.pop(key, None)
+        self._best_bbox.pop(key, None)
+        self._last_class.pop(key, None)
+        if best_track_bbox:
+            track = {**track, "bbox": best_track_bbox}
+        elif not bbox_valid(track.get("bbox") or {}, min_frac=0.02):
+            return []
+        else:
+            best_bbox_ts = frame_wall_ts
         if entry is None or entry_xy is None:
             return []
 
@@ -441,34 +535,36 @@ class ZoneSpeedEngine:
         if exit_xy is not None and not track_lost:
             emit_x = (entry_xy[0] + exit_xy[0]) / 2
             emit_y = (entry_xy[1] + exit_xy[1]) / 2
-        # Dense demo: skip spatial dedup — same-lane traffic shares exit coordinates;
-        # position dedup would collapse many distinct vehicles into one alert.
-        if not demo_dense and self._spatial_duplicate(
-            camera_id, zone_id, emit_x, emit_y, now_ts, spatial_window, SPATIAL_DEDUP_DIST,
+        spatial_dist = spatial_dist if spatial_dist > 0 else (DENSE_SPATIAL_DEDUP_DIST if demo_dense else SPATIAL_DEDUP_DIST)
+        if self._spatial_duplicate(
+            camera_id, zone_id, emit_x, emit_y, now_ts, spatial_window, spatial_dist,
         ):
             return []
 
-        last = self._cooldown.get(key, -9999.0)
+        track_key = (camera_id, zone_id, tid)
+        last = self._cooldown.get(track_key, -9999.0)
         if (now_ts - last) < cooldown_sec:
             return []
 
-        self._cooldown[key] = now_ts
+        self._cooldown[track_key] = now_ts
         self._record_spatial_emit(camera_id, zone_id, emit_x, emit_y, now_ts, spatial_window)
-        return [
-            self._make_speeding_event(
-                camera_id,
-                track,
-                zone_id,
-                speed_kmh,
-                limit,
-                distance_m,
-                elapsed,
-                iso_ts,
-                method or ("track_lost_timing" if track_lost else "edge_path_timing"),
-                frame_w,
-                frame_h,
-            )
-        ]
+        ev = self._make_speeding_event(
+            camera_id,
+            track,
+            zone_id,
+            speed_kmh,
+            limit,
+            distance_m,
+            elapsed,
+            iso_ts,
+            method or ("track_lost_timing" if track_lost else "edge_path_timing"),
+            frame_w,
+            frame_h,
+            bbox_ts=best_bbox_ts,
+        )
+        if not ev:
+            return []
+        return [ev]
 
     @staticmethod
     def _make_speeding_event(
@@ -483,6 +579,7 @@ class ZoneSpeedEngine:
         method: str,
         frame_w: int = 1920,
         frame_h: int = 1080,
+        bbox_ts: float | None = None,
     ) -> dict[str, Any]:
         raw = track.get("bbox") or {}
         x, y = float(raw.get("x", 0)), float(raw.get("y", 0))
@@ -495,8 +592,10 @@ class ZoneSpeedEngine:
                 "width": max(0.0, min(1.0, bw / fw)),
                 "height": max(0.0, min(1.0, bh / fh)),
             }
-        else:
+        elif bbox_valid(raw, min_frac=0.02):
             bbox = raw
+        else:
+            return {}
         return {
             "event_id": str(uuid.uuid4()),
             "camera_id": camera_id,
@@ -507,6 +606,7 @@ class ZoneSpeedEngine:
             "class_name": track.get("class_name"),
             "zone_id": zone_id,
             "bbox": bbox,
+            "bbox_ts": bbox_ts,
             "speed_kmh": round(speed_kmh, 1),
             "confidence": 0.85,
             "severity": "high",

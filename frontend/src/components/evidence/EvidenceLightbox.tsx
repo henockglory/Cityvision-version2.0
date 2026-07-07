@@ -3,6 +3,7 @@ import { Download, ZoomIn } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Modal from '@/components/ui/Modal';
 import type { EvidenceBBox } from '@/lib/evidence';
+import { isValidEvidenceBBox } from '@/lib/evidence';
 import { useEvidenceMediaUrl } from '@/hooks/useEvidenceMediaUrl';
 import { EvidenceImage } from './EvidenceMedia';
 
@@ -39,7 +40,7 @@ export default function EvidenceLightbox({ apiUrl, alt, bbox, onClose }: Evidenc
       maxWidth="2xl"
       className="!max-w-3xl !p-4 sm:!p-5"
       footerLeft={
-        bbox ? (
+        isValidEvidenceBBox(bbox) ? (
           <span className="text-xs text-cv-muted">
             {t('evidence.bboxHint', { defaultValue: 'Cadre bleu = zone détectée' })}
           </span>
@@ -70,7 +71,7 @@ export default function EvidenceLightbox({ apiUrl, alt, bbox, onClose }: Evidenc
             alt={alt}
             className="block max-h-[min(70vh,520px)] max-w-full w-auto h-auto object-contain mx-auto"
           />
-          {bbox && <BboxOverlay bbox={bbox} />}
+          {isValidEvidenceBBox(bbox) && <BboxOverlay bbox={bbox!} />}
         </div>
       </div>
     </Modal>
@@ -94,7 +95,7 @@ export function EvidenceImageTile({ apiUrl, label, bbox, onOpen }: EvidenceImage
       aria-label={t('evidence.openPreview', { label, defaultValue: `Aperçu : ${label}` })}
     >
       <EvidenceImage apiUrl={apiUrl} alt={label} />
-      {bbox && <BboxOverlay bbox={bbox} />}
+      {isValidEvidenceBBox(bbox) && <BboxOverlay bbox={bbox!} />}
       <span className="absolute bottom-0 inset-x-0 bg-black/75 px-2 py-1.5 text-[11px] text-white flex items-center justify-between gap-2">
         <span className="truncate">{label}</span>
         <ZoomIn className="w-3.5 h-3.5 shrink-0 opacity-70 group-hover:opacity-100" />

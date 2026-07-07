@@ -98,7 +98,8 @@
             "severity": "high"
           }
         }
-      ]
+      ],
+      "dedup_key_fields": ["camera_id", "zone_id", "track_id"]
     },
     "role_summary_fr": "Alerte vitesse avancée avec calcul homographique précis et capture de la plaque.",
     "deployment_scopes": [

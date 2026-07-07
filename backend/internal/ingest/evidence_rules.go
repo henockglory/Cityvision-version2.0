@@ -89,7 +89,8 @@ func defaultEvidencePolicy() map[string]interface{} {
 		"clip_seconds": 6,
 		"images": []map[string]interface{}{
 			{"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
-			{"role": "subject", "label": "Cible détectée", "crop": "full", "padding_pct": 10, "zoom": 1.0},
+			{"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 12, "zoom": 1.0},
+			{"role": "plate", "label": "Plaque", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8},
 		},
 		"min_confidence": 0.0,
 	}

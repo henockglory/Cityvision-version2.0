@@ -46,6 +46,7 @@ async def lifespan(app: FastAPI):
         conf_threshold=settings.yolo_confidence,
         iou_threshold=settings.yolo_iou,
         device=settings.yolo_device,
+        max_batch_size=settings.batch_size,
     )
     detector.load()
 
@@ -220,17 +221,34 @@ def hardware_profile_endpoint() -> dict:
 
 
 @app.get("/health/gpu")
-def health_gpu() -> dict[str, str | float | bool]:
+def health_gpu() -> dict[str, Any]:
     if pipeline is None or not pipeline.detector.is_loaded:
         raise HTTPException(status_code=503, detail="YOLO not loaded")
     fps = pipeline.detector.benchmark_fps(30)
     cuda = bool(pipeline.detector.uses_cuda)
+    # benchmark_fps is a synthetic mono-stream measurement (model's raw per-call
+    # throughput). The fields below report the *actual* multi-camera load the
+    # shared GPU is under right now, so /health/gpu reflects real conditions
+    # instead of only a single-flow synthetic number.
+    cam_statuses = worker_manager.list_status() if worker_manager else []
+    queue_depths = [c["queue_depth"] for c in cam_statuses if "queue_depth" in c]
+    latencies_ms = [c["infer_latency_ms"] for c in cam_statuses if c.get("infer_latency_ms")]
+    total_dropped = sum(c.get("frames_dropped", 0) for c in cam_statuses)
     return {
         "provider": pipeline.detector.active_provider,
         "cuda": cuda,
         "benchmark_fps": round(fps, 1),
         "min_fps": settings.yolo_min_fps,
         "pass": fps >= settings.yolo_min_fps or not cuda,
+        "active_cameras": pipeline.budget.camera_count,
+        "microbatch_enabled": pipeline.detector._microbatch_enabled,
+        "batch_window_ms": round(pipeline.detector._batch_window_sec * 1000, 1),
+        "max_batch_size": pipeline.detector._max_batch_size,
+        "avg_queue_depth": round(sum(queue_depths) / len(queue_depths), 2) if queue_depths else 0,
+        "max_queue_depth": max(queue_depths) if queue_depths else 0,
+        "total_frames_dropped": total_dropped,
+        "avg_infer_latency_ms": round(sum(latencies_ms) / len(latencies_ms), 1) if latencies_ms else 0,
+        "max_infer_latency_ms": round(max(latencies_ms), 1) if latencies_ms else 0,
     }
 
 

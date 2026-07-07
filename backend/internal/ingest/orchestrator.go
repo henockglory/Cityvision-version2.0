@@ -660,8 +660,68 @@ func parseZoneBehavior(raw json.RawMessage, zoneKind string) (string, map[string
 	return behavior, cfg
 }
 
-// applyRuleSpeedLimitsToZones overlays speed_limit_kmh from enabled speeding rules
-// (bindings.speed_kmh + zone_name) so the AI zone engine uses the same threshold as the UI rule.
+// extractZoneNameFromCondition recursively searches a rule's condition tree for an
+// `eq` clause on `zone_id` (used by rules that bind the zone via their condition rather
+// than an explicit `bindings.zone_name`, e.g. rules built/edited through the Studio
+// with a compound AND condition).
+func extractZoneNameFromCondition(cond map[string]interface{}) string {
+	if cond == nil {
+		return ""
+	}
+	if field, _ := cond["field"].(string); field == "zone_id" {
+		if op, _ := cond["op"].(string); op == "eq" || op == "" {
+			if v, ok := cond["value"].(string); ok && v != "" {
+				return v
+			}
+		}
+	}
+	if children, ok := cond["children"].([]interface{}); ok {
+		for _, c := range children {
+			if cm, ok := c.(map[string]interface{}); ok {
+				if v := extractZoneNameFromCondition(cm); v != "" {
+					return v
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// resolveRuleZoneName finds the zone a speed rule targets: explicit `bindings.zone_name`
+// first, then a `zone_id` equality inside the rule condition tree, then — for speed
+// rules scoped to a single camera with exactly one speed_measurement zone — that zone.
+// This keeps rules created/edited via the Studio (which may omit `zone_name`) in sync
+// with the AI zone engine instead of silently skipping the live-traffic/limit overlay.
+func resolveRuleZoneName(def map[string]interface{}, bindings map[string]interface{}, isSpeed bool, zones []map[string]interface{}) string {
+	if zoneName, _ := bindings["zone_name"].(string); zoneName != "" {
+		return zoneName
+	}
+	if cond, ok := def["condition"].(map[string]interface{}); ok {
+		if v := extractZoneNameFromCondition(cond); v != "" {
+			return v
+		}
+	}
+	if !isSpeed {
+		return ""
+	}
+	speedZone := ""
+	count := 0
+	for _, z := range zones {
+		if behavior, _ := z["behavior"].(string); behavior == "speed_measurement" {
+			count++
+			name, _ := z["name"].(string)
+			speedZone = name
+		}
+	}
+	if count == 1 {
+		return speedZone
+	}
+	return ""
+}
+
+// applyRuleSpeedLimitsToZones overlays speed_limit_kmh and live-traffic tuning from enabled
+// speeding rules (bindings + zone_name, or a zone_id condition fallback) so the AI zone
+// engine matches the UI rule.
 func (o *Orchestrator) applyRuleSpeedLimitsToZones(
 	ctx context.Context,
 	orgID, cameraID uuid.UUID,
@@ -676,7 +736,16 @@ func (o *Orchestrator) applyRuleSpeedLimitsToZones(
 	defer rows.Close()
 
 	camStr := cameraID.String()
-	zoneLimits := map[string]float64{}
+	type zoneOverlay struct {
+		limit       float64
+		hasLimit    bool
+		cooldown    float64
+		hasCooldown bool
+		spatialSec  float64
+		hasSpatial  bool
+		liveTraffic bool
+	}
+	overlays := map[string]zoneOverlay{}
 	for rows.Next() {
 		var defRaw []byte
 		if err := rows.Scan(&defRaw); err != nil {
@@ -693,20 +762,49 @@ func (o *Orchestrator) applyRuleSpeedLimitsToZones(
 		if bindings == nil {
 			continue
 		}
-		zoneName, _ := bindings["zone_name"].(string)
+		tplID, _ := bindings["template_id"].(string)
+		isSpeed := tplID == "tpl-speeding-premium" || tplID == "tpl-speed-threshold"
+		zoneName := resolveRuleZoneName(def, bindings, isSpeed, zones)
 		if zoneName == "" {
 			continue
 		}
-		limit, ok := toFloat64(bindings["speed_kmh"])
-		if !ok || limit <= 0 {
-			continue
+		limit, hasLimit := toFloat64(bindings["speed_kmh"])
+		if !hasLimit || limit <= 0 {
+			if !isSpeed {
+				continue
+			}
 		}
-		// Lowest active limit wins when multiple rules target the same zone.
-		if prev, exists := zoneLimits[zoneName]; !exists || limit < prev {
-			zoneLimits[zoneName] = limit
+		ov := overlays[zoneName]
+		if hasLimit && limit > 0 {
+			if !ov.hasLimit || limit < ov.limit {
+				ov.limit = limit
+			}
+			ov.hasLimit = true
 		}
+		if v, ok := toFloat64(bindings["cooldown_sec"]); ok && v > 0 {
+			if !ov.hasCooldown || v < ov.cooldown {
+				ov.cooldown = v
+			}
+			ov.hasCooldown = true
+		}
+		if v, ok := toFloat64(bindings["spatial_dedup_sec"]); ok && v > 0 {
+			if !ov.hasSpatial || v < ov.spatialSec {
+				ov.spatialSec = v
+			}
+			ov.hasSpatial = true
+		}
+		if bindings["live_traffic"] == true {
+			ov.liveTraffic = true
+		}
+		if s, ok := bindings["traffic_profile"].(string); ok && strings.EqualFold(strings.TrimSpace(s), "live_traffic") {
+			ov.liveTraffic = true
+		}
+		if isSpeed && !ov.liveTraffic {
+			ov.liveTraffic = true
+		}
+		overlays[zoneName] = ov
 	}
-	if len(zoneLimits) == 0 {
+	if len(overlays) == 0 {
 		return
 	}
 	for _, z := range zones {
@@ -714,7 +812,7 @@ func (o *Orchestrator) applyRuleSpeedLimitsToZones(
 		if name == "" {
 			name, _ = z["zone_id"].(string)
 		}
-		limit, ok := zoneLimits[name]
+		ov, ok := overlays[name]
 		if !ok {
 			continue
 		}
@@ -722,7 +820,25 @@ func (o *Orchestrator) applyRuleSpeedLimitsToZones(
 		if cfg == nil {
 			cfg = map[string]interface{}{}
 		}
-		cfg["speed_limit_kmh"] = limit
+		if ov.hasLimit {
+			cfg["speed_limit_kmh"] = ov.limit
+		}
+		if ov.hasCooldown {
+			cfg["cooldown_sec"] = ov.cooldown
+		}
+		if ov.hasSpatial {
+			cfg["spatial_dedup_sec"] = ov.spatialSec
+		}
+		if ov.liveTraffic {
+			cfg["live_traffic"] = true
+			if !ov.hasCooldown {
+				cfg["cooldown_sec"] = 2.0
+			}
+			if !ov.hasSpatial {
+				cfg["spatial_dedup_sec"] = 4.0
+			}
+			cfg["spatial_dedup_dist"] = 0.04
+		}
 		z["behavior_config"] = cfg
 	}
 }

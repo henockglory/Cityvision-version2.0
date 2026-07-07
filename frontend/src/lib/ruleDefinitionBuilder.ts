@@ -147,16 +147,30 @@ export function buildConfiguredDefinition(
   }
   if (options?.demo) meta.demo = true;
 
+  const speedTemplates = new Set(['tpl-speeding-premium', 'tpl-speed-threshold']);
+  if (speedTemplates.has(tpl.id)) {
+    meta.live_traffic = true;
+    meta.cooldown_sec = 2;
+    meta.spatial_dedup_sec = 4;
+    meta.traffic_profile = 'live_traffic';
+  }
+
   const actions = cfg.actions?.length
     ? cfg.actions
     : (def.actions as Array<{ type: string; config: Record<string, unknown> }> | undefined);
 
-  return {
+  const out: Record<string, unknown> = {
     ...def,
     camera_id: cfg.cameraId,
     bindings: meta,
     actions: actions ?? [{ type: 'alert', config: { severity: tpl.severity ?? 'medium' } }],
   };
+
+  if (speedTemplates.has(tpl.id)) {
+    out.dedup_key_fields = ['camera_id', 'zone_id', 'track_id'];
+  }
+
+  return out;
 }
 
 export function activationConfigFromValues(
