@@ -69,6 +69,31 @@ class Settings(BaseSettings):
     paddleocr_model_dir: str = ""
     ai_require_all_models: bool = True
 
+    # Segment cycle mode (Phase A — disabled): empty = all cameras use live RTSP.
+    # Comma-separated camera UUIDs to opt-in to record→replay cycles (not recommended).
+    segment_mode_camera_ids: str = ""
+    segment_record_sec: float = 10.0
+    segment_process_budget_sec: float = 5.0
+    segment_ingest_fps: float = 12.0
+
+    # Unified pipeline: AI reads camera RTSP for analytics. Live preview uses go2rtc pull
+    # (ffmpeg RTSP publish to go2rtc :8554 is unreliable on go2rtc 1.9.x).
+    unified_pipeline: bool = True
+    go2rtc_publish_enabled: bool = False
+    burn_in_overlay: bool = True
+    go2rtc_rtsp_host: str = "127.0.0.1"
+    go2rtc_rtsp_port: int = 8554
+    go2rtc_publish_max_width: int = 1280
+    go2rtc_publish_fps: float = 15.0
+
+    # Frigate media plane (off by default — see docs/FRIGATE-INTEGRATION.md)
+    frigate_enabled: bool = False
+    frigate_live: bool = False
+    frigate_evidence: bool = False
+    frigate_url: str = "http://127.0.0.1:5000"
+    frigate_plate_ocr: bool = True
+    evidence_backend: str = "ring_buffer"  # ring_buffer | frigate | hybrid
+
     postgres_host: str = "localhost"
     postgres_port: int = 5433
     redis_host: str = "localhost"
@@ -90,6 +115,12 @@ class Settings(BaseSettings):
             object.__setattr__(self, "batch_size", self.cv_batch_size)
         if self.cv_inference_backend:
             object.__setattr__(self, "yolo_device", self.cv_inference_backend)
+
+    def parsed_segment_mode_camera_ids(self) -> frozenset[str]:
+        raw = self.segment_mode_camera_ids.strip()
+        if not raw:
+            return frozenset()
+        return frozenset(x.strip() for x in raw.split(",") if x.strip())
 
     def resolved_yolo_path(self) -> Path:
         p = Path(self.yolo_model_path)

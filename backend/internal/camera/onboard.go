@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -84,6 +85,11 @@ func parseFrameRate(rate string) float64 {
 	return num / den
 }
 
+func unifiedPipelineEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("UNIFIED_PIPELINE")))
+	return v == "" || v == "1" || v == "true" || v == "yes"
+}
+
 // OnboardCamera registers go2rtc stream and enriches camera metadata.
 func OnboardCamera(ctx context.Context, cam *models.Camera, rtspURL string) error {
 	if cam == nil || rtspURL == "" {
@@ -106,6 +112,35 @@ func OnboardCamera(ctx context.Context, cam *models.Camera, rtspURL string) erro
 		return fmt.Errorf("video probe failed: %w", probeErr)
 	}
 	meta["stream_stats"] = stats
+
+	if unifiedPipelineEnabled() {
+		// go2rtc 1.9.x rejects ffmpeg RTSP publish (RECORD → broken pipe after ~1 frame).
+		// Live preview: go2rtc pulls camera RTSP (HEVC→H264 transcode when needed).
+		// AI ingests RTSP separately for analytics / evidence.
+		regURL := Go2RTCSourceForRTSP(rtspURL, stats)
+		if regURL != rtspURL {
+			meta["transcode"] = true
+		} else {
+			delete(meta, "transcode")
+		}
+		_ = go2.UnregisterStream(ctx, streamName)
+		if _, err := go2.RegisterStream(ctx, streamName, regURL); err != nil {
+			meta["onboard_error"] = err.Error()
+			meta["stream_ready"] = false
+			delete(meta, "go2rtc_src")
+			raw, _ := json.Marshal(meta)
+			cam.Metadata = raw
+			return fmt.Errorf("go2rtc register failed: %w", err)
+		}
+		meta["pipeline_mode"] = "pull"
+		meta["go2rtc_src"] = streamName
+		meta["stream_ready"] = true
+		delete(meta, "onboard_error")
+		raw, _ := json.Marshal(meta)
+		cam.Metadata = raw
+		return nil
+	}
+
 	regURL := Go2RTCSourceForRTSP(rtspURL, stats)
 	if regURL != rtspURL {
 		meta["transcode"] = true

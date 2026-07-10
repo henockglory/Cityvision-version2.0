@@ -3,6 +3,7 @@ package camera
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -92,6 +93,7 @@ func ProbeCredentials(ctx context.Context, req ProbeRequest, timeout time.Durati
 	result := ProbeResult{Host: req.Host, Candidates: make([]ProbeCandidate, 0, len(paths))}
 
 	var best *ProbeCandidate
+	var unreachableTimeouts int
 	for _, p := range paths {
 		select {
 		case <-ctx.Done():
@@ -102,6 +104,11 @@ func ProbeCredentials(ctx context.Context, req ProbeRequest, timeout time.Durati
 
 		url := BuildRTSPURL(p.Vendor, req.Host, req.Port, req.Channel, req.Username, req.Password, p.Path, p.Profile)
 		test := TestStream(ctx, url, timeout)
+		if !test.Reachable && isProbeHostUnreachable(test.Error) {
+			unreachableTimeouts++
+		} else {
+			unreachableTimeouts = 0
+		}
 		cand := ProbeCandidate{
 			Vendor:    p.Vendor,
 			Profile:   p.Profile,
@@ -118,6 +125,9 @@ func ProbeCredentials(ctx context.Context, req ProbeRequest, timeout time.Durati
 			copy := cand
 			best = &copy
 			// Chemin vidéo validé — pas besoin d'essayer les autres URLs
+			break
+		}
+		if unreachableTimeouts >= 2 {
 			break
 		}
 	}
@@ -162,4 +172,15 @@ func ValidateProbe(req ProbeRequest) error {
 		return fmt.Errorf("username is required")
 	}
 	return nil
+}
+
+func isProbeHostUnreachable(errMsg string) bool {
+	if errMsg == "" {
+		return false
+	}
+	lower := strings.ToLower(errMsg)
+	return strings.Contains(lower, "timeout") ||
+		strings.Contains(lower, "no route") ||
+		strings.Contains(lower, "network is unreachable") ||
+		strings.Contains(lower, "connection refused")
 }

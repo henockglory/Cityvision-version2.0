@@ -275,6 +275,22 @@ func (o *Orchestrator) clearActiveIngest() {
 	}
 }
 
+// DropCamera stops AI ingest for one camera and clears local orchestrator state (best-effort).
+func (o *Orchestrator) DropCamera(ctx context.Context, cameraID uuid.UUID) {
+	o.mu.Lock()
+	wasActive := o.active[cameraID]
+	delete(o.active, cameraID)
+	delete(o.configHash, cameraID)
+	delete(o.failNext, cameraID)
+	o.mu.Unlock()
+	if !wasActive {
+		return
+	}
+	stopCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_ = o.ai.StopCamera(stopCtx, cameraID.String())
+}
+
 // InvalidateConfigHashes forces the next sync tick to re-push spatial/rules to the AI
 // engine for every active camera (hot-reload), without stopping ingest workers.
 func (o *Orchestrator) InvalidateConfigHashes() {
@@ -1056,6 +1072,10 @@ func (o *Orchestrator) mergeAnalyticsThresholds(ctx context.Context, orgID, came
 		}
 	}
 	return merged
+}
+
+func RuleAppliesToCamera(def map[string]interface{}, cameraID string) bool {
+	return ruleAppliesToCamera(def, cameraID)
 }
 
 func ruleAppliesToCamera(def map[string]interface{}, cameraID string) bool {

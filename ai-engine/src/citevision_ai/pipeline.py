@@ -4,6 +4,7 @@ import copy
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -20,11 +21,17 @@ from citevision_ai.analytics.scene_correlation import SceneCorrelationEngine
 from citevision_ai.analytics.state import StateEngine
 from citevision_ai.evidence.config import EVIDENCE_WORTHY_TYPES
 from citevision_ai.evidence.gate import default_evidence_policy
-from citevision_ai.evidence.capture import bbox_valid, normalize_bbox, pick_best_bbox_with_ts
+from citevision_ai.evidence.capture import (
+    bbox_valid,
+    normalize_bbox,
+    pick_best_bbox_with_ts,
+    resolve_emission_track_bbox,
+)
 from citevision_ai.behavior.heuristics import BEHAVIOR_EVENT_TYPES, BehaviorHeuristics
 from citevision_ai.budget.resource_budget import ResourceBudgetManager
 from citevision_ai.detection.yolo_onnx import YoloOnnxDetector
 from citevision_ai.events.generator import EventGenerator
+from citevision_ai.evidence.segment_replay_cache import SegmentReplayCache
 from citevision_ai.evidence.service import EvidenceCaptureService
 from citevision_ai.identity.face import FaceIdentityEngine
 from citevision_ai.identity.plate import PlateIdentityEngine
@@ -32,9 +39,49 @@ from citevision_ai.road_enforcement.detector import RoadEnforcementEngine
 from citevision_ai.road_enforcement.traffic_light import TrafficLightEngine
 from citevision_ai.secondary.inference import SecondaryInferenceEngine
 from citevision_ai.analytics.zone_speed import ZoneSpeedEngine
+from citevision_ai.config import settings
+from citevision_ai.evidence.segment_align import (
+    read_segment_frame_bgr,
+    read_segment_frame_by_index,
+    segment_pts_from_bbox_ts,
+    segment_pts_from_frame_index,
+)
+from citevision_ai.ingest.timeline import FrameTimeline, SegmentCaptureContext
+from citevision_ai.live.burn_in import draw_overlay_boxes
 from citevision_ai.models.schemas import BBox, Detection, DetectionFrame
 from citevision_ai.mqtt.publisher import MqttPublisher
 from citevision_ai.tracking.bytetrack import ByteTracker
+
+OVERLAY_MIN_CONF = 0.5
+OVERLAY_MIN_AREA_FRAC = 0.00035
+OVERLAY_MAX_TRACKS = 16
+
+
+def build_overlay_detections(
+    track_dicts: list[dict[str, Any]], width: int, height: int, *, max_coast: int = 0,
+) -> list[dict[str, Any]]:
+    """Active tracks for live UI overlay; optional brief coasting between inference frames."""
+    area_frame = max(1, width * height)
+    candidates: list[dict[str, Any]] = []
+    for td in track_dicts:
+        if int(td.get("time_since_update", 0)) > max_coast:
+            continue
+        if float(td.get("confidence", 0)) < OVERLAY_MIN_CONF:
+            continue
+        bb = td.get("bbox") or {}
+        area = float(bb.get("width", 0)) * float(bb.get("height", 0))
+        if area / area_frame < OVERLAY_MIN_AREA_FRAC:
+            continue
+        candidates.append({
+            "track_id": td["track_id"],
+            "class_id": td.get("class_id", 0),
+            "class_name": td.get("class_name", "object"),
+            "confidence": td["confidence"],
+            "bbox": dict(bb),
+            "metadata": td.get("metadata") or {},
+        })
+    candidates.sort(key=lambda d: float(d["confidence"]), reverse=True)
+    return candidates[:OVERLAY_MAX_TRACKS]
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +139,8 @@ class PipelineService:
         self.secondary = SecondaryInferenceEngine(device=os.environ.get("YOLO_DEVICE", "cuda"))
         self.secondary.load()
         self.evidence = EvidenceCaptureService()
+        self._segment_replay_cache = SegmentReplayCache()
+        self.evidence.set_segment_replay_cache(self._segment_replay_cache)
         self._calibrations: dict[str, CalibrationEngine] = {}
         self._trackers: dict[str, ByteTracker] = {}
         self._frame_counters: dict[str, int] = {}
@@ -107,6 +156,33 @@ class PipelineService:
         self._spatial_behavior_fp: dict[str, str] = {}
         self._frame_shape: dict[str, tuple[int, int]] = {}
         self._blur_streak: dict[str, int] = {}
+        self._latest_detection_payload: dict[str, dict[str, Any]] = {}
+        self._detection_broadcaster: Any | None = None
+        self._tracker_lock = threading.RLock()
+        self._burn_in_enabled: dict[str, bool] = {}
+
+    def set_burn_in_enabled(self, camera_id: str, enabled: bool) -> None:
+        self._burn_in_enabled[camera_id] = enabled
+
+    def is_burn_in_enabled(self, camera_id: str) -> bool:
+        if camera_id in self._burn_in_enabled:
+            return self._burn_in_enabled[camera_id]
+        return settings.burn_in_overlay
+
+    def burn_in_frame(self, camera_id: str, frame: np.ndarray) -> np.ndarray:
+        if not settings.burn_in_overlay or not self.is_burn_in_enabled(camera_id):
+            return frame
+        with self._tracker_lock:
+            tracker = self._trackers.get(camera_id)
+            if tracker is None:
+                return frame
+            h, w = frame.shape[:2]
+            tracks = tracker.overlay_snapshot(max_coast=1, predict_steps=0.0)
+            dets = build_overlay_detections(tracks, w, h, max_coast=1)
+        return draw_overlay_boxes(frame, dets)
+
+    def set_detection_broadcaster(self, broadcaster: Any | None) -> None:
+        self._detection_broadcaster = broadcaster
 
     def register_camera(self, camera_id: str, spatial_config: dict[str, Any] | None = None) -> None:
         if camera_id not in self._trackers:
@@ -138,6 +214,20 @@ class PipelineService:
 
     def set_capability_profiles(self, camera_id: str, profiles: list[dict[str, Any]] | None) -> None:
         self._capability_profiles[camera_id] = list(profiles or [])
+
+    def get_latest_detections(self, camera_id: str) -> dict[str, Any]:
+        """Last MQTT detection payload for live UI overlay — no extra inference."""
+        cached = self._latest_detection_payload.get(camera_id)
+        if cached:
+            return cached
+        w, h = self._frame_shape.get(camera_id, (0, 0))
+        return {
+            "camera_id": camera_id,
+            "timestamp": None,
+            "frame_id": 0,
+            "resolution": {"width": w, "height": h} if w and h else None,
+            "detections": [],
+        }
 
     def _profile_has_capability(self, profile: dict[str, Any], capability: str) -> bool:
         caps = profile.get("capabilities")
@@ -222,6 +312,20 @@ class PipelineService:
         self._capability_profiles.pop(camera_id, None)
         self.evidence.clear_camera(camera_id)
         self.plate_engine.reset_camera(camera_id)
+
+    def begin_segment_replay(self, camera_id: str) -> None:
+        """Fresh tracker + zone-speed state for each offline segment replay."""
+        self._segment_replay_cache.clear_camera(camera_id)
+        self._trackers.pop(camera_id, None)
+        self._frame_counters[camera_id] = 0
+        self.zone_speed.reset_camera(camera_id)
+        self.plate_engine.reset_camera(camera_id)
+        to_drop = [k for k in self._bbox_history if k[0] == camera_id]
+        for k in to_drop:
+            self._bbox_history.pop(k, None)
+        to_drop_h = [k for k in self._track_history if k[0] == camera_id]
+        for k in to_drop_h:
+            self._track_history.pop(k, None)
 
     def apply_runtime_config(self, camera_id: str, config: dict[str, Any]) -> None:
         self._runtime_config[camera_id] = dict(config)
@@ -407,14 +511,24 @@ class PipelineService:
         camera_id: str,
         frame: np.ndarray,
         source_fps: float = 30.0,
+        *,
+        timeline: FrameTimeline | None = None,
+        segment_ctx: SegmentCaptureContext | None = None,
+        capture_wall_ts: float | None = None,
+        publish_frame_index: int | None = None,
     ) -> DetectionFrame:
         frame_id = self._frame_counters.get(camera_id, 0)
         self._frame_counters[camera_id] = frame_id + 1
         self.state_engine.set_fps(source_fps)
-        now_ts = time.monotonic()
-        frame_wall_ts = time.time()
+        now_ts = timeline.monotonic if timeline else time.monotonic()
+        frame_wall_ts = timeline.wall if timeline else (capture_wall_ts or time.time())
         self._timestamps[camera_id] = now_ts
-        self.evidence.push_frame(camera_id, frame)
+        if segment_ctx is not None:
+            self._segment_replay_cache.store(
+                camera_id, segment_ctx.cycle_id, segment_ctx.frame_index, frame,
+            )
+        if camera_id not in settings.parsed_segment_mode_camera_ids():
+            self.evidence.push_frame(camera_id, frame)
         rt = self._runtime_for(camera_id)
         if rt.get("duration_seconds"):
             self.state_engine.dwell_threshold_sec = float(rt["duration_seconds"])
@@ -443,9 +557,14 @@ class PipelineService:
                     evt["org_id"] = self._org_ids[camera_id]
                 self.mqtt.publish_event(camera_id, evt)
             h, w = frame.shape[:2]
+            self._frame_shape[camera_id] = (w, h)
+            self._publish_overlay_predict(
+                camera_id, frame_id, w, h, capture_wall_ts, frame_wall_ts, skip,
+                publish_frame_index=publish_frame_index,
+            )
             return DetectionFrame(
                 camera_id=camera_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.fromtimestamp(frame_wall_ts, tz=timezone.utc).isoformat(),
                 frame_id=frame_id,
                 width=w,
                 height=h,
@@ -465,12 +584,17 @@ class PipelineService:
             b["height"] *= scale_y
 
         tracker = self._trackers.setdefault(camera_id, ByteTracker(min_hits=1))
-        tracks = tracker.update(raw_dets)
+        with self._tracker_lock:
+            tracks = tracker.update(raw_dets)
         track_dicts = []
         calib = self._calibrations.get(camera_id, CalibrationEngine())
         h, w = frame.shape[:2]
         self._frame_shape[camera_id] = (w, h)
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = (
+            timeline.iso_timestamp
+            if timeline and timeline.iso_timestamp
+            else datetime.fromtimestamp(frame_wall_ts, tz=timezone.utc).isoformat()
+        )
 
         for t in tracks:
             td = {
@@ -495,6 +619,7 @@ class PipelineService:
 
             speed_info = calib.update_track(camera_id, t.track_id, cx, cy, now_ts, t.class_name)
             td["metadata"] = {"speed_kmh": speed_info.get("speed_kmh", 0.0)}
+            td["time_since_update"] = t.time_since_update
             track_dicts.append(td)
 
         detections = [
@@ -657,6 +782,7 @@ class PipelineService:
                 self.zone_speed.process_frame(
                     camera_id, track_dicts, zones_cfg, w, h, now_ts, ts,
                     frame_wall_ts=frame_wall_ts,
+                    segment_frame_index=segment_ctx.frame_index if segment_ctx else None,
                 )
             )
 
@@ -708,26 +834,25 @@ class PipelineService:
                     return True
                 return not bbox_valid(bb, min_frac=0.02)
 
-            if tid is not None:
-                # Pair each bbox candidate with the wall-clock ts of the frame it
-                # came from, so the winner's source frame — not the current/emit
-                # frame — is what evidence capture fetches. Without this, picking
-                # the "largest historical bbox" (up to ~1.5s old at 8fps) while
-                # capturing the *current* frame draws the box on empty road.
-                candidates: list[tuple[dict | None, float | None]] = [
-                    (evt.get("bbox"), frame_wall_ts)
-                ]
-                for t in track_dicts:
-                    if t.get("track_id") == tid and t.get("bbox"):
-                        candidates.append((t["bbox"], frame_wall_ts))
+            if tid is not None and segment_ctx is None:
                 hist = self._bbox_history.get((camera_id, int(tid)), [])
-                candidates.extend(
-                    (h.get("bbox"), h.get("ts")) for h in reversed(hist)
+                last_fb = hist[-1] if hist else None
+                best, best_ts, bbox_src = resolve_emission_track_bbox(
+                    evt, track_dicts, fw, fh, frame_wall_ts, last_bbox_fallback=last_fb,
                 )
-                best, best_ts = pick_best_bbox_with_ts(candidates, fw, fh, min_frac=0.02)
                 if best:
                     evt["bbox"] = best
                     evt["bbox_ts"] = best_ts if best_ts is not None else frame_wall_ts
+                    evt["bbox_source"] = bbox_src
+                    meta = evt.setdefault("metadata", {})
+                    if isinstance(meta, dict):
+                        meta["bbox_source"] = bbox_src
+                elif not _evt_bbox_invalid():
+                    evt.setdefault("bbox_source", "event_fallback")
+                    evt["bbox_ts"] = frame_wall_ts
+                    meta = evt.setdefault("metadata", {})
+                    if isinstance(meta, dict):
+                        meta.setdefault("bbox_source", "event_fallback")
                 elif _evt_bbox_invalid():
                     for t in track_dicts:
                         if t.get("track_id") == tid and t.get("bbox"):
@@ -735,33 +860,286 @@ class PipelineService:
                             if bbox_valid(bb, min_frac=0.02):
                                 evt["bbox"] = bb
                                 evt["bbox_ts"] = frame_wall_ts
+                                evt["bbox_source"] = "emission_track"
                                 break
+            elif tid is not None and segment_ctx is not None and _evt_bbox_invalid():
+                for t in track_dicts:
+                    if t.get("track_id") == tid and t.get("bbox"):
+                        bb = normalize_bbox(t["bbox"], fw, fh)
+                        if bbox_valid(bb, min_frac=0.02):
+                            evt["bbox"] = bb
+                            evt["bbox_ts"] = frame_wall_ts
+                            evt.setdefault("segment_bbox_frame_index", segment_ctx.frame_index)
+                            break
             evt.setdefault("bbox_ts", frame_wall_ts)
-            org_id = self._org_ids.get(camera_id, "")
-            if org_id:
-                et = str(evt.get("event_type") or evt.get("event") or "")
-                if et in ("vehicle_corridor", "vehicle_count_threshold"):
-                    continue
-                policy = self.evidence._gate.match_policy(camera_id, evt)
-                should_capture = policy is not None or et in self._PLATE_LINKED_EVENTS
-                if should_capture:
-                    force = policy is None and et in self._PLATE_LINKED_EVENTS
-                    pol = policy if policy is not None else (default_evidence_policy() if force else None)
-                    if pol is not None:
-                        self.evidence.attach_evidence_async(
-                            camera_id, org_id, evt, frame.copy(), policy=pol,
-                            frame_ts=frame_wall_ts,
-                        )
-                if et in self._EVIDENCE_MANDATORY and not self._event_has_package(evt):
-                    evt.setdefault("evidence_status", "pending")
-            self.mqtt.publish_event(camera_id, evt)
+            evidence_frame = frame
+            if segment_ctx is not None:
+                evt.setdefault("segment_cycle_id", segment_ctx.cycle_id)
+                evt.setdefault("segment_frame_index", segment_ctx.frame_index)
+                evt.setdefault("segment_frame_pts", segment_ctx.frame_pts)
+                evt.setdefault("segment_path", segment_ctx.segment_path)
+                evt.setdefault("segment_start_wall", segment_ctx.segment_start_wall)
+                bbox_idx = evt.get("segment_bbox_frame_index")
+                bbox_pts = segment_pts_from_frame_index(bbox_idx, segment_ctx.ingest_fps)
+                if bbox_pts is None:
+                    bbox_pts = segment_pts_from_bbox_ts(
+                        evt.get("bbox_ts"), segment_ctx.segment_start_wall,
+                    )
+                if bbox_pts is None:
+                    bbox_pts = segment_ctx.frame_pts
+                evt["segment_bbox_pts"] = bbox_pts
+                if bbox_idx is not None:
+                    try:
+                        want_idx = int(bbox_idx)
+                        if want_idx != segment_ctx.frame_index:
+                            cached = self._segment_replay_cache.get_bgr(
+                                camera_id, segment_ctx.cycle_id, want_idx,
+                            )
+                            if cached is not None:
+                                evidence_frame = cached
+                            else:
+                                evidence_frame = read_segment_frame_by_index(
+                                    segment_ctx.segment_path, want_idx, fw, fh,
+                                )
+                    except (TypeError, ValueError):
+                        pass
+            self._publish_event_with_evidence(
+                camera_id, evt, evidence_frame, track_dicts, frame_wall_ts, segment_ctx,
+            )
 
         payload = frame_result.to_mqtt_payload()
         for i, det in enumerate(payload.get("detections", [])):
             if i < len(track_dicts):
                 det["metadata"] = track_dicts[i].get("metadata", {})
-        self.mqtt.publish_detection(camera_id, payload)
+        self._emit_detection_payload(
+            camera_id, payload, track_dicts, w, h, capture_wall_ts, frame_wall_ts,
+            overlay_coast=0, overlay_only=False,
+            publish_frame_index=publish_frame_index,
+        )
         return frame_result
+
+    def _publish_overlay_predict(
+        self,
+        camera_id: str,
+        frame_id: int,
+        width: int,
+        height: int,
+        capture_wall_ts: float | None,
+        frame_wall_ts: float,
+        skip: int,
+        publish_frame_index: int | None = None,
+    ) -> None:
+        tracker = self._trackers.get(camera_id)
+        if tracker is None:
+            return
+        steps = max(1.0, float(skip)) * 2.0
+        with self._tracker_lock:
+            track_dicts = tracker.overlay_snapshot(max_coast=2, predict_steps=steps)
+        if not track_dicts:
+            return
+        cached = self._latest_detection_payload.get(camera_id) or {}
+        payload = {
+            "camera_id": camera_id,
+            "timestamp": cached.get("timestamp"),
+            "frame_id": frame_id,
+            "resolution": {"width": width, "height": height},
+            "detections": cached.get("detections") or [],
+            "overlay_only": True,
+        }
+        self._emit_detection_payload(
+            camera_id, payload, track_dicts, width, height,
+            capture_wall_ts, frame_wall_ts, overlay_coast=2, overlay_only=True,
+            publish_frame_index=publish_frame_index,
+        )
+
+    def _emit_detection_payload(
+        self,
+        camera_id: str,
+        payload: dict[str, Any],
+        track_dicts: list[dict[str, Any]],
+        width: int,
+        height: int,
+        capture_wall_ts: float | None,
+        frame_wall_ts: float,
+        *,
+        overlay_coast: int,
+        overlay_only: bool,
+        publish_frame_index: int | None = None,
+    ) -> None:
+        infer_wall = time.time()
+        capture_src = capture_wall_ts if capture_wall_ts is not None else frame_wall_ts
+        payload["capture_ts"] = datetime.fromtimestamp(capture_src, tz=timezone.utc).isoformat()
+        payload["infer_ts"] = datetime.fromtimestamp(infer_wall, tz=timezone.utc).isoformat()
+        queue_ms = round(max(0.0, (infer_wall - capture_src) * 1000), 1)
+        payload["queue_latency_ms"] = queue_ms
+        payload["pipeline_mode"] = (
+            "frigate"
+            if settings.frigate_enabled and settings.frigate_live
+            else (
+                "burn_in"
+                if settings.go2rtc_publish_enabled and settings.burn_in_overlay and settings.unified_pipeline
+                else ("pull" if settings.unified_pipeline else "legacy")
+            )
+        )
+        payload["publish_frame_index"] = publish_frame_index or payload.get("frame_id", 0)
+        if settings.go2rtc_publish_enabled and settings.unified_pipeline:
+            payload["video_lead_ms"] = 120.0
+        else:
+            payload["video_lead_ms"] = round(850.0 + queue_ms * 0.4, 1)
+        tracker = self._trackers.get(camera_id)
+        if tracker and overlay_coast == 0:
+            with self._tracker_lock:
+                overlay_src = tracker.overlay_snapshot(max_coast=0, predict_steps=0.0)
+        else:
+            overlay_src = track_dicts
+        payload["overlay_detections"] = build_overlay_detections(
+            overlay_src, width, height, max_coast=overlay_coast,
+        )
+        payload["overlay_only"] = overlay_only
+        self._latest_detection_payload[camera_id] = payload
+        if self._detection_broadcaster is not None:
+            self._detection_broadcaster.publish(camera_id, payload)
+        if not overlay_only:
+            self.mqtt.publish_detection(camera_id, payload)
+
+    def _publish_event_with_evidence(
+        self,
+        camera_id: str,
+        evt: dict[str, Any],
+        frame: np.ndarray,
+        track_dicts: list[dict[str, Any]],
+        frame_wall_ts: float,
+        segment_ctx: SegmentCaptureContext | None,
+    ) -> None:
+        org_id = self._org_ids.get(camera_id, "")
+        if not org_id:
+            self.mqtt.publish_event(camera_id, evt)
+            return
+        et = str(evt.get("event_type") or evt.get("event") or "")
+        if et in ("vehicle_corridor", "vehicle_count_threshold"):
+            return
+        policy = self.evidence._gate.match_policy(camera_id, evt)
+        should_capture = policy is not None or et in self._PLATE_LINKED_EVENTS
+        if should_capture:
+            force = policy is None and et in self._PLATE_LINKED_EVENTS
+            pol = policy if policy is not None else (default_evidence_policy() if force else None)
+            if pol is not None:
+                if segment_ctx is not None:
+                    # Synchronous capture: segment MP4 is deleted after replay.
+                    capture_pts = evt.get("segment_bbox_pts", segment_ctx.frame_pts)
+                    try:
+                        capture_pts = float(capture_pts)
+                    except (TypeError, ValueError):
+                        capture_pts = segment_ctx.frame_pts
+                    cap_idx = evt.get("segment_bbox_frame_index")
+                    try:
+                        cap_frame_index = int(cap_idx) if cap_idx is not None else segment_ctx.frame_index
+                    except (TypeError, ValueError):
+                        cap_frame_index = segment_ctx.frame_index
+                    self.evidence.capture_from_segment(
+                        org_id,
+                        camera_id,
+                        evt,
+                        frame.copy(),
+                        segment_ctx.segment_path,
+                        capture_pts,
+                        pol,
+                        cycle_id=segment_ctx.cycle_id,
+                        frame_index=cap_frame_index,
+                    )
+                else:
+                    self.evidence.attach_evidence_async(
+                        camera_id, org_id, evt, frame.copy(), policy=pol,
+                        frame_ts=frame_wall_ts,
+                    )
+        if et in self._EVIDENCE_MANDATORY and not self._event_has_package(evt):
+            evt.setdefault("evidence_status", "pending")
+        self.mqtt.publish_event(camera_id, evt)
+
+    def process_segment_eof(
+        self,
+        camera_id: str,
+        timeline: FrameTimeline,
+        segment_ctx: SegmentCaptureContext,
+        source_fps: float = 25.0,
+    ) -> None:
+        """Finalize zone-speed crossings still open at end of a recorded segment."""
+        zones_cfg = (self._spatial_configs.get(camera_id) or {}).get("zones") or []
+        if not self.zone_speed.camera_has_behavior(zones_cfg):
+            return
+        w, h = self._frame_shape.get(camera_id, (1920, 1080))
+        ts = timeline.iso_timestamp or datetime.now(timezone.utc).isoformat()
+        all_events = self.zone_speed.process_frame(
+            camera_id,
+            [],
+            zones_cfg,
+            w,
+            h,
+            timeline.monotonic,
+            ts,
+            frame_wall_ts=timeline.wall,
+        )
+        self._link_plates_to_violations(camera_id, all_events)
+        segment_start_wall = segment_ctx.segment_start_wall
+        max_pts = segment_ctx.frame_pts
+        for evt in all_events:
+            if self._org_ids.get(camera_id):
+                evt["org_id"] = self._org_ids[camera_id]
+            evt.setdefault("event", evt.get("event_type"))
+            frame_idx = evt.get("segment_bbox_frame_index")
+            bbox_pts = segment_pts_from_frame_index(frame_idx, segment_ctx.ingest_fps)
+            if bbox_pts is None:
+                bbox_pts = segment_pts_from_bbox_ts(evt.get("bbox_ts"), segment_start_wall)
+            if bbox_pts is None:
+                bbox_pts = max_pts
+            else:
+                bbox_pts = min(bbox_pts, max_pts)
+            evt["segment_cycle_id"] = segment_ctx.cycle_id
+            evt["segment_frame_index"] = segment_ctx.frame_index
+            evt["segment_frame_pts"] = segment_ctx.frame_pts
+            evt["segment_path"] = segment_ctx.segment_path
+            evt["segment_start_wall"] = segment_start_wall
+            evt["segment_bbox_pts"] = bbox_pts
+            if frame_idx is not None:
+                try:
+                    want_idx = int(frame_idx)
+                    cached = self._segment_replay_cache.get_bgr(
+                        camera_id, segment_ctx.cycle_id, want_idx,
+                    )
+                    evidence_frame = cached if cached is not None else read_segment_frame_by_index(
+                        segment_ctx.segment_path, want_idx, w, h,
+                    )
+                except (TypeError, ValueError):
+                    evidence_frame = read_segment_frame_bgr(
+                        segment_ctx.segment_path, bbox_pts, w, h,
+                    )
+            else:
+                evidence_frame = read_segment_frame_bgr(
+                    segment_ctx.segment_path, bbox_pts, w, h,
+                )
+            aligned_ctx = SegmentCaptureContext(
+                segment_path=segment_ctx.segment_path,
+                cycle_id=segment_ctx.cycle_id,
+                frame_index=int(frame_idx) if frame_idx is not None else segment_ctx.frame_index,
+                frame_pts=bbox_pts,
+                segment_start_wall=segment_start_wall,
+                ingest_fps=segment_ctx.ingest_fps,
+            )
+            self._publish_event_with_evidence(
+                camera_id,
+                evt,
+                evidence_frame,
+                [],
+                timeline.wall,
+                aligned_ctx,
+            )
+
+    @staticmethod
+    def _read_segment_frame(
+        segment_path: str, frame_pts: float, width: int, height: int,
+    ) -> np.ndarray:
+        """Load a BGR frame from a segment MP4 for EOF evidence crops."""
+        return read_segment_frame_bgr(segment_path, frame_pts, width, height)
 
     # Violation events that benefit from a linked plate number.
     _PLATE_LINKED_EVENTS = {
@@ -805,7 +1183,7 @@ class PipelineService:
                 plate_by_track[tid] = (plate, conf)
         for e in events:
             et = e.get("event_type") or e.get("event")
-            if et not in self._PLATE_LINKED_EVENTS:
+            if et not in PipelineService._PLATE_LINKED_EVENTS:
                 continue
             if e.get("plate_number"):
                 continue

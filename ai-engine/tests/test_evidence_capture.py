@@ -15,6 +15,17 @@ def _frame(w: int = 640, h: int = 480) -> np.ndarray:
     return img
 
 
+def test_draw_bbox_on_scene_only_not_subject():
+    frame = _frame()
+    bbox = {"x": 0.3125, "y": 0.3125, "width": 0.34375, "height": 0.354}
+    spec = default_evidence_policy()["images"]
+    scene_on, subject_on, _ = capture_images_from_policy(frame, bbox, spec, quality=80, draw_bbox=True)
+    scene_off, subject_off, _ = capture_images_from_policy(frame, bbox, spec, quality=80, draw_bbox=False)
+
+    assert scene_on != scene_off
+    assert subject_on == subject_off
+
+
 def test_subject_crop_differs_from_scene_when_bbox_present():
     frame = _frame()
     bbox = {"x": 0.3125, "y": 0.3125, "width": 0.34375, "height": 0.354}
@@ -90,6 +101,49 @@ def test_pick_best_bbox_with_ts_no_valid_candidates_returns_none():
     )
     assert best is None
     assert ts is None
+
+
+def test_pick_best_bbox_rejects_exit_glitch_prefers_vehicle_bbox():
+    """Oversized partial-off-screen bboxes at zone exit must not beat a real vehicle box."""
+    from citevision_ai.evidence.capture import pick_best_bbox_with_ts
+
+    glitch_exit = (
+        {"x": 0.0, "y": 0.64, "width": 0.55, "height": 0.62},
+        100.0,
+    )
+    vehicle = (
+        {"x": 0.18, "y": 0.42, "width": 0.22, "height": 0.18},
+        99.5,
+    )
+    best, ts = pick_best_bbox_with_ts([glitch_exit, vehicle], 1920, 1080, min_frac=0.02)
+    assert best is not None
+    assert abs(best["width"] - 0.22) < 0.01
+    assert ts == 99.5
+
+
+def test_capture_retroactive_uses_bbox_ts_not_event_ts():
+    from citevision_ai.evidence.buffer import BufferedFrame, FrameRingBuffer
+    from citevision_ai.evidence.service import EvidenceCaptureService
+
+    svc = EvidenceCaptureService()
+    camera_id = "cam-retro"
+    ring = FrameRingBuffer(max_seconds=8, fps=6)
+    frame_bbox = np.full((480, 640, 3), 42, dtype=np.uint8)
+    frame_event = np.full((480, 640, 3), 99, dtype=np.uint8)
+    ok1, enc1 = cv2.imencode(".jpg", frame_bbox)
+    ok2, enc2 = cv2.imencode(".jpg", frame_event)
+    ring._frames.append(BufferedFrame(jpeg=enc1.tobytes(), ts=1000.0))
+    ring._frames.append(BufferedFrame(jpeg=enc2.tobytes(), ts=1000.4))
+    svc._buffers[camera_id] = ring
+
+    evt = {
+        "event_id": "evt-retro",
+        "timestamp": "2026-07-08T07:00:00.400Z",
+        "bbox_ts": 1000.0,
+        "bbox": {"x": 0.2, "y": 0.2, "width": 0.2, "height": 0.2},
+    }
+    resolved = svc._resolve_capture_frame(camera_id, evt, frame_event, frame_ts=None)
+    assert int(resolved[0, 0, 0]) == 42
 
 
 def test_resolve_capture_frame_uses_live_frame_when_aligned():

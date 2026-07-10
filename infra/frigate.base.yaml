@@ -1,0 +1,30 @@
+# CitéVision base Frigate config — cameras/zones are generated (never edit by hand).
+mqtt:
+  enabled: true
+  host: 127.0.0.1
+  port: 1884
+
+database:
+  path: /media/frigate/frigate.db
+
+record:
+  enabled: true
+  retain:
+    days: 3
+
+snapshots:
+  enabled: true
+  timestamp: true
+  bounding_box: true
+  retain:
+    default: 10
+
+detect:
+  enabled: true
+  fps: 5
+
+# LPR: live zoom only — OCR proof uses PaddleOCR in ai-engine
+lpr:
+  enabled: false
+
+cameras: {}

@@ -50,7 +50,8 @@ def test_export_clip_mp4_h264(tmp_path: Path):
     assert "h264" in probe.stdout.lower()
 
 
-def test_export_clip_min_frame_padding():
+def test_export_clip_min_two_unique_frames():
+    """Single-frame buffers must not produce a duplicate-frame slideshow."""
     buf = FrameRingBuffer(max_seconds=10, fps=5)
     ok, enc = cv2.imencode(".jpg", _solid_frame(100, 100, 100))
     assert ok
@@ -59,10 +60,24 @@ def test_export_clip_min_frame_padding():
 
     if shutil.which("ffmpeg") is None:
         pytest.skip("ffmpeg not installed")
-    clip = buf.export_clip_mp4(duration_sec=6.0, fps=5)
+    assert buf.export_clip_mp4(duration_sec=6.0, fps=5) is None
+
+
+def test_export_clip_centered_on_event_ts():
+    buf = FrameRingBuffer(max_seconds=10, fps=5)
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (128, 128, 0), (0, 128, 128), (64, 64, 64)]
+    for i, color in enumerate(colors):
+        ok, enc = cv2.imencode(".jpg", _solid_frame(*color))
+        assert ok
+        buf._frames.append(BufferedFrame(jpeg=enc.tobytes(), ts=float(i)))
+    buf._last_push = 5.0
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg not installed")
+    clip = buf.export_clip_mp4(duration_sec=2.0, fps=5, center_ts=2.0)
     assert clip is not None
-    assert clip.frame_count >= 12  # max(3, 6*5*0.4) = 12
-    assert clip.duration_sec >= 0.5
+    assert clip.frame_count >= 2
+    assert clip.frame_count <= 6
 
 
 def test_get_frame_at_ts_picks_closest():

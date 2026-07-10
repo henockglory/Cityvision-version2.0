@@ -62,6 +62,37 @@ def bbox_area_norm(bbox: dict[str, Any] | None, frame_w: int, frame_h: int) -> f
     return float(bb["width"]) * float(bb["height"])
 
 
+def bbox_evidence_score(
+    bbox: dict[str, Any] | None,
+    frame_w: int,
+    frame_h: int,
+    *,
+    min_frac: float = 0.02,
+) -> float:
+    """Score a bbox for evidence crops — rejects exit glitches (oversized / off-screen)."""
+    bb = normalize_bbox(bbox, frame_w, frame_h)
+    if not bb or not bbox_valid(bb, min_frac=min_frac):
+        return 0.0
+    w, h = float(bb["width"]), float(bb["height"])
+    area = w * h
+    if area > 0.28:
+        return 0.0
+    aspect = w / max(h, 1e-9)
+    if aspect > 3.2 or aspect < 0.28:
+        return 0.0
+    x, y = float(bb["x"]), float(bb["y"])
+    if x < 0.01 and w > 0.30:
+        return 0.0
+    if y < 0.01 and h > 0.35:
+        return 0.0
+    if y + h > 0.99 and h > 0.38:
+        return 0.0
+    score = area
+    if area > 0.18:
+        score *= 0.55
+    return score
+
+
 def pick_best_bbox(
     candidates: list[dict[str, Any] | None],
     frame_w: int,
@@ -69,18 +100,18 @@ def pick_best_bbox(
     *,
     min_frac: float = 0.02,
 ) -> dict[str, Any] | None:
-    """Largest valid normalized bbox — avoids 1px ByteTrack glitches on zone exit."""
+    """Best evidence bbox — scored for vehicle-like size, not raw largest area."""
     best: dict[str, Any] | None = None
-    best_area = 0.0
+    best_score = 0.0
     for raw in candidates:
         if not raw:
             continue
         bb = normalize_bbox(raw, frame_w, frame_h)
-        if not bb or not bbox_valid(bb, min_frac=min_frac):
+        if not bb:
             continue
-        area = float(bb["width"]) * float(bb["height"])
-        if area > best_area:
-            best_area = area
+        score = bbox_evidence_score(bb, frame_w, frame_h, min_frac=min_frac)
+        if score > best_score:
+            best_score = score
             best = bb
     return best
 
@@ -103,19 +134,122 @@ def pick_best_bbox_with_ts(
     """
     best: dict[str, Any] | None = None
     best_ts: float | None = None
-    best_area = 0.0
+    best_score = 0.0
     for raw, ts in candidates:
         if not raw:
             continue
         bb = normalize_bbox(raw, frame_w, frame_h)
-        if not bb or not bbox_valid(bb, min_frac=min_frac):
+        if not bb:
             continue
-        area = float(bb["width"]) * float(bb["height"])
-        if area > best_area:
-            best_area = area
+        score = bbox_evidence_score(bb, frame_w, frame_h, min_frac=min_frac)
+        if score > best_score:
+            best_score = score
             best = bb
             best_ts = ts
     return best, best_ts
+
+
+def select_live_event_bbox(
+    evt: dict[str, Any],
+    track_dicts: list[dict[str, Any]],
+    history: list[dict],
+    frame_w: int,
+    frame_h: int,
+    frame_wall_ts: float,
+) -> tuple[dict[str, Any] | None, float | None]:
+    """Legacy helper — prefer ``resolve_emission_track_bbox`` for live evidence."""
+    bb, ts, _src = resolve_emission_track_bbox(
+        evt,
+        track_dicts,
+        frame_w,
+        frame_h,
+        frame_wall_ts,
+        last_bbox_fallback=history[-1] if history else None,
+    )
+    return bb, ts
+
+
+def resolve_emission_track_bbox(
+    evt: dict[str, Any],
+    track_dicts: list[dict[str, Any]],
+    frame_w: int,
+    frame_h: int,
+    frame_wall_ts: float,
+    last_bbox_fallback: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any] | None, float | None, str]:
+    """BBox for evidence on the emission frame — YOLO/ByteTrack track on this tick.
+
+    Priority:
+    1. Current ``track_dicts`` entry for ``evt.track_id`` (co-emitted with frame).
+    2. ``last_bbox_fallback`` (track_lost / track absent on finalize frame).
+    3. ``evt.bbox`` if still valid.
+
+    Returns ``(bbox_norm, bbox_ts, bbox_source)`` where ``bbox_source`` is one of
+    ``emission_track``, ``last_known``, ``event_fallback``, or ``none``.
+    """
+    tid = evt.get("track_id")
+    tid_str = str(tid) if tid is not None else None
+    if tid is not None:
+        for t in track_dicts:
+            t_id = t.get("track_id")
+            if t_id == tid or (tid_str is not None and str(t_id) == tid_str):
+                if t.get("bbox"):
+                    bb = normalize_bbox(t["bbox"], frame_w, frame_h)
+                    if bb and bbox_valid(bb, min_frac=0.02):
+                        return bb, frame_wall_ts, "emission_track"
+    if last_bbox_fallback:
+        fb_bbox = last_bbox_fallback.get("bbox")
+        bb = normalize_bbox(fb_bbox, frame_w, frame_h) if fb_bbox else None
+        if bb and bbox_valid(bb, min_frac=0.02):
+            return bb, frame_wall_ts, "last_known"
+    bb = evt.get("bbox")
+    if isinstance(bb, dict) and bb:
+        norm = normalize_bbox(bb, frame_w, frame_h)
+        if norm and bbox_valid(norm, min_frac=0.02):
+            return norm, frame_wall_ts, "event_fallback"
+    return None, None, "none"
+
+
+def subject_jpeg_texture(jpeg: bytes | None, *, min_size: int = 32) -> float | None:
+    """Laplacian variance of a subject crop JPEG — None if decode fails."""
+    if not jpeg or len(jpeg) < min_size:
+        return None
+    gray = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+    if gray is None or gray.size == 0:
+        return None
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def bbox_region_has_content(
+    frame: np.ndarray,
+    bbox: dict[str, Any] | None,
+    *,
+    min_laplacian: float = 12.0,
+    min_frac: float = 0.02,
+) -> bool:
+    """True when the bbox ROI has enough texture to be a real target (not empty road)."""
+    h, w = frame.shape[:2]
+    norm = normalize_bbox(bbox, w, h)
+    if not norm or not bbox_valid(norm, min_frac=min_frac):
+        return False
+    x1 = int(max(0, norm["x"] * w))
+    y1 = int(max(0, norm["y"] * h))
+    x2 = int(min(w, (norm["x"] + norm["width"]) * w))
+    y2 = int(min(h, (norm["y"] + norm["height"]) * h))
+    if x2 - x1 < 20 or y2 - y1 < 20:
+        return False
+    roi = frame[y1:y2, x1:x2]
+    if roi.size == 0:
+        return False
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    std = float(gray.std())
+    lap = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    global_std = float(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).std())
+    if std < 4.0:
+        return False
+    if std < global_std * 0.9 and lap < min_laplacian:
+        return False
+    return lap >= min_laplacian or std >= max(10.0, global_std * 1.15)
 
 
 def bbox_valid(bbox: dict[str, Any] | None, min_frac: float = 0.02) -> bool:
@@ -235,7 +369,8 @@ def capture_images_from_policy(
         crop_bbox = norm_bbox
 
         if role == "scene":
-            scene = encode_scene_jpeg(frame, quality)
+            src = draw_bbox_on_frame(frame, norm_bbox) if draw_bbox and norm_bbox else frame
+            scene = encode_scene_jpeg(src, quality)
             continue
 
         if role == "subject":
@@ -248,12 +383,10 @@ def capture_images_from_policy(
                     padding_pct=max(padding, 12.0), zoom=zoom, crop="bbox", fallback_full=False,
                 )
             elif crop == "full" or not use_bbox:
-                src = draw_bbox_on_frame(frame, use_bbox) if draw_bbox and use_bbox else frame
-                subject = encode_scene_jpeg(src, quality)
+                subject = encode_scene_jpeg(frame, quality)
             else:
-                src = draw_bbox_on_frame(frame, use_bbox) if draw_bbox else frame
                 subject = encode_subject_jpeg(
-                    src, use_bbox, quality,
+                    frame, use_bbox, quality,
                     padding_pct=padding, zoom=zoom, crop="bbox", fallback_full=False,
                 )
             if subject is None and use_bbox:
@@ -288,14 +421,13 @@ def capture_images_from_policy(
             continue
 
         src = frame
-        if draw_bbox and crop_bbox and role == "subject":
-            src = draw_bbox_on_frame(frame, crop_bbox)
         jpeg = encode_subject_jpeg(
             src, crop_bbox, quality, padding_pct=padding, zoom=zoom, crop=crop,
         )
         extras.append(jpeg)
     if scene is None and images_spec:
-        scene = encode_scene_jpeg(frame, quality)
+        src = draw_bbox_on_frame(frame, norm_bbox) if draw_bbox and norm_bbox else frame
+        scene = encode_scene_jpeg(src, quality)
     if subject is None and any(s.get("role") == "subject" for s in images_spec):
         subject = encode_scene_jpeg(frame, quality)
     return scene, subject, extras

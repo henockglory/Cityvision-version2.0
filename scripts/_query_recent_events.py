@@ -1,14 +1,18 @@
+#!/usr/bin/env python3
 import subprocess
-
-q = """
-SELECT event_type, count(1)
+SQL = """
+SELECT occurred_at::text, event_type, evidence_snapshot::text
 FROM events
-WHERE ingested_at > NOW() - interval '3 minutes'
-GROUP BY 1
-ORDER BY 2 DESC
-LIMIT 20;
+WHERE camera_id = '37c7d7fa-12dc-450c-8c4b-ab63ed43a819'
+ORDER BY occurred_at DESC LIMIT 5;
 """
-subprocess.run(
-    ["docker", "exec", "citevision-v2-postgres", "psql", "-U", "citevision", "-d", "citevision", "-c", q.strip()],
-    check=False,
-)
+cmd = ["docker", "exec", "citevision-v2-postgres", "psql", "-U", "citevision", "-d", "citevision", "-t", "-A", "-F", "\t", "-c", SQL]
+import json
+for line in subprocess.run(cmd, capture_output=True, text=True).stdout.strip().splitlines():
+    parts = line.split("\t", 2)
+    if len(parts) < 3:
+        continue
+    ts, et, ev = parts
+    snap = json.loads(ev) if ev and ev != "null" else {}
+    pm = (snap.get("package") or {}).get("metadata") or {}
+    print(ts, et, "capture_source=", pm.get("capture_source"), "clip=", bool((snap.get("package") or {}).get("clip")))

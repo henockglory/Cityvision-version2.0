@@ -87,6 +87,32 @@ services:
       retries: 5
       start_period: 10s
 
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable
+    container_name: citevision-v2-frigate
+    restart: unless-stopped
+    profiles:
+      - frigate
+    ports:
+      - "${FRIGATE_PORT:-5000}:5000"
+      - "${FRIGATE_RTSP_PORT:-8556}:8554"
+      - "${FRIGATE_WEBRTC_PORT:-8557}:8555"
+      - "${FRIGATE_WEBRTC_PORT:-8557}:8555/udp"
+    volumes:
+      - ./frigate-config:/config
+      - frigate_recordings:/media/frigate/recordings
+      - frigate_clips:/media/frigate/clips
+      - ./frigate.base.yaml:/config/frigate.base.yaml:ro
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-}
+    shm_size: "256mb"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5000/api/version || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   mailhog:
     image: mailhog/mailhog:latest
     container_name: citevision-v2-mailhog
@@ -123,3 +149,5 @@ volumes:
   mosquitto_data:
   mosquitto_log:
   minio_data:
+  frigate_recordings:
+  frigate_clips:

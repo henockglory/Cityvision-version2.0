@@ -261,7 +261,7 @@ export default function Cameras() {
           setWizardError(apiErr || t('cameras.wizard.createError'));
         }
       } else if (isAxiosError(err) && err.code === 'ECONNABORTED') {
-        setWizardError(t('cameras.wizard.scanTimeout'));
+        setWizardError(t('cameras.wizard.probeTimeout'));
       } else {
         setWizardError(t('cameras.wizard.createError'));
       }

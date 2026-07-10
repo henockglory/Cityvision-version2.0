@@ -9,28 +9,29 @@ from typing import Any, Callable
 import cv2
 import numpy as np
 
+from citevision_ai.evidence.config import RING_FPS
+from citevision_ai.config import settings
+from citevision_ai.ingest.go2rtc_publisher import Go2rtcPublisher
+from citevision_ai.ingest.segment_cycle_worker import SegmentCycleWorker
+
 logger = logging.getLogger(__name__)
 
 
 class RTSPWorker:
-    """Reads RTSP frames and hands them off to a dedicated inference thread.
-
-    The read loop never calls ``process_fn`` (pipeline + GPU inference) itself —
-    it only decodes frames and pushes them onto a small bounded, drop-oldest
-    queue. A separate consumer thread (started alongside the reader) pulls from
-    that queue and runs ``process_fn``. This means a slow/backed-up GPU never
-    stalls the RTSP socket read: at 10-16 concurrent cameras, inference latency
-    no longer causes stream staleness or ByteTrack fragmentation on the read side.
-    """
+    """Single RTSP read: burn-in preview → go2rtc + inference queue."""
 
     def __init__(
         self,
         camera_id: str,
         rtsp_url: str,
-        process_fn: Callable[[str, np.ndarray, float], Any],
+        process_fn: Callable[..., Any],
         reconnect_delay: float = 5.0,
         target_fps: float = 8.0,
-        queue_size: int = 2,
+        queue_size: int = 1,
+        buffer_fn: Callable[[str, np.ndarray], None] | None = None,
+        evidence_fps: float | None = None,
+        go2rtc_stream_name: str | None = None,
+        burn_in_fn: Callable[[str, np.ndarray], np.ndarray] | None = None,
     ) -> None:
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
@@ -38,6 +39,11 @@ class RTSPWorker:
         self.reconnect_delay = reconnect_delay
         self.target_fps = max(1.0, target_fps)
         self._min_interval = 1.0 / self.target_fps
+        self._buffer_fn = buffer_fn
+        self._burn_in_fn = burn_in_fn
+        ring_fps = evidence_fps if evidence_fps is not None else float(RING_FPS)
+        self._evidence_min_interval = 1.0 / max(ring_fps, 1.0)
+        self._last_buffer_ts = 0.0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._infer_thread: threading.Thread | None = None
@@ -45,13 +51,19 @@ class RTSPWorker:
         self._frames_read = 0
         self._frames_processed = 0
         self._frames_dropped = 0
+        self._frames_published = 0
         self._last_error: str | None = None
         self._fps = 25.0
+        self._publish_fps = float(settings.go2rtc_publish_fps)
+        self._publish_min_interval = 1.0 / max(self._publish_fps, 1.0)
+        self._last_publish_ts = 0.0
         self._last_process_ts = 0.0
-        self._last_read_ts = 0.0
-        self._last_infer_start_ts = 0.0
         self._infer_latency_sec = 0.0
-        self._queue: queue.Queue[tuple[np.ndarray, float]] = queue.Queue(maxsize=max(1, queue_size))
+        self._publisher: Go2rtcPublisher | None = None
+        self._go2rtc_stream_name = go2rtc_stream_name
+        self._queue: queue.Queue[tuple[np.ndarray, float, float, int]] = queue.Queue(
+            maxsize=max(1, queue_size),
+        )
 
     @property
     def is_running(self) -> bool:
@@ -68,20 +80,29 @@ class RTSPWorker:
         )
         self._infer_thread.start()
         self._running = True
-        logger.info("RTSP worker started for camera %s", self.camera_id)
+        logger.info(
+            "RTSP worker started camera=%s burn_in=%s stream=%s",
+            self.camera_id, bool(self._burn_in_fn), self._go2rtc_stream_name,
+        )
 
     def stop(self) -> None:
         self._stop.set()
         self._running = False
+        if self._publisher:
+            self._publisher.stop()
+            self._publisher = None
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=10)
         if self._infer_thread and self._infer_thread.is_alive():
             self._infer_thread.join(timeout=10)
         self._thread = None
         self._infer_thread = None
-        logger.info("RTSP worker stopped for camera %s", self.camera_id)
 
     def status(self) -> dict[str, Any]:
+        pub = self._publisher.status() if self._publisher else {}
+        mode = "burn_in" if self._burn_in_fn and self._go2rtc_stream_name else (
+            "unified" if self._go2rtc_stream_name else "legacy"
+        )
         return {
             "camera_id": self.camera_id,
             "rtsp_url": self.rtsp_url,
@@ -89,11 +110,37 @@ class RTSPWorker:
             "frames_processed": self._frames_processed,
             "frames_read": self._frames_read,
             "frames_dropped": self._frames_dropped,
+            "frames_published": self._frames_published,
             "queue_depth": self._queue.qsize(),
             "infer_latency_ms": round(self._infer_latency_sec * 1000, 1),
             "fps": round(self._fps, 2),
+            "pipeline_mode": mode,
+            "burn_in": bool(self._burn_in_fn),
+            "go2rtc_publisher": pub,
             "last_error": self._last_error,
         }
+
+    def _ensure_publisher(self, frame: np.ndarray) -> None:
+        if not self._go2rtc_stream_name:
+            return
+        if self._publisher is not None and not self._publisher.status().get("running"):
+            self._publisher.stop()
+            self._publisher = None
+        if self._publisher is not None:
+            return
+        h, w = frame.shape[:2]
+        pub_fps = min(self._fps, self._publish_fps)
+        self._publisher = Go2rtcPublisher(self._go2rtc_stream_name, w, h, pub_fps)
+        self._publisher.start()
+
+    def _frame_for_publish(self, frame: np.ndarray) -> np.ndarray:
+        if self._burn_in_fn is None:
+            return frame
+        try:
+            return self._burn_in_fn(self.camera_id, frame)
+        except Exception:
+            logger.exception("burn-in failed for %s", self.camera_id)
+            return frame
 
     def _loop(self) -> None:
         cap: cv2.VideoCapture | None = None
@@ -104,7 +151,6 @@ class RTSPWorker:
                     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                     if not cap.isOpened():
                         self._last_error = f"cannot open {self.rtsp_url}"
-                        logger.warning("RTSP open failed for %s, retry in %.1fs", self.camera_id, self.reconnect_delay)
                         time.sleep(self.reconnect_delay)
                         continue
                     self._last_error = None
@@ -121,17 +167,33 @@ class RTSPWorker:
                     continue
 
                 now = time.monotonic()
-                self._last_read_ts = now
+                capture_wall = time.time()
                 self._frames_read += 1
+                publish_index = self._frames_read
+
+                if self._go2rtc_stream_name:
+                    self._ensure_publisher(frame)
+                    if self._publisher and now - self._last_publish_ts >= self._publish_min_interval:
+                        published = self._frame_for_publish(frame)
+                        if self._publisher.write_frame(published):
+                            self._frames_published += 1
+                            self._last_publish_ts = now
+
+                if self._buffer_fn is not None:
+                    if capture_wall - self._last_buffer_ts >= self._evidence_min_interval:
+                        try:
+                            self._buffer_fn(self.camera_id, frame)
+                            self._last_buffer_ts = capture_wall
+                        except Exception:
+                            logger.exception("evidence buffer push failed for %s", self.camera_id)
+
                 if now - self._last_process_ts < self._min_interval:
                     continue
                 self._last_process_ts = now
 
-                # Drop-oldest: never let a slow inference thread back-pressure the
-                # RTSP read loop. A stale queued frame is worse than a fresh one.
                 while True:
                     try:
-                        self._queue.put_nowait((frame, self._fps))
+                        self._queue.put_nowait((frame, self._fps, capture_wall, publish_index))
                         break
                     except queue.Full:
                         try:
@@ -151,17 +213,20 @@ class RTSPWorker:
             cap.release()
 
     def _infer_loop(self) -> None:
-        """Dedicated consumer: pulls queued frames and runs the (GPU-bound)
-        pipeline, fully decoupled from the RTSP read loop above."""
         while not self._stop.is_set():
             try:
-                frame, fps = self._queue.get(timeout=1.0)
+                frame, fps, capture_wall, publish_index = self._queue.get(timeout=1.0)
             except queue.Empty:
                 continue
             try:
                 start = time.monotonic()
-                self._last_infer_start_ts = start
-                self.process_fn(self.camera_id, frame, fps)
+                self.process_fn(
+                    self.camera_id,
+                    frame,
+                    fps,
+                    capture_wall_ts=capture_wall,
+                    publish_frame_index=publish_index,
+                )
                 self._infer_latency_sec = time.monotonic() - start
                 self._frames_processed += 1
             except Exception:
@@ -169,10 +234,21 @@ class RTSPWorker:
 
 
 class WorkerManager:
-    """Manages one ingest worker per camera (fichier local ou RTSP réseau)."""
+    """Manages one ingest worker per camera."""
 
-    def __init__(self, process_fn: Callable[[str, np.ndarray, float], Any]) -> None:
+    def __init__(
+        self,
+        process_fn: Callable[..., Any],
+        buffer_fn: Callable[[str, np.ndarray], None] | None = None,
+        eof_flush_fn: Callable[..., Any] | None = None,
+        begin_replay_fn: Callable[[str], None] | None = None,
+        burn_in_fn: Callable[[str, np.ndarray], np.ndarray] | None = None,
+    ) -> None:
         self._process_fn = process_fn
+        self._buffer_fn = buffer_fn
+        self._eof_flush_fn = eof_flush_fn
+        self._begin_replay_fn = begin_replay_fn
+        self._burn_in_fn = burn_in_fn
         self._workers: dict[str, RTSPWorker | Any] = {}
         self._configs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
@@ -188,19 +264,62 @@ class WorkerManager:
         from citevision_ai.ingest.file_video_worker import FileVideoWorker
 
         with self._lock:
-            if camera_id in self._workers and self._workers[camera_id].is_running:
+            want_segment = camera_id in settings.parsed_segment_mode_camera_ids()
+            existing = self._workers.get(camera_id)
+            if existing is not None:
+                is_segment = isinstance(existing, SegmentCycleWorker)
+                if want_segment != is_segment:
+                    existing.stop()
+                    del self._workers[camera_id]
+                    existing = None
+            if existing is not None and existing.is_running:
                 self._configs[camera_id] = spatial_config or {}
-                return {"hot_reload": True, **self._workers[camera_id].status()}
+                return {"hot_reload": True, **existing.status()}
 
             if camera_id in self._workers:
                 self._workers[camera_id].stop()
 
+            go2rtc_name = (
+                f"cam-{camera_id}"
+                if (
+                    settings.go2rtc_publish_enabled
+                    and settings.unified_pipeline
+                    and not video_file
+                    and not (settings.frigate_enabled and settings.frigate_live)
+                )
+                else None
+            )
+            use_burn_in = settings.burn_in_overlay and go2rtc_name is not None
+
             if video_file:
-                worker = FileVideoWorker(camera_id, video_file, self._process_fn, target_fps=ai_fps)
+                worker = FileVideoWorker(
+                    camera_id, video_file, self._process_fn, target_fps=ai_fps, buffer_fn=self._buffer_fn,
+                )
+            elif camera_id in settings.parsed_segment_mode_camera_ids():
+                if not rtsp_url:
+                    raise ValueError("rtsp_url required for segment mode")
+                worker = SegmentCycleWorker(
+                    camera_id,
+                    rtsp_url,
+                    self._process_fn,
+                    eof_flush_fn=self._eof_flush_fn,
+                    begin_replay_fn=self._begin_replay_fn,
+                    record_sec=settings.segment_record_sec,
+                    process_budget_sec=settings.segment_process_budget_sec,
+                    ingest_fps=settings.segment_ingest_fps,
+                )
             else:
                 if not rtsp_url:
                     raise ValueError("rtsp_url or video_file required")
-                worker = RTSPWorker(camera_id, rtsp_url, self._process_fn, target_fps=ai_fps)
+                worker = RTSPWorker(
+                    camera_id,
+                    rtsp_url,
+                    self._process_fn,
+                    target_fps=ai_fps,
+                    buffer_fn=self._buffer_fn,
+                    go2rtc_stream_name=go2rtc_name,
+                    burn_in_fn=self._burn_in_fn if use_burn_in else None,
+                )
             self._workers[camera_id] = worker
             self._configs[camera_id] = spatial_config or {}
             worker.start()

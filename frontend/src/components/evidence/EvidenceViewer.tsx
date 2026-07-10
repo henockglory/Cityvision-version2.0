@@ -77,6 +77,13 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
     metadata_only: t('evidence.metadataOnly'),
   }[quality.state];
 
+  // Preuves historiques du mode segments (abandonné) ou capture avec bbox
+  // sans contenu détecté : contenu visuel potentiellement non fiable.
+  const captureSource = pkg?.metadata?.capture_source as string | undefined;
+  const bboxQualityOk = pkg?.metadata?.bbox_quality_ok as boolean | undefined;
+  const isLegacyEvidence = captureSource === 'segment';
+  const isLowQualityEvidence = bboxQualityOk === false;
+
   const plateValue = formatValue(ev.plate_number);
   const metaFields = [
     {
@@ -114,6 +121,15 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
         </span>
       </div>
 
+      {(isLegacyEvidence || isLowQualityEvidence) && (
+        <p className="text-xs text-amber-500 flex items-center gap-1">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          {isLegacyEvidence
+            ? t('evidence.legacySegment', { defaultValue: 'Preuve issue de l\u2019ancien mode segments — contenu visuel potentiellement décalé.' })
+            : t('evidence.lowQualityBBox', { defaultValue: 'Cible non confirmée dans le cadre — preuve à vérifier manuellement.' })}
+        </p>
+      )}
+
       {clipUrl && (
         <div id="evidence-viewer-clip">
         <EvidenceVideo
@@ -130,18 +146,21 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
             <EvidenceImageTile
               apiUrl={sceneUrl}
               label={scene?.label ?? t('evidence.scene')}
-              onOpen={() => openLightbox(sceneUrl, scene?.label ?? t('evidence.scene'))}
+              bbox={isValidEvidenceBBox(scene?.bbox ?? ev.bbox) ? (scene?.bbox ?? ev.bbox) : undefined}
+              onOpen={() => openLightbox(
+                sceneUrl,
+                scene?.label ?? t('evidence.scene'),
+                isValidEvidenceBBox(scene?.bbox ?? ev.bbox) ? (scene?.bbox ?? ev.bbox) : undefined,
+              )}
             />
           )}
           {subjectUrl && (
             <EvidenceImageTile
               apiUrl={subjectUrl}
               label={subject?.label ?? t('evidence.subject')}
-              bbox={isValidEvidenceBBox(subject?.bbox ?? ev.bbox) ? (subject?.bbox ?? ev.bbox) : undefined}
               onOpen={() => openLightbox(
                 subjectUrl,
                 subject?.label ?? t('evidence.subject'),
-                isValidEvidenceBBox(subject?.bbox ?? ev.bbox) ? (subject?.bbox ?? ev.bbox) : undefined,
               )}
             />
           )}

@@ -21,11 +21,13 @@ class FileVideoWorker:
         file_path: str,
         process_fn: Callable[[str, np.ndarray, float], Any],
         target_fps: float = 8.0,
+        buffer_fn: Callable[[str, np.ndarray], None] | None = None,
     ) -> None:
         self.camera_id = camera_id
         self.file_path = str(Path(file_path).resolve())
         self.process_fn = process_fn
         self.target_fps = max(1.0, min(target_fps, 30.0))
+        self._buffer_fn = buffer_fn
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._running = False
@@ -92,6 +94,12 @@ class FileVideoWorker:
             if not ok or frame is None:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
+
+            if self._buffer_fn is not None:
+                try:
+                    self._buffer_fn(self.camera_id, frame)
+                except Exception:
+                    logger.exception("evidence buffer push failed for %s", self.camera_id)
 
             self.process_fn(self.camera_id, frame, self._source_fps)
             self._frames_processed += 1

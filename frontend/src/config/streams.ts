@@ -1,16 +1,66 @@
 /** go2rtc — WebRTC direct port 1984 (WebSocket ne passe pas toujours via proxy Vite). */
 const GO2RTC_PORT = 1984;
+const FRIGATE_PORT = 5000;
+const FRIGATE_GO2RTC_PORT = 8557;
 
-function resolveDirectOrigin(): string {
-  const fromEnv = import.meta.env.VITE_GO2RTC_ORIGIN as string | undefined;
-  if (fromEnv?.trim()) return fromEnv.trim().replace(/\/$/, '');
-  if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:${GO2RTC_PORT}`;
-  }
-  return `http://localhost:${GO2RTC_PORT}`;
+function envFlag(name: string): boolean {
+  const v = (import.meta.env[name] as string | undefined)?.trim();
+  return v === '1' || v === 'true';
 }
 
-export const GO2RTC_ORIGIN = resolveDirectOrigin();
+/** Master + live flags from Vite env (mirror .env FRIGATE_*). */
+export const FRIGATE_LIVE_ENABLED =
+  envFlag('VITE_FRIGATE_ENABLED') && envFlag('VITE_FRIGATE_LIVE');
+
+function resolveDirectOrigin(port: number): string {
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:${port}`;
+  }
+  return `http://localhost:${port}`;
+}
+
+function resolveProxiedOrigin(pathPrefix: string): string {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${pathPrefix}`;
+  }
+  return pathPrefix;
+}
+
+export const GO2RTC_ORIGIN = (() => {
+  const fromEnv = import.meta.env.VITE_GO2RTC_ORIGIN as string | undefined;
+  if (fromEnv?.trim()) return fromEnv.trim().replace(/\/$/, '');
+  return resolveDirectOrigin(GO2RTC_PORT);
+})();
+
+export const FRIGATE_ORIGIN = (() => {
+  const fromEnv = import.meta.env.VITE_FRIGATE_ORIGIN as string | undefined;
+  if (fromEnv?.trim()) return fromEnv.trim().replace(/\/$/, '');
+  return resolveProxiedOrigin('/frigate');
+})();
+
+/** Frigate embedded go2rtc (WebRTC) — proxied in dev via Vite. */
+export const FRIGATE_GO2RTC_ORIGIN = (() => {
+  const fromEnv = import.meta.env.VITE_FRIGATE_GO2RTC_ORIGIN as string | undefined;
+  if (fromEnv?.trim()) return fromEnv.trim().replace(/\/$/, '');
+  return resolveProxiedOrigin('/frigate-go2rtc');
+})();
+
+export function frigateCameraId(cameraUuid: string): string {
+  return `cv_${cameraUuid}`;
+}
+
+export function frigateLiveIframeUrl(frigateId: string, bbox: boolean): string {
+  const bboxParam = bbox ? '1' : '0';
+  return `${FRIGATE_ORIGIN}/live?camera=${encodeURIComponent(frigateId)}&bbox=${bboxParam}`;
+}
+
+export function shouldUseFrigateLive(camera?: {
+  name?: string;
+  metadata?: Record<string, unknown>;
+} | null): boolean {
+  if (!FRIGATE_LIVE_ENABLED) return false;
+  return !isVirtualCamera(camera);
+}
 /** @deprecated legacy demo stream name — use metadata.go2rtc_src from uploaded videos. */
 export const DEFAULT_STREAM = 'benedicte';
 

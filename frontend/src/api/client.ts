@@ -267,7 +267,9 @@ export const camerasApi = {
     }
   ) => api.patch<Camera>(`/orgs/${orgId}/cameras/${cameraId}`, body),
   delete: (orgId: string, cameraId: string) =>
-    api.delete<{ deleted: boolean; id: string }>(`/orgs/${orgId}/cameras/${cameraId}`),
+    api.delete<{ deleted: boolean; id: string }>(`/orgs/${orgId}/cameras/${cameraId}`, {
+      timeout: 20_000,
+    }),
 };
 
 export const identityApi = {

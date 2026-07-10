@@ -12,8 +12,11 @@ os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 from contextlib import asynccontextmanager
 from typing import Any
 
+import asyncio
+import json
 import numpy as np
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from citevision_ai.budget.resource_budget import ResourceBudgetManager
@@ -23,6 +26,7 @@ from citevision_ai import hardware_profile
 from citevision_ai.identity.face import FaceIdentityEngine, InsightFaceRecognizer
 from citevision_ai.identity.plate import PlateIdentityEngine
 from citevision_ai.ingest.rtsp_worker import WorkerManager
+from citevision_ai.live.detection_broadcaster import DetectionBroadcaster
 from citevision_ai.mqtt.publisher import MqttPublisher
 from citevision_ai.pipeline import PipelineService
 from citevision_ai.utils.ai_registry import load_stack_registry, required_health_keys
@@ -32,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 pipeline: PipelineService | None = None
 worker_manager: WorkerManager | None = None
+detection_broadcaster = DetectionBroadcaster()
 
 
 @asynccontextmanager
@@ -67,6 +72,8 @@ async def lifespan(app: FastAPI):
     )
     mqtt.connect()
     pipeline = PipelineService(detector, budget, mqtt, face_engine, plate_engine)
+    detection_broadcaster.bind_loop(asyncio.get_running_loop())
+    pipeline.set_detection_broadcaster(detection_broadcaster)
 
     if face_engine.is_loaded:
         logger.info("InsightFace loaded from %s", iface_root)
@@ -102,7 +109,16 @@ async def lifespan(app: FastAPI):
                 "YOLO CUDA required but inactive. Run: bash scripts/setup-cuda-onnx.sh"
             )
 
-    def process_fn(camera_id: str, frame: np.ndarray, fps: float) -> None:
+    def process_fn(
+        camera_id: str,
+        frame: np.ndarray,
+        fps: float,
+        *,
+        timeline=None,
+        segment_ctx=None,
+        capture_wall_ts: float | None = None,
+        publish_frame_index: int | None = None,
+    ) -> None:
         if pipeline is None:
             return
         config = worker_manager.get_config(camera_id) if worker_manager else {}
@@ -116,9 +132,45 @@ async def lifespan(app: FastAPI):
                 or (config.get("zones") and not existing.get("zones"))
             ):
                 pipeline.set_spatial_config(camera_id, config)
-        pipeline.process_frame(camera_id, frame, fps)
+        pipeline.process_frame(
+            camera_id,
+            frame,
+            fps,
+            timeline=timeline,
+            segment_ctx=segment_ctx,
+            capture_wall_ts=capture_wall_ts,
+            publish_frame_index=publish_frame_index,
+        )
 
-    worker_manager = WorkerManager(process_fn)
+    def eof_flush_fn(
+        camera_id: str,
+        timeline,
+        segment_ctx,
+        source_fps: float = 25.0,
+    ) -> None:
+        if pipeline is not None:
+            pipeline.process_segment_eof(camera_id, timeline, segment_ctx, source_fps)
+
+    def begin_replay_fn(camera_id: str) -> None:
+        if pipeline is not None:
+            pipeline.begin_segment_replay(camera_id)
+
+    def evidence_buffer_fn(camera_id: str, frame: np.ndarray) -> None:
+        if pipeline is not None and camera_id not in settings.parsed_segment_mode_camera_ids():
+            pipeline.evidence.push_frame(camera_id, frame)
+
+    def burn_in_fn(camera_id: str, frame: np.ndarray) -> np.ndarray:
+        if pipeline is None:
+            return frame
+        return pipeline.burn_in_frame(camera_id, frame)
+
+    worker_manager = WorkerManager(
+        process_fn,
+        buffer_fn=evidence_buffer_fn,
+        eof_flush_fn=eof_flush_fn,
+        begin_replay_fn=begin_replay_fn,
+        burn_in_fn=burn_in_fn if settings.burn_in_overlay else None,
+    )
     logger.info("AI Engine started on port %d with RTSP worker manager", settings.ai_engine_port)
     yield
     if worker_manager:
@@ -270,6 +322,62 @@ def list_cameras() -> dict[str, Any]:
     if worker_manager is None:
         raise HTTPException(status_code=503, detail="Worker manager not ready")
     return {"cameras": worker_manager.list_status()}
+
+
+@app.get("/cameras/{camera_id}/detections/latest")
+def camera_latest_detections(camera_id: str) -> dict[str, Any]:
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    return pipeline.get_latest_detections(camera_id)
+
+
+@app.get("/cameras/{camera_id}/detections/stream")
+async def camera_detection_stream(camera_id: str) -> StreamingResponse:
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    q = detection_broadcaster.subscribe(camera_id)
+
+    async def event_generator():
+        try:
+            latest = pipeline.get_latest_detections(camera_id)
+            yield f"data: {json.dumps(latest, default=str)}\n\n"
+            while True:
+                try:
+                    payload = await asyncio.wait_for(q.get(), timeout=10.0)
+                    yield f"data: {json.dumps(payload, default=str)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            detection_broadcaster.unsubscribe(camera_id, q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+class BurnInToggle(BaseModel):
+    enabled: bool
+
+
+@app.put("/cameras/{camera_id}/burn-in")
+def set_camera_burn_in(camera_id: str, body: BurnInToggle) -> dict[str, Any]:
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    pipeline.set_burn_in_enabled(camera_id, body.enabled)
+    return {"camera_id": camera_id, "burn_in": body.enabled}
+
+
+@app.get("/cameras/{camera_id}/burn-in")
+def get_camera_burn_in(camera_id: str) -> dict[str, Any]:
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    return {"camera_id": camera_id, "burn_in": pipeline.is_burn_in_enabled(camera_id)}
 
 
 @app.get("/cameras/{camera_id}/spatial")

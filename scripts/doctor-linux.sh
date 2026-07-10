@@ -42,7 +42,7 @@ else
 fi
 command -v ffmpeg >/dev/null && pass "ffmpeg" || echo "[WARN] ffmpeg missing (camera RTSP test)"
 
-for port in 5433 6380 1884 8554 9003 1984 8081 8001 8010 5174; do
+for port in 5433 6380 1884 8554 9003 1984 5000 8081 8001 8010 5174; do
   if ss -tln 2>/dev/null | grep -q ":$port " || netstat -tln 2>/dev/null | grep -q ":$port "; then
     echo "[WARN] Port $port in use"
   else

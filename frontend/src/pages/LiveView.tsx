@@ -3,20 +3,21 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  ZoomIn, ZoomOut, Camera, Maximize2, MonitorPlay, Activity, Plus,
+  ZoomIn, ZoomOut, Camera, Maximize2, MonitorPlay, Activity, Plus, Scan,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
 import LiveEventStream from '@/components/dashboard/LiveEventStream';
+import LiveStreamPlayer from '@/components/live/LiveStreamPlayer';
 import { useCameras } from '@/hooks/api/queries';
 import { useSound } from '@/hooks/useSound';
-import { AI_ENGINE_HEALTH } from '@/config/streams';
-import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
+import { AI_ENGINE_HEALTH, go2rtcStreamSrc } from '@/config/streams';
 import CameraObservationPanel from '@/components/observation/CameraObservationPanel';
-import { go2rtcStreamSrc } from '@/config/streams';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
+
+const OVERLAY_PREF_KEY = 'cv.liveView.detectionOverlay';
 
 export default function LiveView() {
   const { t } = useTranslation();
@@ -25,6 +26,26 @@ export default function LiveView() {
   const { data: cameras = [], isLoading, isError, refetch } = useCameras();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<{ ok: boolean; yolo: boolean } | null>(null);
+  const [detectionOverlay, setDetectionOverlay] = useState(() => {
+    try {
+      return localStorage.getItem(OVERLAY_PREF_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const activeId = selectedId ?? cameras[0]?.id ?? '';
+
+  const toggleDetectionOverlay = () => {
+    const next = !detectionOverlay;
+    setDetectionOverlay(next);
+    try {
+      localStorage.setItem(OVERLAY_PREF_KEY, next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    playClick();
+  };
 
   useEffect(() => {
     const poll = () => {
@@ -68,7 +89,6 @@ export default function LiveView() {
     );
   }
 
-  const activeId = selectedId ?? cameras[0]?.id ?? '';
   const selected = cameras.find((c) => c.id === activeId) ?? cameras[0];
   const streamSrc = go2rtcStreamSrc(selected);
 
@@ -79,7 +99,38 @@ export default function LiveView() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div id="live-view-player" className="lg:col-span-3">
           <div className="cv-card overflow-hidden border-cv-electric/25">
-            <Go2RtcPlayer className="aspect-video w-full" src={streamSrc} label={selected.name} />
+            <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-cv-border bg-cv-surface/40">
+              <p className="text-xs text-cv-muted">
+                {t(
+                  'liveView.detectionOverlayHintFrigate',
+                  'Cadres IA : overlay natif Frigate (live) ou SSE go2rtc (démo).',
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={toggleDetectionOverlay}
+                disabled={!aiStatus?.yolo}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+                  detectionOverlay
+                    ? 'bg-cv-accent/20 text-cv-accent border border-cv-accent/40'
+                    : 'bg-cv-surface border border-cv-border text-cv-muted hover:text-cv-text'
+                } ${!aiStatus?.yolo ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={t('liveView.detectionOverlayTitle', 'Afficher les bbox YOLO/ByteTrack en direct')}
+              >
+                <Scan className="w-3.5 h-3.5" />
+                {detectionOverlay
+                  ? t('liveView.detectionOverlayOn', 'Cadres IA · ON')
+                  : t('liveView.detectionOverlayOff', 'Cadres IA · OFF')}
+              </button>
+            </div>
+            <LiveStreamPlayer
+              className="aspect-video w-full"
+              src={streamSrc}
+              label={selected.name}
+              cameraId={activeId}
+              camera={selected}
+              showOverlay={detectionOverlay}
+            />
             <div className="p-3 flex items-center justify-between border-t border-cv-border">
               <div>
                 <p className="font-medium">{selected.name}</p>

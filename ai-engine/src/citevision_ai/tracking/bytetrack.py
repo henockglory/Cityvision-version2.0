@@ -70,6 +70,14 @@ class KalmanBox:
         h = max(1.0, self.h.predict())
         return {"x": cx - w / 2, "y": cy - h / 2, "width": w, "height": h}
 
+    def peek_predict(self, dt: float = 1.0) -> dict:
+        """One-step prediction without mutating filter state (for live overlay)."""
+        cx = self.cx.x + self.cx.v * dt
+        cy = self.cy.x + self.cy.v * dt
+        w = max(1.0, self.w.x + self.w.v * dt)
+        h = max(1.0, self.h.x + self.h.v * dt)
+        return {"x": cx - w / 2, "y": cy - h / 2, "width": w, "height": h}
+
     def update(self, bbox: dict) -> dict:
         w = bbox["width"]
         h = bbox["height"]
@@ -160,6 +168,28 @@ class ByteTracker:
 
         self._tracks = [t for t in self._tracks if t.time_since_update <= self.max_age]
         return [t for t in self._tracks if t.hits >= self.min_hits or t.age <= self.min_hits]
+
+    def overlay_snapshot(self, max_coast: int = 2, predict_steps: float = 1.0) -> list[dict]:
+        """Non-mutating bbox positions for live overlay between inference frames."""
+        out: list[dict] = []
+        for track in self._tracks:
+            if track.time_since_update > max_coast:
+                continue
+            if track.hits < 1 and track.age > 1:
+                continue
+            if track._kf is not None and track.time_since_update == 0:
+                bbox = track._kf.peek_predict(predict_steps)
+            else:
+                bbox = dict(track.bbox)
+            out.append({
+                "track_id": track.track_id,
+                "class_id": track.class_id,
+                "class_name": track.class_name,
+                "confidence": track.confidence,
+                "bbox": bbox,
+                "time_since_update": track.time_since_update,
+            })
+        return out
 
     def _associate(
         self, predicted: list[dict], dets: list[dict], matched_tracks: set[int]

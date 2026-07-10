@@ -132,6 +132,7 @@
       "previewFailed": "Impossible d'afficher l'image — vérifiez identifiants et que la caméra est sur le même réseau",
       "scanError": "Échec du scan réseau — réessayez ou saisissez l'URL RTSP manuellement",
       "scanTimeout": "Le scan a pris trop de temps — réessayez ou saisissez l'URL RTSP manuellement",
+      "probeTimeout": "Le test de connexion a pris trop de temps — vérifiez que la caméra est en ligne et sur le même réseau",
       "scanAuthError": "Session expirée — reconnectez-vous puis relancez le scan",
       "scanRateLimit": "Trop de scans en peu de temps — patientez quelques secondes",
       "scanInvalidCidr": "Sous-réseau invalide (ex. 192.168.1.0/24)",
@@ -409,7 +410,7 @@
       "evidenceRoleHint": {
         "scene": "Vue d'ensemble du passage — contexte complet.",
         "subject": "Même vue avec le cadre de détection sur le véhicule ou l'objet.",
-        "plate": "Zoom sur la zone arrière du véhicule (plaque d'immatriculation)."
+        "plate": "Zoom arrière véhicule — OCR PaddleOCR pour la preuve ; zoom live Frigate uniquement."
       },
       "subjectPadding": "Marge autour de la cible",
       "subjectPaddingHint": "Espace laissé autour de la personne ou de l'objet sur la photo zoomée.",
@@ -643,6 +644,8 @@
     "plate": "Plaque",
     "plateCrop": "Plaque",
     "plateUnavailable": "Plaque non disponible (crop impossible sur cette capture).",
+    "legacySegment": "Preuve issue de l'ancien mode segments — contenu visuel potentiellement décalé.",
+    "lowQualityBBox": "Cible non confirmée dans le cadre — preuve à vérifier manuellement.",
     "plateUnread": "Non lue (OCR)",
     "face": "Visage",
     "eventType": "Événement",
@@ -681,7 +684,11 @@
     "emptyHint": "Configurez des caméras pour la vue directe",
     "connectingStream": "Connexion au flux…",
     "streamError": "Impossible d'afficher l'image — vérifiez identifiants et que la caméra est sur le même réseau",
-    "fallbackMse": "Repli MSE…"
+    "fallbackMse": "Repli MSE…",
+    "detectionOverlayHint": "Cadres YOLO superposés sur la vidéo (SSE) — léger décalage possible.",
+    "detectionOverlayTitle": "Afficher les cadres de détection en direct",
+    "detectionOverlayOn": "Cadres IA · ON",
+    "detectionOverlayOff": "Cadres IA · OFF"
   },
   "observation": {
     "panelTitle": "Compteurs d'observation",

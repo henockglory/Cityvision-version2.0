@@ -14,13 +14,12 @@ EVIDENCE_WORTHY_TYPES = frozenset({
     "crowd_gathering",
 })
 
-CLIP_DURATION_SEC = 5
-RING_SECONDS = 8
-# 6 fps (was 3): halves the worst-case gap between a bbox's source frame and the
-# ring-buffer frame used for evidence when the live frame isn't directly reusable
-# (e.g. finalized on track loss, a few hundred ms after the bbox was observed).
-RING_FPS = 6
-JPEG_QUALITY = 72
+CLIP_DURATION_SEC = 6
+RING_SECONDS = 12
+# 12 fps ring buffer: ~144 frames of history — enough for a smooth 6 s clip even
+# when inference runs at 8 Hz. Fed directly from the RTSP read loop, not inference.
+RING_FPS = 12
+JPEG_QUALITY = 80
 
 # Max drift (seconds) between a bbox's source-frame timestamp and the live frame
 # already in hand before we fall back to a ring-buffer lookup by that timestamp.

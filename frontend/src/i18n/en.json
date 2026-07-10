@@ -131,6 +131,7 @@
       "previewFailed": "Cannot display video — check credentials and that the camera is on the same network",
       "scanError": "Network scan failed — retry or enter the RTSP URL manually",
       "scanTimeout": "Scan timed out — retry or enter the RTSP URL manually",
+      "probeTimeout": "Connection test timed out — check that the camera is online and on the same network",
       "scanAuthError": "Session expired — sign in again and retry the scan",
       "scanRateLimit": "Too many scans — wait a few seconds",
       "scanInvalidCidr": "Invalid subnet (e.g. 192.168.1.0/24)",
@@ -406,7 +407,7 @@
       "evidenceRoleHint": {
         "scene": "Full overview of the event — complete context.",
         "subject": "Same view with the detection box on the vehicle or object.",
-        "plate": "Zoom on the rear plate region of the vehicle."
+        "plate": "Rear plate crop — PaddleOCR for proof; Frigate LPR is live zoom only."
       },
       "subjectPadding": "Margin around target",
       "subjectPaddingHint": "Space left around the person or object in the zoomed photo.",
@@ -633,6 +634,8 @@
     "plate": "Plate",
     "plateCrop": "Plate",
     "plateUnavailable": "Plate unavailable (crop could not be produced for this capture).",
+    "legacySegment": "Evidence from the legacy segment mode — visual content may be misaligned.",
+    "lowQualityBBox": "Target not confirmed inside the frame — evidence needs manual review.",
     "plateUnread": "Unread (OCR)",
     "face": "Face",
     "eventType": "Event",
@@ -667,7 +670,11 @@
     "emptyHint": "Configure cameras for live view",
     "connectingStream": "Connecting to stream…",
     "streamError": "Cannot display video — check credentials and that the camera is on the same network",
-    "fallbackMse": "MSE fallback…"
+    "fallbackMse": "MSE fallback…",
+    "detectionOverlayHint": "YOLO boxes overlaid on video (SSE) — slight lag vs burn-in.",
+    "detectionOverlayTitle": "Show live detection boxes",
+    "detectionOverlayOn": "AI boxes · ON",
+    "detectionOverlayOff": "AI boxes · OFF"
   },
   "observation": {
     "panelTitle": "Observation counters",

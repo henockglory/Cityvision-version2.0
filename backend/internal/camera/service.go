@@ -220,7 +220,9 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, req UpdateReq
 
 func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 	streamName := "cam-" + id.String()
-	_ = NewGo2RTCClient().UnregisterStream(ctx, streamName)
+	go2rtcCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	_ = NewGo2RTCClient().UnregisterStream(go2rtcCtx, streamName)
+	cancel()
 
 	tag, err := s.pool.Exec(ctx, `DELETE FROM cameras WHERE id = $1 AND org_id = $2`, id, orgID)
 	if err != nil {

@@ -19,7 +19,7 @@ import uuid
 from typing import Any
 
 from citevision_ai.analytics.zone_geometry import edge_midpoint, resolve_speed_distance_m
-from citevision_ai.evidence.capture import bbox_valid, pick_best_bbox_with_ts
+from citevision_ai.evidence.capture import bbox_evidence_score, bbox_valid, pick_best_bbox_with_ts
 
 SPEED_BEHAVIOR = "speed_measurement"
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle"}
@@ -144,6 +144,28 @@ class ZoneSpeedEngine:
         self._best_bbox: dict[tuple[str, str, int], dict] = {}
         self._last_class: dict[tuple[str, str, int], str] = {}
 
+    @staticmethod
+    def _maybe_update_best_bbox(
+        store: dict[tuple[str, str, int], dict],
+        key: tuple[str, str, int],
+        bbox: dict,
+        frame_wall_ts: float,
+        frame_w: int,
+        frame_h: int,
+        segment_frame_index: int | None,
+    ) -> None:
+        prev = store.get(key)
+        prev_bbox = prev.get("bbox") if prev else None
+        prev_score = bbox_evidence_score(prev_bbox, frame_w, frame_h, min_frac=0.01) if prev_bbox else 0.0
+        new_score = bbox_evidence_score(bbox, frame_w, frame_h, min_frac=0.01)
+        if new_score <= 0:
+            return
+        if prev_bbox is None or new_score > prev_score:
+            entry: dict = {"bbox": dict(bbox), "ts": frame_wall_ts}
+            if segment_frame_index is not None:
+                entry["frame_index"] = int(segment_frame_index)
+            store[key] = entry
+
     def reset_camera(self, camera_id: str) -> None:
         for key in list(self._entry_time):
             if key[0] == camera_id:
@@ -214,6 +236,7 @@ class ZoneSpeedEngine:
         now_ts: float,
         iso_ts: str,
         frame_wall_ts: float | None = None,
+        segment_frame_index: int | None = None,
     ) -> list[dict[str, Any]]:
         if frame_wall_ts is None:
             frame_wall_ts = time.time()
@@ -320,20 +343,28 @@ class ZoneSpeedEngine:
                 if bbox_valid(bbox, min_frac=0.01):
                     self._last_bbox[key] = {"bbox": dict(bbox), "ts": frame_wall_ts}
                     self._last_class[key] = cls
-                    prev = self._best_bbox.get(key)
-                    prev_bbox = prev.get("bbox") if prev else None
-                    if prev_bbox is None or _bbox_area_px(bbox) > _bbox_area_px(prev_bbox):
-                        self._best_bbox[key] = {"bbox": dict(bbox), "ts": frame_wall_ts}
 
                 if edge_pair is not None and entry_mid is not None and exit_mid is not None:
                     cx, cy = _track_anchor_norm(bbox, frame_w, frame_h, anchor="bottom")
-                    if _near_norm_point(cx, cy, entry_mid[0], entry_mid[1]):
+                    at_entry = _near_norm_point(cx, cy, entry_mid[0], entry_mid[1])
+                    if at_entry:
                         if key not in self._entry_time:
                             self._entry_time[key] = now_ts
                             self._entry_xy[key] = (cx, cy)
                         self._inside[key] = True
-                    elif (
-                        key in self._entry_time
+                    # Best bbox only while the crossing is active (in-zone), and
+                    # never as an elif that would shadow exit detection.
+                    if (
+                        (at_entry or self._inside.get(key))
+                        and bbox_valid(bbox, min_frac=0.01)
+                    ):
+                        self._maybe_update_best_bbox(
+                            self._best_bbox, key, bbox, frame_wall_ts,
+                            frame_w, frame_h, segment_frame_index,
+                        )
+                    if (
+                        not at_entry
+                        and key in self._entry_time
                         and self._inside.get(key)
                         and _near_norm_point(cx, cy, exit_mid[0], exit_mid[1])
                     ):
@@ -371,6 +402,11 @@ class ZoneSpeedEngine:
                         self._entry_time[key] = now_ts
                         self._entry_xy[key] = (cx, cy)
                     self._inside[key] = True
+                    if bbox_valid(bbox, min_frac=0.01):
+                        self._maybe_update_best_bbox(
+                            self._best_bbox, key, bbox, frame_wall_ts,
+                            frame_w, frame_h, segment_frame_index,
+                        )
                     continue
 
                 if not self._inside.get(key):
@@ -481,27 +517,23 @@ class ZoneSpeedEngine:
         self._inside[key] = False
         self._entry_time.pop(key, None)
         self._entry_xy.pop(key, None)
-        best_entry = self._best_bbox.get(key)
         last_entry = self._last_bbox.get(key)
-        best_track_bbox, best_bbox_ts = pick_best_bbox_with_ts(
-            [
-                (track.get("bbox"), frame_wall_ts),
-                (best_entry.get("bbox") if best_entry else None, best_entry.get("ts") if best_entry else None),
-                (last_entry.get("bbox") if last_entry else None, last_entry.get("ts") if last_entry else None),
-            ],
-            frame_w,
-            frame_h,
-            min_frac=0.02,
-        )
+        # Evidence bbox = YOLO/ByteTrack on the finalize frame (co-emission).
+        # Do not inject _best_bbox from an earlier in-zone instant.
+        if track_lost and last_entry and last_entry.get("bbox"):
+            track = {**track, "bbox": dict(last_entry["bbox"])}
+        elif not bbox_valid(track.get("bbox") or {}, min_frac=0.02):
+            if last_entry and last_entry.get("bbox"):
+                track = {**track, "bbox": dict(last_entry["bbox"])}
+            else:
+                self._last_bbox.pop(key, None)
+                self._best_bbox.pop(key, None)
+                self._last_class.pop(key, None)
+                return []
         self._last_bbox.pop(key, None)
         self._best_bbox.pop(key, None)
         self._last_class.pop(key, None)
-        if best_track_bbox:
-            track = {**track, "bbox": best_track_bbox}
-        elif not bbox_valid(track.get("bbox") or {}, min_frac=0.02):
-            return []
-        else:
-            best_bbox_ts = frame_wall_ts
+        best_bbox_ts = frame_wall_ts if frame_wall_ts is not None else now_ts
         if entry is None or entry_xy is None:
             return []
 
@@ -561,6 +593,7 @@ class ZoneSpeedEngine:
             frame_w,
             frame_h,
             bbox_ts=best_bbox_ts,
+            segment_bbox_frame_index=None,
         )
         if not ev:
             return []
@@ -580,6 +613,7 @@ class ZoneSpeedEngine:
         frame_w: int = 1920,
         frame_h: int = 1080,
         bbox_ts: float | None = None,
+        segment_bbox_frame_index: int | None = None,
     ) -> dict[str, Any]:
         raw = track.get("bbox") or {}
         x, y = float(raw.get("x", 0)), float(raw.get("y", 0))
@@ -607,6 +641,7 @@ class ZoneSpeedEngine:
             "zone_id": zone_id,
             "bbox": bbox,
             "bbox_ts": bbox_ts,
+            "segment_bbox_frame_index": segment_bbox_frame_index,
             "speed_kmh": round(speed_kmh, 1),
             "confidence": 0.85,
             "severity": "high",

@@ -106,38 +106,76 @@ class FrameRingBuffer:
         img = self._decode_frame(best)
         return img if img is not None else self.get_last_frame()
 
-    def export_clip_mp4(self, duration_sec: float = 6.0, fps: int | None = None) -> ClipExport | None:
+    def get_frames_near_ts(
+        self, target_ts: float, max_frames: int = 6,
+    ) -> list[tuple[np.ndarray, float]]:
+        """Frames closest to ``target_ts``, nearest first (quality-guard retries)."""
+        with self._lock:
+            snapshot = list(self._frames)
+        if not snapshot:
+            return []
+        snapshot.sort(key=lambda f: abs(f.ts - target_ts))
+        out: list[tuple[np.ndarray, float]] = []
+        for bf in snapshot[:max_frames]:
+            img = self._decode_frame(bf)
+            if img is not None:
+                out.append((img, bf.ts))
+        return out
+
+    def export_clip_mp4(
+        self,
+        duration_sec: float = 6.0,
+        fps: int | None = None,
+        center_ts: float | None = None,
+    ) -> ClipExport | None:
+        """Export an H.264 clip from the ring buffer.
+
+        When ``center_ts`` is set (typically ``bbox_ts``), the clip is a real-time
+        window centred on the violation — not the last N stale frames.  Duplicate-
+        frame padding is never applied: a slideshow of 2–3 frozen JPEGs was the
+        root cause of "video = combien de photos" reports.
+        """
         with self._lock:
             if not self._frames:
                 return None
             snapshot = list(self._frames)
         use_fps = fps or self.fps
+        target_frames = max(4, int(duration_sec * use_fps))
+
+        if center_ts is not None:
+            half = duration_sec / 2.0
+            selected = [bf for bf in snapshot if (center_ts - half) <= bf.ts <= (center_ts + half)]
+            if len(selected) < 4:
+                best_idx = min(range(len(snapshot)), key=lambda i: abs(snapshot[i].ts - center_ts))
+                start = max(0, best_idx - target_frames // 2)
+                end = min(len(snapshot), start + target_frames)
+                start = max(0, end - target_frames)
+                selected = snapshot[start:end]
+        else:
+            selected = snapshot[-target_frames:] if len(snapshot) > target_frames else snapshot
+
         frames_bgr: list[np.ndarray] = []
-        for bf in snapshot:
+        timestamps: list[float] = []
+        for bf in selected:
             img = self._decode_frame(bf)
             if img is not None:
                 frames_bgr.append(img)
-        if not frames_bgr:
+                timestamps.append(bf.ts)
+        if len(frames_bgr) < 2:
             return None
 
-        max_frames = max(1, int(duration_sec * use_fps))
-        min_frames = max(3, int(duration_sec * use_fps * 0.4))
-        if len(frames_bgr) > max_frames:
-            frames_bgr = frames_bgr[-max_frames:]
-
-        # Pad with last valid frame to reach minimum playable duration
-        if len(frames_bgr) < min_frames:
-            last = frames_bgr[-1]
-            while len(frames_bgr) < min_frames:
-                frames_bgr.append(last.copy())
+        span = timestamps[-1] - timestamps[0]
+        if span >= 0.08:
+            out_fps = min(float(use_fps), max(4.0, (len(frames_bgr) - 1) / span))
+        else:
+            out_fps = float(use_fps)
 
         if shutil.which("ffmpeg"):
-            # Downscale to 1280×720 max to speed up H.264 encoding on 4K sources.
             frames_bgr = _downscale_frames(frames_bgr, max_width=1280, max_height=720)
-            data = self._export_h264_ffmpeg(frames_bgr, use_fps)
+            data = self._export_h264_ffmpeg(frames_bgr, int(round(out_fps)) or 4)
             if data is None:
                 return None
-            actual_dur = len(frames_bgr) / max(use_fps, 1)
+            actual_dur = (len(frames_bgr) - 1) / max(out_fps, 1) if len(frames_bgr) > 1 else 1.0 / max(out_fps, 1)
             return ClipExport(data=data, duration_sec=round(actual_dur, 2), frame_count=len(frames_bgr))
 
         logger.warning("ffmpeg not found — evidence clip skipped (browser requires H.264)")

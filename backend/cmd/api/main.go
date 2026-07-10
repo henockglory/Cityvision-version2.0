@@ -23,6 +23,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/demo"
 	"github.com/citevision/citevision-v2/backend/internal/events"
 	"github.com/citevision/citevision-v2/backend/internal/evidence"
+	"github.com/citevision/citevision-v2/backend/internal/frigate"
 	"github.com/citevision/citevision-v2/backend/internal/handler"
 	"github.com/citevision/citevision-v2/backend/internal/health"
 	"github.com/citevision/citevision-v2/backend/internal/identity"
@@ -157,6 +158,11 @@ func main() {
 	orch := ingest.NewOrchestrator(pool, aiClient, spatialSvc, cameraSvc, log)
 	go orch.Run(mqttCtx)
 
+	frigateCfg := frigate.ConfigFromEnv()
+	frigateSync := frigate.NewSyncService(pool, cameraSvc, frigateCfg, log)
+	frigateEvents := frigate.NewEventAdapter(frigateCfg, mqttBroker, log)
+	frigateEvents.Start(mqttCtx)
+
 	catalogPath := os.Getenv("RULE_CATALOG_PATH")
 	if catalogPath == "" {
 		catalogPath = "../shared/rule-catalog"
@@ -189,6 +195,18 @@ func main() {
 		Orchestrator: orch,
 		Demo:        demoSvc,
 		Observation: observation.NewService(pool),
+		Frigate:     frigateSync,
+	}
+
+	if frigateSync.Enabled() {
+		go func() {
+			time.Sleep(8 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			if err := frigateSync.RebuildAll(ctx); err != nil {
+				log.Warn("frigate startup rebuild failed", "error", err)
+			}
+		}()
 	}
 
 	ws.ConfigureOrigins(cfg.WSAllowedOrigins)
@@ -207,6 +225,7 @@ func main() {
 
 	r.Get("/health", checker.Live)
 	r.Get("/health/ready", checker.Ready)
+	r.Get("/health/frigate", api.FrigateHealth)
 	// /metrics is sensitive (info disclosure + DoS). Require the internal key
 	// unless METRICS_PUBLIC=1 is explicitly set (e.g. behind a trusted proxy).
 	if os.Getenv("METRICS_PUBLIC") == "1" {
@@ -242,6 +261,7 @@ func main() {
 		r.Route("/internal/ingest", func(r chi.Router) {
 			r.Use(middleware.RequireInternalKey)
 			r.Post("/resync-spatial", api.InternalResyncSpatial)
+			r.Post("/frigate/rebuild", api.InternalFrigateRebuild)
 			r.Get("/orgs/{orgID}/cameras/{cameraID}/spatial-config", api.InternalDebugSpatialConfig)
 		})
 

@@ -23,6 +23,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/demo"
 	"github.com/citevision/citevision-v2/backend/internal/events"
 	"github.com/citevision/citevision-v2/backend/internal/evidence"
+	"github.com/citevision/citevision-v2/backend/internal/frigate"
 	"github.com/citevision/citevision-v2/backend/internal/ingest"
 	"github.com/citevision/citevision-v2/backend/internal/identity"
 	"github.com/citevision/citevision-v2/backend/internal/middleware"
@@ -62,6 +63,7 @@ type API struct {
 	Routing     *routing.Service
 	Demo        *demo.Service
 	Observation *observation.Service
+	Frigate     *frigate.SyncService
 }
 
 // auditLog appends an audit entry and logs (does not silently drop) failures,
@@ -252,6 +254,7 @@ func (a *API) CreateCamera(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "create failed")
 		return
 	}
+	a.triggerFrigateSync(r.Context(), orgID, &cam.ID)
 	writeJSON(w, http.StatusCreated, cam)
 }
 
@@ -276,6 +279,7 @@ func (a *API) UpdateCamera(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "update failed")
 		return
 	}
+	a.triggerFrigateSync(r.Context(), orgID, &id)
 	writeJSON(w, http.StatusOK, cam)
 }
 
@@ -301,6 +305,14 @@ func (a *API) DeleteCamera(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	cid := id.String()
+	if a.Orchestrator != nil {
+		a.Orchestrator.DropCamera(r.Context(), id)
+	} else if a.AI != nil {
+		stopCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		_ = a.AI.StopCamera(stopCtx, cid)
+		cancel()
+	}
 	if err := a.Cameras.Delete(r.Context(), orgID, id); errors.Is(err, camera.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -308,7 +320,6 @@ func (a *API) DeleteCamera(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
-	cid := id.String()
 	if claims := middleware.GetClaims(r.Context()); claims != nil {
 		_, _ = a.Audit.Append(r.Context(), audit.LogRequest{
 			OrgID: &orgID, UserID: &claims.UserID, Action: "camera.delete",
@@ -316,6 +327,7 @@ func (a *API) DeleteCamera(w http.ResponseWriter, r *http.Request) {
 			IPAddress: parseIP(r), UserAgent: r.UserAgent(),
 		})
 	}
+	a.triggerFrigateSync(r.Context(), orgID, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "id": cid})
 }
 
@@ -345,7 +357,9 @@ func (a *API) ProbeCamera(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	result := camera.ProbeCredentials(r.Context(), req, 8*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
+	defer cancel()
+	result := camera.ProbeCredentials(ctx, req, 4*time.Second)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -533,6 +547,9 @@ func (a *API) DeleteZone(w http.ResponseWriter, r *http.Request) {
 		ResourceType: "zone", ResourceID: &rid,
 		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
 	})
+	if a.Frigate != nil && a.Frigate.Enabled() {
+		a.Frigate.SyncAfterSpatialChange(r.Context(), orgID, nil)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -548,6 +565,9 @@ func (a *API) CreateZone(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "create failed")
 		return
+	}
+	if a.Frigate != nil && a.Frigate.Enabled() && z.CameraID != nil {
+		a.Frigate.SyncAfterSpatialChange(r.Context(), orgID, z.CameraID)
 	}
 	writeJSON(w, http.StatusCreated, z)
 }
@@ -579,6 +599,9 @@ func (a *API) UpdateZone(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "update failed")
 		return
+	}
+	if a.Frigate != nil && a.Frigate.Enabled() && z.CameraID != nil {
+		a.Frigate.SyncAfterSpatialChange(r.Context(), orgID, z.CameraID)
 	}
 	writeJSON(w, http.StatusOK, z)
 }
@@ -798,6 +821,9 @@ func (a *API) CreateRule(w http.ResponseWriter, r *http.Request) {
 		ResourceType: "rule", ResourceID: &rid,
 		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
 	})
+	if a.Frigate != nil && a.Frigate.Enabled() {
+		a.Frigate.SyncAfterRuleChange(r.Context(), orgID)
+	}
 	writeJSON(w, http.StatusCreated, rule)
 }
 
@@ -857,6 +883,9 @@ func (a *API) UpdateRule(w http.ResponseWriter, r *http.Request) {
 		a.Orchestrator.InvalidateConfigHashes()
 		go a.Orchestrator.SyncNow(context.Background())
 	}
+	if a.Frigate != nil && a.Frigate.Enabled() {
+		a.Frigate.SyncAfterRuleChange(r.Context(), orgID)
+	}
 	writeJSON(w, http.StatusOK, rule)
 }
 
@@ -881,6 +910,9 @@ func (a *API) DeleteRule(w http.ResponseWriter, r *http.Request) {
 		ResourceType: "rule", ResourceID: &rid,
 		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
 	})
+	if a.Frigate != nil && a.Frigate.Enabled() {
+		a.Frigate.SyncAfterRuleChange(r.Context(), orgID)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
