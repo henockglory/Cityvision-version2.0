@@ -1,6 +1,7 @@
 from pathlib import Path
 from urllib.parse import urlparse
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _AI_ROOT = Path(__file__).resolve().parents[2]
@@ -93,6 +94,48 @@ class Settings(BaseSettings):
     frigate_url: str = "http://127.0.0.1:5000"
     frigate_plate_ocr: bool = True
     evidence_backend: str = "ring_buffer"  # ring_buffer | frigate | hybrid
+
+    # Frigate track evidence (ported from citevision_videoverbalisation)
+    frigate_event_match_sec: float = 12.0
+    # Demo go2rtc loops: Frigate start_time is stream-relative; IA uses wall clock.
+    frigate_demo_timeline_align: bool = True
+    # Demo go2rtc: max |IA anchor − Frigate event| — stale loop events rejected above this.
+    frigate_demo_max_align_sec: float = 5.0
+    frigate_demo_loose_match_sec: float = 5.0
+    frigate_demo_bootstrap_max_sec: float = 18.0
+    frigate_demo_min_bbox_iou: float = 0.12
+    # Evidence accept gate: reject correlated events beyond this |IA−Frigate| skew.
+    frigate_demo_accept_max_align_sec: float = 5.0
+    # Minimum IoU between IA emission bbox and Frigate event box to accept evidence.
+    frigate_accept_min_bbox_iou: float = 0.15
+    frigate_demo_time_only_max_sec: float = 15.0
+    frigate_demo_time_only_min_iou: float = 0.12
+    frigate_demo_events_limit: int = 80
+    frigate_snapshot_retries: int = 8
+    frigate_snapshot_retry_delay: float = 0.45
+    frigate_snapshot_quality: int = 98
+    frigate_clip_retries: int = 8
+    frigate_clip_retry_delay: float = 0.8
+    frigate_clip_wait_if_missing: float = 1.2
+    frigate_clip_min_bytes: int = 512
+    frigate_clip_pad_before: float = 0.4
+    frigate_clip_pad_after: float = 0.8
+    frigate_event_media_wait_sec: float = 25.0
+    frigate_event_media_poll_sec: float = 0.5
+    # Poll Frigate events until correlated (demo go2rtc often lags IA by several seconds).
+    frigate_correlate_wait_sec: float = 35.0
+    frigate_evidence_frame_count: int = 6
+    frigate_clip_frame_jpeg_q: int = 2
+
+    # Fast-ALPR OCR service (evidence plate recognition)
+    ocr_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("ocr_url", "OCR_URL", "CITEVISION_OCR_URL"),
+    )
+    ocr_timeout: float = 8.0
+    plate_max_frames: int = 6
+    plate_stop_conf: float = 0.88
+    plate_min_conf: float = 0.35
 
     postgres_host: str = "localhost"
     postgres_port: int = 5433

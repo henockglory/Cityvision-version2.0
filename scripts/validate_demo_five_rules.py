@@ -163,6 +163,37 @@ def list_demo_alert_ids(token: str, org: str) -> set[str]:
     return ids
 
 
+def latest_demo_alert(token: str, org: str, baseline_ids: set[str]) -> dict | None:
+    rows = req("GET", f"{API}/api/v1/orgs/{org}/alerts?limit=50&include_incomplete=true", token)
+    if not isinstance(rows, list):
+        rows = rows.get("items", []) if isinstance(rows, dict) else []
+    for a in rows:
+        aid = str(a.get("id", ""))
+        if aid and aid not in baseline_ids:
+            meta = _alert_meta(a)
+            if meta.get("demo") is True or str(meta.get("demo", "")).lower() == "true":
+                return a
+    return None
+
+
+def alert_evidence_ok(alert: dict) -> tuple[bool, str]:
+    """Check evidence completeness per [A.3] — clip url + scene + subject."""
+    meta = _alert_meta(alert)
+    snap = meta.get("evidence_snapshot") or meta.get("evidence") or {}
+    pkg = snap.get("package") if isinstance(snap.get("package"), dict) else snap
+    if not isinstance(pkg, dict):
+        return False, "no_evidence_package"
+    clip = pkg.get("clip") or {}
+    if not (clip.get("url") or clip.get("asset_id")):
+        return False, "missing_clip"
+    images = pkg.get("images") or []
+    roles = {str(i.get("role")) for i in images if isinstance(i, dict)}
+    missing = [r for r in ("scene", "subject") if r not in roles]
+    if missing:
+        return False, f"missing_images:{','.join(missing)}"
+    return True, "complete"
+
+
 def count_alerts(token: str, org: str) -> int:
     return len(list_demo_alert_ids(token, org))
 
@@ -523,6 +554,16 @@ def main() -> int:
                 detail_parts.append("no_mail")
             else:
                 detail_parts.append(f"mail+{mail_delta}")
+
+        if status == "PASS" and require_alert and spec.get("name") != "Démo · Comptage véhicules":
+            alert = latest_demo_alert(token, org, alerts_baseline_ids)
+            if alert:
+                ev_ok, ev_reason = alert_evidence_ok(alert)
+                if not ev_ok:
+                    status = "PARTIAL"
+                    detail_parts.append(f"evidence:{ev_reason}")
+            else:
+                detail_parts.append("no_alert_for_evidence_audit")
 
         if status == "PASS":
             pass_n += 1

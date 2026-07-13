@@ -25,7 +25,8 @@ func (s *Service) StartRetentionJanitor(ctx context.Context) {
 }
 
 func (s *Service) runRetentionPass(ctx context.Context) {
-	cutoff := time.Now().Add(-RetentionMinutes * time.Minute)
+	minutes := RetentionMinutesFromEnv()
+	cutoff := time.Now().Add(-time.Duration(minutes) * time.Minute)
 	orgs, err := s.listOrgsWithDemoData(ctx)
 	if err != nil {
 		s.log.Warn("demo retention org list failed", "error", err)
@@ -39,6 +40,7 @@ func (s *Service) runRetentionPass(ctx context.Context) {
 			s.log.Warn("demo retention trim failed", "org_id", orgID, "error", err)
 		}
 	}
+	s.runDiskPurgePass(ctx)
 }
 
 func (s *Service) listOrgsWithDemoData(ctx context.Context) ([]uuid.UUID, error) {

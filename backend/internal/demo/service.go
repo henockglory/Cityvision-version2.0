@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -59,6 +60,8 @@ type Settings struct {
 	ActiveVideoID  *uuid.UUID `json:"active_video_id,omitempty"`
 	ActiveCameraID *uuid.UUID `json:"active_camera_id,omitempty"`
 	ActiveStream   string     `json:"active_go2rtc_src,omitempty"`
+	IngestReady    bool       `json:"ingest_ready"`
+	PipelineStatus string     `json:"pipeline_status"`
 	Videos         []Video    `json:"videos"`
 }
 
@@ -79,9 +82,9 @@ type Service struct {
 	go2rtc       *camera.Go2RTCClient
 	minio        *MinioStore
 	log          *slog.Logger
-	// transcodeSem serialises ffmpeg invocations so that concurrent uploads do
-	// not start two heavy encode processes at the same time on the same host.
 	transcodeSem chan struct{}
+	diskPurgeMu  sync.RWMutex
+	lastDiskPurge time.Time
 }
 
 func NewService(pool *pgxpool.Pool, cameras *camera.Service, log *slog.Logger) *Service {
@@ -594,6 +597,15 @@ func (s *Service) syncDemoVirtualCamera(ctx context.Context, orgID uuid.UUID, v 
 	return camID, nil
 }
 
+// EnsureVideoStream registers go2rtc for one demo video (called on demo switch heal).
+func (s *Service) EnsureVideoStream(ctx context.Context, orgID, videoID uuid.UUID) {
+	v, err := s.getVideo(ctx, orgID, videoID)
+	if err != nil || v.Go2rtcSrc == "" || v.Status != "ready" {
+		return
+	}
+	s.ensureStreamRegistered(ctx, orgID, v)
+}
+
 func (s *Service) resolveActiveStream(ctx context.Context, orgID uuid.UUID, st *Settings) string {
 	if st.SourceMode == "camera" && st.ActiveCameraID != nil {
 		cam, err := s.cameras.Get(ctx, orgID, *st.ActiveCameraID)
@@ -711,6 +723,9 @@ func (s *Service) repairOrgStreams(ctx context.Context, orgID uuid.UUID) (synced
 		s.ensureStreamRegistered(ctx, orgID, &v)
 		if needReg || didSync {
 			registered++
+		}
+		if _, err := s.syncDemoVirtualCamera(ctx, orgID, &v); err != nil {
+			s.log.Warn("demo: repair camera metadata failed", "video_id", v.ID, "error", err)
 		}
 	}
 	return synced, registered, missing

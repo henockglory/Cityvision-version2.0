@@ -24,6 +24,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/events"
 	"github.com/citevision/citevision-v2/backend/internal/evidence"
 	"github.com/citevision/citevision-v2/backend/internal/frigate"
+	"github.com/citevision/citevision-v2/backend/internal/health"
 	"github.com/citevision/citevision-v2/backend/internal/ingest"
 	"github.com/citevision/citevision-v2/backend/internal/identity"
 	"github.com/citevision/citevision-v2/backend/internal/middleware"
@@ -64,6 +65,7 @@ type API struct {
 	Demo        *demo.Service
 	Observation *observation.Service
 	Frigate     *frigate.SyncService
+	HealthChecker *health.Checker
 }
 
 // auditLog appends an audit entry and logs (does not silently drop) failures,
@@ -882,6 +884,9 @@ func (a *API) UpdateRule(w http.ResponseWriter, r *http.Request) {
 	if a.Orchestrator != nil && (req.IsEnabled != nil || len(def) > 0) {
 		a.Orchestrator.InvalidateConfigHashes()
 		go a.Orchestrator.SyncNow(context.Background())
+		if req.IsEnabled != nil {
+			go a.Orchestrator.TriggerRulesSyncNow(context.Background())
+		}
 	}
 	if a.Frigate != nil && a.Frigate.Enabled() {
 		a.Frigate.SyncAfterRuleChange(r.Context(), orgID)

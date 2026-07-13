@@ -3,7 +3,9 @@ package frigate
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,7 +49,8 @@ func (s *SyncService) Enabled() bool {
 	return s.cfg.SyncEnabled()
 }
 
-// RebuildAll regenerates config for every active non-virtual camera.
+// RebuildAll regenerates config for every active camera eligible for Frigate
+// (real RTSP cameras + demo virtual cameras fed by go2rtc).
 func (s *SyncService) RebuildAll(ctx context.Context) error {
 	if !s.Enabled() {
 		return nil
@@ -73,7 +76,7 @@ func (s *SyncService) RebuildAll(ctx context.Context) error {
 			&cam.Metadata, &cam.IsActive, &cam.CreatedAt, &cam.UpdatedAt); err != nil {
 			continue
 		}
-		if isVirtualCamera(cam.Metadata) {
+		if skipFrigateCamera(cam.Metadata) {
 			continue
 		}
 		cc, err := s.compileCamera(ctx, &cam)
@@ -111,7 +114,10 @@ func (s *SyncService) compileCamera(ctx context.Context, cam *models.Camera) (Co
 	if err != nil {
 		return CompiledCamera{}, err
 	}
-	stats := probeStreamStats(ctx, rtsp)
+	var stats *camera.StreamStats
+	if !isDemoGo2rtcCamera(cam.Metadata) {
+		stats = probeStreamStats(ctx, rtsp)
+	}
 	agg := s.evidenceAggregateForCamera(ctx, cam.OrgID, cam.ID)
 	zones, _ := s.listZonesForCamera(ctx, cam.OrgID, cam.ID)
 	return UpsertCamera(cam, rtsp, stats, agg, zones), nil
@@ -238,8 +244,39 @@ func isVirtualCamera(meta json.RawMessage) bool {
 	return false
 }
 
+// skipFrigateCamera excludes virtual cameras unless they are demo feeds on go2rtc.
+func skipFrigateCamera(meta json.RawMessage) bool {
+	if !isVirtualCamera(meta) {
+		return false
+	}
+	return !isDemoGo2rtcCamera(meta)
+}
+
+func isDemoGo2rtcCamera(meta json.RawMessage) bool {
+	var m map[string]interface{}
+	_ = json.Unmarshal(meta, &m)
+	if m == nil {
+		return false
+	}
+	demo, _ := m["demo"].(bool)
+	if !demo {
+		return false
+	}
+	if src, _ := m["go2rtc_src"].(string); strings.TrimSpace(src) != "" {
+		return true
+	}
+	// Virtual demo cameras are backed by org_demo_videos even when onboard stripped go2rtc_src.
+	if vid, _ := m["demo_video_id"].(string); strings.TrimSpace(vid) != "" {
+		return true
+	}
+	return false
+}
+
 func probeStreamStats(ctx context.Context, rtspURL string) *camera.StreamStats {
-	stats, err := camera.ProbeStreamStats(ctx, rtspURL)
+	// Independent short timeout: parent rebuild ctx must not block on one offline RTSP.
+	probeCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	stats, err := camera.ProbeStreamStats(probeCtx, rtspURL)
 	if err != nil {
 		return nil
 	}
@@ -339,4 +376,87 @@ func mergeEvidencePolicy(def map[string]interface{}) map[string]interface{} {
 		out[k] = v
 	}
 	return out
+}
+
+// YoungestEventAgeSec returns age in seconds of the newest Frigate event across active cameras.
+func (s *SyncService) YoungestEventAgeSec(ctx context.Context) (float64, bool) {
+	if s == nil || !s.cfg.Enabled {
+		return 0, false
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id FROM cameras WHERE is_active = true LIMIT 20`)
+	if err != nil {
+		return 0, false
+	}
+	defer rows.Close()
+	bestAge := -1.0
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		age, ok := s.youngestForCamera(ctx, CameraID(id.String()))
+		if !ok {
+			continue
+		}
+		if bestAge < 0 || age < bestAge {
+			bestAge = age
+		}
+	}
+	if bestAge < 0 {
+		return 0, false
+	}
+	return bestAge, true
+}
+
+// WaitFresh blocks until a Frigate event younger than maxAgeSec appears or timeout.
+func (s *SyncService) WaitFresh(ctx context.Context, cameraID string, maxAgeSec float64) error {
+	if s == nil || !s.cfg.Enabled {
+		return nil
+	}
+	fid := CameraID(cameraID)
+	deadline := time.Now().Add(35 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		age, ok := s.youngestForCamera(ctx, fid)
+		if ok && age <= maxAgeSec {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("frigate not fresh for %s", fid)
+}
+
+func (s *SyncService) youngestForCamera(ctx context.Context, frigateID string) (float64, bool) {
+	events, err := s.client.ListEvents(ctx, frigateID, 3)
+	if err != nil || len(events) == 0 {
+		return 0, false
+	}
+	now := float64(time.Now().Unix())
+	ts := eventStartTime(events[0])
+	if ts <= 0 {
+		return 0, false
+	}
+	age := now - ts
+	if age < 0 {
+		age = 0
+	}
+	return age, true
+}
+
+func eventStartTime(ev map[string]interface{}) float64 {
+	for _, key := range []string{"start_time", "startTime"} {
+		if v, ok := ev[key]; ok {
+			switch t := v.(type) {
+			case float64:
+				return t
+			case int:
+				return float64(t)
+			}
+		}
+	}
+	return 0
 }

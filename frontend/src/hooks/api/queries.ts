@@ -430,6 +430,23 @@ export function useHealth() {
   return useQuery({
     queryKey: queryKeys.health,
     queryFn: async (): Promise<SystemHealthMetric[]> => {
+      try {
+        const { data: platform } = await healthApi.platform();
+        if (platform?.components) {
+          return Object.entries(platform.components).map(([name, comp]) => ({
+            name,
+            status:
+              comp.status === 'ok'
+                ? ('healthy' as const)
+                : comp.status === 'degraded'
+                  ? ('warning' as const)
+                  : ('critical' as const),
+            value: comp.status ?? 'unknown',
+          }));
+        }
+      } catch {
+        /* fallback ready probe */
+      }
       const { data } = await healthApi.ready();
       if (data.checks && Object.keys(data.checks).length > 0) {
         return Object.entries(data.checks).map(([name, check]) => ({

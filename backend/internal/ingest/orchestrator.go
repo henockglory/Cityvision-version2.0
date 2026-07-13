@@ -120,6 +120,86 @@ func (c *AIClient) StopCamera(ctx context.Context, cameraID string) error {
 	return nil
 }
 
+type AICameraStatus struct {
+	Running         bool
+	FramesProcessed int
+	LastError       string
+}
+
+func (c *AIClient) CameraStatus(ctx context.Context, cameraID string) (AICameraStatus, error) {
+	var out AICameraStatus
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/cameras", nil)
+	if err != nil {
+		return out, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return out, fmt.Errorf("ai list cameras: %s", string(b))
+	}
+	var body struct {
+		Cameras []struct {
+			CameraID        string `json:"camera_id"`
+			Running         bool   `json:"running"`
+			FramesProcessed int    `json:"frames_processed"`
+			LastError       string `json:"last_error"`
+		} `json:"cameras"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return out, err
+	}
+	for _, cam := range body.Cameras {
+		if cam.CameraID == cameraID {
+			return AICameraStatus{
+				Running:         cam.Running,
+				FramesProcessed: cam.FramesProcessed,
+				LastError:       cam.LastError,
+			}, nil
+		}
+	}
+	return out, fmt.Errorf("camera %s not registered", cameraID)
+}
+
+func (c *AIClient) ResetDemoActivate(ctx context.Context, cameraID, previousCameraID string) error {
+	payload := map[string]string{"camera_id": cameraID}
+	if previousCameraID != "" {
+		payload["previous_camera_id"] = previousCameraID
+	}
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/demo/activate", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ai demo activate: %s", string(b))
+	}
+	return nil
+}
+
+func (c *AIClient) PostEmpty(ctx context.Context, url string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 func (c *AIClient) Healthy(ctx context.Context) bool {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
 	if err != nil {
@@ -229,6 +309,20 @@ type Orchestrator struct {
 	failNext    map[uuid.UUID]time.Time
 	failBackoff map[uuid.UUID]time.Duration
 	aiDownUntil time.Time
+	frigateHooks FrigateHooks
+}
+
+// FrigateHooks avoids import cycle with frigate package.
+type FrigateHooks struct {
+	Rebuild   func(ctx context.Context) error
+	WaitFresh func(ctx context.Context, cameraID string, maxAgeSec float64) error
+}
+
+func (o *Orchestrator) SetFrigateHooks(h FrigateHooks) {
+	if o == nil {
+		return
+	}
+	o.frigateHooks = h
 }
 
 func NewOrchestrator(
@@ -435,7 +529,16 @@ func (o *Orchestrator) sync(ctx context.Context) {
 			CapabilityProfiles:   capProfiles,
 			CapabilityManifest:   &manifest,
 		}
-		if videoFile != "" {
+		if frigateEvidenceIngestViaGo2RTC() && isDemoCameraMetadata(meta) {
+			if demoRTSP := demoGo2rtcRTSPURL(meta); demoRTSP != "" {
+				req.RTSPURL = demoRTSP
+				o.log.Info("demo ingest via go2rtc RTSP (Frigate timeline)", "camera_id", id, "stream", demoGo2rtcStreamFromMetadata(meta))
+			} else if videoFile != "" {
+				req.VideoFile = videoFile
+			} else {
+				req.RTSPURL = rtspURL
+			}
+		} else if videoFile != "" {
 			req.VideoFile = videoFile
 		} else {
 			req.RTSPURL = rtspURL

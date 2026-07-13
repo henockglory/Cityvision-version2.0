@@ -39,6 +39,7 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/rules"
 	"github.com/citevision/citevision-v2/backend/internal/setup"
 	"github.com/citevision/citevision-v2/backend/internal/spatial"
+	"github.com/citevision/citevision-v2/backend/internal/supervisor"
 	"github.com/citevision/citevision-v2/backend/internal/users"
 	"github.com/citevision/citevision-v2/backend/internal/ws"
 )
@@ -160,6 +161,14 @@ func main() {
 
 	frigateCfg := frigate.ConfigFromEnv()
 	frigateSync := frigate.NewSyncService(pool, cameraSvc, frigateCfg, log)
+	orch.SetFrigateHooks(ingest.FrigateHooks{
+		Rebuild: func(ctx context.Context) error {
+			return frigateSync.RebuildAll(ctx)
+		},
+		WaitFresh: func(ctx context.Context, cameraID string, maxAgeSec float64) error {
+			return frigateSync.WaitFresh(ctx, cameraID, maxAgeSec)
+		},
+	})
 	frigateEvents := frigate.NewEventAdapter(frigateCfg, mqttBroker, log)
 	frigateEvents.Start(mqttCtx)
 
@@ -196,7 +205,23 @@ func main() {
 		Demo:        demoSvc,
 		Observation: observation.NewService(pool),
 		Frigate:     frigateSync,
+		HealthChecker: checker,
 	}
+
+	platformDeps := health.PlatformDeps{
+		Checker: checker,
+		AI:      aiClient,
+		Frigate: frigateSync,
+		Demo:    demoSvc,
+	}
+	supervisorRunner := supervisor.NewRunner(supervisor.Deps{
+		HealthDeps:   platformDeps,
+		Orchestrator: orch,
+		BackendURL:   "http://127.0.0.1" + cfg.Addr(),
+		InternalKey:  os.Getenv("INTERNAL_API_KEY"),
+		Log:          log,
+	})
+	go supervisorRunner.Start(mqttCtx)
 
 	if frigateSync.Enabled() {
 		go func() {
@@ -225,6 +250,7 @@ func main() {
 
 	r.Get("/health", checker.Live)
 	r.Get("/health/ready", checker.Ready)
+	r.Get("/health/platform", health.PlatformHandler(platformDeps))
 	r.Get("/health/frigate", api.FrigateHealth)
 	// /metrics is sensitive (info disclosure + DoS). Require the internal key
 	// unless METRICS_PUBLIC=1 is explicitly set (e.g. behind a trusted proxy).
@@ -241,6 +267,7 @@ func main() {
 		r.Route("/internal", func(r chi.Router) {
 			r.Use(middleware.RequireInternalKey)
 			r.Get("/rules/active", api.InternalListAllActiveRules)
+			r.Post("/supervisor/repair", api.InternalSupervisorRepair)
 		})
 
 		r.Route("/internal/orgs/{orgID}", func(r chi.Router) {
@@ -295,6 +322,7 @@ func main() {
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireOrgAdmin())
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/system/status", api.SystemStatus)
+					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/system/health", api.PlatformHealth)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Put("/system/start-mode", api.SystemSetStartMode)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/system/service-action", api.SystemServiceAction)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Get("/system/uninstall/stream", api.SystemUninstallStream)

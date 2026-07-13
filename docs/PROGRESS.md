@@ -1,8 +1,19 @@
-# Progress — Citévision v2
+# Progress — CitéVision v2
 
-**Dernière mise à jour :** 2026-06-13
+**Dernière mise à jour :** 2026-07-13
 
-## Phase 0 — Clarifications & WSL
+## Refonte produit (plan expert)
+
+- [x] Pass lecture — [PLATFORM-COMPREHENSION.md](./PLATFORM-COMPREHENSION.md)
+- [x] Phase 0 : `/health/platform`, `preflight_platform.sh`, [ENV-PLATFORM.md](./ENV-PLATFORM.md)
+- [x] Phase 4 : Frigate event-only démo, Retention Governor, `validate_disk_budget.sh`
+- [x] Phase 1 : test spatial, evidence audit dans `validate_demo_five_rules.py`
+- [x] Phase 2 : demo heal Frigate fresh, align 5s, executor 8×8s
+- [x] Phase 3 : Supervisor, `inject_faults_test.sh`, UI health
+- [x] Phase 5 : detection_classes model-pack, ClassFilterPicker dynamique
+- [x] Phase 6–7 : [PRODUCT-DOD.md](./PRODUCT-DOD.md), OPERATIONS + QUICKSTART
+
+---
 - [x] `docs/CLARIFICATIONS.md` (40 questions + défauts)
 - [x] Scripts Windows (`doctor-windows.ps1`, `start-windows.ps1`)
 - [x] Scripts Linux/WSL (`start-linux.sh`, `doctor-linux.sh`, `sync-to-wsl.sh`)

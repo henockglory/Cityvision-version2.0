@@ -51,10 +51,29 @@ Reset mot de passe : `bash scripts/reset-admin-password.sh`
 | Service | URL |
 |---------|-----|
 | Interface | http://localhost:5174 |
+| **Platform health** | http://localhost:8081/health/platform |
 | Vidéo directe go2rtc | http://localhost:1984/stream.html?src=benedicte |
 | Backend health | http://localhost:8081/health |
 | Moteur IA | http://localhost:8001/health |
 | MinIO console | http://localhost:9001 |
+
+## Preflight plateforme (avant démo client)
+
+```bash
+cd ~/citevision-v2
+bash scripts/preflight_platform.sh
+```
+
+Doit retourner `PREFLIGHT OK` en < 60 s (backend, AI, rules, MinIO, Mailhog si configuré).
+
+## Validation 5 règles démo
+
+```bash
+python scripts/validate_demo_five_rules.py
+bash scripts/_run_validate_now.sh   # Frigate 3 règles × 3 runs
+```
+
+Voir [PRODUCT-DOD.md](./PRODUCT-DOD.md) pour la checklist vente.
 
 ## Caméra réelle (optionnel)
 

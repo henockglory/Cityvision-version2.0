@@ -8,23 +8,44 @@ database:
   path: /media/frigate/frigate.db
 
 record:
-  enabled: true
+  enabled: false
   retain:
-    days: 3
+    days: 1
+    mode: motion
+  events:
+    retain:
+      default: 1
+      mode: motion
 
 snapshots:
   enabled: true
   timestamp: true
   bounding_box: true
   retain:
-    default: 10
+    default: 2
 
 detect:
   enabled: true
-  fps: 5
+  fps: 10
 
-# LPR: live zoom only — OCR proof uses PaddleOCR in ai-engine
+# Vehicle tracking for evidence correlation (zone_speed uses ai-engine; Frigate supplies media).
+objects:
+  track:
+    - car
+    - truck
+    - motorcycle
+    - bus
+    - van
+
 lpr:
   enabled: false
+
+# Frigate embarque go2rtc sur l'hôte (network_mode: host). Ports dédiés pour ne pas
+# bloquer le conteneur citevision-v2-go2rtc (1984/8554) qui sert les boucles démo.
+go2rtc:
+  api:
+    listen: ":1985"
+  rtsp:
+    listen: ":8557"
 
 cameras: {}

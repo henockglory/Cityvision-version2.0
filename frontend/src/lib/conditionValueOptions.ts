@@ -48,12 +48,27 @@ export function buildClassFilterOptions(
   lang: 'fr' | 'en',
   groupsLabel: string,
   cocoLabel: string,
+  extraClasses?: string[],
 ): ExplanatoryOption[] {
   const groups = classGroupExplanations[lang];
   const coco = cocoClassExplanations[lang];
   const groupOpts = Object.entries(groups).map(([id, meta]) => metaToOption(id, meta, groupsLabel));
   const cocoOpts = Object.entries(coco).map(([id, meta]) => metaToOption(id, meta, cocoLabel));
-  return [...groupOpts, ...cocoOpts];
+  const seen = new Set<string>([...groupOpts, ...cocoOpts].map((o) => o.value));
+  const registryOpts: ExplanatoryOption[] = [];
+  for (const cls of extraClasses ?? []) {
+    if (!cls || seen.has(cls)) continue;
+    seen.add(cls);
+    registryOpts.push({
+      value: cls,
+      label: cls,
+      technicalId: cls,
+      technology: lang === 'en' ? 'Registry class' : 'Classe registre',
+      howItWorks: lang === 'en' ? 'From ai-models.json / stack registry.' : 'Issue de ai-models.json / registre stack.',
+      stepUtility: lang === 'en' ? 'Filter on this detection class.' : 'Filtre sur cette classe de détection.',
+    });
+  }
+  return [...groupOpts, ...cocoOpts, ...registryOpts];
 }
 
 export function buildZoneOptions(

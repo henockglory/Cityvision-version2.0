@@ -17,12 +17,16 @@ import (
 type CameraEntry struct {
 	FFmpeg struct {
 		Inputs []struct {
-			Path  string   `yaml:"path"`
-			Roles []string `yaml:"roles"`
+			Path      string   `yaml:"path"`
+			InputArgs string   `yaml:"input_args,omitempty"`
+			Roles     []string `yaml:"roles"`
 		} `yaml:"inputs"`
 	} `yaml:"ffmpeg"`
 	Detect struct {
 		Enabled bool `yaml:"enabled"`
+		Width   int  `yaml:"width,omitempty"`
+		Height  int  `yaml:"height,omitempty"`
+		FPS     int  `yaml:"fps,omitempty"`
 	} `yaml:"detect"`
 	Record struct {
 		Enabled bool `yaml:"enabled"`
@@ -33,6 +37,12 @@ type CameraEntry struct {
 	LPR struct {
 		Enabled bool `yaml:"enabled"`
 	} `yaml:"lpr"`
+	Objects struct {
+		Track []string `yaml:"track,omitempty"`
+	} `yaml:"objects,omitempty"`
+	Live struct {
+		Streams map[string]string `yaml:"streams,omitempty"`
+	} `yaml:"live,omitempty"`
 	Zones map[string]ZoneEntry `yaml:"zones,omitempty"`
 }
 
@@ -67,10 +77,28 @@ func (c *Compiler) BuildConfig(
 		return nil, err
 	}
 	camMap := map[string]CameraEntry{}
+	go2rtcStreams := map[string][]string{}
 	for _, cam := range cameras {
 		camMap[cam.FrigateID] = cam.Entry
+		go2rtcStreams[cam.FrigateID] = []string{
+			cam.UpstreamURL,
+			fmt.Sprintf("ffmpeg:%s#audio=opus", cam.FrigateID),
+		}
 	}
 	base["cameras"] = camMap
+	go2rtc, _ := base["go2rtc"].(map[string]interface{})
+	if go2rtc == nil {
+		go2rtc = map[string]interface{}{}
+	}
+	go2rtc["streams"] = go2rtcStreams
+	base["go2rtc"] = go2rtc
+	// Frigate 0.17+ requires global lpr.enabled when any camera has lpr.enabled.
+	for _, entry := range camMap {
+		if entry.LPR.Enabled {
+			base["lpr"] = map[string]interface{}{"enabled": true}
+			break
+		}
+	}
 	return yaml.Marshal(base)
 }
 
@@ -114,10 +142,11 @@ func (c *Compiler) loadBase() (map[string]interface{}, error) {
 
 // CompiledCamera pairs a Frigate camera id with its config entry.
 type CompiledCamera struct {
-	FrigateID string
-	CameraID  string
-	OrgID     string
-	Entry     CameraEntry
+	FrigateID   string
+	CameraID    string
+	OrgID       string
+	UpstreamURL string
+	Entry       CameraEntry
 }
 
 // UpsertCamera builds a Frigate camera entry from CitéVision camera + RTSP URL.
@@ -125,23 +154,49 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 	fid := CameraID(cam.ID.String())
 	entry := CameraEntry{}
 	entry.Detect.Enabled = true
+	entry.Detect.FPS = 10
+	if stats != nil && stats.Width > 0 && stats.Height > 0 {
+		entry.Detect.Width = stats.Width
+		entry.Detect.Height = stats.Height
+	} else {
+		entry.Detect.Width = 1280
+		entry.Detect.Height = 720
+	}
+	entry.Objects.Track = []string{"car", "truck", "motorcycle", "bus", "van"}
 	entry.Record.Enabled = agg.RecordEnabled
 	entry.Snapshots.Enabled = agg.SnapshotsEnabled
 	entry.LPR.Enabled = agg.LPREnabled
-	src := rtspURL
-	if stats != nil {
-		src = camera.Go2RTCSourceForRTSP(rtspURL, stats)
+	cfg := ConfigFromEnv()
+	if cfg.Evidence && !cfg.DemoMode {
+		entry.Snapshots.Enabled = true
+		entry.Record.Enabled = true
+	} else if cfg.Evidence && cfg.DemoMode {
+		// Demo: snapshots on events only; record follows rule aggregate (event clips).
+		entry.Snapshots.Enabled = agg.SnapshotsEnabled || agg.RecordEnabled
 	}
+	upstream := frigateUpstreamPath(cam.ID.String(), rtspURL, cam.Metadata)
 	roles := []string{"detect"}
-	if agg.RecordEnabled {
+	if entry.Record.Enabled {
 		roles = append(roles, "record")
 	}
-	entry.FFmpeg.Inputs = []struct {
-		Path  string   `yaml:"path"`
-		Roles []string `yaml:"roles"`
-	}{
-		{Path: src, Roles: roles},
+	ffmpegPath := upstream
+	inputArgs := ""
+	if cfg.InputViaGo2RTC {
+		ffmpegPath = frigateRestreamPath(fid)
+		inputArgs = "preset-rtsp-restream"
 	}
+	entry.FFmpeg.Inputs = []struct {
+		Path      string   `yaml:"path"`
+		InputArgs string   `yaml:"input_args,omitempty"`
+		Roles     []string `yaml:"roles"`
+	}{
+		{
+			Path:      ffmpegPath,
+			InputArgs: inputArgs,
+			Roles:     roles,
+		},
+	}
+	entry.Live.Streams = map[string]string{"Live": fid}
 	if len(zones) > 0 {
 		entry.Zones = map[string]ZoneEntry{}
 		for _, z := range zones {
@@ -156,11 +211,50 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 		}
 	}
 	return CompiledCamera{
-		FrigateID: fid,
-		CameraID:  cam.ID.String(),
-		OrgID:     cam.OrgID.String(),
-		Entry:     entry,
+		FrigateID:   fid,
+		CameraID:    cam.ID.String(),
+		OrgID:       cam.OrgID.String(),
+		UpstreamURL: upstream,
+		Entry:       entry,
 	}
+}
+
+func frigateRestreamPath(frigateID string) string {
+	return fmt.Sprintf("rtsp://127.0.0.1:8554/%s", frigateID)
+}
+
+// frigateUpstreamPath is the external source registered in go2rtc.streams (Docker-safe relay by default).
+func frigateUpstreamPath(cameraUUID, rtspURL string, meta json.RawMessage) string {
+	cfg := ConfigFromEnv()
+	if demo := demoGo2rtcStreamName(meta, rtspURL); demo != "" {
+		return fmt.Sprintf("rtsp://%s:%d/%s", cfg.Go2RTCHost, cfg.Go2RTCPort, demo)
+	}
+	if cfg.InputViaGo2RTC {
+		return fmt.Sprintf("rtsp://%s:%d/cam-%s", cfg.Go2RTCHost, cfg.Go2RTCPort, cameraUUID)
+	}
+	return rtspURL
+}
+
+// demoGo2rtcStreamName resolves the looped demo file stream (demo-{org}-{video}) for Frigate/go2rtc.
+func demoGo2rtcStreamName(meta json.RawMessage, rtspURL string) string {
+	var m map[string]interface{}
+	_ = json.Unmarshal(meta, &m)
+	if m != nil {
+		if src, _ := m["go2rtc_src"].(string); strings.TrimSpace(src) != "" {
+			return strings.TrimSpace(src)
+		}
+	}
+	path := rtspURL
+	if i := strings.Index(path, "://"); i >= 0 {
+		if j := strings.Index(path[i+3:], "/"); j >= 0 {
+			path = path[i+3+j:]
+		}
+	}
+	name := strings.TrimPrefix(path, "/")
+	if strings.HasPrefix(name, "demo-") {
+		return name
+	}
+	return ""
 }
 
 func polygonToFrigateCoords(polygon json.RawMessage) string {

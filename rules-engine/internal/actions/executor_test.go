@@ -43,6 +43,29 @@ func TestHasEvidencePackage_complete(t *testing.T) {
 	}
 }
 
+func TestHasEvidencePackage_bboxQualityBlocks(t *testing.T) {
+	policy := map[string]interface{}{
+		"enabled": true, "clip_seconds": float64(5),
+		"images": []interface{}{
+			map[string]interface{}{"role": "scene"},
+			map[string]interface{}{"role": "subject"},
+		},
+	}
+	payload := map[string]interface{}{
+		"package": map[string]interface{}{
+			"clip": map[string]interface{}{"url": "http://clip"},
+			"images": []interface{}{
+				map[string]interface{}{"role": "scene", "url": "http://scene"},
+				map[string]interface{}{"role": "subject", "url": "http://subject"},
+			},
+			"metadata": map[string]interface{}{"bbox_quality_ok": false},
+		},
+	}
+	if hasEvidencePackage(payload, policy) {
+		t.Fatal("expected bbox_quality_ok=false to block package")
+	}
+}
+
 func TestPolicyRequiresProof_disabled(t *testing.T) {
 	policy := map[string]interface{}{"enabled": false}
 	if policyRequiresProof(policy) {

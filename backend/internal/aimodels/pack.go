@@ -27,13 +27,15 @@ type ModelEntry struct {
 }
 
 type PackResponse struct {
-	Version        int               `json:"version"`
-	InstallCommand string            `json:"install_command"`
-	VerifyCommand  string            `json:"verify_command"`
-	GPUHealthKey   string            `json:"gpu_health_key,omitempty"`
-	GPULoaded      bool              `json:"gpu_loaded"`
-	Models         []ModelEntry      `json:"models"`
-	Health         map[string]string `json:"health"`
+	Version           int               `json:"version"`
+	InstallCommand    string            `json:"install_command"`
+	VerifyCommand     string            `json:"verify_command"`
+	GPUHealthKey      string            `json:"gpu_health_key,omitempty"`
+	GPULoaded         bool              `json:"gpu_loaded"`
+	Models            []ModelEntry      `json:"models"`
+	Health            map[string]string `json:"health"`
+	DetectionClasses  []string          `json:"detection_classes,omitempty"`
+	ClassFilterGroups map[string][]string `json:"class_filter_groups,omitempty"`
 }
 
 var primaryLabels = map[string]struct{ FR, EN string }{
@@ -164,15 +166,70 @@ func BuildPack(ctx context.Context, ai *ingest.AIClient, sharedPath string, orgI
 	}
 
 	gpuKey := str(reg, "gpu_health_key")
+	classes, groups := detectionCatalog(sharedPath)
 	return &PackResponse{
-		Version:        intDefault(reg, "version", 1),
-		InstallCommand: str(reg, "install_command"),
-		VerifyCommand:  str(reg, "verify_command"),
-		GPUHealthKey:   gpuKey,
-		GPULoaded:      healthTrue(health, gpuKey),
-		Models:         models,
-		Health:         health,
+		Version:           intDefault(reg, "version", 1),
+		InstallCommand:    str(reg, "install_command"),
+		VerifyCommand:     str(reg, "verify_command"),
+		GPUHealthKey:      gpuKey,
+		GPULoaded:         healthTrue(health, gpuKey),
+		Models:            models,
+		Health:            health,
+		DetectionClasses:  classes,
+		ClassFilterGroups: groups,
 	}, nil
+}
+
+var yoloCocoClasses = []string{
+	"person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
+	"traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+	"dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
+}
+
+func detectionCatalog(sharedPath string) ([]string, map[string][]string) {
+	seen := map[string]struct{}{}
+	var classes []string
+	add := func(c string) {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			return
+		}
+		if _, ok := seen[c]; ok {
+			return
+		}
+		seen[c] = struct{}{}
+		classes = append(classes, c)
+	}
+	for _, c := range yoloCocoClasses {
+		add(c)
+	}
+	secPath := filepath.Join(sharedPath, "ai-models.json")
+	if secData, err := os.ReadFile(secPath); err == nil {
+		var sec map[string]interface{}
+		if json.Unmarshal(secData, &sec) == nil {
+			if rawModels, ok := sec["models"].([]interface{}); ok {
+				for _, raw := range rawModels {
+					spec, _ := raw.(map[string]interface{})
+					if spec == nil {
+						continue
+					}
+					if rawCls, ok := spec["classes"].([]interface{}); ok {
+						for _, rc := range rawCls {
+							if s, ok := rc.(string); ok {
+								add(s)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	groups := map[string][]string{
+		"person":   {"person"},
+		"vehicle":  {"car", "truck", "bus", "motorcycle", "bicycle"},
+		"animal":   {"bird", "cat", "dog", "horse", "sheep", "cow"},
+	}
+	return classes, groups
 }
 
 func str(m map[string]interface{}, key string) string {

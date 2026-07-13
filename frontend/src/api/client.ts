@@ -383,6 +383,8 @@ export interface ModelPackResponse {
   gpu_loaded: boolean;
   models: ModelPackEntry[];
   health: Record<string, string>;
+  detection_classes?: string[];
+  class_filter_groups?: Record<string, string[]>;
 }
 
 export const modelPackApi = {
@@ -679,6 +681,13 @@ export const healthApi = {
       { baseURL: '' }
     ),
   live: () => api.get<{ status?: string }>('/health', { baseURL: '' }),
+  platform: () =>
+    api.get<{
+      status?: string;
+      checked_at?: string;
+      components?: Record<string, { status?: string; detail?: Record<string, unknown> }>;
+      issues?: string[];
+    }>('/health/platform', { baseURL: '' }),
 };
 
 export const aiHealthApi = {

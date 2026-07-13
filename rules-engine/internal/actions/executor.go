@@ -168,11 +168,22 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 	if s, ok := cfg["severity"].(string); ok && s != "" {
 		severity = s
 	}
-	e.ensureEvidencePackage(orgID, rule, payload)
 	evPolicy := evidencePolicyForRule(rule)
+	const maxAttempts = 8
+	const retryDelay = 8 * time.Second
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		e.ensureEvidencePackage(orgID, rule, payload)
+		if hasEvidencePackage(payload, evPolicy) {
+			break
+		}
+		if attempt < maxAttempts-1 && policyRequiresProof(evPolicy) {
+			time.Sleep(retryDelay)
+		}
+	}
 	if policyRequiresProof(evPolicy) && !hasEvidencePackage(payload, evPolicy) {
 		log.Printf("alert suppressed: incomplete evidence for rule %s", rule.RuleID)
 		payload["_alert_suppressed"] = true
+		payload["suppression_reason"] = "incomplete_evidence"
 		return false
 	}
 	meta := e.enrichedMeta(orgID, rule, payload, nil)
@@ -285,7 +296,20 @@ func hasEvidencePackage(payload map[string]interface{}, policy map[string]interf
 			return false
 		}
 	}
+	if meta := packageMetadata(pkg); meta != nil {
+		if ok, exists := meta["bbox_quality_ok"].(bool); exists && !ok {
+			return false
+		}
+	}
 	return true
+}
+
+func packageMetadata(pkg map[string]interface{}) map[string]interface{} {
+	if pkg == nil {
+		return nil
+	}
+	meta, _ := pkg["metadata"].(map[string]interface{})
+	return meta
 }
 
 func policyRequiresProof(policy map[string]interface{}) bool {

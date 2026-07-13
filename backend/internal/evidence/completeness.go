@@ -39,7 +39,7 @@ func templateIDFromDefinition(root map[string]interface{}) string {
 
 func isCountingTemplate(templateID string) bool {
 	switch templateID {
-	case "tpl-line-cross", "tpl-line-cross-bidir", "tpl-speeding-premium",
+	case "tpl-line-cross", "tpl-line-cross-bidir",
 		"tpl-observation-rule-set-or", "tpl-observation-rule-set-n":
 		return true
 	default:
@@ -191,7 +191,9 @@ func IsCompleteMap(snap map[string]interface{}, policy Policy) bool {
 func requiredRoles(policy Policy) []string {
 	out := make([]string, 0, len(policy.Images))
 	for _, im := range policy.Images {
-		if role, ok := im["role"].(string); ok && role != "" {
+		role, ok := im["role"].(string)
+		// Plate OCR is best-effort; never block alert persistence when unreadable.
+		if ok && role != "" && role != "plate" {
 			out = append(out, role)
 		}
 	}
