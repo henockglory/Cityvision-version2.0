@@ -9,9 +9,10 @@ set PYTHONUTF8=1
 
 echo.
 echo  ============================================================
-echo    CitéVision v2  -  Installateur
+echo    CiteVision v2  -  Installateur
 echo    Plateforme de telesurveillance intelligente
-echo    Windows : WSL2 requis pour la stack IA (InsightFace / PaddleOCR)
+echo    Windows : WSL2 requis (IA + Frigate + OCR + DEMO_MODE)
+echo    Runtime : WSL ~/citevision-v2 — Ouvrir = Health 100%%
 echo  ============================================================
 echo.
 

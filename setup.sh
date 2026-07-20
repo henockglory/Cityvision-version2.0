@@ -13,6 +13,8 @@ echo ""
 echo "  ╔══════════════════════════════════════════════════════╗"
 echo "  ║         CitéVision v2  —  Installateur               ║"
 echo "  ║   Plateforme d'analyse vidéo intelligente             ║"
+echo "  ║   Stack : Frigate + OCR + DEMO_MODE (Health 100%)     ║"
+echo "  ║   Runtime WSL : ~/citevision-v2                       ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo ""
 

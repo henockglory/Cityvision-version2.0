@@ -1459,7 +1459,18 @@ def launch_stream():
 
     def _run() -> None:
         try:
-            wsl_script = _to_wsl_path(start_script)
+            # Prefer native WSL runtime (~/citevision-v2); never start from /mnt/c edits.
+            if IS_WINDOWS:
+                cmd = [
+                    "wsl", "--", "bash", "-lc",
+                    "if [ -f \"$HOME/citevision-v2/scripts/start-linux.sh\" ]; then "
+                    "cd \"$HOME/citevision-v2\" && bash scripts/start-linux.sh; "
+                    "else "
+                    f"bash '{_to_wsl_path(start_script)}'; "
+                    "fi",
+                ]
+            else:
+                cmd = ["bash", str(start_script)]
             kwargs: dict = dict(
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 bufsize=1, stdin=subprocess.DEVNULL,
@@ -1470,9 +1481,6 @@ def launch_stream():
                 env = os.environ.copy()
                 env["PYTHONIOENCODING"] = "utf-8"
                 kwargs["env"] = env
-                cmd = ["wsl", "--", "bash", wsl_script]
-            else:
-                cmd = ["bash", str(start_script)]
             proc = subprocess.Popen(cmd, **kwargs)
             for raw in proc.stdout:  # type: ignore
                 line_q.put(("line", raw.rstrip()))
@@ -1607,6 +1615,44 @@ def launch_stream():
                         except Exception:
                             pass
                         _time.sleep(3)
+                    # Gate Health 100% — health_check_all must be green (WARN disk OK)
+                    yield emit("step", message="Vérification health_check_all (Frigate, OCR, services)…")
+                    hc_ok = False
+                    hc_out = ""
+                    try:
+                        if IS_WINDOWS:
+                            hc_cmd = [
+                                "wsl", "--", "bash", "-lc",
+                                "cd \"$HOME/citevision-v2\" && bash scripts/health_check_all.sh",
+                            ]
+                        else:
+                            hc_cmd = ["bash", "-lc", f"cd '{ROOT}' && bash scripts/health_check_all.sh"]
+                        hc_proc = subprocess.run(
+                            hc_cmd,
+                            cwd=str(ROOT),
+                            timeout=180,
+                            check=False,
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            errors="replace",
+                            creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,
+                        )
+                        hc_out = (hc_proc.stdout or "") + (hc_proc.stderr or "")
+                        for ln in hc_out.splitlines()[-40:]:
+                            if ln.strip():
+                                yield emit("info", message=ln)
+                        hc_ok = hc_proc.returncode == 0
+                    except Exception as e:
+                        yield emit("error", message=f"health_check_all impossible : {e}")
+                        break
+                    if not hc_ok:
+                        yield emit(
+                            "error",
+                            message="Health check ROUGE — Ouvrir CitéVision annulé (corrigez FAIL avant relance)",
+                        )
+                        break
+                    yield emit("ok", message="health_check_all OK — Health 100%")
                     yield emit("launch_ready", message=app_url)
                 else:
                     yield emit("error", message="Interface non démarrée sur le port 5174 — consultez logs/frontend.log")

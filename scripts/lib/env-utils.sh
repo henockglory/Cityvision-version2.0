@@ -57,6 +57,46 @@ ensure_env_file() {
   echo "$env_path"
 }
 
+# Demo / installer launch defaults — DEMO_MODE, Frigate, videos, rule catalog.
+# Upserts keys so silent DEMO_MODE=0 / FRIGATE_*=0 cannot leave Health RED.
+ensure_demo_runtime_env() {
+  local root="${1:-.}"
+  local env_path="${2:-$root/.env}"
+  [[ -f "$env_path" ]] || return 1
+  root="$(cd "$root" && pwd)"
+  env_path="$(cd "$(dirname "$env_path")" && pwd)/$(basename "$env_path")"
+  sed -i 's/\r$//' "$env_path" 2>/dev/null || true
+  mkdir -p "$root/data/videos" "$root/shared/rule-catalog" 2>/dev/null || true
+  local videos="$root/data/videos"
+  local catalog="$root/shared/rule-catalog"
+  local shared="$root/shared"
+
+  _upsert_env_kv() {
+    local key="$1" val="$2"
+    if grep -q "^${key}=" "$env_path" 2>/dev/null; then
+      sed -i "s|^${key}=.*|${key}=${val}|" "$env_path"
+    else
+      echo "${key}=${val}" >>"$env_path"
+    fi
+  }
+
+  _upsert_env_kv DEMO_MODE 1
+  _upsert_env_kv VIDEOS_PATH "$videos"
+  _upsert_env_kv RULE_CATALOG_PATH "$catalog"
+  _upsert_env_kv SHARED_PATH "$shared"
+  _upsert_env_kv FRIGATE_ENABLED 1
+  _upsert_env_kv FRIGATE_LIVE 1
+  _upsert_env_kv FRIGATE_EVIDENCE 1
+  _upsert_env_kv FRIGATE_EVENTS 1
+  _upsert_env_kv FRIGATE_CONFIG_SYNC 1
+  _upsert_env_kv FRIGATE_URL "http://127.0.0.1:5000"
+  _upsert_env_kv VITE_FRIGATE_ENABLED 1
+  _upsert_env_kv VITE_FRIGATE_LIVE 1
+  grep -q '^ALERT_EMAIL_TO=' "$env_path" 2>/dev/null \
+    || echo 'ALERT_EMAIL_TO=demo@citevision.local' >>"$env_path"
+  echo "[INFO] Demo runtime env: DEMO_MODE=1 Frigate=on VIDEOS_PATH=$videos" >&2
+}
+
 wait_http_ok() {
   local url="$1"
   local timeout="${2:-60}"

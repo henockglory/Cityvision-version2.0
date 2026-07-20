@@ -145,7 +145,21 @@ fi
 # ── .env file ────────────────────────────────────────────────
 _step "Environment file"
 ensure_env_file "$ROOT" >/dev/null
-_ok ".env file ready"
+ensure_demo_runtime_env "$ROOT" "$ROOT/.env" >/dev/null
+_ok ".env ready (DEMO_MODE=1, Frigate, VIDEOS_PATH, RULE_CATALOG)"
+
+# ── Docker images (frigate + ocr profiles) ────────────────────
+_step "Docker images (frigate + ocr)"
+if command -v docker &>/dev/null && docker info &>/dev/null; then
+  (
+    cd "$ROOT/infra"
+    docker compose --env-file "$ROOT/.env" --profile frigate --profile ocr pull \
+      postgres redis mosquitto minio go2rtc mailhog citevision-ocr frigate 2>&1 | tail -20 || true
+  )
+  _ok "Compose profiles frigate/ocr préparés (pull best-effort)"
+else
+  _warn "Docker non prêt — images Frigate/OCR tirées au premier start-linux"
+fi
 
 # ── Frontend node_modules (avant profil matériel) ─────────────────
 _step "Frontend dependencies"
@@ -221,8 +235,10 @@ _ok "Setup complete"
 _log ""
 _log "Next steps:"
 _log "  If docker group was just added: newgrp docker"
-_log "  Start all services:             bash scripts/start-all.sh"
+_log "  Start (Health 100%):            bash scripts/start-linux.sh"
+_log "  Or Windows launcher:            launcher/Start-CiteVision.ps1"
 _log "  Open the app:                   http://localhost:5174"
+_log "  Health gate:                    bash scripts/health_check_all.sh"
 _log ""
 
 if [ -n "$LOG_FILE" ]; then
