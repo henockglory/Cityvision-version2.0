@@ -221,19 +221,9 @@
     "severity": "high",
     "definition": {
       "condition": {
-        "op": "ET",
-        "children": [
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "object_appeared"
-          },
-          {
-            "op": "gt",
-            "field": "duration_seconds",
-            "value": 60
-          }
-        ]
+        "op": "eq",
+        "field": "event_type",
+        "value": "object_abandoned"
       },
       "actions": [
         {
@@ -244,7 +234,8 @@
         }
       ]
     },
-    "role_summary_fr": "Signale l'apparition d'un objet qui reste sans propriétaire dans la zone après le délai configuré.",
-    "partial_status": "full"
+    "role_summary_fr": "Signale un objet abandonné (événement object_abandoned) resté sans propriétaire après le délai configuré.",
+    "partial_status": "partial_aggregate",
+    "partial_reason_fr": "Dépend du détecteur abandoned analytics ; distinct de object_appeared (heuristique durée)."
   }
 ]

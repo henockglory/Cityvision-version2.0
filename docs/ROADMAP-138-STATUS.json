@@ -823,10 +823,10 @@
       "ref": "J.89",
       "title": "Génération template règle",
       "section": "Phase D §6",
-      "status": "done",
-      "evidence": "tpl-custom",
-      "notes": "",
-      "checked_at": "2026-07-06T02:32:03.730082+00:00"
+      "status": "partial",
+      "evidence": "tpl-custom id only — not injected into catalog (honesty 2026-07-20)",
+      "notes": "Upload ONNX → zone behavior beta; no auto catalog tile",
+      "checked_at": "2026-07-20T07:00:00+00:00"
     },
     {
       "ref": "J.90",

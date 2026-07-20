@@ -1583,16 +1583,16 @@
       "ref": "J.89",
       "title": "J.89",
       "section": "Phase D",
-      "status": "done",
-      "passed": 1,
+      "status": "partial",
+      "passed": 0,
       "total": 1,
       "checks": [
         {
           "name": "tpl-custom",
-          "ok": true
+          "ok": false
         }
       ],
-      "notes": ""
+      "notes": "2026-07-20 honesty: ID tpl-custom-* generated but not injected into /rules/catalog; upload = zone behavior beta only"
     },
     {
       "ref": "J.90",

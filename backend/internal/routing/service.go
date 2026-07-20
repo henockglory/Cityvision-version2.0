@@ -326,6 +326,14 @@ func (s *Service) buildHTMLEmail(ctx context.Context, a *alerts.EnrichedAlert, e
 
 	var inline []notify.InlineImage
 	if pkg, ok := evSnap["package"].(map[string]interface{}); ok {
+		if meta, ok := pkg["metadata"].(map[string]interface{}); ok {
+			if cs, ok := meta["capture_source"].(string); ok && cs != "" {
+				data.Details = append(data.Details, notify.EmailDetail{Label: "Source capture", Value: cs})
+			}
+			if es, ok := meta["evidence_status"].(string); ok && es != "" {
+				data.Details = append(data.Details, notify.EmailDetail{Label: "Statut preuve", Value: es})
+			}
+		}
 		if clip, ok := pkg["clip"].(map[string]interface{}); ok {
 			if u, ok := clip["url"].(string); ok {
 				data.ClipURL = u
@@ -383,6 +391,16 @@ func buildEmailBody(a *alerts.EnrichedAlert, evSnap map[string]interface{}) stri
 		}
 		if f, ok := evSnap["face_label"].(string); ok && f != "" {
 			fmt.Fprintf(&b, "Visage : %s\n", f)
+		}
+		if pkg, ok := evSnap["package"].(map[string]interface{}); ok {
+			if meta, ok := pkg["metadata"].(map[string]interface{}); ok {
+				if cs, ok := meta["capture_source"].(string); ok && cs != "" {
+					fmt.Fprintf(&b, "Source capture : %s\n", cs)
+				}
+				if es, ok := meta["evidence_status"].(string); ok && es != "" {
+					fmt.Fprintf(&b, "Statut preuve : %s\n", es)
+				}
+			}
 		}
 	}
 	b.WriteString("\nLiens preuves :\n")

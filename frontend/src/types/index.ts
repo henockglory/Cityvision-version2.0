@@ -111,6 +111,9 @@ export interface RuleCatalogTemplate {
   unsupported_message_fr?: string;
   partial_status?: "full" | "requires_calibration" | "requires_ocr" | "requires_face_ai" | "partial_aggregate" | "beta" | "requires_model" | "not_emitted";
   partial_reason_fr?: string;
+  activation_blocked?: boolean;
+  activation_block_reason?: string;
+  missing_health_keys?: string[];
 }
 
 export interface RuleCondition {

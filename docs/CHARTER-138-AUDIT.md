@@ -102,7 +102,7 @@ _Généré : 2026-07-04T18:33:44.115162+00:00_
 - **J.86** (done) — J.86 [1/1]
 - **J.87** (done) — J.87 [1/1]
 - **J.88** (done) — J.88 [1/1]
-- **J.89** (done) — J.89 [1/1]
+- **J.89** (partial) — ID `tpl-custom-*` généré côté org models, **mais non injecté** dans `/rules/catalog` (2026-07-20 honesty audit). Upload ONNX = comportement zone beta seulement.
 - **J.90** (done) — J.90 [1/1]
 - **J.91** (done) — J.91 [1/1]
 - **J.92** (done) — J.92 [1/1]

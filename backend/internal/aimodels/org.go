@@ -69,6 +69,7 @@ func OrgModelsRegistryPath(orgID uuid.UUID) string {
 }
 
 func CustomRuleTemplateID(modelID string) string {
+	// Reserved ID only — ListRuleCatalog does NOT inject tpl-custom-* templates yet (A.4 honesty).
 	return "tpl-custom-" + strings.TrimSpace(modelID)
 }
 

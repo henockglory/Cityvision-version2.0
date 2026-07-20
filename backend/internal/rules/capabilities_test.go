@@ -72,3 +72,35 @@ func TestEnrichCatalog_emptyRegistry(t *testing.T) {
 		t.Fatalf("incident scope = %v", enriched[0].DeploymentScopes)
 	}
 }
+
+func TestEnrichCatalogWithHealth_activationBlocked(t *testing.T) {
+	templates := []CatalogTemplate{
+		{ID: "tpl-phone-driving", Category: "road-enforcement", PartialStatus: "requires_model"},
+		{ID: "tpl-speeding", Category: "road-enforcement", PartialStatus: "requires_calibration"},
+	}
+	healthMissing := map[string]string{"yolo_loaded": "true"}
+	out := EnrichCatalogWithHealth(templates, nil, healthMissing)
+	byID := map[string]EnrichedCatalogTemplate{}
+	for _, e := range out {
+		byID[e.ID] = e
+	}
+	if !byID["tpl-phone-driving"].ActivationBlocked {
+		t.Fatal("phone should be activation_blocked without driver_phone_model_loaded")
+	}
+	if len(byID["tpl-phone-driving"].MissingHealthKeys) == 0 {
+		t.Fatal("expected missing_health_keys for phone")
+	}
+	if byID["tpl-speeding"].ActivationBlocked {
+		t.Fatal("calibration-only template must not block on missing secondary model")
+	}
+	healthOK := map[string]string{
+		"yolo_loaded":                "true",
+		"driver_phone_model_loaded":  "true",
+	}
+	outOK := EnrichCatalogWithHealth(templates, nil, healthOK)
+	for _, e := range outOK {
+		if e.ID == "tpl-phone-driving" && e.ActivationBlocked {
+			t.Fatal("phone must not be blocked when driver_phone_model_loaded=true")
+		}
+	}
+}

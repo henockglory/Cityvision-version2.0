@@ -184,6 +184,9 @@ export function mapRuleCatalogItem(raw: RuleCatalogTemplate): RuleCatalogTemplat
     unsupported_message_fr: raw.unsupported_message_fr,
     partial_status: raw.partial_status,
     partial_reason_fr: raw.partial_reason_fr,
+    activation_blocked: raw.activation_blocked,
+    activation_block_reason: raw.activation_block_reason,
+    missing_health_keys: raw.missing_health_keys,
   };
 }
 

@@ -2723,11 +2723,12 @@
     "tpl-red-light": {
       "supported": true,
       "capability_id": "red_light_violation",
-      "human_description": "Franchissement feu rouge.",
-      "tutorial": "Détection HSV rouge sur ROI feu + véhicule en zone intersection.",
+      "human_description": "Franchissement feu rouge (HSV + zone).",
+      "tutorial": "Détection HSV rouge sur ROI feu + véhicule en zone. Preuve Frigate ou ring-buffer selon capture_source.",
       "prerequisites": [
         "Modèle YOLO actif",
-        "Zone intersection"
+        "Zone intersection",
+        "Calibrage ROI feu"
       ],
       "configSchema": {
         "fields": [
@@ -2745,15 +2746,16 @@
           }
         ]
       },
-      "role_summary_fr": "Détecte par analyse visuelle les véhicules qui passent au rouge — IA embarquée OpenCV."
+      "role_summary_fr": "Passage au rouge via HSV — calibrage requis ; vérifier capture_source (frigate_track vs demo_ring_buffer)."
     },
     "tpl-seatbelt": {
       "supported": true,
       "capability_id": "seatbelt_violation",
-      "human_description": "Ceinture de sécurité non portée.",
-      "tutorial": "Analyse cabin conducteur — absence de ligne diagonale ceinture (OpenCV).",
+      "human_description": "Ceinture non portée (modèle secondaire ONNX seatbelt).",
+      "tutorial": "Zone habitacle + modèle seatbelt. Preuves cabine ring/live (pas Frigate track).",
       "prerequisites": [
-        "Modèle YOLO actif"
+        "Modèle YOLO actif",
+        "Modèle secondaire seatbelt"
       ],
       "configSchema": {
         "fields": [
@@ -2765,15 +2767,16 @@
           }
         ]
       },
-      "role_summary_fr": "Détecte l'absence de ceinture de sécurité dans l'habitacle — IA embarquée OpenCV."
+      "role_summary_fr": "Détecte l'absence de ceinture via modèle ONNX — preuves cabine ring/live."
     },
     "tpl-phone-driving": {
       "supported": true,
-      "capability_id": "phone_driving",
-      "human_description": "Téléphone au volant.",
-      "tutorial": "Blob peau près oreille conducteur (HSV + crop habitacle).",
+      "capability_id": "phone_use_violation",
+      "human_description": "Téléphone au volant (modèle secondaire ONNX phone_use).",
+      "tutorial": "Zone habitacle + modèle driver_phone. Event émis: phone_use_violation (pas phone_driving heuristique).",
       "prerequisites": [
-        "Modèle YOLO actif"
+        "Modèle YOLO actif",
+        "Modèle secondaire driver_phone"
       ],
       "configSchema": {
         "fields": [
@@ -2785,7 +2788,7 @@
           }
         ]
       },
-      "role_summary_fr": "Détecte l'utilisation d'un téléphone au volant — analyse peau + forme en zone conducteur."
+      "role_summary_fr": "Détecte l'utilisation d'un téléphone au volant via modèle ONNX — event_type phone_use_violation."
     },
     "tpl-group-formation": {
       "supported": true,

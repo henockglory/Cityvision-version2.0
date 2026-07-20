@@ -215,12 +215,14 @@ export default function Alerts() {
                             const snap = parseEvidenceSnapshot(alert.evidenceSnapshot);
                             const plate = snap.plate_number ?? snap.package?.metadata?.plate_number;
                             const evStatus = snap.package?.metadata?.evidence_status;
+                            const capSrc = snap.package?.metadata?.capture_source;
+                            const bits: string[] = [];
+                            if (plate) bits.push(`Plaque: ${String(plate)}`);
+                            if (evStatus) bits.push(`Preuve: ${String(evStatus)}`);
+                            if (capSrc) bits.push(`Source: ${String(capSrc)}`);
                             return (
                               <p className="text-xs text-cv-muted mt-0.5 truncate">
-                                {plate ? `Plaque: ${String(plate)}` : null}
-                                {plate && evStatus ? ' · ' : null}
-                                {evStatus ? `Preuve: ${String(evStatus)}` : null}
-                                {!plate && !evStatus ? new Date(alert.timestamp).toLocaleString() : null}
+                                {bits.length > 0 ? bits.join(' · ') : new Date(alert.timestamp).toLocaleString()}
                               </p>
                             );
                           })()}

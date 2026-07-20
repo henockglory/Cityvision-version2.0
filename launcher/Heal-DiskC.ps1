@@ -106,7 +106,7 @@ Log "Temp entries removed (best-effort)=$removed"
 
 # --- 3) Compact VHDX (may need elevation — user validates UAC) ---
 Log "=== Compact WSL VHDX ==="
-Log "Shutting down WSL…"
+Log "Shutting down WSL..."
 wsl --shutdown
 Start-Sleep -Seconds 20
 
@@ -119,36 +119,40 @@ $dockerVhdx = Join-Path $env:LOCALAPPDATA "Docker\wsl\main\ext4.vhdx"
 if (Test-Path $dockerVhdx) { $vhdxList += Get-Item -LiteralPath $dockerVhdx }
 
 function Invoke-Compact([string]$vhdx) {
-  $before = (Get-Item -LiteralPath $vhdx).Length
-  Log "Compact $vhdx ($([math]::Round($before/1GB,2)) GB)"
+  $beforeBytes = (Get-Item -LiteralPath $vhdx).Length
+  $beforeGb = [math]::Round($beforeBytes / 1GB, 2)
+  Log "Compact $vhdx ($beforeGb GB)"
   $dp = Join-Path $env:TEMP "citevision-diskpart.txt"
-  @(
-    "select vdisk file=`"$vhdx`"",
-    "attach vdisk readonly",
-    "compact vdisk",
-    "detach vdisk",
-    "exit"
-  ) | Set-Content -Path $dp -Encoding ASCII
+  $lines = @(
+    ('select vdisk file="{0}"' -f $vhdx),
+    'attach vdisk readonly',
+    'compact vdisk',
+    'detach vdisk',
+    'exit'
+  )
+  $lines | Set-Content -Path $dp -Encoding ASCII
 
   # Prefer elevated diskpart; fall back to current token (user may already be admin)
   $out = Join-Path $env:TEMP "citevision-diskpart-out.txt"
+  $err = Join-Path $env:TEMP "citevision-diskpart-err.txt"
   try {
-    $p = Start-Process -FilePath "diskpart.exe" -ArgumentList "/s `"$dp`"" -Verb RunAs -Wait -PassThru -WindowStyle Hidden
-    Log "diskpart elevated exit=$($p.ExitCode)"
+    $p = Start-Process -FilePath "diskpart.exe" -ArgumentList @('/s', $dp) -Verb RunAs -Wait -PassThru -WindowStyle Hidden
+    Log ("diskpart elevated exit={0}" -f $p.ExitCode)
   } catch {
-    Log "Elevation refused or failed ($($_.Exception.Message)) — trying non-elevated"
+    Log ("Elevation refused or failed ({0}) - trying non-elevated" -f $_.Exception.Message)
     try {
-      $p2 = Start-Process -FilePath "diskpart.exe" -ArgumentList "/s `"$dp`"" -Wait -PassThru -NoNewWindow `
-        -RedirectStandardOutput $out -RedirectStandardError (Join-Path $env:TEMP "citevision-diskpart-err.txt")
-      Log "diskpart exit=$($p2.ExitCode)"
+      $p2 = Start-Process -FilePath "diskpart.exe" -ArgumentList @('/s', $dp) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err
+      Log ("diskpart exit={0}" -f $p2.ExitCode)
       if (Test-Path $out) { Log (Get-Content $out -Raw) }
     } catch {
-      Log "diskpart FAILED: $($_.Exception.Message)"
-      Log "Action: re-run this script via 'Run as administrator'."
+      Log ("diskpart FAILED: {0}" -f $_.Exception.Message)
+      Log "Action: re-run this script via Run as administrator."
     }
   }
-  $after = (Get-Item -LiteralPath $vhdx).Length
-  Log "VHDX $($([math]::Round($before/1GB,2))) -> $($([math]::Round($after/1GB,2))) GB (delta $([math]::Round(($before-$after)/1GB,2)) GB)"
+  $afterBytes = (Get-Item -LiteralPath $vhdx).Length
+  $afterGb = [math]::Round($afterBytes / 1GB, 2)
+  $deltaGb = [math]::Round(($beforeBytes - $afterBytes) / 1GB, 2)
+  Log ("VHDX {0} -> {1} GB (delta {2} GB)" -f $beforeGb, $afterGb, $deltaGb)
 }
 
 foreach ($item in ($vhdxList | Sort-Object Length -Descending)) {
@@ -156,13 +160,14 @@ foreach ($item in ($vhdxList | Sort-Object Length -Descending)) {
 }
 
 # Wake WSL
-Log "Wake WSL…"
+Log "Wake WSL..."
 wsl -d $Distro -- echo WSL_OK | Out-Null
 
 $cAfter = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
-Log "C: free AFTER = $cAfter GB (gain $([math]::Round($cAfter - $cBefore, 2)) GB)"
-Log "DONE — log: $Log"
+$gain = [math]::Round($cAfter - $cBefore, 2)
+Log ("C: free AFTER = {0} GB (gain {1} GB)" -f $cAfter, $gain)
+Log "DONE - log: $Log"
 Write-Host ""
-Write-Host "Heal terminé. C: $cBefore GB -> $cAfter GB libres."
+Write-Host ("Heal termine. C: {0} GB -> {1} GB libres." -f $cBefore, $cAfter)
 Write-Host "Relance stack: launcher\Start-CiteVision.ps1"
 exit 0

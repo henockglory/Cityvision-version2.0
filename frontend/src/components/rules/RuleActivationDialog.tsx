@@ -683,6 +683,24 @@ export default function RuleStudioDialog({
     setSubmitting(true);
     setError('');
     try {
+      if (activeTemplate?.activation_blocked) {
+        setError(
+          activeTemplate.activation_block_reason
+            ?? t('rules.studio.activationBlocked', {
+              defaultValue: 'Activation refusée : modèle requis non chargé (voir /health).',
+            }),
+        );
+        return;
+      }
+      if (missingModelHealthKeys.length > 0) {
+        setError(
+          t('rules.studio.missingModels', {
+            defaultValue: 'Activation refusée — modèles manquants : {{keys}}',
+            keys: missingModelHealthKeys.join(', '),
+          }),
+        );
+        return;
+      }
       if (demoMode) {
         const preflight = await demoApi.preflight(orgId, { wait_sec: 45, min_frames: 10 });
         if (preflight.data?.blocked) {

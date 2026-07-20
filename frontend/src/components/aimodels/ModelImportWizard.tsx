@@ -226,7 +226,10 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
               {t('modelImport.title', 'Importer un modèle ONNX')}
             </h2>
             <p className="text-xs text-cv-muted mt-1 max-w-xl leading-relaxed">
-              {t('modelImport.subtitle', 'Comportement zone/ligne ajouté seulement si fichier valide, métadonnées complètes et IA confirme le chargement.')}
+              {t(
+                'modelImport.subtitle',
+                'Ajoute un comportement zone/ligne en badge beta si le fichier est valide et l’IA charge le modèle. N’injecte pas automatiquement une tuile dans le catalogue de règles.',
+              )}
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -302,6 +305,12 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
           {step === 5 && !result && (
             <div id="model-import-step5">
             <p className="text-sm text-cv-muted font-mono">ID: {slugifyModelId(modelId)} · {slugifyEventType(eventType)} · {appliesTo}</p>
+            <p className="text-xs text-amber-400/90 mt-2 leading-relaxed border border-amber-400/30 rounded-lg p-3 bg-amber-400/5">
+              {t(
+                'modelImport.honestyNotice',
+                'Après import : comportement ZoneEditor (beta) uniquement. Pas de règle catalogue auto (pas de tpl-custom-* dans /rules/catalog). Pour alerter, créez une règle manuelle sur l’event_type émis.',
+              )}
+            </p>
             <p className="text-xs text-cv-muted mt-2">
               {observationCapable
                 ? t('modelImport.observationCapableOn', { defaultValue: 'Mode observation : activé pour ce modèle' })
@@ -309,7 +318,17 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
             </p>
             </div>
           )}
-          {result && <p className="text-sm text-emerald-400">OK — {result.behavior} · reload IA: {String(result.ai_reload_ok)}</p>}
+          {result && (
+            <div className="space-y-2">
+              <p className="text-sm text-emerald-400">OK — {result.behavior} · reload IA: {String(result.ai_reload_ok)}</p>
+              <p className="text-xs text-cv-muted leading-relaxed">
+                {t(
+                  'modelImport.successHonesty',
+                  'Comportement zone beta prêt (si IA reload OK). Aucune tuile catalogue créée automatiquement — activez une règle existante ou personnalisée sur l’event_type.',
+                )}
+              </p>
+            </div>
+          )}
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
         <div className="flex justify-between p-5 border-t border-cv-border/60">

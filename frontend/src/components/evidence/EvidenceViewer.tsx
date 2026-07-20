@@ -202,20 +202,64 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
               {identificationBadge.label}
             </span>
           )}
+          {captureSource === 'frigate_track' && (
+            <span
+              className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700"
+              title={t('evidence.captureFrigateHint', {
+                defaultValue: 'Preuve composée depuis Frigate (track/clip alignés)',
+              })}
+            >
+              {t('evidence.captureFrigate', { defaultValue: 'capture_source: frigate_track' })}
+            </span>
+          )}
           {captureSource === 'demo_ring_buffer' && (
             <span
               className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-700"
               title={
                 loopPos != null && loopDur != null
-                  ? `loop ${Number(loopPos).toFixed(1)}s / ${Number(loopDur).toFixed(1)}s`
-                  : 'Preuve ring-buffer démo (pas frigate_track)'
+                  ? `loop ${Number(loopPos).toFixed(1)}s / ${Number(loopDur).toFixed(1)}s — pas frigate_track`
+                  : t('evidence.captureDemoRingHint', {
+                      defaultValue: 'Preuve ring-buffer démo (pas frigate_track)',
+                    })
               }
             >
               {t('evidence.captureDemoRing', { defaultValue: 'capture_source: demo_ring_buffer' })}
             </span>
           )}
+          {captureSource === 'live' && (
+            <span
+              className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-700"
+              title={t('evidence.captureLiveHint', {
+                defaultValue: 'Capture live / ring IA — pas un compose Frigate track',
+              })}
+            >
+              {t('evidence.captureLive', { defaultValue: 'capture_source: live' })}
+            </span>
+          )}
+          {captureSource &&
+            captureSource !== 'frigate_track' &&
+            captureSource !== 'demo_ring_buffer' &&
+            captureSource !== 'live' &&
+            captureSource !== 'segment' && (
+              <span
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cv-muted/20 text-cv-muted"
+                title={t('evidence.captureOtherHint', {
+                  defaultValue: 'Source de capture — distincte du badge Preuve complète',
+                })}
+              >
+                {`capture_source: ${captureSource}`}
+              </span>
+            )}
         </div>
       </div>
+      {badgeLabel && evidenceStatus === 'complete' && captureSource && captureSource !== 'frigate_track' && (
+        <p className="text-[11px] text-cv-muted">
+          {t('evidence.completeNotFrigate', {
+            defaultValue:
+              '« Preuve complète » = médias présents (clip/images) — pas une garantie Frigate. Voir capture_source.',
+          })}
+        </p>
+      )}
 
       {(isLegacyEvidence || isLowQualityEvidence) && (
         <p className="text-xs text-amber-500 flex items-center gap-1">

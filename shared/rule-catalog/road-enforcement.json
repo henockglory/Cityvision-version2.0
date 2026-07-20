@@ -225,12 +225,13 @@
         "Activer règle"
       ]
     },
-    "role_summary_fr": "Détecte par analyse visuelle les véhicules qui passent au rouge — IA embarquée OpenCV.",
+    "role_summary_fr": "Détecte par analyse HSV le passage au rouge — calibrage ROI feu requis. Preuve : Frigate track si dispo, sinon ring-buffer démo (badge capture_source).",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
-    "partial_status": "full"
+    "partial_status": "requires_calibration",
+    "partial_reason_fr": "Heuristique HSV (pas un modèle feu dédié). Preuve complète possible via frigate_track ou fallback demo_ring_buffer — vérifier capture_source."
   },
   {
     "id": "tpl-seatbelt",

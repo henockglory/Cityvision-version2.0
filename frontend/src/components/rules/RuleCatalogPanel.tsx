@@ -105,6 +105,18 @@ function StatusChip({ tpl, subtle = false }: { tpl: RuleCatalogTemplate; subtle?
   const { t } = useTranslation();
   const ps = tpl.partial_status;
 
+  if (tpl.activation_blocked) {
+    return (
+      <span
+        title={tpl.activation_block_reason ?? tpl.partial_reason_fr}
+        className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-rose-400/40 text-rose-400 bg-rose-400/10"
+      >
+        <AlertTriangle className="w-3 h-3 shrink-0" />
+        {t('rules.status.activationBlocked', { defaultValue: 'Activation bloquée — modèle manquant' })}
+      </span>
+    );
+  }
+
   if (!ps || ps === 'full') {
     if (subtle) return null;
     return (
@@ -275,6 +287,7 @@ function RuleCard({
   const [expanded, setExpanded] = useState(false);
   const [showPrereqs, setShowPrereqs] = useState(false);
   const operable = isConfigurable(tpl);
+  const activationBlocked = Boolean(tpl.activation_blocked);
   const operational = isFullyOperational(tpl);
   const summary = tpl.role_summary_fr ?? tpl.human_description ?? '';
 
@@ -374,11 +387,14 @@ function RuleCard({
           {catalogOnly ? (
             <button
               type="button"
-              disabled={!operable || isOccupied}
+              disabled={!operable || isOccupied || activationBlocked}
               onClick={() => onConfigure(tpl)}
+              title={activationBlocked ? (tpl.activation_block_reason ?? undefined) : undefined}
               className="cv-btn-primary text-xs whitespace-nowrap disabled:opacity-40"
             >
-              {t('rules.catalogCard.configure')}
+              {activationBlocked
+                ? t('rules.catalogCard.blocked', { defaultValue: 'Modèle manquant' })
+                : t('rules.catalogCard.configure')}
             </button>
           ) : isActive ? (
             <button
@@ -395,19 +411,25 @@ function RuleCard({
             </button>
           ) : (
             <InfoTip content={
-              !operable
+              activationBlocked
+                ? (tpl.activation_block_reason ?? t('rules.catalogCard.activationBlockedHint', { defaultValue: 'Modèle requis non chargé — ouvrez pour voir le détail ; activation refusée.' }))
+                : !operable
                 ? (tpl.partial_reason_fr ?? t('rules.catalogCard.notConfigurableHint', { defaultValue: 'Ce template nécessite des modules ou une configuration supplémentaire' }))
                 : t('rules.catalogCard.configureHint', { defaultValue: 'Cliquez pour configurer et activer cette règle sur une caméra' })
             }
-            helpKey={!operable ? 'catalogNotConfigurable' : 'catalogConfigure'}
+            helpKey={activationBlocked ? 'catalogActivationBlocked' : !operable ? 'catalogNotConfigurable' : 'catalogConfigure'}
             >
               <button
                 type="button"
-                disabled={!operable}
+                disabled={!operable && !activationBlocked}
                 onClick={() => onConfigure(tpl)}
                 className="cv-btn-primary text-xs whitespace-nowrap disabled:opacity-40"
               >
-                {operable ? t('rules.catalogCard.configure') : t('rules.catalogCard.needsSetup', { defaultValue: 'Config. requise' })}
+                {activationBlocked
+                  ? t('rules.catalogCard.viewBlocked', { defaultValue: 'Voir (bloqué)' })
+                  : operable
+                    ? t('rules.catalogCard.configure')
+                    : t('rules.catalogCard.needsSetup', { defaultValue: 'Config. requise' })}
               </button>
             </InfoTip>
           )}

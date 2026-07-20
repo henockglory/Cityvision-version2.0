@@ -32,11 +32,117 @@ function metaToOption(value: string, meta: ExplanatoryOptionMeta, group?: string
   return { value, ...meta, group };
 }
 
+/** Honesty tags for event_type dropdown [A.4] — no new invented events. */
+type EventHonesty =
+  | 'emitted'
+  | 'requires_model'
+  | 'requires_ocr'
+  | 'requires_face'
+  | 'heuristic_partial'
+  | 'deprecated_alias'
+  | 'not_emitted';
+
+const EVENT_HONESTY: Record<string, EventHonesty> = {
+  // Core geometry / YOLO path — routinely emitted
+  zone_enter: 'emitted',
+  zone_exit: 'emitted',
+  line_cross: 'emitted',
+  loitering: 'emitted',
+  dwell_time_exceeded: 'emitted',
+  speeding: 'emitted',
+  red_light_violation: 'heuristic_partial',
+  seatbelt_violation: 'requires_model',
+  phone_use_violation: 'requires_model',
+  phone_driving: 'deprecated_alias',
+  object_abandoned: 'emitted',
+  object_appeared: 'heuristic_partial',
+  plate_detected: 'requires_ocr',
+  plate_blocked: 'requires_ocr',
+  plate_watchlist_match: 'requires_ocr',
+  face_watchlist_match: 'requires_face',
+  face_recognized: 'requires_face',
+  // Heuristic / thin demos — deprioritize
+  running: 'heuristic_partial',
+  fighting: 'not_emitted',
+  falling: 'not_emitted',
+  crowd_gathering: 'heuristic_partial',
+  crowd_dispersion: 'heuristic_partial',
+};
+
+const HONESTY_GROUP_FR: Record<EventHonesty, string> = {
+  emitted: 'Émis (chemin réel)',
+  requires_model: 'Nécessite modèle ONNX',
+  requires_ocr: 'Nécessite ANPR / OCR',
+  requires_face: 'Nécessite InsightFace',
+  heuristic_partial: 'Partiel / heuristique',
+  deprecated_alias: 'Alias déprécié',
+  not_emitted: 'Non émis (ne pas utiliser)',
+};
+
+const HONESTY_GROUP_EN: Record<EventHonesty, string> = {
+  emitted: 'Emitted (real path)',
+  requires_model: 'Requires ONNX model',
+  requires_ocr: 'Requires ANPR / OCR',
+  requires_face: 'Requires InsightFace',
+  heuristic_partial: 'Partial / heuristic',
+  deprecated_alias: 'Deprecated alias',
+  not_emitted: 'Not emitted (do not use)',
+};
+
+const HONESTY_SORT: Record<EventHonesty, number> = {
+  emitted: 0,
+  requires_model: 1,
+  requires_ocr: 2,
+  requires_face: 3,
+  heuristic_partial: 4,
+  deprecated_alias: 5,
+  not_emitted: 6,
+};
+
+function honestyFor(eventType: string): EventHonesty {
+  return EVENT_HONESTY[eventType] ?? 'heuristic_partial';
+}
+
 export function buildEventTypeOptions(lang: 'fr' | 'en'): ExplanatoryOption[] {
   const dict = eventTypeExplanations[lang];
+  const groups = lang === 'en' ? HONESTY_GROUP_EN : HONESTY_GROUP_FR;
   return Object.entries(dict)
-    .map(([id, meta]) => metaToOption(id, meta))
-    .sort((a, b) => a.label.localeCompare(b.label, lang));
+    .map(([id, meta]) => {
+      const h = honestyFor(id);
+      const opt = metaToOption(id, meta, groups[h]);
+      if (h === 'not_emitted' || h === 'deprecated_alias') {
+        opt.disabled = h === 'not_emitted';
+        opt.disabledReason =
+          h === 'not_emitted'
+            ? lang === 'en'
+              ? 'Not emitted by the live AI pipeline — catalog honesty [A.4].'
+              : 'Non émis par le pipeline IA live — honnêteté catalogue [A.4].'
+            : lang === 'en'
+              ? 'Prefer phone_use_violation (ONNX). phone_driving is the old heuristic alias.'
+              : 'Préférer phone_use_violation (ONNX). phone_driving = ancien alias heuristique.';
+        opt.howItWorks = `${opt.howItWorks} — ${opt.disabledReason}`;
+      } else if (h === 'requires_model' || h === 'requires_ocr' || h === 'requires_face') {
+        const hint =
+          lang === 'en'
+            ? `Requires loaded module (${h.replace('requires_', '')}). Activation blocked if /health missing.`
+            : `Nécessite module chargé (${h.replace('requires_', '')}). Activation bloquée si absent de /health.`;
+        opt.howItWorks = `${opt.howItWorks} — ${hint}`;
+      } else if (h === 'heuristic_partial') {
+        const hint =
+          lang === 'en'
+            ? 'Partial/heuristic path — check capture_source and badges.'
+            : 'Chemin partiel/heuristique — vérifier capture_source et badges.';
+        opt.howItWorks = `${opt.howItWorks} — ${hint}`;
+      }
+      return opt;
+    })
+    .sort((a, b) => {
+      const ha = honestyFor(a.value);
+      const hb = honestyFor(b.value);
+      const d = HONESTY_SORT[ha] - HONESTY_SORT[hb];
+      if (d !== 0) return d;
+      return a.label.localeCompare(b.label, lang);
+    });
 }
 
 export function buildDirectionOptions(lang: 'fr' | 'en'): ExplanatoryOption[] {

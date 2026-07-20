@@ -39,12 +39,17 @@ type EnrichedCatalogTemplate struct {
 	Supported            bool     `json:"supported"`
 	CapabilityID         string   `json:"capability_id,omitempty"`
 	HumanDescription     string   `json:"human_description,omitempty"`
-	RoleSummaryFR       string   `json:"role_summary_fr,omitempty"`
-	Illustration        string   `json:"illustration,omitempty"`
-	DeploymentScopes    []string `json:"deployment_scopes,omitempty"`
+	RoleSummaryFR        string   `json:"role_summary_fr,omitempty"`
+	Illustration         string   `json:"illustration,omitempty"`
+	DeploymentScopes     []string `json:"deployment_scopes,omitempty"`
 	Tutorial             string   `json:"tutorial,omitempty"`
 	Prerequisites        []string `json:"prerequisites,omitempty"`
 	UnsupportedMessageFR string   `json:"unsupported_message_fr,omitempty"`
+	// ActivationBlocked is true when partial_status requires a model/OCR/face that is not loaded.
+	// Catalog tile stays visible (supported unchanged) but activation must be refused [A.4].
+	ActivationBlocked      bool     `json:"activation_blocked"`
+	ActivationBlockReason  string   `json:"activation_block_reason,omitempty"`
+	MissingHealthKeys      []string `json:"missing_health_keys,omitempty"`
 }
 
 func LoadCapabilities(dir string) (*CapabilitiesRegistry, error) {
@@ -130,6 +135,46 @@ func scopesForCategory(category string) []string {
 }
 
 func EnrichCatalog(templates []CatalogTemplate, reg *CapabilitiesRegistry) []EnrichedCatalogTemplate {
+	return EnrichCatalogWithHealth(templates, reg, nil)
+}
+
+func healthTruthy(health map[string]string, key string) bool {
+	if health == nil {
+		return false
+	}
+	v, ok := health[key]
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(v, "true") || v == "1"
+}
+
+// requiredHealthKeysForTemplate maps honest partial_status / template id to AI /health keys.
+func requiredHealthKeysForTemplate(t CatalogTemplate) []string {
+	switch t.PartialStatus {
+	case "requires_ocr":
+		return []string{"plate_loaded"}
+	case "requires_face_ai":
+		return []string{"face_loaded"}
+	case "requires_model":
+		switch t.ID {
+		case "tpl-phone-driving":
+			return []string{"driver_phone_model_loaded"}
+		case "tpl-seatbelt":
+			return []string{"seatbelt_model_loaded"}
+		default:
+			// Unknown secondary model — block until any secondary is present is too harsh;
+			// require YOLO at minimum so activation is not claimed "ready" with zero AI.
+			return []string{"yolo_loaded"}
+		}
+	default:
+		return nil
+	}
+}
+
+// EnrichCatalogWithHealth enriches the catalog and marks activation_blocked when
+// required models/OCR/face are missing from live AI health (A.4 honesty).
+func EnrichCatalogWithHealth(templates []CatalogTemplate, reg *CapabilitiesRegistry, health map[string]string) []EnrichedCatalogTemplate {
 	if reg == nil {
 		reg = defaultRegistry()
 	}
@@ -177,6 +222,25 @@ func EnrichCatalog(templates []CatalogTemplate, reg *CapabilitiesRegistry) []Enr
 				e.UnsupportedMessageFR = fmt.Sprintf("Nécessite : %s", strings.Join(meta.Models, ", "))
 			}
 		}
+
+		if health != nil {
+			req := requiredHealthKeysForTemplate(t)
+			var missing []string
+			for _, k := range req {
+				if !healthTruthy(health, k) {
+					missing = append(missing, k)
+				}
+			}
+			if len(missing) > 0 {
+				e.ActivationBlocked = true
+				e.MissingHealthKeys = missing
+				e.ActivationBlockReason = fmt.Sprintf(
+					"Modèle(s) requis non chargés (%s) — activation refusée tant que /health ne les expose pas.",
+					strings.Join(missing, ", "),
+				)
+			}
+		}
+
 		out = append(out, e)
 	}
 	return out

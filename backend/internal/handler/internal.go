@@ -115,6 +115,14 @@ func (a *API) buildNotifyHTML(ctx context.Context, title, ruleName, severity str
 	var inline []notify.InlineImage
 	pkg := extractPackage(payload)
 	if pkg != nil {
+		if meta, ok := pkg["metadata"].(map[string]interface{}); ok {
+			if cs, ok := meta["capture_source"].(string); ok && cs != "" {
+				data.Details = append(data.Details, notify.EmailDetail{Label: "Source capture", Value: cs})
+			}
+			if es, ok := meta["evidence_status"].(string); ok && es != "" {
+				data.Details = append(data.Details, notify.EmailDetail{Label: "Statut preuve", Value: es})
+			}
+		}
 		if clip, ok := pkg["clip"].(map[string]interface{}); ok {
 			if u, ok := clip["url"].(string); ok {
 				data.ClipURL = u

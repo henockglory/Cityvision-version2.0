@@ -414,7 +414,13 @@ func (a *API) ListRuleCatalog(w http.ResponseWriter, r *http.Request) {
 		shared = "../shared"
 	}
 	reg, _ := rules.LoadCapabilities(shared)
-	enriched := rules.EnrichCatalog(templates, reg)
+	var health map[string]string
+	if a.AI != nil {
+		if h, err := a.AI.FetchHealth(r.Context()); err == nil {
+			health = h
+		}
+	}
+	enriched := rules.EnrichCatalogWithHealth(templates, reg, health)
 	writeJSON(w, http.StatusOK, enriched)
 }
 
