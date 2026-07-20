@@ -42,48 +42,79 @@ func (g *Go2RTCClient) RegisterStream(ctx context.Context, name, rtspURL string)
 	return g.RegisterStreamSources(ctx, name, []string{rtspURL})
 }
 
-// RegisterStreamSources registers a stream with ordered failover sources (go2rtc JSON array body).
+// RegisterStreamSources registers a stream with ordered failover sources.
+// Uses query-param PUT first (reliable on go2rtc 1.9); JSON body only for multi-source.
 func (g *Go2RTCClient) RegisterStreamSources(ctx context.Context, name string, sources []string) (*StreamRegistration, error) {
 	if name == "" || len(sources) == 0 {
 		return nil, fmt.Errorf("name and sources required")
 	}
 	_ = g.UnregisterStream(ctx, name)
 
-	// Prefer JSON body (multi-source). Fall back to single query src.
-	body, _ := json.Marshal(sources)
-	reqURL := g.baseURL + "/api/streams?name=" + url.QueryEscape(name)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("go2rtc unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		// Older go2rtc: single src query param
+	registerQuery := func(src string) error {
 		q := url.Values{}
 		q.Set("name", name)
-		q.Set("src", sources[0])
-		req2, err2 := http.NewRequestWithContext(ctx, http.MethodPut, g.baseURL+"/api/streams?"+q.Encode(), nil)
-		if err2 != nil {
+		q.Set("src", src)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, g.baseURL+"/api/streams?"+q.Encode(), nil)
+		if err != nil {
+			return err
+		}
+		resp, err := g.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("go2rtc unreachable: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
 			b, _ := io.ReadAll(resp.Body)
-			return nil, fmt.Errorf("go2rtc register failed: %s", string(b))
+			return fmt.Errorf("go2rtc register failed: %s", string(b))
 		}
-		resp2, err2 := g.client.Do(req2)
-		if err2 != nil {
-			return nil, fmt.Errorf("go2rtc unreachable: %w", err2)
-		}
-		defer resp2.Body.Close()
-		if resp2.StatusCode >= 300 {
-			b, _ := io.ReadAll(resp2.Body)
-			return nil, fmt.Errorf("go2rtc register failed: %s", string(b))
-		}
+		return nil
 	}
 
 	primary := sources[0]
+	if len(sources) == 1 {
+		if err := registerQuery(primary); err != nil {
+			return nil, err
+		}
+	} else {
+		// Multi-source: try JSON array; fall back to primary query if go2rtc rejects or stream missing.
+		body, _ := json.Marshal(sources)
+		reqURL := g.baseURL + "/api/streams?name=" + url.QueryEscape(name)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := g.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("go2rtc unreachable: %w", err)
+		}
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		ok := resp.StatusCode < 300
+		if ok {
+			// go2rtc sometimes returns 200 without persisting JSON body — verify.
+			time.Sleep(100 * time.Millisecond)
+			if !g.StreamExists(ctx, name) {
+				ok = false
+			}
+		}
+		if !ok {
+			if err := registerQuery(primary); err != nil {
+				return nil, fmt.Errorf("go2rtc register failed: %s / fallback: %w", string(bodyBytes), err)
+			}
+		}
+	}
+
+	if !g.StreamExists(ctx, name) {
+		// Last resort: re-PUT primary via query
+		if err := registerQuery(primary); err != nil {
+			return nil, err
+		}
+		if !g.StreamExists(ctx, name) {
+			return nil, fmt.Errorf("go2rtc register reported ok but stream %q missing", name)
+		}
+	}
+
 	return &StreamRegistration{
 		Name:          name,
 		RTSPURL:       MaskRTSP(primary),

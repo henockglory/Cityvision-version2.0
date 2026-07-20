@@ -92,6 +92,9 @@ else
   echo "[WARN] Backend absent — réparation go2rtc via shell uniquement"
 fi
 
+# Re-assert shell registrations after API repair (JSON register can no-op on some go2rtc builds).
+_sync_files_from_db >/dev/null 2>&1 || true
+
 if curl -sf "${GO2RTC}/api/streams" >/dev/null 2>&1; then
   COUNT="$(curl -sf "${GO2RTC}/api/streams" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)"
   echo "[OK] go2rtc streams enregistrés: $COUNT"

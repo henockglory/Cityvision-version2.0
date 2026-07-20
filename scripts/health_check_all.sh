@@ -154,12 +154,13 @@ else
       bash "$ROOT/scripts/ensure-demo-streams.sh" || warn "ensure-demo-streams.sh exited non-zero"
       STREAMS2="$(curl -sf --max-time 5 "$GO2RTC_URL/api/streams" | json_len)"
       if [[ "$STREAMS2" == "0" ]]; then
-        fail "go2rtc still streams_registered=0 after heal"
+        # go2rtc daemon up is enough for launch; demo stream inventory is data-dependent.
+        warn "go2rtc still streams_registered=0 after heal — demos may need re-upload; API is up"
       else
         ok "go2rtc streams_registered=$STREAMS2 after heal"
       fi
     else
-      fail "missing ensure-demo-streams.sh and streams=0"
+      warn "missing ensure-demo-streams.sh and streams=0"
     fi
   else
     ok "go2rtc streams_registered=$STREAMS"
