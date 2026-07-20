@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import ctypes
+import gc
 import json
 import logging
 import os
@@ -310,7 +312,11 @@ class PipelineService:
         self._line_configs.pop(camera_id, None)
         self._org_ids.pop(camera_id, None)
         self._capability_profiles.pop(camera_id, None)
-        self.evidence.clear_camera(camera_id)
+        # Preserve the ring buffer so the rules-engine can still capture evidence
+        # for events that fired just before the camera was stopped (e.g. the next
+        # rule's preflight stops parasitic cameras while evidence retries are in
+        # flight).  Only clear the capture-gate rules, not the frame data.
+        self.evidence.clear_camera_rules_only(camera_id)
         self.plate_engine.reset_camera(camera_id)
 
     def begin_segment_replay(self, camera_id: str) -> None:
@@ -375,6 +381,13 @@ class PipelineService:
             self.traffic_light.reset_camera(camera_id)
             self.zone_speed.reset_camera(camera_id)
             self.plate_engine.reset_camera(camera_id)
+            self._trackers.pop(camera_id, None)
+            self._track_history = {
+                k: v for k, v in self._track_history.items() if k[0] != camera_id
+            }
+            self._bbox_history = {
+                k: v for k, v in self._bbox_history.items() if k[0] != camera_id
+            }
             self._spatial_behavior_fp[camera_id] = fp
         self._spatial_configs[camera_id] = config
         calib = CalibrationEngine(config.get("calibration"))
@@ -401,6 +414,43 @@ class PipelineService:
     def set_plates(self, entries: list[dict[str, Any]]) -> None:
         self.plate_engine.set_plates(entries)
 
+    # Zone behaviors that must never spawn parasitic loitering / dwell rules.
+    _LOITERING_SKIP_BEHAVIORS = frozenset({
+        "speed_measurement", "traffic_light", "red_light", "phone_use",
+        "seatbelt", "driver_cabin", "vehicle_count", "line_crossing",
+    })
+
+    # Non-speed MQTT noise suppressed on speed-only cameras.
+    _SPEED_ONLY_SKIP_EVENTS = frozenset({
+        "loitering", "loitering_near_entrance", "dwell_time_exceeded",
+        "crowd_gathering", "crowd_count_threshold", "fight_detected", "fighting",
+        "sudden_stop", "vehicle_stopped", "person_stopped", "abandoned_object",
+        "crowd_dispersal", "group_gathering", "zone_enter", "zone_exit",
+        "line_cross", "behavior_anomaly", "presence_detected", "absence_detected",
+        "vehicle_count_threshold", "running",
+    })
+
+    @classmethod
+    def _zone_behaviors(cls, config: dict[str, Any]) -> set[str]:
+        out: set[str] = set()
+        for zone in config.get("zones") or []:
+            b = str(zone.get("behavior") or zone.get("zone_kind") or "").strip()
+            if b:
+                out.add(b)
+        return out
+
+    def _is_speed_only_camera(self, camera_id: str) -> bool:
+        """True when every configured zone behavior is speed_measurement.
+
+        Cameras that also have count/crossing lines are not speed-only: skipping
+        EventGenerator would suppress line_cross and freeze observation counters.
+        """
+        cfg = self._spatial_configs.get(camera_id) or {}
+        if cfg.get("lines"):
+            return False
+        behaviors = self._zone_behaviors(cfg)
+        return bool(behaviors) and behaviors <= {"speed_measurement"}
+
     def _build_spatial_rules(self, camera_id: str, config: dict[str, Any]) -> list[dict]:
         rules: list[dict] = []
         for zone in config.get("zones") or []:
@@ -426,16 +476,19 @@ class PipelineService:
                     "name": zone.get("name", zone_id),
                 },
             })
-            rules.append({
-                "camera_id": camera_id,
-                "rule_type": "loitering",
-                "enabled": True,
-                "loitering": {
-                    "zone_id": zone_id,
-                    "threshold_seconds": loiter_sec,
-                },
-                "zone": {"polygon": polygon},
-            })
+            # Speed / traffic-light / cabin zones use dedicated engines — a generic
+            # loitering rule on the same polygon floods MQTT and starves YOLO.
+            if behavior not in self._LOITERING_SKIP_BEHAVIORS:
+                rules.append({
+                    "camera_id": camera_id,
+                    "rule_type": "loitering",
+                    "enabled": True,
+                    "loitering": {
+                        "zone_id": zone_id,
+                        "threshold_seconds": loiter_sec,
+                    },
+                    "zone": {"polygon": polygon},
+                })
             # A "presence" behavior adds an explicit zone_presence rule honoring its config.
             if behavior == "presence":
                 rules.append({
@@ -506,6 +559,15 @@ class PipelineService:
             scaled.append(r)
         return scaled
 
+    _MALLOC_TRIM_INTERVAL = 500  # frames between malloc_trim calls per camera
+
+    @staticmethod
+    def _trim_malloc() -> None:
+        try:
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
+
     def process_frame(
         self,
         camera_id: str,
@@ -519,6 +581,9 @@ class PipelineService:
     ) -> DetectionFrame:
         frame_id = self._frame_counters.get(camera_id, 0)
         self._frame_counters[camera_id] = frame_id + 1
+        if frame_id % self._MALLOC_TRIM_INTERVAL == 0 and frame_id > 0:
+            gc.collect()
+            self._trim_malloc()
         self.state_engine.set_fps(source_fps)
         now_ts = timeline.monotonic if timeline else time.monotonic()
         frame_wall_ts = timeline.wall if timeline else (capture_wall_ts or time.time())
@@ -642,118 +707,147 @@ class PipelineService:
             detections=detections,
         )
 
-        all_events: list[dict[str, Any]] = []
-        camera_rules = [
-            r for r in self._rules
-            if not r.get("camera_id") or r.get("camera_id") == camera_id
-        ]
-        scaled_rules = self._scale_rules_to_frame(camera_rules, w, h)
-        all_events.extend(self.event_generator.process_frame(camera_id, track_dicts, scaled_rules, ts))
+        # Filter out ghost tracks: tracks whose bbox is outside the frame (with 30% slack)
+        # or have degenerate size (< 4px). These accumulate when a looping demo video
+        # causes ByteTrack to keep Kalman-extrapolated predictions far outside frame bounds.
+        # We keep them in track_dicts for zone_speed (which handles lost-track cleanup),
+        # but exclude them from all heavy behavioral analytics to avoid CPU saturation.
+        def _bbox_in_frame(bbox: dict, fw: int, fh: int) -> bool:
+            bx = float(bbox.get("x", 0))
+            by = float(bbox.get("y", 0))
+            bw = float(bbox.get("width", 0))
+            bh = float(bbox.get("height", 0))
+            if bw < 4 or bh < 4:
+                return False
+            slack_x = 0.30 * fw
+            slack_y = 0.30 * fh
+            if bx + bw < -slack_x or bx > fw + slack_x:
+                return False
+            if by + bh < -slack_y or by > fh + slack_y:
+                return False
+            return True
 
-        for evt in all_events:
-            if evt.get("event_type") != "line_cross":
-                continue
-            line_id = evt.get("line_id")
-            track_id = evt.get("track_id")
-            if line_id is None or track_id is None:
-                continue
-            line_cfg = self._line_configs.get(camera_id, {}).get(str(line_id))
-            key = (camera_id, track_id)
-            hist = self._track_history.get(key, [])
-            if line_cfg and len(hist) >= 2:
-                direction = self.behavior.crossing_direction(
-                    hist[-2], hist[-1],
-                    line_cfg.get("start", line_cfg.get("start_point", {})),
-                    line_cfg.get("end", line_cfg.get("end_point", {})),
-                )
-            else:
-                direction = str(evt.get("direction", "unknown"))
-            self.behavior.record_line_cross(camera_id, str(line_id), track_id, direction, now_ts)
-
-        for sig in self.behavior.evaluate_line_behaviors(camera_id, now_ts):
-            evt_type = BEHAVIOR_EVENT_TYPES.get(sig.label, "behavior_anomaly")
-            all_events.append(self.event_generator.emit_behavior_event(
-                camera_id, sig.track_id, evt_type, sig.confidence,
-                {"behavior": sig.label.value, **sig.details}, ts,
-            ))
-
-        for evt in all_events:
-            if evt.get("event_type") == "zone_enter" and evt.get("zone_id"):
-                self.state_engine.set_zone(camera_id, evt["track_id"], evt["zone_id"], True)
-            elif evt.get("event_type") == "zone_exit" and evt.get("zone_id"):
-                self.state_engine.set_zone(camera_id, evt["track_id"], evt["zone_id"], False)
-
-        _, state_events, zone_dwell = self.state_engine.update(camera_id, frame_id, track_dicts, ts)
-        all_events.extend(state_events)
-
-        frame_histories = {
-            t["track_id"]: self._track_history.get((camera_id, t["track_id"]), [])
-            for t in track_dicts
-        }
-        frame_bbox_histories = {
-            t["track_id"]: [
-                h["bbox"] for h in self._bbox_history.get((camera_id, t["track_id"]), [])
-            ]
-            for t in track_dicts
-        }
-        behavior_signals = self.behavior.evaluate_frame(
-            track_dicts, frame_histories, frame_bbox_histories
-        )
-        all_events.extend(
-            self.event_generator.emit_behavior_signals(camera_id, behavior_signals, ts)
-        )
-
-        speeds = [t.get("metadata", {}).get("speed_kmh", 0) for t in track_dicts]
-        avg_speed = sum(speeds) / max(len(speeds), 1)
-        scene_kw: dict[str, Any] = {}
-        if rt.get("density_threshold") is not None:
-            scene_kw["density_threshold"] = float(rt["density_threshold"])
-        if rt.get("crowd_threshold") is not None:
-            scene_kw["crowd_threshold"] = int(rt["crowd_threshold"])
-        if rt.get("vehicle_threshold") is not None:
-            scene_kw["vehicle_threshold"] = int(rt["vehicle_threshold"])
-        _, scene_events = self.scene.analyze(
-            camera_id, track_dicts, float(w * h), avg_speed, **scene_kw,
-        )
-        all_events.extend(scene_events)
-
-        vehicle_count = len([
+        track_dicts_inframe = [
             t for t in track_dicts
-            if t.get("class_name") in ("car", "truck", "bus", "motorcycle")
-        ])
+            if _bbox_in_frame(t.get("bbox") or {}, w, h)
+        ]
 
-        for t in track_dicts:
-            calib_result = calib.update_track(
-                camera_id, t["track_id"],
-                t["bbox"]["x"] + t["bbox"]["width"] / 2,
-                t["bbox"]["y"] + t["bbox"]["height"] / 2,
-                now_ts, t["class_name"],
-            )
-            speed_evt = calib_result.get("speed_event")
-            if speed_evt:
-                meta: dict[str, Any] = {"speed_kmh": t.get("metadata", {}).get("speed_kmh", 0)}
-                if speed_evt == "sudden_stop":
-                    meta["vehicle_count"] = vehicle_count
-                    if calib_result.get("prior_speed_kmh") is not None:
-                        meta["prior_speed_kmh"] = calib_result["prior_speed_kmh"]
+        all_events: list[dict[str, Any]] = []
+        speed_only = self._is_speed_only_camera(camera_id)
+        zone_dwell: dict[str, float] = {}
+
+        if not speed_only:
+            camera_rules = [
+                r for r in self._rules
+                if not r.get("camera_id") or r.get("camera_id") == camera_id
+            ]
+            scaled_rules = self._scale_rules_to_frame(camera_rules, w, h)
+            all_events.extend(self.event_generator.process_frame(camera_id, track_dicts_inframe, scaled_rules, ts))
+
+            for evt in all_events:
+                if evt.get("event_type") != "line_cross":
+                    continue
+                line_id = evt.get("line_id")
+                track_id = evt.get("track_id")
+                if line_id is None or track_id is None:
+                    continue
+                line_cfg = self._line_configs.get(camera_id, {}).get(str(line_id))
+                key = (camera_id, track_id)
+                hist = self._track_history.get(key, [])
+                if line_cfg and len(hist) >= 2:
+                    direction = self.behavior.crossing_direction(
+                        hist[-2], hist[-1],
+                        line_cfg.get("start", line_cfg.get("start_point", {})),
+                        line_cfg.get("end", line_cfg.get("end_point", {})),
+                    )
+                else:
+                    direction = str(evt.get("direction", "unknown"))
+                self.behavior.record_line_cross(camera_id, str(line_id), track_id, direction, now_ts)
+
+            for sig in self.behavior.evaluate_line_behaviors(camera_id, now_ts):
+                evt_type = BEHAVIOR_EVENT_TYPES.get(sig.label, "behavior_anomaly")
                 all_events.append(self.event_generator.emit_behavior_event(
-                    camera_id, t["track_id"], speed_evt, 0.8,
-                    meta, ts, "warning",
+                    camera_id, sig.track_id, evt_type, sig.confidence,
+                    {"behavior": sig.label.value, **sig.details}, ts,
                 ))
 
-        persons = [t for t in track_dicts if t.get("class_name") == "person"]
-        all_events.extend(self.abandoned.process(camera_id, track_dicts, persons, ts))
-        all_events.extend(self.scene_correlation.analyze(camera_id, track_dicts, zone_dwell, ts))
-        all_events.extend(self._correlation_events(camera_id, all_events, track_dicts, ts))
+            for evt in all_events:
+                if evt.get("event_type") == "zone_enter" and evt.get("zone_id"):
+                    self.state_engine.set_zone(camera_id, evt["track_id"], evt["zone_id"], True)
+                elif evt.get("event_type") == "zone_exit" and evt.get("zone_id"):
+                    self.state_engine.set_zone(camera_id, evt["track_id"], evt["zone_id"], False)
 
-        quality_events = self._check_video_quality(camera_id, frame, ts)
-        all_events.extend(quality_events)
+            _, state_events, zone_dwell = self.state_engine.update(camera_id, frame_id, track_dicts_inframe, ts)
+            all_events.extend(state_events)
 
-        all_events.extend(self.face_engine.process_frame(camera_id, frame, ts))
+            frame_histories = {
+                t["track_id"]: self._track_history.get((camera_id, t["track_id"]), [])
+                for t in track_dicts_inframe
+            }
+            frame_bbox_histories = {
+                t["track_id"]: [
+                    h["bbox"] for h in self._bbox_history.get((camera_id, t["track_id"]), [])
+                ]
+                for t in track_dicts_inframe
+            }
+            behavior_signals = self.behavior.evaluate_frame(
+                track_dicts_inframe, frame_histories, frame_bbox_histories
+            )
+            all_events.extend(
+                self.event_generator.emit_behavior_signals(camera_id, behavior_signals, ts)
+            )
 
-        gated_tracks = [t for t in track_dicts if self._track_in_capability_zone(camera_id, t, "plate_ocr")]
-        if gated_tracks:
-            all_events.extend(self.plate_engine.process_frame(camera_id, frame, gated_tracks, ts))
+            speeds = [t.get("metadata", {}).get("speed_kmh", 0) for t in track_dicts_inframe]
+            avg_speed = sum(speeds) / max(len(speeds), 1)
+            scene_kw: dict[str, Any] = {}
+            if rt.get("density_threshold") is not None:
+                scene_kw["density_threshold"] = float(rt["density_threshold"])
+            if rt.get("crowd_threshold") is not None:
+                scene_kw["crowd_threshold"] = int(rt["crowd_threshold"])
+            if rt.get("vehicle_threshold") is not None:
+                scene_kw["vehicle_threshold"] = int(rt["vehicle_threshold"])
+            _, scene_events = self.scene.analyze(
+                camera_id, track_dicts_inframe, float(w * h), avg_speed, **scene_kw,
+            )
+            all_events.extend(scene_events)
+
+            vehicle_count = len([
+                t for t in track_dicts_inframe
+                if t.get("class_name") in ("car", "truck", "bus", "motorcycle")
+            ])
+
+            for t in track_dicts_inframe:
+                calib_result = calib.update_track(
+                    camera_id, t["track_id"],
+                    t["bbox"]["x"] + t["bbox"]["width"] / 2,
+                    t["bbox"]["y"] + t["bbox"]["height"] / 2,
+                    now_ts, t["class_name"],
+                )
+                speed_evt = calib_result.get("speed_event")
+                if speed_evt:
+                    meta: dict[str, Any] = {"speed_kmh": t.get("metadata", {}).get("speed_kmh", 0)}
+                    if speed_evt == "sudden_stop":
+                        meta["vehicle_count"] = vehicle_count
+                        if calib_result.get("prior_speed_kmh") is not None:
+                            meta["prior_speed_kmh"] = calib_result["prior_speed_kmh"]
+                    all_events.append(self.event_generator.emit_behavior_event(
+                        camera_id, t["track_id"], speed_evt, 0.8,
+                        meta, ts, "warning",
+                    ))
+
+            persons = [t for t in track_dicts_inframe if t.get("class_name") == "person"]
+            all_events.extend(self.abandoned.process(camera_id, track_dicts_inframe, persons, ts))
+            all_events.extend(self.scene_correlation.analyze(camera_id, track_dicts_inframe, zone_dwell, ts))
+            all_events.extend(self._correlation_events(camera_id, all_events, track_dicts_inframe, ts))
+
+            quality_events = self._check_video_quality(camera_id, frame, ts)
+            all_events.extend(quality_events)
+
+            all_events.extend(self.face_engine.process_frame(camera_id, frame, ts))
+
+            gated_tracks = [t for t in track_dicts if self._track_in_capability_zone(camera_id, t, "plate_ocr")]
+            if gated_tracks:
+                all_events.extend(self.plate_engine.process_frame(camera_id, frame, gated_tracks, ts))
 
         # Dedicated, zone-driven red-light pipeline (color classification + synergy).
         if tl_active:
@@ -763,21 +857,25 @@ class PipelineService:
         # Dedicated secondary ONNX models for cabin violations (phone, seatbelt).
         zone_behaviors = {str(z.get("behavior", "")) for z in zones_cfg}
         cabin_active = "driver_cabin" in zone_behaviors or "phone_use" in zone_behaviors or "seatbelt" in zone_behaviors
-        if self.secondary.camera_has_behavior(zones_cfg):
+        if not speed_only:
+            if self.secondary.camera_has_behavior(zones_cfg):
+                all_events.extend(
+                    self.secondary.process_frame(camera_id, frame, track_dicts, zones_cfg, ts)
+                )
+            # Legacy heuristics only as fallback on driver-cabin cameras (never on feux/ligne/décompte).
             all_events.extend(
-                self.secondary.process_frame(camera_id, frame, track_dicts, zones_cfg, ts)
+                self.road_enforcement.process_frame(
+                    camera_id, frame, track_dicts, ts, zones_cfg,
+                    disable_red_light=tl_active,
+                    disable_phone=not cabin_active,
+                    disable_seatbelt=not cabin_active,
+                )
             )
-        # Legacy heuristics only as fallback on driver-cabin cameras (never on feux/ligne/décompte).
-        all_events.extend(
-            self.road_enforcement.process_frame(
-                camera_id, frame, track_dicts, ts, zones_cfg,
-                disable_red_light=tl_active,
-                disable_phone=not cabin_active,
-                disable_seatbelt=not cabin_active,
-            )
-        )
         # Zone-distance speed measurement (real metres → km/h).
-        if self.zone_speed.camera_has_behavior(zones_cfg):
+        # Cabin cameras (phone_use / seatbelt) are mutually exclusive with
+        # speed-measurement: running zone_speed on a driver-cabin feed wastes
+        # GPU/CPU cycles and can be caused by a misconfigured zone in the DB.
+        if not cabin_active and self.zone_speed.camera_has_behavior(zones_cfg):
             all_events.extend(
                 self.zone_speed.process_frame(
                     camera_id, track_dicts, zones_cfg, w, h, now_ts, ts,
@@ -789,6 +887,11 @@ class PipelineService:
         # Plate ↔ vehicle linking: enrich violation events with the plate read on
         # the same vehicle track this frame (red light, speeding, phone, seatbelt).
         self._link_plates_to_violations(camera_id, all_events)
+
+        if settings.frigate_evidence and settings.frigate_track_binding_enabled:
+            self.evidence.update_frigate_bindings(
+                camera_id, track_dicts, frame_w=w, frame_h=h, wall_ts=frame_wall_ts,
+            )
 
         for t in track_dicts:
             if not self._track_in_capability_zone(camera_id, t, "speed_estimate"):
@@ -903,6 +1006,11 @@ class PipelineService:
                                 )
                     except (TypeError, ValueError):
                         pass
+            if settings.frigate_evidence and settings.frigate_track_binding_enabled:
+                # Red-light re-correlates at capture time — binder ids are often stale
+                # (box behind the vehicle on the Frigate snapshot).
+                if str(evt.get("event_type") or "") != "red_light_violation":
+                    self.evidence.inject_frigate_binding(camera_id, evt)
             self._publish_event_with_evidence(
                 camera_id, evt, evidence_frame, track_dicts, frame_wall_ts, segment_ctx,
             )
@@ -1018,6 +1126,8 @@ class PipelineService:
         et = str(evt.get("event_type") or evt.get("event") or "")
         if et in ("vehicle_corridor", "vehicle_count_threshold"):
             return
+        if self._is_speed_only_camera(camera_id) and et in self._SPEED_ONLY_SKIP_EVENTS:
+            return
         policy = self.evidence._gate.match_policy(camera_id, evt)
         should_capture = policy is not None or et in self._PLATE_LINKED_EVENTS
         if should_capture:
@@ -1048,9 +1158,10 @@ class PipelineService:
                         frame_index=cap_frame_index,
                     )
                 else:
-                    self.evidence.attach_evidence_async(
+                    # Never block the RTSP infer thread on Frigate clip downloads.
+                    self.evidence.attach_evidence(
                         camera_id, org_id, evt, frame.copy(), policy=pol,
-                        frame_ts=frame_wall_ts,
+                        frame_ts=frame_wall_ts, async_upload=True,
                     )
         if et in self._EVIDENCE_MANDATORY and not self._event_has_package(evt):
             evt.setdefault("evidence_status", "pending")

@@ -62,7 +62,13 @@ class RoadEnforcementEngine:
         h, w = frame.shape[:2]
         red_active = False if disable_red_light else self._detect_red_signal(frame)
         events: list[dict[str, Any]] = []
-        vehicles = [t for t in tracks if t.get("class_name") in VEHICLE_CLASSES]
+        # Cabin cameras (seatbelt/phone zones) see the driver as "person", not vehicle.
+        _cabin = any(
+            str(z.get("behavior", "")) in ("seatbelt", "phone_use", "driver_cabin")
+            for z in (spatial_zones or [])
+        )
+        _allowed = VEHICLE_CLASSES | {"person"} if _cabin else VEHICLE_CLASSES
+        vehicles = [t for t in tracks if t.get("class_name") in _allowed]
 
         for vehicle in vehicles:
             tid = int(vehicle["track_id"])

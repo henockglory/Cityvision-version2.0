@@ -3,6 +3,7 @@ package frigate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -79,6 +80,10 @@ func (s *SyncService) RebuildAll(ctx context.Context) error {
 		if skipFrigateCamera(cam.Metadata) {
 			continue
 		}
+		if skipFrigateHost(cam.Host) {
+			s.log.Info("frigate skip excluded host", "camera", cam.ID, "host", cam.Host)
+			continue
+		}
 		cc, err := s.compileCamera(ctx, &cam)
 		if err != nil {
 			s.log.Warn("frigate compile camera failed", "camera", cam.ID, "error", err)
@@ -95,6 +100,11 @@ func (s *SyncService) RebuildAll(ctx context.Context) error {
 		return err
 	}
 	if err := s.compiler.WriteGenerated(data); err != nil {
+		if errors.Is(err, errConfigUnchanged) {
+			s.lastError = ""
+			s.log.Info("frigate config unchanged — skip reload", "cameras", len(compiled))
+			return nil
+		}
 		s.lastError = err.Error()
 		return err
 	}
@@ -245,11 +255,34 @@ func isVirtualCamera(meta json.RawMessage) bool {
 }
 
 // skipFrigateCamera excludes virtual cameras unless they are demo feeds on go2rtc.
+// Also honors metadata.frigate_exclude=true (opt-out without deactivating the camera).
 func skipFrigateCamera(meta json.RawMessage) bool {
+	var m map[string]interface{}
+	_ = json.Unmarshal(meta, &m)
+	if m != nil {
+		if excl, _ := m["frigate_exclude"].(bool); excl {
+			return true
+		}
+	}
 	if !isVirtualCamera(meta) {
 		return false
 	}
 	return !isDemoGo2rtcCamera(meta)
+}
+
+// Retired / unreachable terrain hosts must never enter Frigate config: they produce
+// continuous ffmpeg "Connection timed out" noise and keep the watchdog busy.
+var frigateExcludedHosts = map[string]struct{}{
+	"192.168.1.108": {},
+}
+
+func skipFrigateHost(host string) bool {
+	h := strings.TrimSpace(host)
+	if i := strings.IndexByte(h, '/'); i >= 0 {
+		h = h[:i]
+	}
+	_, ok := frigateExcludedHosts[h]
+	return ok
 }
 
 func isDemoGo2rtcCamera(meta json.RawMessage) bool {

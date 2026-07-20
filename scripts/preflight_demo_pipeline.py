@@ -14,7 +14,7 @@ API = os.environ.get("BACKEND_API_URL", "http://127.0.0.1:8081")
 AI = os.environ.get("AI_ENGINE_URL", f"http://127.0.0.1:{os.environ.get('AI_ENGINE_PORT', '8001')}")
 MAILHOG = os.environ.get("MAILHOG_PUBLIC_URL", "http://127.0.0.1:8025")
 MINIO = os.environ.get("MINIO_ENDPOINT", "http://127.0.0.1:9003")
-ORG = os.environ.get("DEMO_ORG_ID", "e312f375-7442-4089-8022-ed232abc09e8")
+ORG = os.environ.get("DEMO_ORG_ID", "")
 KEY = os.environ.get("INTERNAL_API_KEY", "changeme_internal_service_key")
 PUBLIC_API = os.environ.get("PUBLIC_API_BASE", "")
 CEINTURE = os.environ.get("DEMO_CEINTURE_CAMERA_ID", "")
@@ -58,10 +58,10 @@ def post_json(url: str, body: dict, headers: dict | None = None, timeout: int = 
             return exc.code, raw
 
 
-def resolve_ceinture_camera(token: str) -> str:
+def resolve_ceinture_camera(token: str, org: str) -> str:
     try:
         cams = get_json(
-            f"{API}/api/v1/orgs/{ORG}/cameras",
+            f"{API}/api/v1/orgs/{org}/cameras",
             headers={"Authorization": f"Bearer {token}"},
         )
         if isinstance(cams, list):
@@ -122,8 +122,32 @@ def main() -> int:
         fail(f"login HTTP {login[0]}")
         return 1
     token = login[1]["access_token"]  # type: ignore[index]
+    org = ORG
+    if not org:
+        me = get_json(
+            f"{API}/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        org = str(me.get("org_id") or "")
+    if not org:
+        fail("unable to resolve org_id from /auth/me")
+        return 1
 
-    cam_id = resolve_ceinture_camera(token)
+    try:
+        preflight = get_json(
+            f"{API}/api/v1/orgs/{org}/demo/preflight",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if preflight.get("blocked"):
+            fail(f"demo/preflight blocked: {preflight.get('suppression_reason', 'unknown')}")
+            errors += 1
+        else:
+            ok("demo/preflight ready")
+    except Exception as exc:
+        fail(f"demo/preflight endpoint failed: {exc}")
+        errors += 1
+
+    cam_id = resolve_ceinture_camera(token, org)
     if not cam_id:
         fail("no ceinture camera found for evidence test")
         errors += 1
@@ -148,7 +172,7 @@ def main() -> int:
             },
         }
         status, resp = post_json(
-            f"{API}/api/v1/internal/orgs/{ORG}/evidence/request",
+            f"{API}/api/v1/internal/orgs/{org}/evidence/request",
             evidence_body,
             headers={"X-Internal-Key": KEY},
             timeout=45,
@@ -178,7 +202,7 @@ def main() -> int:
         },
     }
     n_status, n_resp = post_json(
-        f"{API}/api/v1/internal/orgs/{ORG}/notify/email",
+        f"{API}/api/v1/internal/orgs/{org}/notify/email",
         notify_body,
         headers={"X-Internal-Key": KEY},
     )

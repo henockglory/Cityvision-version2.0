@@ -243,7 +243,7 @@ start_docker_daemon_native() {
   fi
 
   if has_native_docker_engine; then
-    local log="${CITEVISION_LOGDIR:-/tmp}/dockerd.log"
+    local log="${CITEVISION_LOGDIR:-$HOME/citevision-v2/logs}/dockerd.log"
     mkdir -p "$(dirname "$log")" 2>/dev/null || true
     echo "[INFO] Démarrage dockerd (Docker Engine natif WSL, sans systemd)…"
     sudo nohup dockerd --host=unix:///var/run/docker.sock >>"$log" 2>&1 &

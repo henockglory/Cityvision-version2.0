@@ -22,7 +22,7 @@ snapshots:
   timestamp: true
   bounding_box: true
   retain:
-    default: 2
+    default: 1
 
 detect:
   enabled: true

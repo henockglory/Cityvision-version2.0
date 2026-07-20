@@ -1,0 +1,32 @@
+﻿# Ouvrir CitéVision dans Cursor (Sprint 0 / Décision 1)
+
+## Chemin à ouvrir
+
+File → Open Folder :
+
+```
+\\wsl.localhost\Ubuntu-24.04\home\gheno\citevision-v2
+```
+
+## Si Cursor refuse (dubious ownership)
+
+Dans un terminal **Windows** (une seule fois) :
+
+```bat
+git config --global --add safe.directory %(prefix)///wsl.localhost/Ubuntu-24.04/home/gheno/citevision-v2
+```
+
+Puis rouvrir le dossier WSL ci-dessus.
+
+## Ne plus utiliser comme runtime
+
+`C:\Users\gheno\citevision` — miroir éventuel seulement, pas la source de vérité.
+
+## Avant chaque session
+
+```bash
+bash scripts/health_check_all.sh
+bash scripts/_start_dockerd_wsl.sh   # si dockerd down
+```
+
+Docker Desktop : **interdit**.

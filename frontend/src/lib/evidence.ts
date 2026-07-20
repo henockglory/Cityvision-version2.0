@@ -26,7 +26,7 @@ export interface EvidenceClip {
 }
 
 export interface EvidenceImage {
-  role: 'scene' | 'subject' | 'plate' | 'face';
+  role: 'scene' | 'subject' | 'plate' | 'face' | string;
   url?: string;
   asset_id?: string;
   label?: string;
@@ -68,6 +68,20 @@ export interface EvidenceQuality {
   loaded: number;
   expected: number;
   clipDurationOk: boolean;
+}
+
+export type AiEvidenceStatus = 'complete' | 'partial' | 'failed' | 'pending';
+
+/** AI-assigned evidence status from package metadata (preferred over blob-only heuristics). */
+export function aiEvidenceStatus(
+  snapshot?: EvidenceSnapshot | Record<string, unknown> | null,
+): AiEvidenceStatus | undefined {
+  const ev = parseEvidenceSnapshot(snapshot as EvidenceSnapshot | undefined);
+  const raw = ev.package?.metadata?.evidence_status ?? (ev as Record<string, unknown>).evidence_status;
+  if (raw === 'complete' || raw === 'partial' || raw === 'failed' || raw === 'pending') {
+    return raw;
+  }
+  return undefined;
 }
 
 export function evidenceQuality(
@@ -116,6 +130,10 @@ export function evidenceQuality(
   );
 
   if (loaded === expected && expected > 0) {
+    const aiStatus = aiEvidenceStatus(snapshot);
+    if (aiStatus === 'partial' || aiStatus === 'failed') {
+      return { state: aiStatus === 'failed' ? 'failed' : 'partial', loaded, expected, clipDurationOk };
+    }
     return { state: 'complete', loaded, expected, clipDurationOk };
   }
   if (anyError && loaded === 0) {

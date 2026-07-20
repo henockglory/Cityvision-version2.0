@@ -60,6 +60,18 @@ func (s *Service) CreateAlert(ctx context.Context, req CreateAlertRequest) (*mod
 		err := s.pool.QueryRow(ctx, `SELECT definition FROM rules WHERE id = $1 AND org_id = $2`, *req.RuleID, req.OrgID).Scan(&definition)
 		if err == nil {
 			policy := evidence.PolicyFromDefinition(definition)
+			plateNum, _ := metaMap["plate_number"].(string)
+			evidenceSnap = evidence.AnnotateStatuses(evidenceSnap, policy, plateNum)
+			var annotated map[string]interface{}
+			_ = json.Unmarshal(evidenceSnap, &annotated)
+			if annotated != nil {
+				metaMap["violation_status"] = annotated["violation_status"]
+				metaMap["plate_status"] = annotated["plate_status"]
+				metaMap["identification"] = annotated["identification"]
+				if pkg, ok := annotated["package"]; ok {
+					metaMap["package"] = pkg
+				}
+			}
 			if evidence.PolicyRequiresProof(policy) && !evidence.IsComplete(evidenceSnap, policy) {
 				return nil, ErrIncompleteEvidence
 			}
@@ -75,6 +87,10 @@ func (s *Service) CreateAlert(ctx context.Context, req CreateAlertRequest) (*mod
 				}
 			}
 		}
+	} else {
+		// No rule: still annotate with default road policy for honest badges.
+		plateNum, _ := metaMap["plate_number"].(string)
+		evidenceSnap = evidence.AnnotateStatuses(evidenceSnap, evidence.DefaultPolicy(), plateNum)
 	}
 	if camID, ok := metaMap["camera_id"].(string); ok && camID != "" {
 		if id, err := uuid.Parse(camID); err == nil {

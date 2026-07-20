@@ -1,3 +1,7 @@
+# CitéVision infra — runtime WSL dockerd ONLY.
+# Docker Desktop is FORBIDDEN on this project: conflicting Hyper-V/WSL2 sockets
+# and two runtimes make the stack non-reproducible. Start with:
+#   bash scripts/_start_dockerd_wsl.sh
 services:
   postgres:
     image: postgres:17
@@ -93,18 +97,13 @@ services:
     restart: unless-stopped
     profiles:
       - frigate
-    ports:
-      - "${FRIGATE_PORT:-5000}:5000"
-      - "${FRIGATE_RTSP_PORT:-8556}:8554"
-      - "${FRIGATE_WEBRTC_PORT:-8557}:8555"
-      - "${FRIGATE_WEBRTC_PORT:-8557}:8555/udp"
+    # Host network: reach LAN cameras (192.168.x) like ai-engine on WSL — bridge NAT times out RTSP.
+    network_mode: host
     volumes:
       - ./frigate-config:/config
       - frigate_recordings:/media/frigate/recordings
       - frigate_clips:/media/frigate/clips
       - ./frigate.base.yaml:/config/frigate.base.yaml:ro
-    environment:
-      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-}
     shm_size: "256mb"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5000/api/version || exit 1"]
@@ -126,6 +125,24 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+
+  citevision-ocr:
+    build:
+      context: ./ocr_service
+    container_name: citevision-v2-ocr
+    restart: unless-stopped
+    profiles:
+      - ocr
+    ports:
+      - "${OCR_PORT:-8181}:8181"
+    volumes:
+      - ocr_models:/models
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8181/healthz || exit 1"]
+      interval: 30s
+      timeout: 90s
+      retries: 5
+      start_period: 180s
 
   minio-init:
     image: minio/mc:latest
@@ -151,3 +168,4 @@ volumes:
   minio_data:
   frigate_recordings:
   frigate_clips:
+  ocr_models:

@@ -243,10 +243,16 @@ def bbox_region_has_content(
         return False
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
     std = float(gray.std())
+    # Truly uniform/empty region (e.g. sky, blank frame).
+    if std < 3.0:
+        return False
+    # For large enough bboxes (≥60×60 px) YOLO detection confidence is high
+    # enough to trust the geometry even when the vehicle roof appears smooth
+    # (low Laplacian). Overhead shots of cars typically fall into this case.
+    if (x2 - x1) >= 60 and (y2 - y1) >= 60 and std >= 5.0:
+        return True
     lap = float(cv2.Laplacian(gray, cv2.CV_64F).var())
     global_std = float(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).std())
-    if std < 4.0:
-        return False
     if std < global_std * 0.9 and lap < min_laplacian:
         return False
     return lap >= min_laplacian or std >= max(10.0, global_std * 1.15)

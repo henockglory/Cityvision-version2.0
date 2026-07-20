@@ -85,14 +85,17 @@ def classify_light_color(roi: np.ndarray) -> tuple[str, dict[str, float]]:
         "green": float(np.count_nonzero(green)) / total,
     }
     # Minimum illuminated ratio for any colour to count.
-    min_ratio = 0.006
+    min_ratio = 0.008
     state = max(ratios, key=ratios.get)
     if ratios[state] < min_ratio:
         return "unknown", ratios
-    # Prefer red when clearly lit (demo videos often mix glare with green spill).
-    if ratios["red"] >= min_ratio and ratios["red"] >= ratios["amber"]:
-        if ratios["red"] >= ratios["green"] * 0.65:
-            return "red", ratios
+    # No "prefer red" bias: if green/amber truly dominate the ROI, trust them.
+    # Only reject a max==red when another colour is strictly stronger.
+    if state == "red":
+        if ratios["green"] > ratios["red"]:
+            return ("green" if ratios["green"] >= ratios["amber"] else "amber"), ratios
+        if ratios["amber"] > ratios["red"]:
+            return "amber", ratios
     return state, ratios
 
 
@@ -152,6 +155,9 @@ class TrafficLightEngine:
         stable_window = 3
         cooldown = self._cooldown_frames
         new_state = self._stable_state.get(camera_id, "unknown")
+        raw_state = "unknown"
+        hsv_ratios: dict[str, float] = {}
+        light_polygon: list[dict] = []
         for lz in light_zones:
             cfg = lz.get("behavior_config") or {}
             try:
@@ -159,11 +165,12 @@ class TrafficLightEngine:
             except (TypeError, ValueError):
                 stable_window = 3
             cooldown = 8 if stable_window <= 1 else self._cooldown_frames
-            box = _polygon_pixel_bbox(lz.get("polygon") or [], w, h)
+            light_polygon = list(lz.get("polygon") or [])
+            box = _polygon_pixel_bbox(light_polygon, w, h)
             if not box:
                 continue
             x1, y1, x2, y2 = box
-            raw_state, _ = classify_light_color(frame[y1:y2, x1:x2])
+            raw_state, hsv_ratios = classify_light_color(frame[y1:y2, x1:x2])
             hist = self._state_history.setdefault(camera_id, deque(maxlen=max(stable_window, 1)))
             hist.append(raw_state)
             if len(hist) >= hist.maxlen:
@@ -172,6 +179,8 @@ class TrafficLightEngine:
                 for s in hist:
                     counts[s] = counts.get(s, 0) + 1
                 new_state = max(counts, key=counts.get)
+            else:
+                new_state = raw_state
             break  # one traffic-light zone per camera is the supported case
 
         prev_stable = self._stable_state.get(camera_id)
@@ -182,8 +191,14 @@ class TrafficLightEngine:
             )
 
         # 2) Red-light synergy: moving vehicle in observation zone while red.
+        # Require BOTH stable history and current-frame raw classification as red
+        # so sticky "red" after the lamp turned green cannot keep firing.
         tracks_in_obs: set[tuple[str, int]] = set()
-        if self._stable_state.get(camera_id) == "red" and obs_zones:
+        light_is_red = (
+            self._stable_state.get(camera_id) == "red"
+            and raw_state == "red"
+        )
+        if light_is_red and obs_zones:
             for oz in obs_zones:
                 cfg = oz.get("behavior_config") or {}
                 class_filter = str(cfg.get("class_filter", "car"))
@@ -215,7 +230,14 @@ class TrafficLightEngine:
                     if not self._allow_emit(camera_id, tid, cooldown):
                         continue
                     events.append(
-                        self._make_violation_event(camera_id, track, timestamp, motion)
+                        self._make_violation_event(
+                            camera_id, track, timestamp, motion,
+                            hsv_ratios=hsv_ratios,
+                            light_state=raw_state,
+                            light_zone_polygon=light_polygon,
+                            frame_w=w,
+                            frame_h=h,
+                        )
                     )
         for key in list(self._obs_streak):
             if key[0] == camera_id and key not in tracks_in_obs:
@@ -266,7 +288,16 @@ class TrafficLightEngine:
 
     @staticmethod
     def _make_violation_event(
-        camera_id: str, track: dict, timestamp: str, motion_px: float
+        camera_id: str,
+        track: dict,
+        timestamp: str,
+        motion_px: float,
+        *,
+        hsv_ratios: dict[str, float] | None = None,
+        light_state: str = "red",
+        light_zone_polygon: list[dict] | None = None,
+        frame_w: int = 0,
+        frame_h: int = 0,
     ) -> dict[str, Any]:
         bbox = track.get("bbox") or {}
         return {
@@ -280,8 +311,13 @@ class TrafficLightEngine:
             "bbox": bbox,
             "confidence": 0.85,
             "severity": "high",
+            "frame_width": frame_w or None,
+            "frame_height": frame_h or None,
             "metadata": {
                 "red_signal_active": True,
+                "light_state": light_state,
+                "hsv_ratios": hsv_ratios or {},
+                "light_zone_polygon": light_zone_polygon or [],
                 "motion_px": round(motion_px, 2),
                 "detection_method": "zone_traffic_light_synergy",
             },

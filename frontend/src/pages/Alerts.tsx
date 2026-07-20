@@ -211,6 +211,19 @@ export default function Alerts() {
                         <SeverityBadge severity={alert.severity} />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium truncate">{alert.message}</p>
+                          {(() => {
+                            const snap = parseEvidenceSnapshot(alert.evidenceSnapshot);
+                            const plate = snap.plate_number ?? snap.package?.metadata?.plate_number;
+                            const evStatus = snap.package?.metadata?.evidence_status;
+                            return (
+                              <p className="text-xs text-cv-muted mt-0.5 truncate">
+                                {plate ? `Plaque: ${String(plate)}` : null}
+                                {plate && evStatus ? ' · ' : null}
+                                {evStatus ? `Preuve: ${String(evStatus)}` : null}
+                                {!plate && !evStatus ? new Date(alert.timestamp).toLocaleString() : null}
+                              </p>
+                            );
+                          })()}
                           <p className="text-xs text-cv-muted mt-1">{new Date(alert.timestamp).toLocaleString()}</p>
                         </div>
                         <ChevronRight className="w-4 h-4 text-cv-muted shrink-0" />
@@ -249,6 +262,15 @@ export default function Alerts() {
                 <div className="mt-4 p-4 rounded-xl bg-cv-surface/40 border border-cv-border/60">
                   <EvidenceViewer evidence={selected.evidenceSnapshot} cameraId={selected.cameraId} ruleId={selected.ruleId} />
                 </div>
+                {(() => {
+                  const suppression = String(selected.metadata?.suppression_reason ?? '');
+                  if (!suppression) return null;
+                  return (
+                    <p className="mt-3 text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-lg p-3">
+                      Suppression reason: {suppression}
+                    </p>
+                  );
+                })()}
 
                 <div className="flex flex-wrap gap-3 mt-4 text-sm text-cv-muted">
                   <span className="inline-flex items-center gap-1"><Camera className="w-3.5 h-3.5" />{selected.cameraName}</span>

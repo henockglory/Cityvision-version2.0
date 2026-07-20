@@ -6,12 +6,13 @@ import {
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
+import LiveStreamPlayer from '@/components/live/LiveStreamPlayer';
 import SegmentedTabs from '@/components/ui/SegmentedTabs';
 import { demoApi, type DemoSettings, type DemoVideo } from '@/api/client';
 import { queryKeys } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useCameras } from '@/hooks/api/queries';
-import { go2rtcStreamSrc } from '@/config/streams';
+import { go2rtcStreamSrc, shouldUseFrigateLive } from '@/config/streams';
 
 interface DemoVideoPanelProps {
   settings?: DemoSettings | null;
@@ -88,6 +89,11 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
   const streamSrc = settings?.active_go2rtc_src ?? '';
   const hasStream = Boolean(streamSrc);
   const readyCount = videos.filter((v) => v.status === 'ready').length;
+  const activeCamera =
+    settings?.source_mode === 'camera' && settings.active_camera_id
+      ? cameras.find((c) => c.id === settings.active_camera_id) ?? null
+      : null;
+  const useFrigateLive = Boolean(activeCamera && shouldUseFrigateLive(activeCamera));
 
   const realCameras = cameras.filter((c) => {
     const meta = c.metadata as Record<string, unknown> | undefined;
@@ -270,12 +276,23 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
       {/* Main player area */}
       <div className="cv-card overflow-hidden p-0 relative cv-demo-player-shell">
         {hasStream ? (
-          <Go2RtcPlayer
-            className="aspect-video w-full min-h-[280px]"
-            src={streamSrc}
-            friendlyErrors
-            label={settings?.source_mode === 'camera' ? t('demoCenter.tabRealCameras') : t('demoCenter.tabTestVideos')}
-          />
+          useFrigateLive && activeCamera ? (
+            <LiveStreamPlayer
+              className="aspect-video w-full min-h-[280px]"
+              src={go2rtcStreamSrc(activeCamera) ?? streamSrc}
+              label={activeCamera.name ?? t('demoCenter.tabRealCameras')}
+              cameraId={activeCamera.id}
+              camera={activeCamera}
+              showOverlay
+            />
+          ) : (
+            <Go2RtcPlayer
+              className="aspect-video w-full min-h-[280px]"
+              src={streamSrc}
+              friendlyErrors
+              label={settings?.source_mode === 'camera' ? t('demoCenter.tabRealCameras') : t('demoCenter.tabTestVideos')}
+            />
+          )
         ) : (
           <div className="cv-demo-empty-stream aspect-video w-full min-h-[280px]">
             <div className="cv-demo-empty-stream-inner">

@@ -4,6 +4,7 @@ import { Clock, Loader2, Settings2, X, MapPin, GitBranch, Zap, Check, AlertTrian
 import { Link } from 'react-router-dom';
 import {
   capabilitiesApi,
+  demoApi,
   identityApi,
   rulesApi,
   zonesApi,
@@ -682,6 +683,15 @@ export default function RuleStudioDialog({
     setSubmitting(true);
     setError('');
     try {
+      if (demoMode) {
+        const preflight = await demoApi.preflight(orgId, { wait_sec: 45, min_frames: 10 });
+        if (preflight.data?.blocked) {
+          setError(
+            `Activation bloquée par préflight: ${preflight.data?.suppression_reason ?? 'platform_not_ready'}`,
+          );
+          return;
+        }
+      }
       const syncedCond = ensureSpatialConditions(conditionTree, activationCfg);
       const definition = buildDefinition(syncedCond);
       const intentCheck = await capabilitiesApi.validateIntent(orgId, definition);

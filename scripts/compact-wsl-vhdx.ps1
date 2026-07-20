@@ -21,10 +21,11 @@ function Compact-Vhdx($vhdx) {
     ) | Set-Content $dpScript -Encoding ASCII
 
     $dpOut = "C:\Users\gheno\citevision\scripts\diskpart-out.txt"
-    $p = Start-Process -FilePath "diskpart.exe" -ArgumentList "/s `"$dpScript`"" -Wait -PassThru -RedirectStandardOutput $dpOut -RedirectStandardError "C:\Users\gheno\citevision\scripts\diskpart-err.txt" -NoNewWindow
+    $dpErr = "C:\Users\gheno\citevision\scripts\diskpart-err.txt"
+    $p = Start-Process -FilePath "diskpart.exe" -ArgumentList "/s `"$dpScript`"" -Wait -PassThru -RedirectStandardOutput $dpOut -RedirectStandardError $dpErr -NoNewWindow
     if (Test-Path $dpOut) { Log (Get-Content $dpOut -Raw) }
-    if (Test-Path "C:\Users\gheno\citevision\scripts\diskpart-err.txt") {
-        $err = Get-Content "C:\Users\gheno\citevision\scripts\diskpart-err.txt" -Raw
+    if (Test-Path $dpErr) {
+        $err = Get-Content $dpErr -Raw
         if ($err) { Log "STDERR: $err" }
     }
     Log "diskpart exit: $($p.ExitCode)"
@@ -37,14 +38,19 @@ function Compact-Vhdx($vhdx) {
 $cBefore = (Get-PSDrive C).Free
 Log "C: libre avant: $([math]::Round($cBefore/1GB, 2)) GB"
 
-# Step 1: mark deleted blocks inside WSL before shutdown (required for VHD shrink).
-Log "=== fstrim + zero-fill inside WSL ==="
-$trim = wsl -d Ubuntu-24.04 bash -lc "sudo fstrim -av && (dd if=/dev/zero of=/tmp/zero.fill bs=1M 2>/dev/null || true) && rm -f /tmp/zero.fill && sync && df -h /" 2>&1
-Log $trim
+# fstrim already done after purge; skip to avoid encoding/shell issues. Optional refresh:
+Log "=== fstrim inside WSL (mark free blocks) ==="
+$trim = wsl -d Ubuntu-24.04 -- bash -lc 'sudo fstrim -av; sync; df -h /' 2>&1
+Log ($trim | Out-String)
 
 Log "=== WSL shutdown ==="
 wsl --shutdown | Out-Null
-Start-Sleep -Seconds 8
+Start-Sleep -Seconds 20
+
+Log "=== set-sparse false (required for diskpart compact) ==="
+$sparseOff = wsl --manage Ubuntu-24.04 --set-sparse false 2>&1
+Log ($sparseOff | Out-String)
+Start-Sleep -Seconds 3
 
 $wslRoot = "C:\Users\gheno\AppData\Local\wsl"
 $vhdxList = @()
@@ -59,13 +65,12 @@ if (Test-Path $dockerVhdx) {
 $vhdxList = $vhdxList | Sort-Object Length -Descending | Select-Object -Unique FullName, Length, Attributes
 
 foreach ($item in $vhdxList) {
-    $path = $item.FullName
-    if ($item.Attributes -band [IO.FileAttributes]::SparseFile) {
-        Log "`n=== SKIP (SparseFile) $path ($([math]::Round($item.Length/1GB,2)) GB) ==="
-        continue
-    }
-    Compact-Vhdx $path
+    Compact-Vhdx $item.FullName
 }
+
+Log "=== set-sparse true (auto reclaim later) ==="
+$sparseOn = wsl --manage Ubuntu-24.04 --set-sparse true 2>&1
+Log ($sparseOn | Out-String)
 
 $cAfter = (Get-PSDrive C).Free
 Log "`nC: libre apres: $([math]::Round($cAfter/1GB, 2)) GB (gain $([math]::Round(($cAfter-$cBefore)/1GB,2)) GB)"

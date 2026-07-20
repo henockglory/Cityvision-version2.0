@@ -87,7 +87,14 @@ type UploadInput struct {
 	SubjectSz int64
 	Plate     io.Reader
 	PlateSz   int64
+	ExtraFrames []FrameUpload
 	Metadata  map[string]interface{}
+}
+
+type FrameUpload struct {
+	Role string
+	Data io.Reader
+	Size int64
 }
 
 func objectPrefix(orgID uuid.UUID, cameraID, eventID string) string {
@@ -160,6 +167,19 @@ func (s *Service) UploadPackage(ctx context.Context, in UploadInput) (*Package, 
 		pkg.Images = append(pkg.Images, Image{
 			Role: "plate", AssetID: key, URL: s.assetURL(in.OrgID, key),
 			Label: labelFromMeta(in.Metadata, "plate", "Plaque"), Mime: "image/jpeg",
+		})
+	}
+	for _, fr := range in.ExtraFrames {
+		if fr.Data == nil || fr.Size <= 0 || fr.Role == "" {
+			continue
+		}
+		key := prefix + "/" + fr.Role + ".jpg"
+		if _, err := s.client.PutObject(ctx, s.cfg.Bucket, key, fr.Data, fr.Size, minio.PutObjectOptions{ContentType: "image/jpeg"}); err != nil {
+			return nil, fmt.Errorf("upload %s: %w", fr.Role, err)
+		}
+		pkg.Images = append(pkg.Images, Image{
+			Role: fr.Role, AssetID: key, URL: s.assetURL(in.OrgID, key),
+			Label: labelFromMeta(in.Metadata, fr.Role, fr.Role), Mime: "image/jpeg",
 		})
 	}
 	return pkg, nil

@@ -1,6 +1,7 @@
 """Frigate-track evidence composition (ported from SingleTrackWorker)."""
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ import cv2
 import numpy as np
 
 from citevision_ai.config import settings
+from citevision_ai.evidence import abort_stats
 from citevision_ai.evidence.capture import (
     bbox_from_event,
     bbox_rear_plate_region,
@@ -27,13 +29,20 @@ from citevision_ai.evidence.capture import (
     normalize_bbox,
     subject_jpeg_texture,
 )
+from citevision_ai.road_enforcement.traffic_light import (
+    _polygon_pixel_bbox,
+    classify_light_color,
+)
 from citevision_ai.evidence.config import CLIP_DURATION_SEC, JPEG_QUALITY
 from citevision_ai.evidence.frigate_timeline import (
     _STREAM_CLOCK_MAX,
     aligned_anchor,
+    best_frigate_ts,
+    demo_loop_absolute_align_ok,
     frigate_times_look_stream_relative,
     learn_clock_offset,
     min_time_delta,
+    same_demo_loop_cycle,
     wall_clock_skewed_from_frigate,
 )
 from citevision_ai.evidence.gate import default_evidence_policy
@@ -42,6 +51,14 @@ from citevision_ai.evidence.ocr_client import recognize_plate_jpeg
 logger = logging.getLogger(__name__)
 
 SUBJECT_MIN_TEXTURE = 50.0
+# Red-light evidence must stay close to the IA emission instant — wide demo skew
+# produces scenes where the lamp has already turned green.
+RED_LIGHT_MAX_ALIGN_SEC = 8.0
+RED_LIGHT_MIN_IOU = 0.08
+# Sprint 1 — deferred compose: wait for Frigate end_time before clip API (I4).
+RED_LIGHT_END_TIME_WAIT_SEC = 30.0
+RED_LIGHT_END_TIME_BACKOFF_INITIAL = 2.0
+RED_LIGHT_END_TIME_BACKOFF_MAX = 8.0
 _VEHICLE_LABELS = frozenset({
     "car", "motorcycle", "motorbike", "truck", "bus", "vehicle", "van",
 })
@@ -90,11 +107,176 @@ class FrigateTrackEvidence:
         if camera_id:
             self._demo_clock_offset.pop(camera_id, None)
 
+    def _demo_loop_guard_active(self) -> bool:
+        """Demo-only stale-loop guard (H1). Off for live production cameras.
+
+        Uses strict ``is True`` checks so unit-test MagicMocks do not accidentally
+        activate the guard (MagicMock is truthy).
+        """
+        if getattr(settings, "demo_loop_guard", True) is False:
+            return False
+        if getattr(settings, "demo_mode", False) is True:
+            return True
+        fn = getattr(settings, "demo_relaxed_evidence", None)
+        if callable(fn):
+            try:
+                return fn() is True
+            except Exception:
+                return False
+        return False
+
+    def _hard_align_max_sec(self, event_type: str = "") -> float:
+        accept_max = float(settings.frigate_demo_accept_max_align_sec)
+        if str(event_type or "") == "red_light_violation":
+            accept_max = min(accept_max, RED_LIGHT_MAX_ALIGN_SEC)
+        return accept_max
+
+    def _demo_loop_pair_ok(
+        self,
+        anchor: float,
+        matched: dict[str, Any] | None,
+        align_delta: float,
+        event_type: str = "",
+    ) -> bool:
+        """Absolute align + same loop cycle — never widened by soft-accept."""
+        if not self._demo_loop_guard_active():
+            return True
+        max_sec = self._hard_align_max_sec(event_type)
+        if not demo_loop_absolute_align_ok(align_delta, max_sec):
+            return False
+        frig_ts = best_frigate_ts(matched or {})
+        if frig_ts is None:
+            return True
+        loop_sec = float(getattr(settings, "demo_red_light_loop_sec", 352.52) or 352.52)
+        return same_demo_loop_cycle(float(anchor), float(frig_ts), loop_sec)
+
     def enabled(self) -> bool:
         return settings.frigate_enabled and settings.frigate_evidence
 
     def frigate_camera_id(self, camera_id: str) -> str:
         return f"cv_{camera_id}"
+
+    def _missing(
+        self,
+        reason: str,
+        *,
+        camera_id: str,
+        evt: dict[str, Any],
+        event_id: str = "",
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Structured missing package — never fabricate proof assets (Décision 2 / R.2)."""
+        et = str(evt.get("event_type") or evt.get("event") or "")
+        abort_stats.record_abort(
+            reason,
+            camera_id=camera_id,
+            event_type=et,
+            event_id=event_id,
+            extra=extra,
+        )
+        meta: dict[str, Any] = {
+            "evidence_status": "missing",
+            "abort_reason": reason,
+            "capture_source": "frigate_track",
+            "event_type": et,
+            "frigate_event_id": event_id or None,
+            "bbox_ts": evt.get("bbox_ts"),
+            "track_id": evt.get("track_id"),
+            "zone_id": evt.get("zone_id"),
+        }
+        if extra:
+            meta.update({k: v for k, v in extra.items() if k not in meta})
+        return {
+            "status": "missing",
+            "scene": None,
+            "subject": None,
+            "clip_bytes": None,
+            "plate_jpeg": None,
+            "extra_images": [],
+            "meta": meta,
+        }
+
+    def _wait_until_end_time(self, event_id: str) -> dict[str, Any] | None:
+        """Poll Frigate until event has end_time (clip seal signal) or timeout.
+
+        Sprint 1: never call clip.mp4 before end_time — eliminates I4 HTTP 400 thrash.
+        Exponential backoff 2s → 4s → 8s (capped).
+        """
+        wait_sec = float(
+            getattr(settings, "frigate_red_light_end_time_wait_sec", RED_LIGHT_END_TIME_WAIT_SEC)
+        )
+        backoff = float(
+            getattr(
+                settings,
+                "frigate_red_light_end_time_backoff_initial",
+                RED_LIGHT_END_TIME_BACKOFF_INITIAL,
+            )
+        )
+        backoff_max = float(
+            getattr(
+                settings,
+                "frigate_red_light_end_time_backoff_max",
+                RED_LIGHT_END_TIME_BACKOFF_MAX,
+            )
+        )
+        deadline = time.time() + max(1.0, wait_sec)
+        last: dict[str, Any] = {}
+        while time.time() < deadline:
+            meta = self._event_meta(event_id)
+            if meta:
+                last = meta
+                end = meta.get("end_time")
+                if end is not None and end != "" and end is not False:
+                    logger.info(
+                        "frigate_track: end_time ready event=%s end=%s",
+                        event_id[:24], end,
+                    )
+                    return meta
+            time.sleep(backoff)
+            backoff = min(backoff * 2.0, backoff_max)
+        return last if last else None
+
+    def list_events_for_camera(self, frigate_id: str) -> list[dict[str, Any]]:
+        return self._list_events(frigate_id)
+
+    def match_track_to_event(
+        self,
+        events: list[dict[str, Any]],
+        *,
+        anchor_ts: float,
+        class_name: str,
+        evt_bbox: dict[str, float],
+        camera_id: str,
+        frame_w: int = 1920,
+        frame_h: int = 720,
+    ) -> tuple[dict[str, Any] | None, float, float]:
+        """IoU-first match for proactive track binding (ignores large time skew)."""
+        if not events:
+            return None, 1e18, 0.0
+        want = str(class_name or "").lower()
+        min_iou = max(0.05, float(settings.frigate_bind_min_iou) * 0.5)
+        matched, delta = self._pick_correlated(
+            events[: int(settings.frigate_demo_events_limit)],
+            float(anchor_ts),
+            want,
+            evt_bbox,
+            float(settings.frigate_demo_bootstrap_max_sec),
+            label_iou_only=True,
+            min_iou=min_iou,
+            ignore_time_filter=True,
+        )
+        if matched is None:
+            return None, delta, 0.0
+        frigate_bbox = _frigate_box_from_event(matched)
+        norm_evt = normalize_bbox(evt_bbox, frame_w, frame_h)
+        iou = _bbox_iou(norm_evt, frigate_bbox) if norm_evt and frigate_bbox else 0.0
+        if matched is not None:
+            self._maybe_learn_offset(camera_id, float(anchor_ts), matched)
+        return matched, delta, iou
+
+    def fetch_event(self, event_id: str) -> dict[str, Any]:
+        meta = self._event_meta(event_id)
+        return meta if meta else {"id": event_id}
 
     def capture(
         self,
@@ -106,11 +288,82 @@ class FrigateTrackEvidence:
     ) -> dict[str, Any] | None:
         if not self.enabled():
             return None
+        et = str(evt.get("event_type") or evt.get("event") or "")
+        abort_stats.record_attempt(camera_id=camera_id, event_type=et)
+        result = self._capture_impl(policy, evt, org_id=org_id, camera_id=camera_id)
+        if result is None:
+            # Terminal failure without structured _missing (non-red paths historically).
+            abort_stats.record_abort(
+                abort_stats.ABORT_NO_CORRELATION,
+                camera_id=camera_id,
+                event_type=et,
+                extra={"via": "capture_return_none"},
+            )
+            return None
+        meta = result.get("meta") if isinstance(result, dict) else None
+        status = result.get("status") if isinstance(result, dict) else None
+        if status == "missing" or (
+            isinstance(meta, dict) and meta.get("evidence_status") == "missing"
+        ):
+            # Terminal abort already recorded in _missing.
+            return result
+        abort_stats.record_complete(
+            camera_id=camera_id,
+            event_type=et,
+            event_id=str(
+                (meta or {}).get("frigate_event_id")
+                or evt.get("frigate_event_id")
+                or evt.get("event_id")
+                or ""
+            ),
+        )
+        return result
+
+    def _capture_impl(
+        self,
+        policy: dict[str, Any],
+        evt: dict[str, Any],
+        *,
+        org_id: str,
+        camera_id: str,
+    ) -> dict[str, Any] | None:
         fid = self.frigate_camera_id(camera_id)
         anchor = evt.get("bbox_ts")
         if not isinstance(anchor, (int, float)):
             anchor = time.time()
         anchor = float(anchor)
+
+        bound_id = str(evt.get("frigate_event_id") or "").strip()
+        # Red-light: never trust a proactive binder id — it often freezes an early
+        # track box while the car has already moved (empty subject on snapshot).
+        if bound_id and str(evt.get("event_type") or "") == "red_light_violation":
+            logger.info(
+                "frigate_track: ignore stale bind for red_light cam=%s id=%s — re-correlate",
+                camera_id[:8], bound_id[:24],
+            )
+            bound_id = ""
+            evt.pop("frigate_event_id", None)
+            meta = evt.get("metadata")
+            if isinstance(meta, dict):
+                meta.pop("frigate_event_id", None)
+                meta.pop("frigate_bind_iou", None)
+        if bound_id:
+            bound_ev = self.fetch_event(bound_id)
+            align_delta = min_time_delta(anchor, bound_ev) if bound_ev else 0.0
+            if self._accept_correlation(evt, bound_ev, align_delta, camera_id):
+                composed = self._compose_from_matched(
+                    bound_ev, align_delta, policy, evt, camera_id, org_id,
+                )
+                if composed is not None:
+                    logger.info(
+                        "frigate_track: bound capture cam=%s event=%s delta=%.2fs",
+                        camera_id[:8], bound_id[:24], align_delta,
+                    )
+                    return composed
+            logger.info(
+                "frigate_track: bound event rejected cam=%s id=%s — retry correlate",
+                camera_id[:8], bound_id[:24],
+            )
 
         matched, align_delta = None, 1e18
         deadline = time.time() + settings.frigate_correlate_wait_sec
@@ -121,14 +374,23 @@ class FrigateTrackEvidence:
             matched, align_delta = self._correlate_event(
                 fid, anchor, evt, camera_id=camera_id,
             )
+            soft_meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+            soft_red = soft_meta.get("frigate_red_light_soft_iou") is not None
+            # demo_loop_guard: soft-accept may relax IoU only — never the align window.
             if matched is not None and align_delta <= max_align:
                 if self._accept_correlation(evt, matched, align_delta, camera_id):
                     break
                 matched = None
             elif matched is not None:
                 logger.warning(
-                    "frigate_track: reject stale match cam=%s anchor=%.3f delta=%.2fs max=%.1fs",
-                    camera_id[:8], anchor, align_delta, max_align,
+                    "frigate_track: reject stale match cam=%s anchor=%.3f delta=%.2fs max=%.1fs soft_red=%s",
+                    camera_id[:8], anchor, align_delta, max_align, soft_red,
+                )
+                abort_stats.record_probe_reject(
+                    abort_stats.ABORT_STALE_MATCH,
+                    camera_id=camera_id,
+                    event_type=str(evt.get("event_type") or ""),
+                    extra={"align_delta_sec": round(float(align_delta), 3)},
                 )
                 matched = None
             if time.time() >= deadline:
@@ -142,16 +404,153 @@ class FrigateTrackEvidence:
                     camera_id[:8],
                 )
                 self.reset_demo_offset(camera_id)
-            logger.warning(
-                "frigate_track: no correlated event cam=%s anchor=%.3f offset=%s",
-                camera_id[:8], anchor,
-                round(self._demo_clock_offset.get(camera_id, 0.0), 2)
-                if camera_id in self._demo_clock_offset else "none",
-            )
+            fallback = self._demo_latest_vehicle_event(fid)
+            if fallback is None:
+                # Frigate may still be spinning up after restart — brief wait for any vehicle.
+                for _ in range(8):
+                    time.sleep(1.0)
+                    fallback = self._demo_latest_vehicle_event(fid)
+                    if fallback is not None:
+                        break
+            if fallback is not None:
+                # Demo: allow identity-agnostic Frigate media for red_light only when
+                # compose can still abort on non-red scene (scene_green gate). Soft-IoU
+                # overlays the IA offender bbox so we do not claim the Frigate track.
+                if str(evt.get("event_type") or "") == "red_light_violation":
+                    # Soft paths require explicit DEMO_MODE (resolved from environ + .env files).
+                    if not settings.demo_relaxed_evidence():
+                        logger.warning(
+                            "frigate_track: skip demo vehicle fallback for red_light cam=%s "
+                            "(DEMO_MODE=%s source=%s)",
+                            camera_id[:8], settings.demo_mode, settings.demo_mode_source,
+                        )
+                        fallback = None
+                    else:
+                        meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else None
+                        if meta is None:
+                            evt["metadata"] = {}
+                            meta = evt["metadata"]
+                        meta["frigate_red_light_soft_iou"] = -1.0
+                        logger.warning(
+                            "frigate_track: red_light demo vehicle fallback cam=%s "
+                            "(IA bbox + scene_green gate) DEMO_MODE=%s source=%s",
+                            camera_id[:8], settings.demo_mode, settings.demo_mode_source,
+                        )
+            if fallback is not None:
+                matched = fallback
+                align_delta = min_time_delta(anchor, fallback)
+                # demo_loop_guard: never compose time-agnostic media with a wide delta
+                # (speeding previously reused one Frigate event across ~720s).
+                if not self._demo_loop_pair_ok(
+                    anchor, matched, align_delta, str(evt.get("event_type") or ""),
+                ):
+                    logger.warning(
+                        "frigate_track: demo_loop_guard reject fallback cam=%s event=%s delta=%.1fs",
+                        camera_id[:8], str(fallback.get("id", ""))[:24], align_delta,
+                    )
+                    abort_stats.record_probe_reject(
+                        abort_stats.ABORT_ALIGN_REJECT,
+                        camera_id=camera_id,
+                        event_type=str(evt.get("event_type") or ""),
+                        extra={
+                            "align_delta_sec": round(float(align_delta), 3),
+                            "via": "demo_loop_guard_fallback",
+                        },
+                    )
+                    matched = None
+                else:
+                    logger.warning(
+                        "frigate_track: demo vehicle fallback cam=%s event=%s delta=%.1fs",
+                        camera_id[:8], str(fallback.get("id", ""))[:24], align_delta,
+                    )
+            if matched is None:
+                logger.warning(
+                    "frigate_track: no correlated event cam=%s anchor=%.3f offset=%s",
+                    camera_id[:8], anchor,
+                    round(self._demo_clock_offset.get(camera_id, 0.0), 2)
+                    if camera_id in self._demo_clock_offset else "none",
+                )
+                if str(evt.get("event_type") or "") == "red_light_violation":
+                    return self._missing(
+                        abort_stats.ABORT_NO_CORRELATION,
+                        camera_id=camera_id,
+                        evt=evt,
+                        extra={"anchor_ts": anchor},
+                    )
+                return None
+        event_id = str(matched.get("id") or "")
+        if not event_id:
+            if str(evt.get("event_type") or "") == "red_light_violation":
+                return self._missing(
+                    abort_stats.ABORT_NO_CORRELATION,
+                    camera_id=camera_id,
+                    evt=evt,
+                )
             return None
+        return self._compose_from_matched(matched, align_delta, policy, evt, camera_id, org_id)
+
+    def _demo_latest_vehicle_event(self, frigate_id: str) -> dict[str, Any] | None:
+        """Demo go2rtc: pick newest Frigate vehicle event with a bbox (time-agnostic)."""
+        best_clip: dict[str, Any] | None = None
+        for ev in self._list_events(frigate_id):
+            label = str(ev.get("label") or "").lower()
+            if label and label not in _VEHICLE_LABELS:
+                continue
+            if _frigate_box_from_event(ev) is not None:
+                return ev
+            # Tiny boxes fail min_frac — still usable if Frigate retained a clip.
+            if best_clip is None and ev.get("has_clip"):
+                best_clip = ev
+        return best_clip
+
+    def _compose_from_matched(
+        self,
+        matched: dict[str, Any],
+        align_delta: float,
+        policy: dict[str, Any],
+        evt: dict[str, Any],
+        camera_id: str,
+        org_id: str,
+    ) -> dict[str, Any] | None:
         event_id = str(matched.get("id") or "")
         if not event_id:
             return None
+
+        event_type = str(evt.get("event_type") or "")
+        is_red = event_type == "red_light_violation"
+        hard_max = self._hard_align_max_sec(event_type)
+        anchor = evt.get("bbox_ts")
+        if not isinstance(anchor, (int, float)):
+            anchor = time.time()
+        # §3.1 demo_loop_guard — absolute align for every demo rule (not only red_light).
+        # Soft-accept must never widen this window. Live cameras skip this block.
+        if self._demo_loop_guard_active() and (
+            float(align_delta) > hard_max
+            or not self._demo_loop_pair_ok(float(anchor), matched, float(align_delta), event_type)
+        ):
+            return self._missing(
+                abort_stats.ABORT_ALIGN_TOO_WIDE,
+                camera_id=camera_id,
+                evt=evt,
+                event_id=event_id,
+                extra={
+                    "align_delta_sec": round(float(align_delta), 3),
+                    "max_align_sec": hard_max,
+                    "via": "demo_loop_guard_compose",
+                },
+            )
+
+        if is_red and float(align_delta) > RED_LIGHT_MAX_ALIGN_SEC:
+            return self._missing(
+                abort_stats.ABORT_ALIGN_TOO_WIDE,
+                camera_id=camera_id,
+                evt=evt,
+                event_id=event_id,
+                extra={
+                    "align_delta_sec": round(float(align_delta), 3),
+                    "max_align_sec": RED_LIGHT_MAX_ALIGN_SEC,
+                },
+            )
 
         fresh = self._event_meta(event_id)
         if fresh:
@@ -160,29 +559,136 @@ class FrigateTrackEvidence:
                 **{k: fresh.get(k) for k in ("data", "start_time", "end_time", "frame_time", "label") if k in fresh},
             }
 
-        meta = self._wait_for_event_media(event_id)
+        anchor = evt.get("bbox_ts")
+        if not isinstance(anchor, (int, float)):
+            anchor = time.time()
+        anchor = float(anchor)
+        fid = self.frigate_camera_id(camera_id)
+
+        # Sprint 1 — deferred: wait for end_time before any clip download (red_light).
+        if is_red:
+            sealed = self._wait_until_end_time(event_id)
+            if not sealed or sealed.get("end_time") in (None, "", False):
+                return self._missing(
+                    abort_stats.ABORT_CLIP_NOT_READY_TIMEOUT,
+                    camera_id=camera_id,
+                    evt=evt,
+                    event_id=event_id,
+                    extra={"waited_sec": RED_LIGHT_END_TIME_WAIT_SEC},
+                )
+            matched = {
+                **matched,
+                **{k: sealed.get(k) for k in ("data", "start_time", "end_time", "frame_time", "label", "has_clip", "has_snapshot") if k in sealed},
+            }
+            meta = sealed
+        else:
+            meta = self._wait_for_event_media(event_id)
+
         clip_bytes = self._download_event_clip(event_id, meta)
+        if is_red and not clip_bytes:
+            return self._missing(
+                abort_stats.ABORT_NO_CLIP,
+                camera_id=camera_id,
+                evt=evt,
+                event_id=event_id,
+            )
+
         target_clip_sec = float(policy.get("clip_seconds") or CLIP_DURATION_SEC)
         if clip_bytes and target_clip_sec > 0:
             clip_bytes = self._trim_clip_bytes(clip_bytes, target_clip_sec)
-        scene_bytes, subject_bytes, ocr_frames, norm_bbox, plate_crop, clean_bytes = (
-            self._build_images(event_id, matched, policy, clip_bytes)
-        )
-        scene_bytes, norm_bbox, frigate_bbox_embedded, bbox_quality_ok, subject_bytes = (
-            self._finalize_scene_bbox(
-                scene_bytes,
-                clean_bytes,
-                norm_bbox,
-                evt,
-                subject_bytes,
-                policy,
-                camera_id,
-                event_id,
-                align_delta,
+
+        # Sprint 1 — red_light: clip red-frame is PRIMARY scene strategy (not fallback).
+        scene_bytes = None
+        subject_bytes = None
+        ocr_frames: list[bytes] = []
+        norm_bbox = None
+        plate_crop = None
+        clean_bytes = None
+        scene_light = None
+        frigate_bbox_embedded = False
+        bbox_quality_ok = False
+
+        if is_red and clip_bytes:
+            red_scene = self._red_frame_jpeg_from_clip(clip_bytes, evt)
+            if red_scene is not None:
+                scene_bytes = red_scene
+                scene_light = "red"
+                logger.info(
+                    "frigate_track: red_light scene from clip (primary) cam=%s event=%s delta=%.2fs",
+                    camera_id[:8], event_id[:24], align_delta,
+                )
+            # Still build subject/plate from Frigate assets + clip frames.
+            _sc, subject_bytes, ocr_frames, norm_bbox, plate_crop, clean_bytes = (
+                self._build_images(event_id, matched, policy, clip_bytes)
             )
-        )
+            if scene_bytes is None:
+                scene_bytes = _sc
+            scene_bytes, norm_bbox, frigate_bbox_embedded, bbox_quality_ok, subject_bytes = (
+                self._finalize_scene_bbox(
+                    scene_bytes,
+                    clean_bytes,
+                    norm_bbox,
+                    evt,
+                    subject_bytes,
+                    policy,
+                    camera_id,
+                    event_id,
+                    align_delta,
+                )
+            )
+            if scene_light is None and scene_bytes is not None:
+                scene_light = self._scene_light_state(scene_bytes, evt)
+            if scene_light and scene_light != "red":
+                # Last attempt: scan clip again (trim may have changed window).
+                red_retry = self._red_frame_jpeg_from_clip(clip_bytes, evt)
+                if red_retry is not None:
+                    scene_bytes = red_retry
+                    scene_light = "red"
+                else:
+                    return self._missing(
+                        abort_stats.ABORT_SCENE_GREEN,
+                        camera_id=camera_id,
+                        evt=evt,
+                        event_id=event_id,
+                        extra={
+                            "scene_light_state": scene_light,
+                            "align_delta_sec": round(float(align_delta), 3),
+                        },
+                    )
+        else:
+            scene_bytes, subject_bytes, ocr_frames, norm_bbox, plate_crop, clean_bytes = (
+                self._build_images(event_id, matched, policy, clip_bytes)
+            )
+            scene_bytes, norm_bbox, frigate_bbox_embedded, bbox_quality_ok, subject_bytes = (
+                self._finalize_scene_bbox(
+                    scene_bytes,
+                    clean_bytes,
+                    norm_bbox,
+                    evt,
+                    subject_bytes,
+                    policy,
+                    camera_id,
+                    event_id,
+                    align_delta,
+                )
+            )
+
         if scene_bytes is None:
+            if is_red:
+                return self._missing(
+                    abort_stats.ABORT_NO_SCENE,
+                    camera_id=camera_id,
+                    evt=evt,
+                    event_id=event_id,
+                )
+            logger.warning(
+                "frigate_track: compose aborted — no scene cam=%s event=%s",
+                camera_id[:8], event_id[:24],
+            )
             return None
+
+        if is_red and scene_light is None:
+            scene_light = self._scene_light_state(scene_bytes, evt)
 
         subject_texture = subject_jpeg_texture(subject_bytes)
         subject_quality_ok = (
@@ -193,9 +699,25 @@ class FrigateTrackEvidence:
         if subject_bytes is not None and not subject_quality_ok:
             bbox_quality_ok = False
 
+        # Red-light fail-closed: empty / lagged subject must not ship as "proof".
+        if is_red:
+            if not bbox_quality_ok or not subject_quality_ok:
+                return self._missing(
+                    abort_stats.ABORT_SUBJECT_EMPTY,
+                    camera_id=camera_id,
+                    evt=evt,
+                    event_id=event_id,
+                    extra={
+                        "bbox_ok": bbox_quality_ok,
+                        "subject_ok": subject_quality_ok,
+                        "texture": subject_texture,
+                    },
+                )
+
         plate_jpeg, plate_number, plate_confidence = self._ocr_plate(plate_crop, evt)
         images_spec = policy.get("images") or default_evidence_policy()["images"]
         want_plate = any(s.get("role") == "plate" for s in images_spec)
+        # Sprint 4 / A.4 / R.2: never fabricate a plate from the subject crop.
         missing_roles: list[str] = []
         if want_plate and not plate_jpeg:
             missing_roles.append("plate")
@@ -232,8 +754,24 @@ class FrigateTrackEvidence:
                 "missing_roles": missing_roles,
                 "evidence_status": status,
             }
+        if want_plate and not plate_jpeg:
+            meta_out["plate_status"] = "missing"
+        if scene_light is not None:
+            meta_out["scene_light_state"] = scene_light
         if ia_bbox and norm_bbox:
             meta_out["ia_bbox"] = ia_bbox
+
+        if evt.get("frigate_event_id") and not frigate_bbox_embedded:
+            logger.warning(
+                "frigate_track: bound capture missing frigate bbox cam=%s event=%s — IA fallback",
+                camera_id[:8], event_id[:24],
+            )
+            if ia_bbox and norm_bbox:
+                # Keep real source label (do not pretend frigate_mqtt when box is IA).
+                meta_out["bbox_source"] = "ia_overlay"
+                frigate_bbox_embedded = True
+            else:
+                return None
 
         return {
             "scene": scene_bytes,
@@ -244,6 +782,80 @@ class FrigateTrackEvidence:
             "meta": meta_out,
             "status": status,
         }
+
+    @staticmethod
+    def _scene_light_state(scene_bytes: bytes, evt: dict[str, Any]) -> str | None:
+        """Classify traffic-light colour on an image via the IA light-zone polygon.
+
+        Returns None when the ROI is missing / undecodable (caller may still ship).
+        """
+        meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        poly = meta.get("light_zone_polygon") or []
+        if not isinstance(poly, list) or len(poly) < 3:
+            return None
+        try:
+            arr = np.frombuffer(scene_bytes, dtype=np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        except Exception:
+            return None
+        if frame is None or frame.size == 0:
+            return None
+        return FrigateTrackEvidence._frame_light_state(frame, poly)
+
+    @staticmethod
+    def _frame_light_state(frame: np.ndarray, poly: list) -> str | None:
+        h, w = frame.shape[:2]
+        box = _polygon_pixel_bbox(poly, w, h)
+        if not box:
+            return None
+        x1, y1, x2, y2 = box
+        state, _ = classify_light_color(frame[y1:y2, x1:x2])
+        return state
+
+    @staticmethod
+    def _red_frame_jpeg_from_clip(clip_bytes: bytes | None, evt: dict[str, Any]) -> bytes | None:
+        """Return a JPEG scene from the clip where the lamp ROI classifies as red."""
+        if not clip_bytes:
+            return None
+        meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        poly = meta.get("light_zone_polygon") or []
+        if not isinstance(poly, list) or len(poly) < 3:
+            return None
+        tmp_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                tmp.write(clip_bytes)
+                tmp_path = tmp.name
+            cap = cv2.VideoCapture(tmp_path)
+            if not cap.isOpened():
+                return None
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 10.0)
+            step = max(1, int(round(fps * 0.4)))  # ~every 0.4s
+            idx = 0
+            best: bytes | None = None
+            while True:
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    break
+                if idx % step == 0:
+                    if FrigateTrackEvidence._frame_light_state(frame, poly) == "red":
+                        ok_enc, buf = cv2.imencode(
+                            ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY]
+                        )
+                        if ok_enc:
+                            best = buf.tobytes()
+                            break
+                idx += 1
+            cap.release()
+            return best
+        except Exception:
+            return None
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     def _events_within(
         self,
@@ -331,13 +943,30 @@ class FrigateTrackEvidence:
         evt_bbox = bbox_from_event(evt)
 
         # Pass 1: strict wall-clock match (live RTSP).
+        # Red-light: prefer IoU among time-matched vehicles so we do not lock onto
+        # a different lane's car that happens to share the wall clock.
+        is_red = str(evt.get("event_type") or "") == "red_light_violation"
         if events:
             matched, delta = self._pick_correlated(
-                events, anchor_ts, want, evt_bbox, settings.frigate_event_match_sec,
+                events,
+                anchor_ts,
+                want,
+                evt_bbox,
+                settings.frigate_event_match_sec,
+                iou_first=is_red,
+                min_iou=(max(0.02, float(settings.frigate_demo_min_bbox_iou) * 0.25) if is_red else 0.0),
             )
             if matched is not None:
                 self._maybe_learn_offset(camera_id, anchor_ts, matched)
                 return matched, delta
+            if is_red:
+                # Fallback: time-only within window (soft-accept may overlay IA bbox).
+                matched, delta = self._pick_correlated(
+                    events, anchor_ts, want, evt_bbox, settings.frigate_event_match_sec,
+                )
+                if matched is not None:
+                    self._maybe_learn_offset(camera_id, anchor_ts, matched)
+                    return matched, delta
 
         if not settings.frigate_demo_timeline_align:
             return None, 1e18
@@ -347,10 +976,10 @@ class FrigateTrackEvidence:
         stream_rel = frigate_times_look_stream_relative(all_events)
 
         # Pass 2b: bootstrap — IoU + label; time capped except true stream-relative clocks.
-        min_delta = min(min_time_delta(anchor_ts, ev) for ev in all_events[:12])
+        min_delta = min(min_time_delta(anchor_ts, ev) for ev in all_events[:12]) if all_events else 1e18
         demo_skew = (
             stream_rel
-            or wall_clock_skewed_from_frigate(anchor_ts, events)
+            or wall_clock_skewed_from_frigate(anchor_ts, all_events)
             or min_delta > settings.frigate_event_match_sec
         )
         if demo_skew and camera_id not in self._demo_clock_offset:
@@ -429,31 +1058,141 @@ class FrigateTrackEvidence:
         camera_id: str,
     ) -> bool:
         """Reject weak IA↔Frigate pairings before downloading media."""
+        event_type = str(evt.get("event_type") or "")
+        if not isinstance(matched, dict) or not (matched.get("id") or matched):
+            return False
+
         anchor = evt.get("bbox_ts")
-        if isinstance(anchor, (int, float)) and camera_id and camera_id in self._demo_clock_offset:
-            adj = aligned_anchor(self._demo_clock_offset, camera_id, float(anchor))
+        if not isinstance(anchor, (int, float)):
+            anchor = time.time()
+        anchor = float(anchor)
+        if camera_id and camera_id in self._demo_clock_offset:
+            adj = aligned_anchor(self._demo_clock_offset, camera_id, anchor)
             align_delta = min_time_delta(adj, matched)
-        accept_max = float(settings.frigate_demo_accept_max_align_sec)
-        if align_delta > accept_max:
-            logger.info(
-                "frigate_track: reject align cam=%s delta=%.2fs max=%.1fs",
+            anchor_for_loop = adj
+        else:
+            anchor_for_loop = anchor
+
+        # demo_loop_guard §3.1: absolute window before any soft-accept / bound trust.
+        accept_max = self._hard_align_max_sec(event_type)
+        if self._demo_loop_guard_active() and not self._demo_loop_pair_ok(
+            anchor_for_loop, matched, float(align_delta), event_type,
+        ):
+            logger.warning(
+                "frigate_track: demo_loop_guard reject cam=%s delta=%.2fs max=%.1fs",
                 camera_id[:8], align_delta, accept_max,
             )
+            abort_stats.record_probe_reject(
+                abort_stats.ABORT_ALIGN_REJECT,
+                camera_id=camera_id,
+                event_type=event_type,
+                extra={
+                    "align_delta_sec": round(float(align_delta), 3),
+                    "max_align_sec": accept_max,
+                    "via": "demo_loop_guard",
+                },
+            )
             return False
+
+        bound_id = str(evt.get("frigate_event_id") or "").strip()
+        # Bound id still must pass the hard align gate above; then trust geometry path.
+        if bound_id and event_type != "red_light_violation":
+            return True
+        meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        if meta.get("frigate_bind_iou") is not None and event_type != "red_light_violation":
+            try:
+                if float(meta["frigate_bind_iou"]) >= float(settings.frigate_bind_min_iou):
+                    frigate_bbox = _frigate_box_from_event(matched)
+                    if frigate_bbox is not None:
+                        return True
+            except (TypeError, ValueError):
+                pass
+
+        # Non-demo / guard-off: keep classic accept_max (soft_pre must NOT widen window).
+        if not self._demo_loop_guard_active():
+            if float(align_delta) > accept_max:
+                logger.warning(
+                    "frigate_track: reject align cam=%s delta=%.2fs max=%.1fs",
+                    camera_id[:8], align_delta, accept_max,
+                )
+                abort_stats.record_probe_reject(
+                    abort_stats.ABORT_ALIGN_REJECT,
+                    camera_id=camera_id,
+                    event_type=event_type,
+                    extra={"align_delta_sec": round(float(align_delta), 3), "max_align_sec": accept_max},
+                )
+                return False
+
+        soft_pre = False
+        meta0 = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        if meta0.get("frigate_red_light_soft_iou") is not None:
+            soft_pre = True
+        # Demo go2rtc: time-only accept for most rules (inside hard window already).
+        # Red-light keeps IoU gate so the snapshot still shows the offender under a red lamp.
+        if (
+            settings.demo_relaxed_evidence()
+            and settings.frigate_demo_timeline_align
+            and event_type != "red_light_violation"
+        ):
+            return True
+        # Soft fallback: IoU soft-accept only — align already enforced.
+        if soft_pre and event_type == "red_light_violation" and settings.demo_relaxed_evidence():
+            return True
         evt_bbox = bbox_from_event(evt)
         frigate_bbox = _frigate_box_from_event(matched)
+        iou = 0.0
         if evt_bbox and frigate_bbox:
-            fw = int(evt.get("frame_width") or evt.get("width") or 1280)
-            fh = int(evt.get("frame_height") or evt.get("height") or 720)
+            fw = int(evt.get("frame_width") or evt.get("width") or 1920)
+            fh = int(evt.get("frame_height") or evt.get("height") or 1080)
             norm_evt = normalize_bbox(evt_bbox, fw, fh)
             iou = _bbox_iou(norm_evt, frigate_bbox)
             min_iou = float(settings.frigate_accept_min_bbox_iou)
+            if event_type == "red_light_violation":
+                min_iou = max(min_iou, RED_LIGHT_MIN_IOU)
             if iou < min_iou:
-                logger.info(
+                # Demo looping streams: Frigate often tracks a different car at the
+                # same wall-clock. Accept time-aligned media and let compose overlay
+                # the IA offender bbox on the Frigate red clip frame.
+                if (
+                    event_type == "red_light_violation"
+                    and settings.demo_relaxed_evidence()
+                    and settings.frigate_demo_timeline_align
+                    and demo_loop_absolute_align_ok(align_delta, accept_max)
+                    and evt_bbox
+                ):
+                    logger.warning(
+                        "frigate_track: red_light demo soft-accept iou=%.3f "
+                        "delta=%.2fs — IA bbox on Frigate scene cam=%s DEMO_MODE source=%s",
+                        iou, align_delta, camera_id[:8], settings.demo_mode_source,
+                    )
+                    meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else None
+                    if meta is None:
+                        evt["metadata"] = {}
+                        meta = evt["metadata"]
+                    meta["frigate_red_light_soft_iou"] = round(float(iou), 4)
+                    return True
+                logger.warning(
                     "frigate_track: reject IoU cam=%s iou=%.3f min=%.2f delta=%.2fs",
                     camera_id[:8], iou, min_iou, align_delta,
                 )
+                abort_stats.record_probe_reject(
+                    abort_stats.ABORT_IOU_REJECT,
+                    camera_id=camera_id,
+                    event_type=event_type,
+                    extra={"iou": round(float(iou), 4), "min_iou": min_iou},
+                )
                 return False
+        elif event_type == "red_light_violation" and evt_bbox and not frigate_bbox:
+            logger.warning(
+                "frigate_track: reject red_light — Frigate event has no bbox cam=%s",
+                camera_id[:8],
+            )
+            abort_stats.record_probe_reject(
+                abort_stats.ABORT_NO_FRIGATE_BBOX,
+                camera_id=camera_id,
+                event_type=event_type,
+            )
+            return False
         return True
 
     def _finalize_scene_bbox(
@@ -477,6 +1216,29 @@ class FrigateTrackEvidence:
         frigate_bbox_embedded = True
         bbox_quality_ok = norm_bbox is not None
         scene_out = scene_bytes
+        meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        soft_red = bool(meta.get("frigate_red_light_soft_iou") is not None)
+
+        # Soft-accept path: always draw the IA offender on Frigate media.
+        soft_frame = clean_frame
+        soft_bytes = clean_bytes
+        if soft_red and soft_frame is None and scene_bytes:
+            soft_frame = cv2.imdecode(np.frombuffer(scene_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+            soft_bytes = scene_bytes
+        if soft_red and soft_frame is not None and ia_norm and bbox_region_has_content(soft_frame, ia_norm):
+            scene_out = soft_bytes
+            norm_bbox = ia_norm
+            frigate_bbox_embedded = False
+            bbox_quality_ok = True
+            images_spec = policy.get("images") or default_evidence_policy()["images"]
+            _, subject_bytes, _ = capture_images_from_policy(
+                soft_frame, ia_norm, images_spec, JPEG_QUALITY, draw_bbox=False,
+            )
+            logger.info(
+                "frigate_track: red_light soft-accept IA bbox cam=%s event=%s",
+                camera_id[:8], event_id[:24],
+            )
+            return scene_out, norm_bbox, frigate_bbox_embedded, bbox_quality_ok, subject_bytes
 
         if clean_frame is not None and norm_bbox:
             if not bbox_region_has_content(clean_frame, norm_bbox):
@@ -484,6 +1246,7 @@ class FrigateTrackEvidence:
                     "frigate_track: bbox empty on clean frame cam=%s event=%s delta=%.2fs",
                     camera_id[:8], event_id[:24], align_delta,
                 )
+                # Prefer IA bbox on clean scene when Frigate crop is empty (same as speed path).
                 if ia_norm and bbox_region_has_content(clean_frame, ia_norm):
                     scene_out = clean_bytes
                     norm_bbox = ia_norm
@@ -626,8 +1389,15 @@ class FrigateTrackEvidence:
             meta = self._event_meta(event_id)
             if meta:
                 last = meta
+                # Frigate often sets has_clip=True before the mp4 is downloadable.
+                # Probe the clip endpoint so we don't compose with a 400 body.
                 if meta.get("has_snapshot") and meta.get("has_clip"):
-                    return meta
+                    probe = self._read_bytes(
+                        f"{self._base}/api/events/{event_id}/clip.mp4",
+                        timeout=8,
+                    )
+                    if probe and len(probe) >= settings.frigate_clip_min_bytes:
+                        return meta
             time.sleep(poll)
         return last
 
@@ -664,14 +1434,22 @@ class FrigateTrackEvidence:
         if meta.get("has_clip") is False:
             time.sleep(settings.frigate_clip_wait_if_missing)
         url = f"{self._base}/api/events/{event_id}/clip.mp4"
+        # Young events frequently return HTTP 400 until the segment is sealed —
+        # retry longer than the generic snapshot path.
+        attempts = max(12, int(settings.frigate_clip_retries) * 2)
+        delay = max(1.0, float(settings.frigate_clip_retry_delay))
         data = self._read_bytes_retry(
             url,
-            attempts=settings.frigate_clip_retries,
-            delay=settings.frigate_clip_retry_delay,
-            timeout=60,
+            attempts=attempts,
+            delay=delay,
+            timeout=20,
             min_bytes=settings.frigate_clip_min_bytes,
         )
         if data:
+            logger.info(
+                "frigate_track: clip ok event=%s bytes=%d",
+                event_id[:24], len(data),
+            )
             return data
         cam = str(meta.get("camera") or "")
         start = meta.get("start_time")
@@ -681,13 +1459,20 @@ class FrigateTrackEvidence:
             s = max(0.0, float(start) - settings.frigate_clip_pad_before)
             e = max(s + 1.0, e + settings.frigate_clip_pad_after)
             win = f"{self._base}/api/{cam}/start/{s:.3f}/end/{e:.3f}/clip.mp4"
-            return self._read_bytes_retry(
+            data = self._read_bytes_retry(
                 win,
-                attempts=3,
-                delay=settings.frigate_clip_retry_delay,
-                timeout=60,
+                attempts=6,
+                delay=delay,
+                timeout=20,
                 min_bytes=settings.frigate_clip_min_bytes,
             )
+            if data:
+                logger.info(
+                    "frigate_track: window clip ok cam=%s event=%s bytes=%d",
+                    cam[:20], event_id[:24], len(data),
+                )
+                return data
+        logger.warning("frigate_track: clip unavailable event=%s", event_id[:24])
         return None
 
     def _build_images(
@@ -715,6 +1500,31 @@ class FrigateTrackEvidence:
                 timeout=20,
                 min_bytes=2000,
             )
+        if not scene_data:
+            scene_data = self._read_bytes_retry(
+                f"{base}/snapshot.jpg",
+                attempts=max(2, settings.frigate_snapshot_retries),
+                delay=settings.frigate_snapshot_retry_delay,
+                timeout=20,
+                min_bytes=1500,
+            )
+        if not scene_data:
+            scene_data = self._read_bytes_retry(
+                f"{base}/thumbnail.jpg",
+                attempts=4,
+                delay=0.5,
+                timeout=15,
+                min_bytes=500,
+            )
+        if not scene_data and clip_bytes:
+            # Last resort: first extracted frame from the clip we already downloaded.
+            frames = self._extract_clip_frames(clip_bytes)
+            if frames:
+                scene_data = frames[0]
+                logger.warning(
+                    "frigate_track: scene from clip frame event=%s",
+                    event_id[:24],
+                )
 
         clean_data = self._read_bytes_retry(
             f"{base}/snapshot-clean.webp",
@@ -731,6 +1541,8 @@ class FrigateTrackEvidence:
                 timeout=20,
                 min_bytes=2000,
             )
+        if not clean_data and scene_data:
+            clean_data = scene_data
 
         norm_bbox = _frigate_box_from_event(matched)
 
@@ -853,14 +1665,21 @@ class FrigateTrackEvidence:
         plate_crop: bytes | None,
         evt: dict[str, Any],
     ) -> tuple[bytes | None, str | None, float | None]:
-        if not settings.ocr_url or not plate_crop:
+        """Return plate JPEG for the evidence slot.
+
+        OCR text is best-effort. When OCR is down or low-confidence, still attach
+        the crop so road-rule completeness (scene+subject+plate) can pass with a
+        visual plate proof — matching « plaque si disponible ».
+        """
+        if not plate_crop:
             return None, evt.get("plate_number"), evt.get("plate_confidence")
-        plate, conf, _src = recognize_plate_jpeg(
-            plate_crop, settings.ocr_url, timeout=settings.ocr_timeout,
-        )
-        if plate and conf >= settings.plate_min_conf:
-            return plate_crop, plate, conf
-        return None, evt.get("plate_number"), evt.get("plate_confidence")
+        if settings.ocr_url:
+            plate, conf, _src = recognize_plate_jpeg(
+                plate_crop, settings.ocr_url, timeout=settings.ocr_timeout,
+            )
+            if plate and conf >= settings.plate_min_conf:
+                return plate_crop, plate, conf
+        return plate_crop, evt.get("plate_number"), evt.get("plate_confidence")
 
     def _probe_duration(self, path: str) -> float | None:
         ffprobe = shutil.which("ffprobe")
@@ -883,5 +1702,11 @@ class FrigateTrackEvidence:
         try:
             with urllib.request.urlopen(url, timeout=timeout) as resp:
                 return resp.read()
+        except http.client.IncompleteRead as exc:
+            # Drop the partial bytes immediately — holding them in the exception
+            # object (exc.partial) causes multi-GB memory accumulation when Frigate
+            # clips are large and many events retry concurrently.
+            exc.partial = b""
+            return None
         except (urllib.error.URLError, TimeoutError, OSError):
             return None

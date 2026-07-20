@@ -1,1 +1,24 @@
+# Enforce LF for cross-platform / WSL runtime (Décision 1 Sprint 0).
+* text=auto eol=lf
+
 *.sh text eol=lf
+*.py text eol=lf
+*.go text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp4 binary
+*.onnx binary
+*.pt binary
+*.exe binary
+*.whl binary

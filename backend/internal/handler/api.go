@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,6 +84,11 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func queryTruthy(r *http.Request, key string) bool {
+	v := strings.TrimSpace(strings.ToLower(r.URL.Query().Get(key)))
+	return v == "1" || v == "true" || v == "yes"
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -846,6 +852,38 @@ func (a *API) UpdateRule(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
+	}
+	waitPreflight := req.IsEnabled != nil && *req.IsEnabled &&
+		strings.TrimSpace(os.Getenv("DEMO_MODE")) == "1" &&
+		!queryTruthy(r, "skip_preflight") &&
+		(queryTruthy(r, "wait_preflight") || r.URL.Query().Get("wait_preflight") == "")
+	// Default in DEMO_MODE: wait for preflight unless skip_preflight=1.
+	if r.URL.Query().Get("wait_preflight") == "0" || r.URL.Query().Get("wait_preflight") == "false" {
+		waitPreflight = false
+	}
+	if waitPreflight {
+		waitSec := 60
+		if raw := strings.TrimSpace(r.URL.Query().Get("wait_sec")); raw != "" {
+			if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+				waitSec = n
+			}
+		}
+		if waitSec > 120 {
+			waitSec = 120
+		}
+		pf := a.runDemoPreflightWait(r.Context(), orgID, waitSec, 10, "", "")
+		if blocked, _ := pf["blocked"].(bool); blocked {
+			writeJSON(w, http.StatusConflict, map[string]interface{}{
+				"error":              "preflight_blocked",
+				"ready":              false,
+				"blocked":            true,
+				"suppression_reason": pf["suppression_reason"],
+				"failed":             pf["failed"],
+				"ingest_ready":       pf["ingest_ready"],
+				"pipeline_status":    pf["pipeline_status"],
+			})
+			return
+		}
 	}
 	def := req.Definition
 	if len(def) > 0 {

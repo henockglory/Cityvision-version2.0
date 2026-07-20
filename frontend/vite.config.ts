@@ -52,13 +52,15 @@ export default defineConfig({
       '/frigate': {
         target: process.env.VITE_FRIGATE_URL || 'http://127.0.0.1:5000',
         changeOrigin: true,
+        ws: true,
         rewrite: (path) => path.replace(/^\/frigate/, ''),
       },
       '/frigate-go2rtc': {
-        target: process.env.VITE_FRIGATE_GO2RTC_URL || 'http://127.0.0.1:8557',
+        // Frigate embeds go2rtc HTTP/WS on :5000/api/go2rtc (8557 is WebRTC media only).
+        target: process.env.VITE_FRIGATE_URL || 'http://127.0.0.1:5000',
         changeOrigin: true,
         ws: true,
-        rewrite: (path) => path.replace(/^\/frigate-go2rtc/, ''),
+        rewrite: (path) => path.replace(/^\/frigate-go2rtc/, '/api/go2rtc'),
       },
     },
   },

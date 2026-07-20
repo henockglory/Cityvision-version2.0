@@ -9,6 +9,8 @@ from typing import Any, Callable
 import cv2
 import numpy as np
 
+from citevision_ai.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +36,7 @@ class FileVideoWorker:
         self._frames_processed = 0
         self._last_error: str | None = None
         self._source_fps = 25.0
+        self._demo_downscale = bool(settings.demo_mode and settings.demo_resolution == "1080p")
 
     @property
     def is_running(self) -> bool:
@@ -94,6 +97,11 @@ class FileVideoWorker:
             if not ok or frame is None:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
+
+            if self._demo_downscale:
+                h, w = frame.shape[:2]
+                if w > 1920 or h > 1080:
+                    frame = cv2.resize(frame, (1920, 1080), interpolation=cv2.INTER_AREA)
 
             if self._buffer_fn is not None:
                 try:

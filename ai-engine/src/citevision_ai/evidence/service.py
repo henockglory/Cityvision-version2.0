@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ctypes
 import cv2
+import gc
 import logging
 import os
 import shutil
@@ -10,6 +12,15 @@ import threading
 import time
 from datetime import datetime
 from typing import Any
+
+# Force glibc to return freed arenas to the OS after each clip encode.
+# Without this, Python's numpy/ffmpeg decompression of 144 frames × 25 MB (4K)
+# fragments the heap. Over hundreds of captures the RSS silently grows to 25 GB.
+def _trim_malloc() -> None:
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 from citevision_ai.evidence.buffer import FrameRingBuffer
 from citevision_ai.evidence.capture import (
@@ -27,6 +38,7 @@ from citevision_ai.evidence.config import (
     RING_SECONDS,
 )
 from citevision_ai.evidence.frigate_backend import FrigateEvidenceBackend
+from citevision_ai.evidence.frigate_track_binder import FrigateTrackBinder
 from citevision_ai.evidence.gate import EvidenceCaptureGate, default_evidence_policy
 from citevision_ai.evidence.uploader import EvidenceUploader
 from citevision_ai.config import settings
@@ -144,15 +156,99 @@ def _parse_event_ts(evt: dict[str, Any]) -> float | None:
 
 
 class EvidenceCaptureService:
+    # Limit concurrent clip-encoding threads to prevent OOM.
+    # Two separate semaphores prevent background-attachment threads from starving the
+    # retroactive HTTP path (rules-engine evidence requests).
+    #
+    # Background threads (attach_evidence_async / attach_segment_evidence_async):
+    #   These fire at event time, are not retried, and are best-effort.  Limit to 2.
+    # Retroactive HTTP (capture_retroactive):
+    #   Called repeatedly by the rules-engine (up to 8 retries); must succeed for alerts.
+    #   Allow up to 4 concurrent captures — each uses ~200 MB (post inline-downscale),
+    #   so 4 × 200 MB ≈ 800 MB peak, well within the 28 GB system budget.
+    # Background attachment: increased to 8 so evidence is cached quickly before
+    # the rules-engine first retry (8s). 8 × ~200 MB (post inline-downscale) ≈ 1.6 GB peak.
+    _ENCODE_SEM = threading.BoundedSemaphore(8)
+    # Retroactive HTTP: 4 concurrent, but with a SHORT timeout (5s) so the HTTP
+    # call returns quickly and the rules-engine retries at 8s intervals. By then
+    # the background thread has already populated the cache for most events.
+    _RETRO_SEM = threading.BoundedSemaphore(4)
+    _CACHE_MAX = 500                               # max entries in evidence cache
+    # Speeding fires many MQTT events per track; one Frigate capture per track
+    # within this window prevents encode-semaphore stampede (100 clips → drops).
+    _SPEED_EVIDENCE_DEDUPE_SEC = 90.0
+
     def __init__(self) -> None:
         self._buffers: dict[str, FrameRingBuffer] = {}
         self._gate = EvidenceCaptureGate()
+        # event_id → uploaded evidence package (populated by background capture).
+        # capture_retroactive checks this first so the rules-engine gets the already-
+        # uploaded package without re-capturing, eliminating semaphore contention.
+        self._evidence_cache: dict[str, dict] = {}
         self._uploader = EvidenceUploader()
         self._segment_replay_cache: SegmentReplayCache | None = None
         self._frigate = FrigateEvidenceBackend()
+        self._frigate_binder = FrigateTrackBinder(self._frigate_track)
+        self._speed_evidence_dedupe: dict[tuple[str, str], float] = {}
+        self._speed_evidence_inflight: set[str] = set()
+        self._speed_evidence_ok: dict[str, float] = {}
+        # Last successful speeding upload per camera — returned on dedupe skip so
+        # rules-engine retries get a package instead of capture-unavailable 404.
+        self._speed_evidence_last: dict[str, dict[str, Any]] = {}
+        self._speed_evidence_lock = threading.Lock()
+        # Demo loop clock: wall epoch at last demo activate / first buffer push.
+        self._demo_loop_epoch: dict[str, float] = {}
+
+    def update_frigate_bindings(
+        self,
+        camera_id: str,
+        tracks: list[dict[str, Any]],
+        *,
+        frame_w: int,
+        frame_h: int,
+        wall_ts: float,
+    ) -> None:
+        self._frigate_binder.update_tracks(
+            camera_id, tracks, frame_w=frame_w, frame_h=frame_h, wall_ts=wall_ts,
+        )
+
+    def inject_frigate_binding(self, camera_id: str, evt: dict[str, Any]) -> None:
+        self._frigate_binder.inject_event(camera_id, evt)
 
     def _evidence_backend_mode(self) -> str:
+        if settings.demo_mode:
+            mode = (settings.demo_evidence_backend or "").strip().lower()
+            if mode:
+                return mode
         return (settings.evidence_backend or "ring_buffer").strip().lower()
+
+    @property
+    def _frigate_track(self):
+        return self._frigate._track
+
+    def reset_demo_activate(self, camera_id: str, previous_camera_id: str | None = None) -> None:
+        """Reset Frigate timeline offsets and analytics state after demo source switch."""
+        self._frigate_track.reset_demo_offset(camera_id)
+        self._frigate_binder.clear_camera(camera_id)
+        self._demo_loop_epoch[camera_id] = time.time()
+        if previous_camera_id and previous_camera_id != camera_id:
+            self._frigate_track.reset_demo_offset(previous_camera_id)
+            self._frigate_binder.clear_camera(previous_camera_id)
+            self._demo_loop_epoch.pop(previous_camera_id, None)
+
+    # Cabin-camera event types: Frigate only tracks vehicles/persons passing a scene,
+    # not driver-cabin close-ups. Attempting Frigate downloads for these event types
+    # always fails with IncompleteRead (Frigate returns a corrupt/empty clip), and each
+    # failed attempt holds its partial bytes in memory — causing multi-GB OOM when
+    # many events are processed concurrently. Skip Frigate entirely for cabin events.
+    _CABIN_EVENT_TYPES: frozenset[str] = frozenset({
+        "seatbelt_violation",
+        "seatbelt",
+        "phone_use_violation",
+        "phone_driving",
+        "driver_phone",
+        "driver_cabin",
+    })
 
     def _try_frigate_capture(
         self,
@@ -162,13 +258,50 @@ class EvidenceCaptureService:
         policy: dict[str, Any],
         images_spec: list[dict[str, Any]],
         return_upload: bool,
+        *,
+        live_frame=None,
+        frame_ts: float | None = None,
     ) -> dict[str, Any] | None:
         mode = self._evidence_backend_mode()
-        if mode not in ("frigate", "hybrid") or not self._frigate.enabled():
+        if mode not in ("frigate", "hybrid", "strict_frigate") or not self._frigate_track.enabled():
             return None
-        fg = self._frigate.capture(policy, evt, org_id=org_id, camera_id=camera_id)
+        # Skip Frigate for cabin events — see _CABIN_EVENT_TYPES docstring.
+        event_type = str(evt.get("event_type") or "")
+        if event_type in self._CABIN_EVENT_TYPES:
+            return None
+        try:
+            fg = self._frigate_track.capture(
+                policy, evt, org_id=org_id, camera_id=camera_id,
+            )
+        except Exception as exc:
+            # Network/decode errors from Frigate are non-fatal in hybrid mode —
+            # fall through to the ring-buffer path so the alert is never lost.
+            logger.warning(
+                "frigate capture exception camera=%s event=%s: %s",
+                camera_id[:8], evt.get("event_id", "?"), exc,
+            )
+            if mode == "hybrid":
+                return None
+            return self._mark_frigate_failed(evt, return_upload)
         if not fg:
             return None if mode == "hybrid" else self._mark_frigate_failed(evt, return_upload)
+        # Sprint 1 — structured missing (Décision 2): never upload fabricated assets.
+        if str(fg.get("status") or "") == "missing" or str(
+            (fg.get("meta") or {}).get("evidence_status") or ""
+        ) == "missing":
+            reason = str((fg.get("meta") or {}).get("abort_reason") or "missing")
+            evt["evidence_status"] = "missing"
+            evt["evidence_abort_reason"] = reason
+            meta = fg.get("meta") if isinstance(fg.get("meta"), dict) else {}
+            if meta:
+                evt.setdefault("evidence_meta", meta)
+            logger.info(
+                "frigate capture missing camera=%s event=%s reason=%s",
+                camera_id[:8], evt.get("event_id", "?"), reason,
+            )
+            if return_upload:
+                return {"evidence_status": "missing", "abort_reason": reason, "meta": meta}
+            return None
         return self._upload_capture_result(
             org_id, camera_id, str(evt.get("event_id", "")), evt, fg, images_spec, return_upload,
         )
@@ -193,6 +326,7 @@ class EvidenceCaptureService:
         subject = captured.get("subject")
         clip_bytes = captured.get("clip_bytes")
         plate_jpeg = captured.get("plate_jpeg")
+        extra_frames = captured.get("extra_images") or []
         meta = dict(captured.get("meta") or {})
         image_labels: dict[str, str] = {}
         for spec in images_spec:
@@ -204,22 +338,34 @@ class EvidenceCaptureService:
         status = str(meta.get("evidence_status") or captured.get("status") or "partial")
         uploaded = self._uploader.upload(
             org_id, camera_id, event_id, scene, subject, clip_bytes, meta,
-            plate_jpeg=plate_jpeg,
+            plate_jpeg=plate_jpeg, extra_frames=extra_frames,
         )
         if not uploaded:
             uploaded = self._uploader.upload(
                 org_id, camera_id, event_id, scene, subject, clip_bytes, meta,
-                plate_jpeg=plate_jpeg,
+                plate_jpeg=plate_jpeg, extra_frames=extra_frames,
             )
         if uploaded:
             evt["evidence"] = uploaded
             if pkg := uploaded.get("package"):
                 evt["package"] = pkg
             evt["evidence_status"] = status
+            uploaded["evidence_status"] = status
+            if meta.get("capture_source") == "frigate_track" and meta.get("bbox"):
+                evt["bbox"] = meta["bbox"]
+                evt["bbox_source"] = meta.get("bbox_source") or "frigate_mqtt"
             if meta.get("plate_number"):
                 evt["plate_number"] = meta["plate_number"]
             if meta.get("plate_confidence") is not None:
                 evt["plate_confidence"] = meta["plate_confidence"]
+            if event_id:
+                if len(self._evidence_cache) >= self._CACHE_MAX:
+                    try:
+                        oldest = next(iter(self._evidence_cache))
+                        del self._evidence_cache[oldest]
+                    except StopIteration:
+                        pass
+                self._evidence_cache[event_id] = uploaded
         else:
             evt["evidence_status"] = "failed"
             status = "failed"
@@ -284,11 +430,51 @@ class EvidenceCaptureService:
     def set_capture_rules(self, camera_id: str, rules: list[dict[str, Any]] | None) -> None:
         self._gate.set_rules(camera_id, rules)
 
+    def _allows_ring_buffer_fallback(self, evt: dict[str, Any]) -> bool:
+        """Ring-buffer capture is allowed for hybrid/legacy, cabin events in strict demo,
+        or red_light in DEMO_MODE (parallel demo_ring_buffer path — Tâche 5)."""
+        mode = self._evidence_backend_mode()
+        if mode in ("ring_buffer", "hybrid", ""):
+            return True
+        et = str(evt.get("event_type") or "")
+        if mode == "strict_frigate":
+            if et in self._CABIN_EVENT_TYPES:
+                return True
+            if et == "red_light_violation" and settings.demo_relaxed_evidence():
+                return True
+        return False
+
+    def _demo_loop_meta(self, camera_id: str, bbox_ts: float | None) -> dict[str, Any]:
+        """Position in the looping MP4 relative to last demo activate / first push."""
+        loop_sec = float(getattr(settings, "demo_red_light_loop_sec", 352.52) or 352.52)
+        epoch = self._demo_loop_epoch.get(camera_id)
+        if epoch is None:
+            epoch = time.time()
+            self._demo_loop_epoch[camera_id] = epoch
+        anchor = float(bbox_ts) if isinstance(bbox_ts, (int, float)) else time.time()
+        # Wall-clock demo timeline: position = elapsed since epoch mod loop.
+        pos = (anchor - epoch) % loop_sec if loop_sec > 0 else 0.0
+        if pos < 0:
+            pos += loop_sec
+        return {
+            "demo_loop_duration_sec": round(loop_sec, 3),
+            "demo_loop_epoch": epoch,
+            "demo_loop_position_sec": round(float(pos), 3),
+        }
+
     def _ring_buffer_active(self) -> bool:
         mode = self._evidence_backend_mode()
-        if mode == "frigate" and self._frigate.enabled():
-            return False
+        # strict_frigate keeps the buffer warm for cabin-only fallback (seatbelt/phone).
+        if mode == "strict_frigate":
+            return True
         return mode in ("ring_buffer", "hybrid", "")
+
+    def _aligned_buffer_frame(self, camera_id: str, evt: dict[str, Any]):
+        bbox_ts = evt.get("bbox_ts")
+        buf = self._buffers.get(camera_id)
+        if buf is not None and isinstance(bbox_ts, (int, float)):
+            return buf.get_frame_at_ts(float(bbox_ts))
+        return None
 
     def push_frame(self, camera_id: str, frame) -> None:
         if not self._ring_buffer_active():
@@ -298,6 +484,94 @@ class EvidenceCaptureService:
             buf = FrameRingBuffer(max_seconds=RING_SECONDS, fps=RING_FPS, jpeg_quality=JPEG_QUALITY)
             self._buffers[camera_id] = buf
         buf.maybe_push(frame)
+
+    def _is_speeding_event(self, evt: dict[str, Any]) -> bool:
+        return str(evt.get("event_type") or "") == "speeding"
+
+    def _should_skip_speed_evidence(self, camera_id: str, evt: dict[str, Any]) -> bool:
+        """True when another speeding Frigate capture is in-flight or recently succeeded."""
+        if not self._is_speeding_event(evt):
+            return False
+        track_id = evt.get("track_id")
+        now = time.time()
+        with self._speed_evidence_lock:
+            expired = [k for k, ts in self._speed_evidence_dedupe.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
+            for k in expired:
+                del self._speed_evidence_dedupe[k]
+            expired_ok = [k for k, ts in self._speed_evidence_ok.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
+            for k in expired_ok:
+                del self._speed_evidence_ok[k]
+            if camera_id in self._speed_evidence_ok or camera_id in self._speed_evidence_inflight:
+                return True
+            if track_id is not None and track_id != "":
+                key = (camera_id, str(track_id))
+                prev = self._speed_evidence_dedupe.get(key)
+                if prev is not None and now - prev < self._SPEED_EVIDENCE_DEDUPE_SEC:
+                    return True
+            return False
+
+    def _begin_speed_evidence(self, camera_id: str, evt: dict[str, Any]) -> bool:
+        """Reserve a speeding capture slot. False ⇒ caller must skip."""
+        if not self._is_speeding_event(evt):
+            return True
+        track_id = evt.get("track_id")
+        now = time.time()
+        with self._speed_evidence_lock:
+            expired = [k for k, ts in self._speed_evidence_dedupe.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
+            for k in expired:
+                del self._speed_evidence_dedupe[k]
+            expired_ok = [k for k, ts in self._speed_evidence_ok.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
+            for k in expired_ok:
+                del self._speed_evidence_ok[k]
+            if camera_id in self._speed_evidence_ok or camera_id in self._speed_evidence_inflight:
+                return False
+            # Track-level skip only after a prior *success* for that track (see finish).
+            if track_id is not None and track_id != "":
+                key = (camera_id, str(track_id))
+                prev = self._speed_evidence_dedupe.get(key)
+                if prev is not None and now - prev < self._SPEED_EVIDENCE_DEDUPE_SEC:
+                    return False
+            self._speed_evidence_inflight.add(camera_id)
+            return True
+
+    def _finish_speed_evidence(
+        self,
+        camera_id: str,
+        evt: dict[str, Any],
+        *,
+        success: bool,
+        uploaded: dict[str, Any] | None = None,
+    ) -> None:
+        if not self._is_speeding_event(evt):
+            return
+        track_id = evt.get("track_id")
+        with self._speed_evidence_lock:
+            self._speed_evidence_inflight.discard(camera_id)
+            if success:
+                self._speed_evidence_ok[camera_id] = time.time()
+                if track_id is not None and track_id != "":
+                    self._speed_evidence_dedupe[(camera_id, str(track_id))] = time.time()
+                if uploaded:
+                    self._speed_evidence_last[camera_id] = uploaded
+
+    def _reuse_speed_evidence(self, camera_id: str) -> dict[str, Any] | None:
+        """Return last good speeding package, waiting briefly if capture is in-flight."""
+        deadline = time.time() + 20.0
+        while time.time() < deadline:
+            with self._speed_evidence_lock:
+                last = self._speed_evidence_last.get(camera_id)
+                inflight = camera_id in self._speed_evidence_inflight
+            if last is not None:
+                logger.info(
+                    "speed evidence dedupe reuse camera=%s",
+                    camera_id[:8],
+                )
+                return last
+            if not inflight:
+                return None
+            time.sleep(0.4)
+        with self._speed_evidence_lock:
+            return self._speed_evidence_last.get(camera_id)
 
     def attach_evidence(
         self,
@@ -313,17 +587,44 @@ class EvidenceCaptureService:
     ) -> None:
         if not org_id:
             return
-        if policy is None:
-            if force:
-                policy = default_evidence_policy()
-            else:
-                policy = self._gate.match_policy(camera_id, evt)
-        if policy is None:
+        if not force and not self._begin_speed_evidence(camera_id, evt):
+            logger.info(
+                "speed evidence dedupe skip camera=%s track=%s event=%s",
+                camera_id[:8], evt.get("track_id"), str(evt.get("event_id") or "")[:8],
+            )
             return
-        if async_upload:
-            self.attach_evidence_async(camera_id, org_id, evt, frame, policy=policy, frame_ts=frame_ts)
-            return
-        self._capture_and_attach(camera_id, org_id, evt, frame, policy, frame_ts=frame_ts)
+        speed_slot = self._is_speeding_event(evt) and not force
+        try:
+            if policy is None:
+                if force:
+                    policy = default_evidence_policy()
+                else:
+                    policy = self._gate.match_policy(camera_id, evt)
+            if policy is None:
+                if speed_slot:
+                    self._finish_speed_evidence(camera_id, evt, success=False)
+                return
+            if async_upload:
+                self.attach_evidence_async(
+                    camera_id, org_id, evt, frame, policy=policy, frame_ts=frame_ts,
+                    speed_slot=speed_slot,
+                )
+                return
+            try:
+                self._capture_and_attach(camera_id, org_id, evt, frame, policy, frame_ts=frame_ts)
+                if speed_slot:
+                    ok = str(evt.get("evidence_status") or "") in ("complete", "partial")
+                    self._finish_speed_evidence(
+                        camera_id, evt, success=ok, uploaded=evt.get("evidence") if ok else None,
+                    )
+            except Exception:
+                if speed_slot:
+                    self._finish_speed_evidence(camera_id, evt, success=False)
+                raise
+        except Exception:
+            if speed_slot:
+                self._finish_speed_evidence(camera_id, evt, success=False)
+            raise
 
     def resolve_aligned_frame(
         self,
@@ -385,6 +686,7 @@ class EvidenceCaptureService:
         *,
         policy: dict[str, Any],
         frame_ts: float | None = None,
+        speed_slot: bool = False,
     ) -> None:
         """Frame selection happens synchronously (ring buffer still holds the
         bbox-instant frame); crops, clip export and backend upload run in a
@@ -401,17 +703,37 @@ class EvidenceCaptureService:
             resolved_frame, quality_ok = frame, False
 
         def _run() -> None:
+            acquired = self._ENCODE_SEM.acquire(blocking=True, timeout=120)
+            if not acquired:
+                logger.warning(
+                    "evidence semaphore timeout — dropping capture camera=%s event=%s",
+                    camera_id[:8], evt.get("event_id", ""),
+                )
+                if speed_slot:
+                    self._finish_speed_evidence(camera_id, evt, success=False)
+                return
             try:
                 self._capture_and_attach(
                     camera_id, org_id, evt, resolved_frame, policy,
                     frame_ts=frame_ts, resolved=True, bbox_quality_ok=quality_ok,
                 )
+                if speed_slot:
+                    ok = str(evt.get("evidence_status") or "") in ("complete", "partial")
+                    self._finish_speed_evidence(
+                        camera_id, evt, success=ok, uploaded=evt.get("evidence") if ok else None,
+                    )
             except Exception:
                 logger.exception(
                     "async evidence failed camera=%s event=%s",
                     camera_id,
                     evt.get("event_id"),
                 )
+                if speed_slot:
+                    self._finish_speed_evidence(camera_id, evt, success=False)
+            finally:
+                self._ENCODE_SEM.release()
+                gc.collect()
+                _trim_malloc()
 
         threading.Thread(
             target=_run,
@@ -433,6 +755,13 @@ class EvidenceCaptureService:
         frame_index: int = 0,
     ) -> None:
         def _run() -> None:
+            acquired = self._ENCODE_SEM.acquire(blocking=True, timeout=120)
+            if not acquired:
+                logger.warning(
+                    "segment evidence semaphore timeout — dropping capture camera=%s event=%s",
+                    camera_id[:8], evt.get("event_id", ""),
+                )
+                return
             try:
                 self.capture_from_segment(
                     org_id,
@@ -451,6 +780,10 @@ class EvidenceCaptureService:
                     camera_id,
                     evt.get("event_id"),
                 )
+            finally:
+                self._ENCODE_SEM.release()
+                gc.collect()
+                _trim_malloc()
 
         threading.Thread(
             target=_run,
@@ -576,6 +909,81 @@ class EvidenceCaptureService:
         evt: dict[str, Any],
         policy: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        # Speeding: one Frigate attempt per camera window — rules-engine storms
+        # /evidence/capture for every pending event and must not stampede Frigate.
+        speed_slot = False
+        if self._is_speeding_event(evt):
+            if not self._begin_speed_evidence(camera_id, evt):
+                reused = self._reuse_speed_evidence(camera_id)
+                if reused is not None:
+                    return reused
+                logger.info(
+                    "speed evidence dedupe skip (retro) camera=%s track=%s event=%s",
+                    camera_id[:8], evt.get("track_id"), str(evt.get("event_id") or "")[:8],
+                )
+                return None
+            speed_slot = True
+        # Use the dedicated retroactive semaphore (_RETRO_SEM, limit=4) so these HTTP
+        # requests don't compete with the background attachment threads (_ENCODE_SEM,
+        # limit=2).  Without separation, 100 concurrent events saturate both pools and
+        # the majority of retries time-out before getting a slot.
+        #
+        # CRITICAL: if the semaphore is not acquired within the timeout, return None
+        # immediately — do NOT fall through to _capture_retroactive_inner without the
+        # semaphore, which would re-introduce unbounded memory usage.
+        # Short timeout: if the 4 slots are busy, return None quickly so the
+        # rules-engine retries after 8s.  By then the background thread has likely
+        # populated the evidence cache, turning the next retry into a cache hit.
+        acquired = self._RETRO_SEM.acquire(blocking=True, timeout=5)
+        if not acquired:
+            logger.info(
+                "retroactive semaphore busy — deferring camera=%s event=%s",
+                camera_id[:8], str(evt.get("event_id") or "")[:8],
+            )
+            if speed_slot:
+                self._finish_speed_evidence(camera_id, evt, success=False)
+            return None
+        try:
+            uploaded = self._capture_retroactive_inner(camera_id, org_id, evt, policy)
+            if speed_slot:
+                ok = bool(uploaded) and str(
+                    (uploaded or {}).get("evidence_status")
+                    or evt.get("evidence_status")
+                    or ""
+                ) in ("complete", "partial")
+                # Also accept packages with frigate_track capture_source.
+                if not ok and isinstance(uploaded, dict):
+                    pkg = uploaded.get("package") or {}
+                    meta = pkg.get("metadata") if isinstance(pkg, dict) else {}
+                    if isinstance(meta, dict) and meta.get("capture_source") == "frigate_track":
+                        ok = True
+                self._finish_speed_evidence(
+                    camera_id, evt, success=ok, uploaded=uploaded if ok else None,
+                )
+            return uploaded
+        except Exception:
+            if speed_slot:
+                self._finish_speed_evidence(camera_id, evt, success=False)
+            raise
+        finally:
+            self._RETRO_SEM.release()
+            gc.collect()
+            _trim_malloc()
+
+    def _capture_retroactive_inner(
+        self,
+        camera_id: str,
+        org_id: str,
+        evt: dict[str, Any],
+        policy: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        # Fast path: return the package already captured by the background thread.
+        # This avoids re-decompressing the ring buffer and re-uploading — which is
+        # the main cause of semaphore saturation when 100+ events fire simultaneously.
+        event_id = str(evt.get("event_id") or "")
+        if event_id and event_id in self._evidence_cache:
+            logger.debug("retroactive evidence cache hit event=%s", event_id[:8])
+            return self._evidence_cache[event_id]
         seg_path = evt.get("segment_path")
         frame_pts = evt.get("segment_frame_pts")
         if (
@@ -615,6 +1023,22 @@ class EvidenceCaptureService:
                 camera_id,
             )
             return None
+        pol = policy or default_evidence_policy()
+        images_spec = pol.get("images") or default_evidence_policy()["images"]
+        if self._evidence_backend_mode() in ("frigate", "hybrid", "strict_frigate") and self._frigate_track.enabled():
+            fg = self._try_frigate_capture(
+                camera_id, org_id, evt, pol, images_spec, return_upload=True,
+            )
+            if fg is not None:
+                return fg
+            if self._evidence_backend_mode() in ("frigate", "strict_frigate"):
+                if not (
+                    self._evidence_backend_mode() == "strict_frigate"
+                    and self._allows_ring_buffer_fallback(evt)
+                ):
+                    return self._mark_frigate_failed(evt, return_upload=True)
+        if not self._allows_ring_buffer_fallback(evt):
+            return self._mark_frigate_failed(evt, return_upload=True)
         buf = self._buffers.get(camera_id)
         bbox_ts = evt.get("bbox_ts")
         event_ts = _parse_event_ts(evt)
@@ -636,7 +1060,6 @@ class EvidenceCaptureService:
         if frame is None:
             logger.warning("retro capture unavailable camera=%s (no buffer frame)", camera_id)
             return None
-        pol = policy or default_evidence_policy()
         return self._capture_and_attach(
             camera_id, org_id, evt, frame, pol, return_upload=True, frame_ts=frame_ts,
         )
@@ -691,16 +1114,53 @@ class EvidenceCaptureService:
         frame_ts: float | None = None,
         resolved: bool = False,
         bbox_quality_ok: bool = True,
+        no_clip: bool = False,
     ) -> dict[str, Any] | None:
         clip_sec = float(policy.get("clip_seconds") or CLIP_DURATION_SEC)
         event_id = str(evt.get("event_id", ""))
         images_spec = policy.get("images") or default_evidence_policy()["images"]
-        frigate_upload = self._try_frigate_capture(
-            camera_id, org_id, evt, policy, images_spec, return_upload,
-        )
-        if frigate_upload is not None:
-            return frigate_upload
-        if self._evidence_backend_mode() == "frigate":
+        event_type = str(evt.get("event_type") or evt.get("event") or "")
+
+        # Tâche 5: freeze ring-buffer BEFORE Frigate waits (up to ~30s) so the 12s
+        # ring has not scrolled past the detection. Prefer Frigate if it succeeds.
+        early_ring: dict[str, Any] | None = None
+        if (
+            not no_clip
+            and event_type == "red_light_violation"
+            and settings.demo_relaxed_evidence()
+            and self._allows_ring_buffer_fallback(evt)
+        ):
+            early_ring = self._export_demo_ring_capture(
+                camera_id, evt, frame, policy, images_spec,
+                frame_ts=frame_ts, resolved=resolved, bbox_quality_ok=bbox_quality_ok,
+            )
+
+        if not no_clip:
+            frigate_upload = self._try_frigate_capture(
+                camera_id, org_id, evt, policy, images_spec, return_upload,
+                live_frame=frame, frame_ts=frame_ts,
+            )
+            if frigate_upload is not None:
+                return frigate_upload
+            if self._evidence_backend_mode() in ("frigate", "strict_frigate"):
+                if early_ring is not None and early_ring.get("scene") and early_ring.get("clip_bytes"):
+                    logger.info(
+                        "frigate miss — using demo_ring_buffer cam=%s event=%s",
+                        camera_id[:8], event_id[:8],
+                    )
+                    return self._upload_capture_result(
+                        org_id, camera_id, event_id, evt, early_ring, images_spec, return_upload,
+                    )
+                if not (
+                    self._evidence_backend_mode() == "strict_frigate"
+                    and self._allows_ring_buffer_fallback(evt)
+                ):
+                    return self._mark_frigate_failed(evt, return_upload)
+        if early_ring is not None and early_ring.get("scene") and early_ring.get("clip_bytes"):
+            return self._upload_capture_result(
+                org_id, camera_id, event_id, evt, early_ring, images_spec, return_upload,
+            )
+        if not self._allows_ring_buffer_fallback(evt):
             return self._mark_frigate_failed(evt, return_upload)
         if resolved:
             capture_frame = frame
@@ -728,7 +1188,7 @@ class EvidenceCaptureService:
         buf = self._buffers.get(camera_id)
         clip_bytes: bytes | None = None
         clip_duration = 0.0
-        if buf:
+        if buf and not no_clip:
             if evt.get("bbox_source") in _EMISSION_BBOX_SOURCES and frame_ts is not None:
                 anchor_ts = float(frame_ts)
             else:
@@ -755,13 +1215,17 @@ class EvidenceCaptureService:
         if want_plate and not plate_jpeg:
             missing_roles.append("plate")
         complete = bool(scene and subject and clip_bytes)
-        if want_plate and not plate_jpeg:
-            complete = False
+        # Plate is identification-only (Tâche 4) — do not fail violation completeness.
         if not bbox_quality_ok:
             complete = False
         if subject is not None and not subject_quality_ok:
             complete = False
         status = "complete" if complete else "partial"
+        capture_source = (
+            "demo_ring_buffer"
+            if event_type == "red_light_violation" and settings.demo_relaxed_evidence()
+            else "live"
+        )
         meta = {
             "bbox": norm_bbox,
             "bbox_ts": evt.get("bbox_ts"),
@@ -770,7 +1234,7 @@ class EvidenceCaptureService:
             "subject_texture": round(subject_texture, 1) if subject_texture is not None else None,
             "subject_quality_ok": subject_quality_ok,
             "capture_frame_ts": frame_ts,
-            "capture_source": "live",
+            "capture_source": capture_source,
             "confidence": evt.get("confidence"),
             "class_name": evt.get("class_name"),
             "zone_id": evt.get("zone_id"),
@@ -783,6 +1247,8 @@ class EvidenceCaptureService:
             "missing_roles": missing_roles,
             "evidence_status": status,
         }
+        if capture_source == "demo_ring_buffer":
+            meta.update(self._demo_loop_meta(camera_id, evt.get("bbox_ts")))
         uploaded = self._uploader.upload(
             org_id, camera_id, event_id, scene, subject, clip_bytes, meta,
             plate_jpeg=plate_jpeg,
@@ -797,12 +1263,133 @@ class EvidenceCaptureService:
             if pkg := uploaded.get("package"):
                 evt["package"] = pkg
             evt["evidence_status"] = status
+            # Cache the result so capture_retroactive can return it instantly
+            # when the rules-engine requests evidence for the same event.
+            if event_id:
+                if len(self._evidence_cache) >= self._CACHE_MAX:
+                    try:
+                        oldest = next(iter(self._evidence_cache))
+                        del self._evidence_cache[oldest]
+                    except StopIteration:
+                        pass
+                self._evidence_cache[event_id] = uploaded
         else:
             evt["evidence_status"] = "failed"
         if return_upload:
             return uploaded
         return None
 
+    def _export_demo_ring_capture(
+        self,
+        camera_id: str,
+        evt: dict[str, Any],
+        frame,
+        policy: dict[str, Any],
+        images_spec: list[dict[str, Any]],
+        *,
+        frame_ts: float | None,
+        resolved: bool,
+        bbox_quality_ok: bool,
+    ) -> dict[str, Any] | None:
+        """Freeze ring-buffer scene/subject/clip immediately (before Frigate waits)."""
+        try:
+            if resolved:
+                capture_frame = frame
+            else:
+                capture_frame, bbox_quality_ok = self.resolve_aligned_frame(
+                    camera_id, evt, frame, frame_ts,
+                )
+            if capture_frame is None:
+                return None
+            clip_sec = float(policy.get("clip_seconds") or CLIP_DURATION_SEC)
+            raw_bbox = bbox_from_event(evt)
+            draw_bbox = policy.get("draw_bbox", True) is not False
+            fh, fw = capture_frame.shape[:2]
+            norm_bbox = normalize_bbox(raw_bbox, fw, fh) if raw_bbox else None
+            scene, subject, extras = capture_images_from_policy(
+                capture_frame, norm_bbox, images_spec, JPEG_QUALITY, draw_bbox=draw_bbox,
+            )
+            subject_texture = subject_jpeg_texture(subject)
+            subject_quality_ok = bool(
+                subject is not None
+                and subject_texture is not None
+                and subject_texture >= SUBJECT_MIN_TEXTURE
+            )
+            if subject is not None and not subject_quality_ok:
+                bbox_quality_ok = False
+            buf = self._buffers.get(camera_id)
+            clip_bytes: bytes | None = None
+            clip_duration = 0.0
+            if buf:
+                if evt.get("bbox_source") in _EMISSION_BBOX_SOURCES and frame_ts is not None:
+                    anchor_ts = float(frame_ts)
+                else:
+                    anchor_ts = evt.get("bbox_ts")
+                    if not isinstance(anchor_ts, (int, float)):
+                        anchor_ts = _parse_event_ts(evt)
+                exported = buf.export_clip_mp4(
+                    clip_sec,
+                    RING_FPS,
+                    center_ts=float(anchor_ts) if anchor_ts is not None else None,
+                )
+                if exported:
+                    clip_bytes = exported.data
+                    clip_duration = exported.duration_sec
+            if not (scene and subject and clip_bytes):
+                logger.info(
+                    "demo_ring_buffer incomplete cam=%s scene=%s subject=%s clip=%s",
+                    camera_id[:8], bool(scene), bool(subject), bool(clip_bytes),
+                )
+                return None
+            want_plate = any(s.get("role") == "plate" for s in images_spec)
+            plate_jpeg = extras[0] if extras else None
+            missing_roles = ["plate"] if want_plate and not plate_jpeg else []
+            status = "complete" if bbox_quality_ok and subject_quality_ok else "partial"
+            meta = {
+                "bbox": norm_bbox,
+                "bbox_ts": evt.get("bbox_ts"),
+                "bbox_source": evt.get("bbox_source"),
+                "bbox_quality_ok": bbox_quality_ok,
+                "subject_texture": round(subject_texture, 1) if subject_texture is not None else None,
+                "subject_quality_ok": subject_quality_ok,
+                "capture_frame_ts": frame_ts,
+                "capture_source": "demo_ring_buffer",
+                "confidence": evt.get("confidence"),
+                "class_name": evt.get("class_name"),
+                "zone_id": evt.get("zone_id"),
+                "track_id": evt.get("track_id"),
+                "event_type": evt.get("event_type") or evt.get("event"),
+                "clip_duration_sec": clip_duration,
+                "plate_number": evt.get("plate_number"),
+                "plate_confidence": evt.get("plate_confidence"),
+                "missing_roles": missing_roles,
+                "evidence_status": status,
+            }
+            meta.update(self._demo_loop_meta(camera_id, evt.get("bbox_ts")))
+            return {
+                "status": status,
+                "scene": scene,
+                "subject": subject,
+                "clip_bytes": clip_bytes,
+                "plate_jpeg": plate_jpeg,
+                "extra_images": [],
+                "meta": meta,
+            }
+        except Exception as exc:
+            logger.warning(
+                "demo_ring_buffer export failed cam=%s: %s", camera_id[:8], exc,
+            )
+            return None
+
     def clear_camera(self, camera_id: str) -> None:
         self._buffers.pop(camera_id, None)
+        self._gate.clear_camera(camera_id)
+
+    def clear_camera_rules_only(self, camera_id: str) -> None:
+        """Clear capture rules but preserve the ring buffer.
+
+        Called when a camera is stopped so that any in-flight rules-engine evidence
+        retries (which may arrive seconds after the camera stops) can still succeed.
+        The ring buffer is replaced automatically when the camera restarts.
+        """
         self._gate.clear_camera(camera_id)

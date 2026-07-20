@@ -3,6 +3,10 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=scripts/lib/env-utils.sh
+source "$ROOT/scripts/lib/env-utils.sh"
+ENV_FILE="$(ensure_env_file "$ROOT")"
+load_dotenv "$ENV_FILE"
 
 BACKEND="${BACKEND_API_URL:-http://127.0.0.1:8081}"
 FAIL=0

@@ -67,6 +67,7 @@ func TestUpsertCameraZonesFromPolygon(t *testing.T) {
 func TestUpsertCameraDemoModeRespectsAggregateOnly(t *testing.T) {
 	t.Setenv("FRIGATE_EVIDENCE", "true")
 	t.Setenv("FRIGATE_DEMO_MODE", "true")
+	t.Setenv("DEMO_EVIDENCE_BACKEND", "") // hybrid/default: do not force record
 	cam := &models.Camera{ID: uuid.New()}
 	agg := EvidenceAggregate{RecordEnabled: false, SnapshotsEnabled: true}
 	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, agg, nil)
@@ -111,4 +112,17 @@ func TestObservationModeSkipsInAggregateLogic(t *testing.T) {
 		}
 	}
 	t.Fatal("observation_mode binding expected")
+}
+
+
+func TestUpsertCameraStrictFrigateForcesRecord(t *testing.T) {
+	t.Setenv("FRIGATE_EVIDENCE", "true")
+	t.Setenv("FRIGATE_DEMO_MODE", "true")
+	t.Setenv("DEMO_EVIDENCE_BACKEND", "strict_frigate")
+	cam := &models.Camera{ID: uuid.New()}
+	agg := EvidenceAggregate{RecordEnabled: false, SnapshotsEnabled: false}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, agg, nil)
+	if !cc.Entry.Record.Enabled || !cc.Entry.Snapshots.Enabled {
+		t.Fatal("strict_frigate demo must force record+snapshots")
+	}
 }

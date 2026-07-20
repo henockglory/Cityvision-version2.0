@@ -38,7 +38,7 @@ func (a *API) InternalFrigateRebuild(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "disabled"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 	if err := a.Frigate.RebuildAll(ctx); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())

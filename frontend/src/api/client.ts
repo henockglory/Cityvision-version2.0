@@ -311,7 +311,10 @@ export const rulesApi = {
   disable: (orgId: string, ruleId: string) =>
     api.patch<Rule>(`/orgs/${orgId}/rules/${ruleId}`, { is_enabled: false }),
   enable: (orgId: string, ruleId: string) =>
-    api.patch<Rule>(`/orgs/${orgId}/rules/${ruleId}`, { is_enabled: true }),
+    api.patch<Rule>(`/orgs/${orgId}/rules/${ruleId}`, { is_enabled: true }, {
+      params: { wait_preflight: true, wait_sec: 60 },
+      timeout: 90_000,
+    }),
   update: (
     orgId: string,
     ruleId: string,
@@ -321,7 +324,10 @@ export const rulesApi = {
       description?: string;
       definition?: Record<string, unknown>;
     },
-  ) => api.patch<Rule>(`/orgs/${orgId}/rules/${ruleId}`, body),
+  ) => api.patch<Rule>(`/orgs/${orgId}/rules/${ruleId}`, body, {
+    params: body.is_enabled === true ? { wait_preflight: true, wait_sec: 60 } : undefined,
+    timeout: body.is_enabled === true ? 90_000 : undefined,
+  }),
   delete: (orgId: string, ruleId: string) =>
     api.delete(`/orgs/${orgId}/rules/${ruleId}`),
 };
@@ -755,10 +761,33 @@ export interface DemoSettings {
   active_camera_id?: string;
   active_go2rtc_src?: string;
   videos: DemoVideo[];
+  pipeline_status?: string;
+  ingest_ready?: boolean;
+}
+
+export interface DemoPreflight {
+  ready: boolean;
+  blocked: boolean;
+  suppression_reason?: string;
+  ingest_ready?: boolean;
+  pipeline_status?: string;
+  failed?: string[];
+  platform?: {
+    status?: string;
+    issues?: string[];
+  };
 }
 
 export const demoApi = {
   getSettings: (orgId: string) => api.get<DemoSettings>(`/orgs/${orgId}/demo/settings`),
+  preflight: (
+    orgId: string,
+    params?: { wait_sec?: number; min_frames?: number; mode?: string; camera_id?: string },
+  ) =>
+    api.get<DemoPreflight>(`/orgs/${orgId}/demo/preflight`, {
+      params,
+      timeout: ((params?.wait_sec ?? 0) + 30) * 1000,
+    }),
   patchSettings: (orgId: string, body: Partial<{
     context_label: string;
     title: string;

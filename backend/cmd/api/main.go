@@ -338,6 +338,7 @@ func main() {
 					r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "rules:write")).Post("/integrations/webhook/test", api.TestIntegrationWebhook)
 					r.With(middleware.RequirePermission(rbacSvc, "alerts:read")).Get("/integrations/delivery-log", api.ListDeliveryLog)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/reset", api.ResetDemoWorkspace)
+					r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/demo/preflight", api.DemoPreflight)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/purge-alerts", api.PurgeAlertsDemo)
 					r.With(middleware.RequirePermission(rbacSvc, "cameras:read")).Get("/demo/settings", api.GetDemoSettings)
 					r.With(middleware.RequirePermission(rbacSvc, "cameras:write")).Patch("/demo/settings", api.PatchDemoSettings)

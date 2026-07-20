@@ -1,0 +1,37 @@
+=== BURST TEST CAM 108 ===
+AI health: ok cuda=true
+cam108 running=True last_error=None fp=1858
+RTSP delta 30s: 154 frames
+T0 marker=2026-07-08 16:23:15.716413+00
+baseline speeding since T0: 0
+new_speeding=0/10
+new_speeding=1/10
+new_speeding=3/10
+  ingest: fp=2154 dropped=1766 queue=2 latency_ms=0.1
+new_speeding=4/10
+new_speeding=4/10
+new_speeding=5/10
+  ingest: fp=2421 dropped=1909 queue=0 latency_ms=0.3
+new_speeding=7/10
+new_speeding=8/10
+new_speeding=9/10
+  ingest: fp=2565 dropped=2168 queue=2 latency_ms=0.1
+new_speeding=10/10
+
+=== AUDIT 10 FRESH EVENTS ===
+event_id                               at                     src      status     q_ok   tex      clip     verdict
+ab8c4e1b-8d79-421d-b6fd-de6fffd7cde4   2026-07-08 16:26:15    live     complete   True   71.2     1144587  OK
+43d24556-fef1-41e4-b72e-0920ad5eb6ae   2026-07-08 16:25:38    live     complete   True   88.2     905851   OK
+dfd00ad6-1a43-447f-9802-d308fa38bb44   2026-07-08 16:25:29    live     complete   True   20.3     1323553  KO
+34c83808-2815-45c0-8ebf-154f296dbc4d   2026-07-08 16:25:03    live     complete   True   82.4     759403   OK
+c7f6a093-1462-4685-8b43-b658fb40c1c1   2026-07-08 16:24:59    live     complete   True   787.8    863483   OK
+70d99173-f97c-4c4c-925f-3c782ae4cf42   2026-07-08 16:24:42    live     complete   True   62.1     1365769  OK
+23d5e640-0597-46f2-a073-17a5707e1eb5   2026-07-08 16:24:06    live     complete   True   65.5     1334269  OK
+d39d70dc-046b-4363-9093-6c31e59f4cbe   2026-07-08 16:23:56    live     complete   True   38.0     1356003  KO
+309bc6dd-fdbd-4f8a-a803-171bc8419725   2026-07-08 16:23:42    live     complete   True   34.8     1318621  KO
+084035eb-6e51-4b24-8fa3-82fe9df68598   2026-07-08 16:23:29    live     complete   True   76.2     1315451  OK
+
+=== SUMMARY ===
+events_collected=10 audited=10 ok=7 texture_ok=7 (70%)
+segment_legacy=0 ingest_stable=True
+VERDICT=FAIL

@@ -36,7 +36,7 @@ func NewAIClient(cfg *config.Config) *AIClient {
 	}
 	return &AIClient{
 		baseURL: fmt.Sprintf("http://%s:%d", host, cfg.AIEnginePort),
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		httpClient: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -310,6 +310,7 @@ type Orchestrator struct {
 	failBackoff map[uuid.UUID]time.Duration
 	aiDownUntil time.Time
 	frigateHooks FrigateHooks
+	demoHeal    map[uuid.UUID]demoHealState
 }
 
 // FrigateHooks avoids import cycle with frigate package.
@@ -486,6 +487,18 @@ func (o *Orchestrator) sync(ctx context.Context) {
 			o.mu.Lock()
 			wasActive := o.active[id]
 			if wasActive {
+				o.mu.Unlock()
+				_ = o.ai.StopCamera(ctx, id.String())
+				o.mu.Lock()
+				delete(o.active, id)
+				delete(o.configHash, id)
+			}
+			o.mu.Unlock()
+			continue
+		}
+		if o.skipNonDemoLiveCamera(meta) {
+			o.mu.Lock()
+			if o.active[id] {
 				o.mu.Unlock()
 				_ = o.ai.StopCamera(ctx, id.String())
 				o.mu.Lock()

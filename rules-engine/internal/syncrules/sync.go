@@ -20,56 +20,61 @@ type dbRule struct {
 	Definition json.RawMessage `json:"definition"`
 }
 
-// PollActiveRules refreshes evaluator rules from the backend API on an interval.
-func PollActiveRules(orgID, backendURL, apiKey string, interval time.Duration, apply func([]evaluator.RuleDefinition)) {
+// FetchActiveRules pulls enabled rules once from the backend internal API.
+func FetchActiveRules(orgID, backendURL, apiKey string) ([]evaluator.RuleDefinition, error) {
 	if backendURL == "" || apiKey == "" {
-		log.Printf("rules sync disabled: set BACKEND_API_URL, INTERNAL_API_KEY")
-		return
+		return nil, fmt.Errorf("rules sync disabled: BACKEND_API_URL or INTERNAL_API_KEY missing")
 	}
 	urlAll := strings.TrimRight(backendURL, "/") + "/api/v1/internal/rules/active"
 	urlOrg := ""
 	if orgID != "" {
 		urlOrg = strings.TrimRight(backendURL, "/") + "/api/v1/internal/orgs/" + orgID + "/rules/active"
 	}
-
-	fetch := func() {
-		url := urlAll
-		if urlOrg != "" && os.Getenv("RULES_SYNC_SINGLE_ORG") == "1" {
-			url = urlOrg
+	url := urlAll
+	if urlOrg != "" && os.Getenv("RULES_SYNC_SINGLE_ORG") == "1" {
+		url = urlOrg
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Internal-Key", apiKey)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("rules sync HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	var rows []dbRule
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		return nil, err
+	}
+	out := make([]evaluator.RuleDefinition, 0, len(rows))
+	for _, row := range rows {
+		if !row.IsEnabled {
+			continue
 		}
-		req, err := http.NewRequest(http.MethodGet, url, nil)
+		def, err := toEvaluatorRule(row)
 		if err != nil {
-			return
+			log.Printf("skip rule %s: %v", row.ID, err)
+			continue
 		}
-		req.Header.Set("X-Internal-Key", apiKey)
-		client := &http.Client{Timeout: 15 * time.Second}
-		resp, err := client.Do(req)
+		out = append(out, def)
+	}
+	return out, nil
+}
+
+// PollActiveRules refreshes evaluator rules from the backend API on an interval.
+func PollActiveRules(orgID, backendURL, apiKey string, interval time.Duration, apply func([]evaluator.RuleDefinition)) {
+	fetch := func() {
+		out, err := FetchActiveRules(orgID, backendURL, apiKey)
 		if err != nil {
 			log.Printf("rules sync fetch failed: %v", err)
 			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			log.Printf("rules sync HTTP %d: %s", resp.StatusCode, string(body))
-			return
-		}
-		var rows []dbRule
-		if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
-			log.Printf("rules sync decode failed: %v", err)
-			return
-		}
-		out := make([]evaluator.RuleDefinition, 0, len(rows))
-		for _, row := range rows {
-			if !row.IsEnabled {
-				continue
-			}
-			def, err := toEvaluatorRule(row)
-			if err != nil {
-				log.Printf("skip rule %s: %v", row.ID, err)
-				continue
-			}
-			out = append(out, def)
 		}
 		apply(out)
 		log.Printf("synced %d active rules from backend", len(out))

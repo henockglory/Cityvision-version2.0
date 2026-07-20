@@ -8,6 +8,55 @@ from typing import Any
 _STREAM_CLOCK_MAX = 1_000_000_000.0
 
 
+def demo_loop_absolute_align_ok(align_delta_sec: float, max_align_sec: float) -> bool:
+    """Hard time gate — never bypassed by soft-accept / bound-id trust (demo_loop_guard)."""
+    try:
+        return float(align_delta_sec) <= float(max_align_sec)
+    except (TypeError, ValueError):
+        return False
+
+
+def same_demo_loop_cycle(
+    ia_ts: float,
+    frigate_ts: float,
+    loop_sec: float,
+    *,
+    boundary_slack_sec: float = 2.0,
+) -> bool:
+    """True when IA and Frigate timestamps fall in the same demo-loop iteration.
+
+    Rejects pairings separated by ~k full loops (k≥1) even if modulo positions
+    look similar — the classic stale Frigate event reuse on looping go2rtc.
+
+    Important: a small wall-clock delta that straddles a ``floor(ts/loop)``
+    boundary is still the same capture moment — do **not** reject via floor
+    equality (that falsely aborted ~1s-aligned pairs during T1).
+    """
+    try:
+        loop = float(loop_sec)
+        a = float(ia_ts)
+        b = float(frigate_ts)
+    except (TypeError, ValueError):
+        return True
+    if loop <= 1.0:
+        return True
+    delta = abs(a - b)
+    # Nearly one full loop or more ⇒ different iteration.
+    if delta >= max(loop - max(0.0, boundary_slack_sec), loop * 0.95):
+        return False
+    return True
+
+
+def best_frigate_ts(ev: dict[str, Any]) -> float | None:
+    """Prefer start_time / frame_time for loop-cycle comparison."""
+    for key in ("frame_time", "start_time", "end_time"):
+        v = ev.get(key)
+        if isinstance(v, (int, float)):
+            return float(v)
+    cands = frigate_event_time_candidates(ev)
+    return cands[0] if cands else None
+
+
 def frigate_event_time_candidates(ev: dict[str, Any]) -> list[float]:
     """Collect comparable timestamps from a Frigate event."""
     out: list[float] = []

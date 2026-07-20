@@ -1,7 +1,9 @@
 package frigate
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +14,9 @@ import (
 	"github.com/citevision/citevision-v2/backend/internal/camera"
 	"github.com/citevision/citevision-v2/backend/internal/models"
 )
+
+// errConfigUnchanged means the generated YAML matches disk — skip Frigate reload.
+var errConfigUnchanged = errors.New("frigate config unchanged")
 
 // CameraEntry is the Frigate camera config block for one CitéVision camera.
 type CameraEntry struct {
@@ -114,6 +119,9 @@ func (c *Compiler) WriteGenerated(data []byte) error {
 	if target == "" {
 		target = filepath.Join(dir, "frigate.generated.yml")
 	}
+	if prev, err := os.ReadFile(target); err == nil && bytes.Equal(prev, data) {
+		return errConfigUnchanged
+	}
 	tmp := target + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
@@ -173,6 +181,19 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 	} else if cfg.Evidence && cfg.DemoMode {
 		// Demo: snapshots on events only; record follows rule aggregate (event clips).
 		entry.Snapshots.Enabled = agg.SnapshotsEnabled || agg.RecordEnabled
+		// strict_frigate demo must keep record+snapshots even while other demo rules
+		// are toggled off during 1-hit validation — otherwise Frigate stops emitting
+		// clip events and evidence capture fails closed.
+		if strings.EqualFold(strings.TrimSpace(os.Getenv("DEMO_EVIDENCE_BACKEND")), "strict_frigate") {
+			entry.Record.Enabled = true
+			entry.Snapshots.Enabled = true
+		}
+	}
+	// Phase A Tâche 6: demo go2rtc cameras always keep record+snapshots permanent
+	// so toggling rules never drops Frigate media (and avoids rebuild storms).
+	if isDemoGo2rtcCamera(cam.Metadata) {
+		entry.Record.Enabled = true
+		entry.Snapshots.Enabled = true
 	}
 	upstream := frigateUpstreamPath(cam.ID.String(), rtspURL, cam.Metadata)
 	roles := []string{"detect"}

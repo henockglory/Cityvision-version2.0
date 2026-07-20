@@ -1,0 +1,10 @@
+
+Microsoft DiskPart version 10.0.26100.1150
+
+Copyright (C) Microsoft Corporation.
+Sur l'ordinateur : HENOCK
+
+DiskPart a correctement s‚lectionn‚ le fichier de disque virtuel.
+
+Diskpart a rencontr‚ une erreurÿ: Le processus ne peut pas acc‚der au fichier car ce fichier est utilis‚ par un autre processus.
+Pour plus d'informations, voir le journal d'‚v‚nements systŠme.

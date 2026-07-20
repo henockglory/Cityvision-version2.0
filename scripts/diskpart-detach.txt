@@ -1,0 +1,3 @@
+select vdisk file="C:\Users\gheno\AppData\Local\wsl\{c5515942-ee60-4c07-8acf-bef2540fe7e1}\ext4.vhdx"
+detach vdisk
+exit

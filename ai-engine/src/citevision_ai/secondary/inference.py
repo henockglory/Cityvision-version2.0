@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 _AI_ROOT = Path(__file__).resolve().parents[3]
 _REPO_ROOT = _AI_ROOT.parent
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle"}
+# Cabin-camera zones (seatbelt / phone_use) analyse the driver, detected as "person".
+_CABIN_BEHAVIORS = {"seatbelt", "phone_use", "driver_cabin"}
 
 
 def _registry_path() -> Path:
@@ -317,8 +319,11 @@ class SecondaryInferenceEngine:
             except (TypeError, ValueError):
                 conf = 0.45
             poly = zone.get("polygon") or []
+            # For cabin zones the driver is tracked as "person"; allow person + vehicles.
+            is_cabin_zone = str(zone.get("behavior", "")) in _CABIN_BEHAVIORS
+            allowed_classes = VEHICLE_CLASSES | {"person"} if is_cabin_zone else VEHICLE_CLASSES
             for track in tracks:
-                if str(track.get("class_name", "")) not in VEHICLE_CLASSES:
+                if str(track.get("class_name", "")) not in allowed_classes:
                     continue
                 bbox = track.get("bbox") or {}
                 cx = (float(bbox.get("x", 0)) + float(bbox.get("width", 0)) / 2) / max(w, 1)

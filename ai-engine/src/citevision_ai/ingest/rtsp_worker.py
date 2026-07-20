@@ -4,6 +4,7 @@ import logging
 import queue
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 import cv2
@@ -12,7 +13,6 @@ import numpy as np
 from citevision_ai.evidence.config import RING_FPS
 from citevision_ai.config import settings
 from citevision_ai.ingest.go2rtc_publisher import Go2rtcPublisher
-from citevision_ai.ingest.segment_cycle_worker import SegmentCycleWorker
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,7 @@ class RTSPWorker:
         self._queue: queue.Queue[tuple[np.ndarray, float, float, int]] = queue.Queue(
             maxsize=max(1, queue_size),
         )
+        self._demo_downscale = bool(settings.demo_mode and settings.demo_resolution == "1080p")
 
     @property
     def is_running(self) -> bool:
@@ -170,6 +171,10 @@ class RTSPWorker:
                 capture_wall = time.time()
                 self._frames_read += 1
                 publish_index = self._frames_read
+                if self._demo_downscale:
+                    h, w = frame.shape[:2]
+                    if w > 1920 or h > 1080:
+                        frame = cv2.resize(frame, (1920, 1080), interpolation=cv2.INTER_AREA)
 
                 if self._go2rtc_stream_name:
                     self._ensure_publisher(frame)
@@ -264,17 +269,29 @@ class WorkerManager:
         from citevision_ai.ingest.file_video_worker import FileVideoWorker
 
         with self._lock:
-            want_segment = camera_id in settings.parsed_segment_mode_camera_ids()
+            # Sprint 4: segment cycle ingest is archived — refuse opt-in.
+            if camera_id in settings.parsed_segment_mode_camera_ids():
+                raise RuntimeError(
+                    f"SEGMENT_MODE_CAMERA_IDS includes {camera_id[:8]}… but segment mode "
+                    "is archived (Sprint 4). Unset the env var; use RTSP/Frigate. "
+                    "See _archive/segment_mode/README.md"
+                )
             existing = self._workers.get(camera_id)
-            if existing is not None:
-                is_segment = isinstance(existing, SegmentCycleWorker)
-                if want_segment != is_segment:
+            if existing is not None and existing.is_running:
+                desired = "file" if video_file else "rtsp"
+                current = "file" if isinstance(existing, FileVideoWorker) else "rtsp"
+                source_changed = current != desired
+                if not source_changed and isinstance(existing, RTSPWorker) and rtsp_url:
+                    source_changed = existing.rtsp_url != rtsp_url
+                if not source_changed and isinstance(existing, FileVideoWorker) and video_file:
+                    source_changed = existing.file_path != str(Path(video_file).resolve())
+                if source_changed:
                     existing.stop()
                     del self._workers[camera_id]
                     existing = None
-            if existing is not None and existing.is_running:
-                self._configs[camera_id] = spatial_config or {}
-                return {"hot_reload": True, **existing.status()}
+                else:
+                    self._configs[camera_id] = spatial_config or {}
+                    return {"hot_reload": True, **existing.status()}
 
             if camera_id in self._workers:
                 self._workers[camera_id].stop()
@@ -294,19 +311,6 @@ class WorkerManager:
             if video_file:
                 worker = FileVideoWorker(
                     camera_id, video_file, self._process_fn, target_fps=ai_fps, buffer_fn=self._buffer_fn,
-                )
-            elif camera_id in settings.parsed_segment_mode_camera_ids():
-                if not rtsp_url:
-                    raise ValueError("rtsp_url required for segment mode")
-                worker = SegmentCycleWorker(
-                    camera_id,
-                    rtsp_url,
-                    self._process_fn,
-                    eof_flush_fn=self._eof_flush_fn,
-                    begin_replay_fn=self._begin_replay_fn,
-                    record_sec=settings.segment_record_sec,
-                    process_budget_sec=settings.segment_process_budget_sec,
-                    ingest_fps=settings.segment_ingest_fps,
                 )
             else:
                 if not rtsp_url:

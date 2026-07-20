@@ -11,7 +11,7 @@ AI = os.environ.get("AI_ENGINE_URL", "http://127.0.0.1:8001")
 # [P.131] No hardcoded IDs/creds — resolved live from /auth/me, env overridable.
 ORG = os.environ.get("DEMO_ORG_ID", "")
 EMAIL = os.environ.get("ADMIN_EMAIL", "glory.henock@hologram.cd")
-PASS = os.environ.get("ADMIN_PASSWORD", "")
+PASS = os.environ.get("ADMIN_PASSWORD", "Henockglory@03")
 
 
 def req(method: str, url: str, body: dict | None = None, token: str | None = None) -> object:
@@ -82,12 +82,13 @@ def main() -> None:
 
     for cam in cameras or []:
         name = (cam.get("name") or "").lower()
-        if "feux" not in name and "ligne continue" not in name:
-            continue
-        cid = cam["id"]
         meta = cam.get("metadata") or {}
         if isinstance(meta, str):
-            meta = json.loads(meta)
+            meta = json.loads(meta) if meta else {}
+        is_demo = meta.get("demo") is True or "démo" in name
+        if not is_demo:
+            continue
+        cid = cam["id"]
         video = meta.get("video_file") or meta.get("local_path") or ""
         if not video and meta.get("demo_video_id"):
             video = (
@@ -96,7 +97,8 @@ def main() -> None:
             )
         spatial = build_spatial(token, cid)
         print(f"\n==> {cam.get('name')} ({cid[:8]})")
-        print(f"    behaviors: {[z.get('behavior') for z in spatial.get('zones', [])]}")
+        print(f"    zones: {[z.get('behavior') for z in spatial.get('zones', [])]}")
+        print(f"    lines: {[ln.get('line_id') for ln in spatial.get('lines', [])]}")
         body = {
             "org_id": ORG,
             "video_file": video,

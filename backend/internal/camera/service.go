@@ -329,6 +329,9 @@ func ValidateCreate(req CreateRequest) error {
 }
 
 func (s *Service) onboardAfterSave(ctx context.Context, cam *models.Camera) error {
+	if isDemoVirtualCamera(cam.Metadata) {
+		return nil
+	}
 	rtsp, err := s.BuildRTSP(ctx, cam.OrgID, cam.ID)
 	if err != nil || rtsp == "" {
 		return err
@@ -337,6 +340,17 @@ func (s *Service) onboardAfterSave(ctx context.Context, cam *models.Camera) erro
 		return err
 	}
 	return s.persistMetadata(ctx, cam.ID, cam.Metadata)
+}
+
+func isDemoVirtualCamera(meta json.RawMessage) bool {
+	var m map[string]interface{}
+	_ = json.Unmarshal(meta, &m)
+	if m == nil {
+		return false
+	}
+	demo, _ := m["demo"].(bool)
+	virtual, _ := m["virtual"].(bool)
+	return demo && virtual
 }
 
 func (s *Service) persistMetadata(ctx context.Context, id uuid.UUID, meta json.RawMessage) error {

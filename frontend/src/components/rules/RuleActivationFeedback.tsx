@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CheckCircle2, Loader2, Activity, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { eventsApi } from '@/api/client';
+import { demoApi, eventsApi } from '@/api/client';
 import type { Event } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -29,6 +29,7 @@ export default function RuleActivationFeedback({
   const { orgId } = useAuthStore();
   const [eventSeen, setEventSeen] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
+  const [blockedReason, setBlockedReason] = useState('');
   const activatedAt = useState(() => Date.now())[0];
 
   // Context label for the confirmation message
@@ -60,6 +61,16 @@ export default function RuleActivationFeedback({
     let diagTimer: ReturnType<typeof setTimeout>;
 
     const start = async () => {
+      try {
+        const pf = await demoApi.preflight(orgId, { wait_sec: 30, min_frames: 10 });
+        if (pf.data?.blocked) {
+          setShowDiag(true);
+          setBlockedReason(pf.data?.suppression_reason ?? 'preflight_blocked');
+          return;
+        }
+      } catch {
+        // Keep legacy behavior if preflight endpoint is temporarily unavailable.
+      }
       const found = await poll();
       if (found) return;
 
@@ -113,6 +124,9 @@ export default function RuleActivationFeedback({
             <span className="text-sm font-semibold">{t('rules.activation.noEventTitle')}</span>
           </div>
           <p className="text-xs text-cv-muted leading-relaxed">{t('rules.activation.noEventDesc')}</p>
+          {blockedReason && (
+            <p className="text-xs text-amber-300 leading-relaxed">Blocked: {blockedReason}</p>
+          )}
           <ul className="cv-stack-sm text-xs text-cv-muted/90 list-none">
             <li className="flex gap-2 leading-relaxed"><span className="shrink-0">•</span>{t('rules.activation.checkZone')}</li>
             <li className="flex gap-2 leading-relaxed"><span className="shrink-0">•</span>{t('rules.activation.checkCamera')}</li>

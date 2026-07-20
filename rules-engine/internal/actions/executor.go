@@ -28,7 +28,7 @@ func New(publisher *mqttpub.Publisher, backendURL, internalKey string) *Executor
 		Publisher:   publisher,
 		BackendURL:  strings.TrimRight(backendURL, "/"),
 		InternalKey: internalKey,
-		HTTP:        &http.Client{Timeout: 45 * time.Second},
+		HTTP:        &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -245,18 +245,25 @@ func hasEvidencePackage(payload map[string]interface{}, policy map[string]interf
 	if pkg == nil {
 		return false
 	}
-	needClip := true
 	if policy != nil {
 		if en, ok := policy["enabled"].(bool); ok && !en {
 			return true
 		}
-		if cs, ok := policy["clip_seconds"].(float64); ok {
-			needClip = cs > 0
+	}
+	clipRequired := true
+	if policy != nil {
+		if v, ok := policy["clip_seconds"].(float64); ok && v <= 0 {
+			clipRequired = false
 		}
 	}
-	if needClip {
+	if clipRequired {
 		clip, _ := pkg["clip"].(map[string]interface{})
 		if clip == nil || (clip["url"] == nil && clip["asset_id"] == nil) {
+			return false
+		}
+	}
+	if meta := packageMetadata(pkg); meta != nil {
+		if ok, exists := meta["bbox_quality_ok"].(bool); exists && !ok {
 			return false
 		}
 	}
@@ -272,33 +279,72 @@ func hasEvidencePackage(payload map[string]interface{}, policy map[string]interf
 			roles[role] = true
 		}
 	}
-	required := []string{"scene", "subject"}
+	requiredRoles := []string{}
 	if policy != nil {
-		if imgs, ok := policy["images"].([]interface{}); ok && len(imgs) > 0 {
-			required = required[:0]
-			for _, im := range imgs {
-				m, _ := im.(map[string]interface{})
+		if imgs, ok := policy["images"].([]interface{}); ok {
+			for _, item := range imgs {
+				m, _ := item.(map[string]interface{})
 				if m == nil {
 					continue
 				}
-				// The plate crop is best-effort: ANPR cannot always read a plate
-				// (night, angle, occlusion). Do not suppress a valid violation
-				// alert just because the plate is unreadable — it is attached when
-				// available but never required for the evidence package to count.
-				if role, ok := m["role"].(string); ok && role != "" && role != "plate" {
-					required = append(required, role)
+				role, _ := m["role"].(string)
+				if role != "" {
+					requiredRoles = append(requiredRoles, role)
 				}
 			}
 		}
 	}
-	for _, r := range required {
-		if !roles[r] {
+	if len(requiredRoles) == 0 {
+		requiredRoles = []string{"scene", "subject"}
+	}
+	for _, role := range requiredRoles {
+		if role == "plate" {
+			// Plate is identification, not a hard gate for alert emission (Phase A Tâche 4).
+			continue
+		}
+		if !roles[role] {
 			return false
 		}
 	}
+	// Annotate identification honestly on the package when possible.
 	if meta := packageMetadata(pkg); meta != nil {
-		if ok, exists := meta["bbox_quality_ok"].(bool); exists && !ok {
-			return false
+		plateWanted := false
+		for _, role := range requiredRoles {
+			if role == "plate" {
+				plateWanted = true
+				break
+			}
+		}
+		if !plateWanted {
+			if imgs, ok := policy["images"].([]interface{}); ok {
+				for _, item := range imgs {
+					m, _ := item.(map[string]interface{})
+					if m != nil {
+						if r, _ := m["role"].(string); r == "plate" {
+							plateWanted = true
+							break
+						}
+					}
+				}
+			}
+		}
+		if plateWanted {
+			plateNum, _ := payload["plate_number"].(string)
+			if plateNum == "" {
+				if pn, ok := meta["plate_number"].(string); ok {
+					plateNum = pn
+				}
+			}
+			status := "missing"
+			if roles["plate"] {
+				status = "unreadable"
+			}
+			if strings.TrimSpace(plateNum) != "" {
+				status = "verified"
+			}
+			meta["plate_status"] = status
+			meta["identification"] = status
+			meta["violation_status"] = "violation_confirmed"
 		}
 	}
 	return true
@@ -417,7 +463,56 @@ func evidencePolicyForRule(rule evaluator.RuleDefinition) map[string]interface{}
 			}
 		}
 	}
+	if ruleIsDemo(rule) && strings.TrimSpace(os.Getenv("DEMO_MODE")) == "1" {
+		images := []map[string]interface{}{
+			{"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
+			{"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 10, "zoom": 1.0},
+		}
+		if demoRuleNeedsPlate(rule) {
+			images = append(images, map[string]interface{}{
+				"role": "plate", "label": "Plaque", "crop": "plate",
+			})
+		}
+		return map[string]interface{}{
+			"enabled":      true,
+			"clip_seconds": 6,
+			"images":       images,
+		}
+	}
 	return defaultEvidencePolicy()
+}
+
+func demoRuleNeedsPlate(rule evaluator.RuleDefinition) bool {
+	name := strings.ToLower(rule.Name)
+	for _, kw := range []string{"ceinture", "seatbelt", "téléphone", "telephone", "phone"} {
+		if strings.Contains(name, kw) {
+			return false
+		}
+	}
+	cabin := map[string]bool{
+		"seatbelt_violation":  true,
+		"phone_use_violation": true,
+		"driver_cabin":        true,
+	}
+	var walk func(evaluator.ConditionNode)
+	foundCabin := false
+	walk = func(n evaluator.ConditionNode) {
+		if foundCabin {
+			return
+		}
+		if strings.EqualFold(n.Op, "eq") && (n.Field == "event_type" || n.Field == "event") {
+			var v string
+			_ = json.Unmarshal(n.Value, &v)
+			if cabin[v] {
+				foundCabin = true
+			}
+		}
+		for _, c := range n.Children {
+			walk(c)
+		}
+	}
+	walk(rule.Condition)
+	return !foundCabin
 }
 
 func (e *Executor) runRecord(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) {

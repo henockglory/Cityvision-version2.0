@@ -1,11 +1,14 @@
 from pathlib import Path
 from urllib.parse import urlparse
+import os
+import logging
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _AI_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _AI_ROOT.parent  # citevision-v2/
+_log = logging.getLogger("citevision_ai.config")
 
 
 def _env_files() -> list[str]:
@@ -28,6 +31,55 @@ def _env_files() -> list[str]:
     if not files:
         files = [".env"]
     return files
+
+
+def _parse_env_bool(raw: str | None) -> bool | None:
+    if raw is None:
+        return None
+    v = raw.strip().strip('"').strip("'").lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off", ""):
+        return False
+    return None
+
+
+def _read_key_from_env_files(key: str) -> str | None:
+    """Parse KEY=value from repo .env files (last file wins). Independent of process environ."""
+    found: str | None = None
+    for path in _env_files():
+        try:
+            text = Path(path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            k, _, val = s.partition("=")
+            if k.strip() == key:
+                found = val.strip()
+    return found
+
+
+def resolve_demo_mode() -> tuple[bool, str]:
+    """
+    Resolve DEMO_MODE without relying on the shell having sourced .env.
+
+    Priority:
+      1. Process environ DEMO_MODE / CITEVISION_DEMO_MODE
+      2. Explicit key in repo .env / generated.env / ai-engine/.env
+      3. Default False (strict / production)
+    """
+    for env_key in ("DEMO_MODE", "CITEVISION_DEMO_MODE"):
+        parsed = _parse_env_bool(os.environ.get(env_key))
+        if parsed is not None:
+            return parsed, f"environ:{env_key}"
+    for file_key in ("DEMO_MODE", "CITEVISION_DEMO_MODE"):
+        parsed = _parse_env_bool(_read_key_from_env_files(file_key))
+        if parsed is not None:
+            return parsed, f"env_file:{file_key}"
+    return False, "default:false"
 
 
 class Settings(BaseSettings):
@@ -72,6 +124,7 @@ class Settings(BaseSettings):
 
     # Segment cycle mode (Phase A — disabled): empty = all cameras use live RTSP.
     # Comma-separated camera UUIDs to opt-in to record→replay cycles (not recommended).
+    # Archived Sprint 4 — keep empty. Non-empty raises at camera start.
     segment_mode_camera_ids: str = ""
     segment_record_sec: float = 10.0
     segment_process_budget_sec: float = 5.0
@@ -94,19 +147,33 @@ class Settings(BaseSettings):
     frigate_url: str = "http://127.0.0.1:5000"
     frigate_plate_ocr: bool = True
     evidence_backend: str = "ring_buffer"  # ring_buffer | frigate | hybrid
+    # Resolved again in model_post_init via resolve_demo_mode() so soft-accept
+    # never depends on the restart shell having sourced .env.
+    demo_mode: bool = Field(default=False, validation_alias=AliasChoices("DEMO_MODE", "CITEVISION_DEMO_MODE"))
+    demo_mode_source: str = "default:false"
+    demo_evidence_backend: str = "strict_frigate"  # strict_frigate | frigate | hybrid | ring_buffer
+    demo_resolution: str = "1080p"  # 1080p | source
+    # Demo go2rtc loop length for red_light Feux video (ffprobe stream duration).
+    demo_red_light_loop_sec: float = 352.52
+    # Demo-only: hard |bbox_ts−Frigate| gate + same-loop-cycle check (stale capture H1).
+    # Live cameras have no loop boundary — leave False outside DEMO_MODE.
+    demo_loop_guard: bool = True
 
     # Frigate track evidence (ported from citevision_videoverbalisation)
     frigate_event_match_sec: float = 12.0
     # Demo go2rtc loops: Frigate start_time is stream-relative; IA uses wall clock.
     frigate_demo_timeline_align: bool = True
     # Demo go2rtc: max |IA anchor − Frigate event| — stale loop events rejected above this.
-    frigate_demo_max_align_sec: float = 5.0
-    frigate_demo_loose_match_sec: float = 5.0
+    # 10s tolerates binder/queue delay while still rejecting hour-old loop events.
+    frigate_demo_max_align_sec: float = 10.0
+    frigate_demo_loose_match_sec: float = 10.0
     frigate_demo_bootstrap_max_sec: float = 18.0
     frigate_demo_min_bbox_iou: float = 0.12
     # Evidence accept gate: reject correlated events beyond this |IA−Frigate| skew.
-    frigate_demo_accept_max_align_sec: float = 5.0
+    # Soft-accept may relax IoU inside this window — never enlarge the window itself.
+    frigate_demo_accept_max_align_sec: float = 30.0
     # Minimum IoU between IA emission bbox and Frigate event box to accept evidence.
+    # Demo go2rtc skips IoU in _accept_correlation (ByteTrack vs Frigate boxes diverge).
     frigate_accept_min_bbox_iou: float = 0.15
     frigate_demo_time_only_max_sec: float = 15.0
     frigate_demo_time_only_min_iou: float = 0.12
@@ -123,9 +190,17 @@ class Settings(BaseSettings):
     frigate_event_media_wait_sec: float = 25.0
     frigate_event_media_poll_sec: float = 0.5
     # Poll Frigate events until correlated (demo go2rtc often lags IA by several seconds).
-    frigate_correlate_wait_sec: float = 35.0
+    frigate_correlate_wait_sec: float = 12.0
+    # Sprint 1 — red_light deferred compose: wait for end_time before clip download.
+    frigate_red_light_end_time_wait_sec: float = 30.0
+    frigate_red_light_end_time_backoff_initial: float = 2.0
+    frigate_red_light_end_time_backoff_max: float = 8.0
     frigate_evidence_frame_count: int = 6
     frigate_clip_frame_jpeg_q: int = 2
+    # Proactive track → Frigate event binding (IoU while track is live).
+    frigate_track_binding_enabled: bool = True
+    frigate_bind_every_n_frames: int = 2
+    frigate_bind_min_iou: float = 0.12
 
     # Fast-ALPR OCR service (evidence plate recognition)
     ocr_url: str = Field(
@@ -147,6 +222,7 @@ class Settings(BaseSettings):
         Applique les variables CV_* de generated.env si elles sont définies
         et si les valeurs correspondantes n'ont pas été explicitement surchargées
         par les variables standard dans .env.
+        Force DEMO_MODE from environ or .env files so soft-accept gates are never silent.
         """
         if self.cv_gpu_tier and self.hardware_tier == "auto":
             object.__setattr__(self, "hardware_tier", self.cv_gpu_tier)
@@ -158,6 +234,17 @@ class Settings(BaseSettings):
             object.__setattr__(self, "batch_size", self.cv_batch_size)
         if self.cv_inference_backend:
             object.__setattr__(self, "yolo_device", self.cv_inference_backend)
+
+        # Always re-resolve DEMO_MODE from environ + on-disk .env (last write wins over
+        # pydantic defaults when the process was started without a sourced shell env).
+        demo, source = resolve_demo_mode()
+        object.__setattr__(self, "demo_mode", demo)
+        object.__setattr__(self, "demo_mode_source", source)
+        _log.info("DEMO_MODE=%s source=%s", demo, source)
+
+    def demo_relaxed_evidence(self) -> bool:
+        """True when demo soft-accept / timeline-relaxed Frigate paths are allowed."""
+        return bool(self.demo_mode)
 
     def parsed_segment_mode_camera_ids(self) -> frozenset[str]:
         raw = self.segment_mode_camera_ids.strip()

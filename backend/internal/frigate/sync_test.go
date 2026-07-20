@@ -39,3 +39,22 @@ func TestSkipFrigateCamera_BenedicteSkipped(t *testing.T) {
 		t.Fatal("benedicte virtual should be skipped")
 	}
 }
+
+func TestSkipFrigateCamera_ExplicitExclude(t *testing.T) {
+	meta := json.RawMessage(`{"frigate_exclude":true}`)
+	if !skipFrigateCamera(meta) {
+		t.Fatal("frigate_exclude metadata should skip")
+	}
+}
+
+func TestSkipFrigateHost_108(t *testing.T) {
+	if !skipFrigateHost("192.168.1.108") {
+		t.Fatal("192.168.1.108 must be excluded from Frigate")
+	}
+	if !skipFrigateHost("192.168.1.108/32") {
+		t.Fatal("CIDR form must be excluded")
+	}
+	if skipFrigateHost("127.0.0.1") {
+		t.Fatal("localhost must not be excluded")
+	}
+}

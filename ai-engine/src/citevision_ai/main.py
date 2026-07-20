@@ -15,7 +15,7 @@ from typing import Any
 import asyncio
 import json
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -223,21 +223,33 @@ class ProcessRequest(BaseModel):
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
+def health(response: Response) -> dict[str, str]:
+    """Liveness + honesty about GPU (A.5 / Sprint 3).
+
+    When YOLO is configured for CUDA and the active provider is not CUDA,
+    return HTTP 503 unless ALLOW_CPU_HEALTH=1 (explicit escape hatch).
+    """
     import shutil
 
     yolo_loaded = pipeline.detector.is_loaded if pipeline else False
     face_loaded = pipeline.face_engine.is_loaded if pipeline else False
     plate_loaded = pipeline.plate_engine.is_loaded if pipeline else False
     provider = pipeline.detector.active_provider if pipeline else "none"
+    uses_cuda = bool(pipeline.detector.uses_cuda) if pipeline else False
+    want_cuda = str(settings.yolo_device).strip().lower() in ("cuda", "gpu", "0")
+    allow_cpu = os.environ.get("ALLOW_CPU_HEALTH", "").strip().lower() in ("1", "true", "yes")
+    gpu_ok = (not want_cuda) or uses_cuda or allow_cpu
+
     result = {
-        "status": "ok",
+        "status": "ok" if gpu_ok and yolo_loaded else "degraded",
         "service": "citevision-ai-engine",
         "yolo_loaded": str(yolo_loaded).lower(),
         "face_loaded": str(face_loaded).lower(),
         "plate_loaded": str(plate_loaded).lower(),
         "yolo_provider": provider,
-        "yolo_cuda": str(pipeline.detector.uses_cuda if pipeline else False).lower(),
+        "yolo_cuda": str(uses_cuda).lower(),
+        "gpu_active": str(uses_cuda).lower(),
+        "gpu_required": str(want_cuda and not allow_cpu).lower(),
         "ffmpeg_available": str(shutil.which("ffmpeg") is not None).lower(),
         # Traffic-light detection is pure OpenCV — ready whenever frames flow.
         "traffic_light_ready": "true",
@@ -253,7 +265,28 @@ def health() -> dict[str, str]:
     if bad:
         result["models_missing"] = ",".join(bad)
     result["registry_version"] = str(load_stack_registry().get("version", 1))
+    # DEMO_MODE must be visible to validators — soft-accept / demo Frigate paths depend on it.
+    result["demo_mode"] = str(bool(settings.demo_mode)).lower()
+    result["demo_mode_source"] = str(settings.demo_mode_source or "unknown")
+    result["demo_relaxed_evidence"] = str(bool(settings.demo_relaxed_evidence())).lower()
+
+    if want_cuda and not uses_cuda and not allow_cpu:
+        result["status"] = "gpu_required_inactive"
+        result["error"] = "YOLO CUDA required but inactive (A.5). Set ALLOW_CPU_HEALTH=1 to bypass."
+        response.status_code = 503
+    elif not yolo_loaded:
+        result["status"] = "yolo_not_loaded"
+        response.status_code = 503
+
     return result
+
+
+@app.get("/evidence/abort-stats")
+def evidence_abort_stats() -> dict[str, Any]:
+    """Sprint 1 observability — distribution of evidence abort reasons (process-local)."""
+    from citevision_ai.evidence import abort_stats
+
+    return abort_stats.snapshot()
 
 
 @app.post("/admin/reload-secondary-models")
@@ -456,6 +489,22 @@ def capture_evidence(camera_id: str, body: EvidenceCaptureRequest) -> dict[str, 
     if not uploaded:
         raise HTTPException(status_code=404, detail="capture unavailable")
     return uploaded
+
+
+class DemoActivateRequest(BaseModel):
+    camera_id: str
+    previous_camera_id: str | None = None
+
+
+@app.post("/internal/demo/activate")
+def demo_activate(body: DemoActivateRequest) -> dict[str, str]:
+    """Reset evidence/analytics state after demo video switch (called by backend orchestrator)."""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    pipeline.evidence.reset_demo_activate(body.camera_id, body.previous_camera_id)
+    pipeline.traffic_light.reset_camera(body.camera_id)
+    pipeline.zone_speed.reset_camera(body.camera_id)
+    return {"status": "ok", "camera_id": body.camera_id}
 
 
 @app.post("/cameras/{camera_id}/stop")

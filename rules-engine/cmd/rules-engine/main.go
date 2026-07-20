@@ -30,12 +30,20 @@ func main() {
 	mqttPort := getenv("MQTT_PORT", "1884")
 	// Dedup TTL is env-configurable so a dense demo can lower it (e.g. 10s) without
 	// a rebuild ([D.45]); production keeps the 120s default to suppress alert spam.
+	// Canonical env name: RULES_DEDUP_TTL_SEC (not RULES_DEDUP_TTL_SECONDS).
 	dedupTTL := 120
 	if v := os.Getenv("RULES_DEDUP_TTL_SEC"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			dedupTTL = n
 		}
+	} else if v := os.Getenv("RULES_DEDUP_TTL_SECONDS"); v != "" {
+		// Deprecated alias — prefer RULES_DEDUP_TTL_SEC; still honor old .env keys.
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			dedupTTL = n
+			log.Printf("WARN: RULES_DEDUP_TTL_SECONDS is deprecated; use RULES_DEDUP_TTL_SEC (applied %ds)", dedupTTL)
+		}
 	}
+	log.Printf("rules-engine dedup_ttl_sec=%d (env RULES_DEDUP_TTL_SEC)", dedupTTL)
 
 	var rulesMu sync.RWMutex
 	activeRules := loadRulesFromEnv()
@@ -44,6 +52,18 @@ func main() {
 	backendURL := syncrules.Env("BACKEND_API_URL", "http://localhost:8081")
 	apiKey := os.Getenv("INTERNAL_API_KEY")
 	syncInterval := 30 * time.Second
+
+	syncNow := func() {
+		out, err := syncrules.FetchActiveRules(orgID, backendURL, apiKey)
+		if err != nil {
+			log.Printf("rules sync now failed: %v", err)
+			return
+		}
+		rulesMu.Lock()
+		activeRules = out
+		rulesMu.Unlock()
+		log.Printf("synced %d active rules (immediate)", len(out))
+	}
 
 	syncrules.PollActiveRules(orgID, backendURL, apiKey, syncInterval, func(rules []evaluator.RuleDefinition) {
 		rulesMu.Lock()
@@ -65,7 +85,19 @@ func main() {
 		n := len(activeRules)
 		rulesMu.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"status":"ok","service":"citevision-rules-engine","active_rules":%d}`, n)))
+		_, _ = w.Write([]byte(fmt.Sprintf(
+			`{"status":"ok","service":"citevision-rules-engine","active_rules":%d,"dedup_ttl_sec":%d}`,
+			n, dedupTTL,
+		)))
+	})
+	mux.HandleFunc("/internal/sync-rules", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		syncNow()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	go func() {

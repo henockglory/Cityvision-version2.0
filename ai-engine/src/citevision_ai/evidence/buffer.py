@@ -154,11 +154,21 @@ class FrameRingBuffer:
         else:
             selected = snapshot[-target_frames:] if len(snapshot) > target_frames else snapshot
 
+        # Downscale each frame immediately after decoding to avoid holding all
+        # full-resolution (e.g. 4K) arrays simultaneously — prevents OOM when
+        # 4+ concurrent evidence threads each decompress ~144 frames × 25 MB.
+        _MAX_W, _MAX_H = 1280, 720
         frames_bgr: list[np.ndarray] = []
         timestamps: list[float] = []
         for bf in selected:
             img = self._decode_frame(bf)
             if img is not None:
+                h, w = img.shape[:2]
+                if w > _MAX_W or h > _MAX_H:
+                    scale = min(_MAX_W / w, _MAX_H / h)
+                    nw = int(w * scale) & ~1
+                    nh = int(h * scale) & ~1
+                    img = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
                 frames_bgr.append(img)
                 timestamps.append(bf.ts)
         if len(frames_bgr) < 2:
@@ -171,7 +181,8 @@ class FrameRingBuffer:
             out_fps = float(use_fps)
 
         if shutil.which("ffmpeg"):
-            frames_bgr = _downscale_frames(frames_bgr, max_width=1280, max_height=720)
+            # Frames are already downscaled above — skip redundant pass.
+            pass
             data = self._export_h264_ffmpeg(frames_bgr, int(round(out_fps)) or 4)
             if data is None:
                 return None
