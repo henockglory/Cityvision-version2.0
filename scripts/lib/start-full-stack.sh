@@ -158,24 +158,20 @@ if ! wait_http_ok "http://127.0.0.1:5000/api/version" 90; then
   (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate)
   wait_http_ok "http://127.0.0.1:5000/api/version" 120 || { echo "[FAIL] Frigate"; exit 1; }
 fi
+export SKIP_FRIGATE_EVENTS_WAIT=1
 bash "$ROOT/scripts/_heal_frigate_now.sh" 2>&1 | tail -20 || true
 echo "[OK] Frigate $(curl -sf http://127.0.0.1:5000/api/version 2>/dev/null || echo up)"
 
-echo "=== [6/10] demo pipeline / ingest ==="
-bash "$ROOT/scripts/ensure-demo-pipeline.sh" 2>&1 | tail -30 || true
+# Ingest / demo pipeline is best-effort at launch — NOT a hard gate.
+# Cameras may be offline; rules may be disabled; frames advance later via watchdog.
+echo "=== [6/10] demo pipeline (best-effort, no ingest gate) ==="
+export SKIP_AI_INGEST_VERIFY=1
+bash "$ROOT/scripts/ensure-demo-pipeline.sh" 2>&1 | tail -20 || true
 curl -sf -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/internal/ingest/resync-spatial" \
   -H "X-Internal-Key: $KEY" >/dev/null || true
-ok_cam=0
-for _ in $(seq 1 24); do
-  n=$(curl -sf "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \
-    | python3 -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for x in (d.get('cameras') or []) if x.get('running')))" 2>/dev/null || echo 0)
-  if [[ "${n:-0}" -ge 1 ]]; then ok_cam=1; echo "[OK] cameras running=$n"; break; fi
-  sleep 5
-done
-if [[ "$ok_cam" != "1" ]]; then
-  echo "[WARN] no AI camera ingest yet — verify-ai-ingest / restart"
-  bash "$ROOT/scripts/verify-ai-ingest.sh" || true
-fi
+n=$(curl -sf "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \
+  | python3 -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for x in (d.get('cameras') or []) if x.get('running')))" 2>/dev/null || echo 0)
+echo "[INFO] AI cameras running=${n:-0} (ingest not required for launch OK)"
 
 # --- frontend ---
 echo "=== [7/10] frontend :5174 ==="

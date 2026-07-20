@@ -59,39 +59,45 @@ echo "[OK] AI engine :${AI_PORT}"
 
 curl -sf -X POST "http://127.0.0.1:${API_PORT}/api/v1/internal/ingest/resync-spatial" \
   -H "X-Internal-Key: ${INTERNAL_KEY}" >/dev/null || true
-echo "[INFO] resync-spatial sent — waiting for camera ingest (up to 90s)"
+echo "[INFO] resync-spatial sent"
 
-running_count() {
-  curl -sf "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for x in (d.get('cameras') or []) if x.get('running')))" 2>/dev/null \
-    || echo 0
-}
-
-for _ in $(seq 1 18); do
-  rc="$(running_count)"
-  if [[ "$rc" -ge 1 ]]; then
-    echo "[OK] AI camera ingest running (${rc})"
-    break
+# Launch path must not block on live camera frames (cameras may be offline / rules off).
+if [[ "${SKIP_AI_INGEST_VERIFY:-0}" == "1" ]]; then
+  n=$(curl -sf "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \
+    | python3 -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for x in (d.get('cameras') or []) if x.get('running')))" 2>/dev/null || echo 0)
+  ACTIVE="$("$VENV_PY" -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:${RULES_PORT}/health')).get('active_rules',0))" 2>/dev/null || echo 0)"
+  echo "[OK] skip ingest verify (launch mode) — cameras_running=${n:-0} active_rules=${ACTIVE}"
+else
+  echo "[INFO] waiting for camera ingest (up to 90s)"
+  running_count() {
+    curl -sf "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for x in (d.get('cameras') or []) if x.get('running')))" 2>/dev/null \
+      || echo 0
+  }
+  for _ in $(seq 1 18); do
+    rc="$(running_count)"
+    if [[ "$rc" -ge 1 ]]; then
+      echo "[OK] AI camera ingest running (${rc})"
+      break
+    fi
+    sleep 5
+  done
+  if [[ "$(running_count)" -lt 1 ]]; then
+    echo "[WARN] no running ingest — resync + retry"
+    curl -sf -X POST "http://127.0.0.1:${API_PORT}/api/v1/internal/ingest/resync-spatial" \
+      -H "X-Internal-Key: ${INTERNAL_KEY}" >/dev/null || true
+    sleep 20
   fi
-  sleep 5
-done
-if [[ "$(running_count)" -lt 1 ]]; then
-  echo "[WARN] no running ingest — resync + retry"
-  curl -sf -X POST "http://127.0.0.1:${API_PORT}/api/v1/internal/ingest/resync-spatial" \
-    -H "X-Internal-Key: ${INTERNAL_KEY}" >/dev/null || true
-  sleep 20
-fi
-
-ACTIVE="$("$VENV_PY" -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:${RULES_PORT}/health')).get('active_rules',0))" 2>/dev/null || echo 0)"
-echo "[OK] active_rules=${ACTIVE}"
-
-if ! bash "$ROOT/scripts/verify-ai-ingest.sh"; then
-  echo "[WARN] ingest stalled — restarting AI once"
-  bash "$ROOT/scripts/restart-ai-engine.sh" || true
-  curl -sf -X POST "http://127.0.0.1:${API_PORT}/api/v1/internal/ingest/resync-spatial" \
-    -H "X-Internal-Key: ${INTERNAL_KEY}" >/dev/null || true
-  sleep 15
-  bash "$ROOT/scripts/verify-ai-ingest.sh"
+  ACTIVE="$("$VENV_PY" -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:${RULES_PORT}/health')).get('active_rules',0))" 2>/dev/null || echo 0)"
+  echo "[OK] active_rules=${ACTIVE}"
+  if ! bash "$ROOT/scripts/verify-ai-ingest.sh"; then
+    echo "[WARN] ingest stalled — restarting AI once"
+    bash "$ROOT/scripts/restart-ai-engine.sh" || true
+    curl -sf -X POST "http://127.0.0.1:${API_PORT}/api/v1/internal/ingest/resync-spatial" \
+      -H "X-Internal-Key: ${INTERNAL_KEY}" >/dev/null || true
+    sleep 15
+    bash "$ROOT/scripts/verify-ai-ingest.sh" || echo "[WARN] ingest still stalled — continue (watchdog will retry)"
+  fi
 fi
 
 if [[ "${WATCH_AI_INGEST:-1}" != "0" ]]; then

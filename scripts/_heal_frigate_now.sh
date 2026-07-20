@@ -28,7 +28,11 @@ for i in $(seq 1 30); do
 done
 curl -sf http://127.0.0.1:5000/api/version && echo " frigate up"
 
-echo "=== wait for frigate events (90s max) ==="
+echo "=== wait for frigate events (optional) ==="
+if [[ "${SKIP_FRIGATE_EVENTS_WAIT:-0}" == "1" ]]; then
+  echo "[INFO] skip Frigate events wait (launch mode) — detection is not a start gate"
+  exit 0
+fi
 for i in $(seq 1 18); do
   n=$(curl -sf "http://127.0.0.1:5000/api/events?limit=5" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)" 2>/dev/null || echo 0)
   echo "events=$n"
@@ -39,4 +43,4 @@ for i in $(seq 1 18); do
   sleep 5
 done
 echo "WARN: no frigate events yet"
-exit 1
+exit 0
