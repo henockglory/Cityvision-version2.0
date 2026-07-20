@@ -155,6 +155,26 @@ func main() {
 			log.Info("camera streams re-onboarded on startup", "ok", ok, "failed", failed)
 		}
 	}()
+	// Periodic preview healer: force H264 go2rtc sources when HEVC/RPS/missing producers appear.
+	// Same path on Linux native and WSL/Windows — no OS-specific branching.
+	go func() {
+		time.Sleep(45 * time.Second)
+		ticker := time.NewTicker(90 * time.Second)
+		defer ticker.Stop()
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			healed, failed := cameraSvc.HealUnsafeLivePreviews(ctx)
+			cancel()
+			if healed+failed > 0 {
+				log.Info("live preview auto-heal", "healed", healed, "failed", failed)
+			}
+			select {
+			case <-mqttCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 	aiClient := ingest.NewAIClient(cfg)
 	orch := ingest.NewOrchestrator(pool, aiClient, spatialSvc, cameraSvc, log)
 	go orch.Run(mqttCtx)

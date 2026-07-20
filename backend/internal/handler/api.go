@@ -378,18 +378,35 @@ func (a *API) CameraPreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	_, err = a.Cameras.ReOnboardCamera(r.Context(), orgID, id)
+	cam, healed, err := a.Cameras.EnsurePreviewHealthy(r.Context(), orgID, id)
 	if errors.Is(err, camera.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
-		return
-	}
+	// Soft-fail: still return stream URLs so UI can retry; heal errors are logged in metadata.
 	streamName := "cam-" + id.String()
+	if cam != nil {
+		var meta map[string]interface{}
+		_ = json.Unmarshal(cam.Metadata, &meta)
+		if src, _ := meta["go2rtc_src"].(string); src != "" {
+			streamName = src
+		}
+	}
 	client := camera.NewGo2RTCClient()
 	reg := client.PreviewForStream(streamName)
+	reg.Healed = healed
+	reg.Transcode = true
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"name":           reg.Name,
+			"preview_hls":    reg.PreviewHLS,
+			"preview_webrtc": reg.PreviewWebRTC,
+			"healed":         healed,
+			"transcode":      true,
+			"heal_error":     err.Error(),
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, reg)
 }
 

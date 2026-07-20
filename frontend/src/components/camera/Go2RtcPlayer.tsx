@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { cameras as camerasApi } from '@/api/client';
 import { Go2RtcWebRtcPlayer, type Go2RtcPlayerState } from '@/lib/go2rtc-webrtc';
 
 interface Go2RtcPlayerProps {
@@ -11,6 +12,26 @@ interface Go2RtcPlayerProps {
   /** Show a short user-facing message instead of raw WebRTC/RTSP errors. */
   friendlyErrors?: boolean;
   objectFit?: 'contain' | 'cover' | 'fill';
+  /** When set, codec/WebRTC failures trigger GET /preview (auto H264 re-register) then retry. */
+  orgId?: string;
+  cameraId?: string;
+}
+
+/** Raw ffmpeg/HEVC dumps must never be shown in the UI. */
+export function isCodecStreamError(detail?: string | null): boolean {
+  if (!detail) return false;
+  const l = detail.toLowerCase();
+  return (
+    l.includes('hevc') ||
+    l.includes('h265') ||
+    l.includes('poc') ||
+    l.includes('frame rps') ||
+    l.includes('error constructing') ||
+    l.includes('webrtc/offer') ||
+    l.includes('exec/rtsp') ||
+    l.includes('could not find ref') ||
+    l.includes('invalid data found')
+  );
 }
 
 export default function Go2RtcPlayer({
@@ -18,8 +39,10 @@ export default function Go2RtcPlayer({
   src,
   bare = false,
   label,
-  friendlyErrors = false,
+  friendlyErrors = true,
   objectFit = 'contain',
+  orgId,
+  cameraId,
 }: Go2RtcPlayerProps) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -27,20 +50,50 @@ export default function Go2RtcPlayer({
   const [state, setState] = useState<Go2RtcPlayerState>('idle');
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [modeLabel, setModeLabel] = useState('WebRTC');
+  const [playSrc, setPlaySrc] = useState(src);
+  const [healing, setHealing] = useState(false);
+  const healAttempts = useRef(0);
+
+  useEffect(() => {
+    setPlaySrc(src);
+    healAttempts.current = 0;
+  }, [src]);
+
+  const tryAutoHeal = useCallback(async () => {
+    if (!orgId || !cameraId || healing) return false;
+    if (healAttempts.current >= 2) return false;
+    setHealing(true);
+    healAttempts.current += 1;
+    try {
+      await camerasApi.preview(orgId, cameraId);
+      // Force player remount with same src after go2rtc re-register.
+      setPlaySrc(undefined);
+      await new Promise((r) => setTimeout(r, 400));
+      setPlaySrc(src);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setHealing(false);
+    }
+  }, [orgId, cameraId, src, healing]);
 
   useEffect(() => {
     const el = videoRef.current;
-    if (!el || !src) return;
+    if (!el || !playSrc) return;
 
     const player = new Go2RtcWebRtcPlayer(
       {
-        src,
+        src: playSrc,
         onState: (s, detail) => {
           setState(s);
           setErrorDetail(detail ?? null);
           if (s === 'live') setModeLabel((m) => (m === 'MSE' ? 'MSE' : 'WebRTC'));
           if (s === 'fallback-mse') {
             setModeLabel('MSE');
+          }
+          if (s === 'error' && isCodecStreamError(detail)) {
+            void tryAutoHeal();
           }
         },
       },
@@ -53,9 +106,9 @@ export default function Go2RtcPlayer({
       player.stop();
       playerRef.current = null;
     };
-  }, [src]);
+  }, [playSrc, tryAutoHeal]);
 
-  if (!src) {
+  if (!src && !playSrc) {
     return (
       <div className={`relative bg-black overflow-hidden flex items-center justify-center ${className}`}>
         <p className="text-sm text-white/70 text-center px-4">
@@ -66,7 +119,9 @@ export default function Go2RtcPlayer({
   }
 
   const live = state === 'live';
-  const connecting = state === 'connecting' || state === 'fallback-mse';
+  const connecting = state === 'connecting' || state === 'fallback-mse' || healing || !playSrc;
+  const codecErr = isCodecStreamError(errorDetail);
+  const showError = state === 'error' && !healing;
 
   return (
     <div className={`relative bg-black overflow-hidden ${className}`}>
@@ -82,12 +137,20 @@ export default function Go2RtcPlayer({
       {!live && state !== 'idle' && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 pointer-events-none">
           <p className="text-sm text-white/80 text-center px-4">
-            {connecting && (state === 'fallback-mse' ? t('liveView.fallbackMse', 'Repli MSE…') : t('liveView.connectingStream', 'Connexion vidéo…'))}
-            {state === 'error' && (
-              friendlyErrors
-                ? t('demoCenter.streamUnavailable', 'Flux vidéo indisponible — importez ou sélectionnez une source active.')
-                : (errorDetail ?? t('liveView.streamError', "Impossible d'afficher l'image"))
-            )}
+            {connecting &&
+              (state === 'fallback-mse'
+                ? t('liveView.fallbackMse', 'Repli MSE…')
+                : healing || codecErr
+                  ? t('liveView.healingStream', 'Correction automatique du flux vidéo…')
+                  : t('liveView.connectingStream', 'Connexion vidéo…'))}
+            {showError &&
+              !connecting &&
+              (friendlyErrors || codecErr
+                ? t(
+                    'liveView.streamErrorFriendly',
+                    'Flux en cours de stabilisation — reconnexion automatique…',
+                  )
+                : (errorDetail ?? t('liveView.streamError', "Impossible d'afficher l'image")))}
           </p>
         </div>
       )}

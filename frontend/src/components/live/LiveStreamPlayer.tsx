@@ -9,6 +9,7 @@ interface LiveStreamPlayerProps {
   src?: string;
   label?: string;
   cameraId: string;
+  orgId?: string;
   className?: string;
   camera?: {
     id?: string;
@@ -24,6 +25,7 @@ export default function LiveStreamPlayer({
   src,
   label,
   cameraId,
+  orgId,
   className = 'aspect-video w-full',
   camera,
   showOverlay = false,
@@ -48,7 +50,13 @@ export default function LiveStreamPlayer({
 
   return (
     <div ref={containerRef} className={`relative bg-black overflow-hidden ${className}`}>
-      <Go2RtcPlayer className="absolute inset-0 w-full h-full" src={src} label={label} />
+      <Go2RtcPlayer
+        className="absolute inset-0 w-full h-full"
+        src={src}
+        label={label}
+        orgId={orgId}
+        cameraId={cameraId}
+      />
       {overlayOn ? (
         <LiveDetectionOverlay
           containerRef={containerRef}

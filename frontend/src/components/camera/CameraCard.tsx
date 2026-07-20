@@ -10,6 +10,7 @@ import type { Camera } from '@/types';
 
 interface CameraCardProps {
   camera: Camera;
+  orgId?: string;
   menuOpen: boolean;
   menuAnchorRef: React.RefObject<HTMLElement | null>;
   menuAnchorEl: HTMLElement | null;
@@ -53,6 +54,7 @@ function MenuItem({
 
 export default function CameraCard({
   camera: cam,
+  orgId,
   menuOpen,
   menuAnchorRef,
   menuAnchorEl: _menuAnchorEl,
@@ -69,7 +71,13 @@ export default function CameraCard({
   return (
     <article className="group cv-camera-card overflow-visible">
       <div className="relative aspect-video bg-black overflow-hidden rounded-t-xl">
-        <Go2RtcPlayer src={streamSrc} bare className="absolute inset-0 w-full h-full" />
+        <Go2RtcPlayer
+          src={streamSrc}
+          bare
+          orgId={orgId}
+          cameraId={cam.id}
+          className="absolute inset-0 w-full h-full"
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30 pointer-events-none" />
         <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wide bg-black/60 text-white border border-white/10 backdrop-blur-sm">

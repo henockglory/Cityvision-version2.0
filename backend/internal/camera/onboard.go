@@ -91,6 +91,7 @@ func unifiedPipelineEnabled() bool {
 }
 
 // OnboardCamera registers go2rtc stream and enriches camera metadata.
+// Live preview always uses browser-safe H264 sources (HEVC never exposed to WebRTC).
 func OnboardCamera(ctx context.Context, cam *models.Camera, rtspURL string) error {
 	if cam == nil || rtspURL == "" {
 		return fmt.Errorf("camera or rtsp url missing")
@@ -99,56 +100,33 @@ func OnboardCamera(ctx context.Context, cam *models.Camera, rtspURL string) erro
 	if len(cam.Metadata) > 0 {
 		_ = json.Unmarshal(cam.Metadata, &meta)
 	}
-	streamName := fmt.Sprintf("cam-%s", cam.ID.String())
+	streamName := StreamNameForCamera(cam.ID.String())
 	go2 := NewGo2RTCClient()
 
 	stats, probeErr := ProbeStreamStats(ctx, rtspURL)
 	if probeErr != nil {
-		meta["onboard_error"] = probeErr.Error()
-		meta["stream_ready"] = false
-		delete(meta, "go2rtc_src")
-		raw, _ := json.Marshal(meta)
-		cam.Metadata = raw
-		return fmt.Errorf("video probe failed: %w", probeErr)
+		// Probe failure: still register forced H264 sources so preview can self-heal.
+		meta["onboard_probe_error"] = probeErr.Error()
+		stats = &StreamStats{Codec: "unknown"}
+	} else {
+		delete(meta, "onboard_probe_error")
+		meta["stream_stats"] = stats
 	}
-	meta["stream_stats"] = stats
+
+	sources := Go2RTCSourcesForRTSP(rtspURL, stats)
+	if len(sources) == 0 {
+		sources = []string{ffmpegH264Source(rtspURL)}
+	}
+	meta["transcode"] = true
+	meta["preview_sources"] = sources
+	meta["preview_safe"] = true
 
 	if unifiedPipelineEnabled() {
-		// go2rtc 1.9.x rejects ffmpeg RTSP publish (RECORD → broken pipe after ~1 frame).
-		// Live preview: go2rtc pulls camera RTSP (HEVC→H264 transcode when needed).
-		// AI ingests RTSP separately for analytics / evidence.
-		regURL := Go2RTCSourceForRTSP(rtspURL, stats)
-		if regURL != rtspURL {
-			meta["transcode"] = true
-		} else {
-			delete(meta, "transcode")
-		}
-		_ = go2.UnregisterStream(ctx, streamName)
-		if _, err := go2.RegisterStream(ctx, streamName, regURL); err != nil {
-			meta["onboard_error"] = err.Error()
-			meta["stream_ready"] = false
-			delete(meta, "go2rtc_src")
-			raw, _ := json.Marshal(meta)
-			cam.Metadata = raw
-			return fmt.Errorf("go2rtc register failed: %w", err)
-		}
 		meta["pipeline_mode"] = "pull"
-		meta["go2rtc_src"] = streamName
-		meta["stream_ready"] = true
-		delete(meta, "onboard_error")
-		raw, _ := json.Marshal(meta)
-		cam.Metadata = raw
-		return nil
 	}
 
-	regURL := Go2RTCSourceForRTSP(rtspURL, stats)
-	if regURL != rtspURL {
-		meta["transcode"] = true
-	} else {
-		delete(meta, "transcode")
-	}
-
-	if _, err := go2.RegisterStream(ctx, streamName, regURL); err != nil {
+	_ = go2.UnregisterStream(ctx, streamName)
+	if _, err := go2.RegisterStreamSources(ctx, streamName, sources); err != nil {
 		meta["onboard_error"] = err.Error()
 		meta["stream_ready"] = false
 		delete(meta, "go2rtc_src")
@@ -156,10 +134,29 @@ func OnboardCamera(ctx context.Context, cam *models.Camera, rtspURL string) erro
 		cam.Metadata = raw
 		return fmt.Errorf("go2rtc register failed: %w", err)
 	}
+
 	meta["go2rtc_src"] = streamName
 	meta["stream_ready"] = true
 	delete(meta, "onboard_error")
 	raw, _ := json.Marshal(meta)
 	cam.Metadata = raw
 	return nil
+}
+
+// EnsureBrowserSafePreview re-registers the stream when go2rtc health is unsafe (HEVC / missing).
+// Idempotent — safe to call from preview API and background healer.
+func EnsureBrowserSafePreview(ctx context.Context, cam *models.Camera, rtspURL string) (healed bool, err error) {
+	if cam == nil || rtspURL == "" {
+		return false, fmt.Errorf("camera or rtsp url missing")
+	}
+	streamName := StreamNameForCamera(cam.ID.String())
+	go2 := NewGo2RTCClient()
+	health := go2.GetPreviewHealth(ctx, streamName)
+	if health.OK && !health.NeedsHeal {
+		return false, nil
+	}
+	if err := OnboardCamera(ctx, cam, rtspURL); err != nil {
+		return false, err
+	}
+	return true, nil
 }

@@ -246,9 +246,14 @@ export const camerasApi = {
       {}
     ),
   preview: (orgId: string, cameraId: string) =>
-    api.get<{ preview_hls: string; preview_webrtc: string; name: string }>(
-      `/orgs/${orgId}/cameras/${cameraId}/preview`
-    ),
+    api.get<{
+      preview_hls: string;
+      preview_webrtc: string;
+      name: string;
+      healed?: boolean;
+      transcode?: boolean;
+      heal_error?: string;
+    }>(`/orgs/${orgId}/cameras/${cameraId}/preview`),
   update: (
     orgId: string,
     cameraId: string,

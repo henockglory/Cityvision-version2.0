@@ -16,6 +16,7 @@ import { useSound } from '@/hooks/useSound';
 import { AI_ENGINE_HEALTH, go2rtcStreamSrc } from '@/config/streams';
 import CameraObservationPanel from '@/components/observation/CameraObservationPanel';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
+import { useAuthStore } from '@/stores/authStore';
 
 const OVERLAY_PREF_KEY = 'cv.liveView.detectionOverlay';
 
@@ -23,6 +24,7 @@ export default function LiveView() {
   const { t } = useTranslation();
   const { playClick } = useSound();
   const startTour = useAutoPageTour('liveView');
+  const orgId = useAuthStore((s) => s.orgId);
   const { data: cameras = [], isLoading, isError, refetch } = useCameras();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<{ ok: boolean; yolo: boolean } | null>(null);
@@ -128,6 +130,7 @@ export default function LiveView() {
               src={streamSrc}
               label={selected.name}
               cameraId={activeId}
+              orgId={orgId ?? undefined}
               camera={selected}
               showOverlay={detectionOverlay}
             />

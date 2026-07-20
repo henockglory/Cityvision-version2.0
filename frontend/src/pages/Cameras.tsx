@@ -592,6 +592,8 @@ export default function Cameras() {
                   className="aspect-video w-full rounded-xl border border-cv-border"
                   src={go2rtcStreamSrc({ id: createdCameraId }) ?? undefined}
                   label={cameraName}
+                  orgId={orgId ?? undefined}
+                  cameraId={createdCameraId}
                 />
               ) : (
                 <VideoPlaceholder label={selectedDevice?.ip ?? cameraName} live={false} />
@@ -657,6 +659,7 @@ export default function Cameras() {
             <CameraCard
               key={`${cam.id}-${streamVersion[cam.id] ?? 0}`}
               camera={cam}
+              orgId={orgId ?? undefined}
               menuOpen={menuOpen === cam.id}
               menuAnchorRef={menuAnchorRef}
               menuAnchorEl={menuAnchorEl}

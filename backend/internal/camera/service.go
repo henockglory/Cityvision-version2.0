@@ -410,3 +410,53 @@ func (s *Service) ReOnboardCamera(ctx context.Context, orgID, id uuid.UUID) (*mo
 	}
 	return s.Get(ctx, orgID, id)
 }
+
+// EnsurePreviewHealthy heals go2rtc when the live preview is unsafe (HEVC / missing producer).
+// Called by GET /preview and the background preview healer — Linux/Windows identical.
+func (s *Service) EnsurePreviewHealthy(ctx context.Context, orgID, id uuid.UUID) (*models.Camera, bool, error) {
+	cam, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, false, err
+	}
+	if isDemoVirtualCamera(cam.Metadata) {
+		return cam, false, nil
+	}
+	rtsp, err := s.BuildRTSP(ctx, cam.OrgID, cam.ID)
+	if err != nil || rtsp == "" {
+		return cam, false, err
+	}
+	healed, err := EnsureBrowserSafePreview(ctx, cam, rtsp)
+	if err != nil {
+		_ = s.persistMetadata(ctx, cam.ID, cam.Metadata)
+		return cam, healed, err
+	}
+	if healed {
+		_ = s.persistMetadata(ctx, cam.ID, cam.Metadata)
+		cam, _ = s.Get(ctx, orgID, id)
+	}
+	return cam, healed, nil
+}
+
+// HealUnsafeLivePreviews scans active real cameras and re-registers unsafe go2rtc streams.
+func (s *Service) HealUnsafeLivePreviews(ctx context.Context) (healed, failed int) {
+	rows, err := s.pool.Query(ctx, `SELECT org_id, id FROM cameras WHERE is_active = true`)
+	if err != nil {
+		return 0, 0
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var orgID, id uuid.UUID
+		if err := rows.Scan(&orgID, &id); err != nil {
+			continue
+		}
+		_, did, err := s.EnsurePreviewHealthy(ctx, orgID, id)
+		if err != nil {
+			failed++
+			continue
+		}
+		if did {
+			healed++
+		}
+	}
+	return healed, failed
+}

@@ -11,6 +11,7 @@ import { useSound } from '@/hooks/useSound';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
 import { go2rtcStreamSrc } from '@/config/streams';
+import { useAuthStore } from '@/stores/authStore';
 
 type GridSize = 1 | 4 | 9 | 16;
 
@@ -32,6 +33,7 @@ export default function VideoWall() {
   const { t } = useTranslation();
   const { playClick } = useSound();
   const startTour = useAutoPageTour('videoWall');
+  const orgId = useAuthStore((s) => s.orgId);
   const [gridSize, setGridSize] = useState<GridSize>(4);
   const { data: allCameras = [], isLoading, isError, refetch } = useCameras();
 
@@ -108,7 +110,13 @@ export default function VideoWall() {
           const src = go2rtcStreamSrc(cam);
           return (
             <div key={cam.id} className="cv-wall-cell">
-              <Go2RtcPlayer src={src} label={cam.name} bare />
+              <Go2RtcPlayer
+                src={src}
+                label={cam.name}
+                bare
+                orgId={orgId ?? undefined}
+                cameraId={cam.id}
+              />
             </div>
           );
         })}
