@@ -288,6 +288,9 @@ func main() {
 			r.Use(middleware.RequireInternalKey)
 			r.Get("/rules/active", api.InternalListAllActiveRules)
 			r.Post("/supervisor/repair", api.InternalSupervisorRepair)
+			// Nested under /internal (not a sibling Route) so chi does not 404
+			// /internal/cameras/* against the parent /internal mount.
+			r.Post("/cameras/heal-previews", api.InternalHealLivePreviews)
 		})
 
 		r.Route("/internal/orgs/{orgID}", func(r chi.Router) {

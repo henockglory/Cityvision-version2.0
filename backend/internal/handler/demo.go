@@ -281,6 +281,23 @@ func (a *API) InternalRepairDemoStreams(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, res)
 }
 
+// InternalHealLivePreviews re-onboards real cameras and heals unsafe go2rtc preview sources.
+// Called from start-full-stack so live HEVC cameras (e.g. 108) work after restart.
+func (a *API) InternalHealLivePreviews(w http.ResponseWriter, r *http.Request) {
+	if a.Cameras == nil {
+		writeError(w, http.StatusServiceUnavailable, "camera service unavailable")
+		return
+	}
+	ok, failed := a.Cameras.ReOnboardAllRealCameras(r.Context())
+	healed, healFailed := a.Cameras.HealUnsafeLivePreviews(r.Context())
+	writeJSON(w, http.StatusOK, map[string]int{
+		"reonboard_ok":     ok,
+		"reonboard_failed": failed,
+		"healed":           healed,
+		"heal_failed":      healFailed,
+	})
+}
+
 func (a *API) DemoPreflight(w http.ResponseWriter, r *http.Request) {
 	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
 	if err != nil {

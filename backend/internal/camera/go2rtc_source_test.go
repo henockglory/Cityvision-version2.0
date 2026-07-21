@@ -11,8 +11,13 @@ func TestGo2RTCSourcesAlwaysForceH264(t *testing.T) {
 	if len(srcs) < 1 {
 		t.Fatal("expected sources")
 	}
-	if srcs[0] != "ffmpeg:"+rtsp+"#video=h264#audio=none" {
+	if srcs[0] != "ffmpeg:"+rtsp+"#video=h264" {
 		t.Fatalf("primary=%q", srcs[0])
+	}
+	for _, s := range srcs {
+		if strings.Contains(s, "audio=none") {
+			t.Fatalf("audio=none breaks go2rtc 1.9 ffmpeg: %q", s)
+		}
 	}
 	foundAlt := false
 	for _, s := range srcs {
@@ -77,5 +82,13 @@ func TestInspectPreviewHealthH264(t *testing.T) {
 	h := InspectPreviewHealth(raw)
 	if !h.OK || h.NeedsHeal {
 		t.Fatalf("expected OK: %+v", h)
+	}
+}
+
+func TestInspectPreviewHealthAudioNone(t *testing.T) {
+	raw := []byte(`{"producers":[{"url":"ffmpeg:rtsp://x/live#video=h264#audio=none"}]}`)
+	h := InspectPreviewHealth(raw)
+	if !h.NeedsHeal || h.Reason != "audio_none_broken" {
+		t.Fatalf("expected audio_none heal: %+v", h)
 	}
 }

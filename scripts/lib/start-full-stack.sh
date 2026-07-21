@@ -119,6 +119,14 @@ fi
 echo "[OK] backend :${BACKEND_PORT}"
 
 bash "$ROOT/scripts/ensure-demo-streams.sh" || echo "[WARN] ensure-demo-streams"
+# Live cameras (HEVC 108 etc.): re-onboard + heal go2rtc browser-safe sources after restart.
+if curl -sf -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/internal/cameras/heal-previews" \
+  -H "X-Internal-Key: $KEY" -H "Content-Type: application/json"; then
+  echo
+  echo "[OK] live preview heal"
+else
+  echo "[WARN] live preview heal skipped (backend older or unreachable)"
+fi
 bash "$ROOT/scripts/ensure-rules-sync-env.sh" --resolve-org 2>/dev/null || true
 load_dotenv "$ENV_FILE"
 

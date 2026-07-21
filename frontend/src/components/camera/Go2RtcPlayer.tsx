@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { cameras as camerasApi } from '@/api/client';
+import { camerasApi } from '@/api/client';
 import { Go2RtcWebRtcPlayer, type Go2RtcPlayerState } from '@/lib/go2rtc-webrtc';
 
 interface Go2RtcPlayerProps {

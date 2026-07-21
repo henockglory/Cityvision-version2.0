@@ -72,12 +72,29 @@ func Go2RTCSourcesForRTSP(rtspURL string, stats *StreamStats) []string {
 }
 
 func ffmpegH264Source(rtspURL string) string {
-	// audio=none avoids opus negotiation failures; video=h264 forces libx264 in go2rtc ffmpeg module.
-	return "ffmpeg:" + rtspURL + "#video=h264#audio=none"
+	// video=h264 forces libx264 in go2rtc ffmpeg module.
+	// Do NOT use #audio=none — go2rtc 1.9 treats "none" as an output filename and fails with
+	// "Unable to choose an output format for 'none'". Omit audio (video-only) instead.
+	return "ffmpeg:" + encodeRTSPForGo2RTC(rtspURL) + "#video=h264"
 }
 
 func ffmpegH264HardwareSource(rtspURL string) string {
-	return "ffmpeg:" + rtspURL + "#video=h264#audio=none#hardware"
+	return "ffmpeg:" + encodeRTSPForGo2RTC(rtspURL) + "#video=h264#hardware"
+}
+
+// encodeRTSPForGo2RTC percent-encodes userinfo special chars (+ becomes space if left raw).
+func encodeRTSPForGo2RTC(rtspURL string) string {
+	u, err := url.Parse(rtspURL)
+	if err != nil || u.User == nil {
+		return rtspURL
+	}
+	user := u.User.Username()
+	pass, hasPass := u.User.Password()
+	if !hasPass {
+		return rtspURL
+	}
+	u.User = url.UserPassword(user, pass) // UserPassword encodes reserved chars in password
+	return u.String()
 }
 
 // alternateRTSPPaths derives common H264 substream URLs from a main RTSP URL.

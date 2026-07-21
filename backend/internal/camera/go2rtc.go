@@ -220,8 +220,15 @@ func InspectPreviewHealth(raw json.RawMessage) PreviewHealth {
 		if pm == nil {
 			continue
 		}
-		if urlStr, _ := pm["url"].(string); strings.Contains(strings.ToLower(urlStr), "hevc") {
-			return PreviewHealth{HasProducer: true, NeedsHeal: true, Reason: "hevc_url", UnsafeCodec: true, Codec: "hevc"}
+		if urlStr, _ := pm["url"].(string); urlStr != "" {
+			ul := strings.ToLower(urlStr)
+			if strings.Contains(ul, "audio=none") {
+				// go2rtc 1.9 misparses #audio=none as output file "none".
+				return PreviewHealth{HasProducer: true, NeedsHeal: true, Reason: "audio_none_broken", Codec: "unknown"}
+			}
+			if strings.Contains(ul, "hevc") {
+				return PreviewHealth{HasProducer: true, NeedsHeal: true, Reason: "hevc_url", UnsafeCodec: true, Codec: "hevc"}
+			}
 		}
 		if src, _ := pm["source"].(string); strings.Contains(strings.ToLower(src), "[hevc") {
 			return PreviewHealth{HasProducer: true, NeedsHeal: true, Reason: "hevc_ffmpeg", UnsafeCodec: true, Codec: "hevc"}
