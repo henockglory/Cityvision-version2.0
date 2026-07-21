@@ -1,4 +1,4 @@
-"""Speeding evidence: one Frigate attach per camera within the dedupe window."""
+"""Speeding evidence: one Frigate attach per track within the dedupe window."""
 
 from __future__ import annotations
 
@@ -17,21 +17,30 @@ def _svc() -> EvidenceCaptureService:
     return svc
 
 
-def test_speed_evidence_inflight_and_success_gate():
+def test_speed_evidence_per_track_not_per_camera():
     svc = _svc()
-    evt = {"event_type": "speeding", "track_id": 42}
-    assert svc._begin_speed_evidence("cam-a", evt) is True
-    # Second attempt blocked while in-flight.
-    assert svc._begin_speed_evidence("cam-a", {"event_type": "speeding", "track_id": 99}) is False
-    svc._finish_speed_evidence("cam-a", evt, success=False)
-    # Failure clears inflight → retry allowed.
-    assert svc._begin_speed_evidence("cam-a", evt) is True
-    pkg = {"package": {"metadata": {"capture_source": "frigate_track"}}, "evidence_status": "complete"}
-    svc._finish_speed_evidence("cam-a", evt, success=True, uploaded=pkg)
-    # Success gates further attempts on this camera.
-    assert svc._begin_speed_evidence("cam-a", {"event_type": "speeding", "track_id": 7}) is False
-    assert svc._reuse_speed_evidence("cam-a") is pkg
-    assert svc._begin_speed_evidence("cam-b", evt) is True
+    evt_a = {"event_type": "speeding", "track_id": 42}
+    evt_b = {"event_type": "speeding", "track_id": 99}
+    assert svc._begin_speed_evidence("cam-a", evt_a) is True
+    # Different track on same camera must NOT be blocked by inflight of another track.
+    assert svc._begin_speed_evidence("cam-a", evt_b) is True
+    # Same track blocked while in-flight.
+    assert svc._begin_speed_evidence("cam-a", {"event_type": "speeding", "track_id": 42}) is False
+    svc._finish_speed_evidence("cam-a", evt_a, success=False)
+    svc._finish_speed_evidence("cam-a", evt_b, success=False)
+    assert svc._begin_speed_evidence("cam-a", evt_a) is True
+    pkg_a = {"package": {"metadata": {"capture_source": "frigate_track", "track_id": 42}}, "evidence_status": "complete"}
+    svc._finish_speed_evidence("cam-a", evt_a, success=True, uploaded=pkg_a)
+    # Same track gated after success.
+    assert svc._begin_speed_evidence("cam-a", {"event_type": "speeding", "track_id": 42}) is False
+    # Other track still allowed — this was the identical-scene bug.
+    assert svc._begin_speed_evidence("cam-a", evt_b) is True
+    pkg_b = {"package": {"metadata": {"capture_source": "frigate_track", "track_id": 99}}, "evidence_status": "complete"}
+    svc._finish_speed_evidence("cam-a", evt_b, success=True, uploaded=pkg_b)
+    assert svc._reuse_speed_evidence("cam-a", evt_a) is pkg_a
+    assert svc._reuse_speed_evidence("cam-a", evt_b) is pkg_b
+    # Must not cross-contaminate tracks.
+    assert svc._reuse_speed_evidence("cam-a", {"event_type": "speeding", "track_id": 7}) is None
 
 
 def test_non_speeding_not_gated():

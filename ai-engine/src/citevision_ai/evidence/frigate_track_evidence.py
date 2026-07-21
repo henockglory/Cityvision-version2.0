@@ -334,12 +334,13 @@ class FrigateTrackEvidence:
         anchor = float(anchor)
 
         bound_id = str(evt.get("frigate_event_id") or "").strip()
-        # Red-light: never trust a proactive binder id — it often freezes an early
-        # track box while the car has already moved (empty subject on snapshot).
-        if bound_id and str(evt.get("event_type") or "") == "red_light_violation":
+        # Never trust a proactive binder id for red_light / speeding — it often freezes
+        # an early track box while the car has already moved (empty subject on snapshot).
+        event_type0 = str(evt.get("event_type") or "")
+        if bound_id and event_type0 in ("red_light_violation", "speeding"):
             logger.info(
-                "frigate_track: ignore stale bind for red_light cam=%s id=%s — re-correlate",
-                camera_id[:8], bound_id[:24],
+                "frigate_track: ignore stale bind for %s cam=%s id=%s — re-correlate",
+                event_type0, camera_id[:8], bound_id[:24],
             )
             bound_id = ""
             evt.pop("frigate_event_id", None)
@@ -518,6 +519,8 @@ class FrigateTrackEvidence:
 
         event_type = str(evt.get("event_type") or "")
         is_red = event_type == "red_light_violation"
+        is_speed = event_type == "speeding"
+        require_subject = is_red or is_speed
         hard_max = self._hard_align_max_sec(event_type)
         anchor = evt.get("bbox_ts")
         if not isinstance(anchor, (int, float)):
@@ -699,8 +702,8 @@ class FrigateTrackEvidence:
         if subject_bytes is not None and not subject_quality_ok:
             bbox_quality_ok = False
 
-        # Red-light fail-closed: empty / lagged subject must not ship as "proof".
-        if is_red:
+        # Fail-closed for red_light + speeding: empty / lagged subject must not ship as "proof".
+        if require_subject:
             if not bbox_quality_ok or not subject_quality_ok:
                 return self._missing(
                     abort_stats.ABORT_SUBJECT_EMPTY,
@@ -1096,10 +1099,11 @@ class FrigateTrackEvidence:
 
         bound_id = str(evt.get("frigate_event_id") or "").strip()
         # Bound id still must pass the hard align gate above; then trust geometry path.
-        if bound_id and event_type != "red_light_violation":
+        # Speeding / red_light must not short-circuit on binder alone (stale snapshot box).
+        if bound_id and event_type not in ("red_light_violation", "speeding"):
             return True
         meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
-        if meta.get("frigate_bind_iou") is not None and event_type != "red_light_violation":
+        if meta.get("frigate_bind_iou") is not None and event_type not in ("red_light_violation", "speeding"):
             try:
                 if float(meta["frigate_bind_iou"]) >= float(settings.frigate_bind_min_iou):
                     frigate_bbox = _frigate_box_from_event(matched)
@@ -1128,11 +1132,11 @@ class FrigateTrackEvidence:
         if meta0.get("frigate_red_light_soft_iou") is not None:
             soft_pre = True
         # Demo go2rtc: time-only accept for most rules (inside hard window already).
-        # Red-light keeps IoU gate so the snapshot still shows the offender under a red lamp.
+        # Red-light + speeding keep IoU gate so the snapshot still shows the offender.
         if (
             settings.demo_relaxed_evidence()
             and settings.frigate_demo_timeline_align
-            and event_type != "red_light_violation"
+            and event_type not in ("red_light_violation", "speeding")
         ):
             return True
         # Soft fallback: IoU soft-accept only — align already enforced.
@@ -1152,24 +1156,27 @@ class FrigateTrackEvidence:
             if iou < min_iou:
                 # Demo looping streams: Frigate often tracks a different car at the
                 # same wall-clock. Accept time-aligned media and let compose overlay
-                # the IA offender bbox on the Frigate red clip frame.
+                # the IA offender bbox on the Frigate scene.
                 if (
-                    event_type == "red_light_violation"
+                    event_type in ("red_light_violation", "speeding")
                     and settings.demo_relaxed_evidence()
                     and settings.frigate_demo_timeline_align
                     and demo_loop_absolute_align_ok(align_delta, accept_max)
                     and evt_bbox
                 ):
                     logger.warning(
-                        "frigate_track: red_light demo soft-accept iou=%.3f "
+                        "frigate_track: %s demo soft-accept iou=%.3f "
                         "delta=%.2fs — IA bbox on Frigate scene cam=%s DEMO_MODE source=%s",
-                        iou, align_delta, camera_id[:8], settings.demo_mode_source,
+                        event_type, iou, align_delta, camera_id[:8], settings.demo_mode_source,
                     )
                     meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else None
                     if meta is None:
                         evt["metadata"] = {}
                         meta = evt["metadata"]
-                    meta["frigate_red_light_soft_iou"] = round(float(iou), 4)
+                    if event_type == "red_light_violation":
+                        meta["frigate_red_light_soft_iou"] = round(float(iou), 4)
+                    else:
+                        meta["frigate_speed_soft_iou"] = round(float(iou), 4)
                     return True
                 logger.warning(
                     "frigate_track: reject IoU cam=%s iou=%.3f min=%.2f delta=%.2fs",
@@ -1218,14 +1225,16 @@ class FrigateTrackEvidence:
         scene_out = scene_bytes
         meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
         soft_red = bool(meta.get("frigate_red_light_soft_iou") is not None)
+        soft_speed = bool(meta.get("frigate_speed_soft_iou") is not None)
+        soft_ia = soft_red or soft_speed
 
         # Soft-accept path: always draw the IA offender on Frigate media.
         soft_frame = clean_frame
         soft_bytes = clean_bytes
-        if soft_red and soft_frame is None and scene_bytes:
+        if soft_ia and soft_frame is None and scene_bytes:
             soft_frame = cv2.imdecode(np.frombuffer(scene_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
             soft_bytes = scene_bytes
-        if soft_red and soft_frame is not None and ia_norm and bbox_region_has_content(soft_frame, ia_norm):
+        if soft_ia and soft_frame is not None and ia_norm and bbox_region_has_content(soft_frame, ia_norm):
             scene_out = soft_bytes
             norm_bbox = ia_norm
             frigate_bbox_embedded = False
@@ -1235,7 +1244,7 @@ class FrigateTrackEvidence:
                 soft_frame, ia_norm, images_spec, JPEG_QUALITY, draw_bbox=False,
             )
             logger.info(
-                "frigate_track: red_light soft-accept IA bbox cam=%s event=%s",
+                "frigate_track: soft-accept IA bbox cam=%s event=%s",
                 camera_id[:8], event_id[:24],
             )
             return scene_out, norm_bbox, frigate_bbox_embedded, bbox_quality_ok, subject_bytes

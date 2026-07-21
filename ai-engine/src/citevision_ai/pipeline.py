@@ -1009,7 +1009,7 @@ class PipelineService:
             if settings.frigate_evidence and settings.frigate_track_binding_enabled:
                 # Red-light re-correlates at capture time — binder ids are often stale
                 # (box behind the vehicle on the Frigate snapshot).
-                if str(evt.get("event_type") or "") != "red_light_violation":
+                if str(evt.get("event_type") or "") not in ("red_light_violation", "speeding"):
                     self.evidence.inject_frigate_binding(camera_id, evt)
             self._publish_event_with_evidence(
                 camera_id, evt, evidence_frame, track_dicts, frame_wall_ts, segment_ctx,

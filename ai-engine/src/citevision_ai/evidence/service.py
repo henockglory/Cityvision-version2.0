@@ -189,12 +189,12 @@ class EvidenceCaptureService:
         self._segment_replay_cache: SegmentReplayCache | None = None
         self._frigate = FrigateEvidenceBackend()
         self._frigate_binder = FrigateTrackBinder(self._frigate_track)
+        # Speeding: one Frigate capture per (camera, track) within the window.
+        # Never gate the whole camera — that reuses one scene for every alert.
         self._speed_evidence_dedupe: dict[tuple[str, str], float] = {}
-        self._speed_evidence_inflight: set[str] = set()
-        self._speed_evidence_ok: dict[str, float] = {}
-        # Last successful speeding upload per camera — returned on dedupe skip so
-        # rules-engine retries get a package instead of capture-unavailable 404.
-        self._speed_evidence_last: dict[str, dict[str, Any]] = {}
+        self._speed_evidence_inflight: set[tuple[str, str]] = set()
+        self._speed_evidence_ok: dict[tuple[str, str], float] = {}
+        self._speed_evidence_last: dict[tuple[str, str], dict[str, Any]] = {}
         self._speed_evidence_lock = threading.Lock()
         # Demo loop clock: wall epoch at last demo activate / first buffer push.
         self._demo_loop_epoch: dict[str, float] = {}
@@ -488,50 +488,53 @@ class EvidenceCaptureService:
     def _is_speeding_event(self, evt: dict[str, Any]) -> bool:
         return str(evt.get("event_type") or "") == "speeding"
 
+    def _speed_track_key(self, camera_id: str, evt: dict[str, Any]) -> tuple[str, str] | None:
+        """Stable per-track key; None when track_id missing (no camera-wide gate)."""
+        track_id = evt.get("track_id")
+        if track_id is None or track_id == "":
+            return None
+        return (camera_id, str(track_id))
+
+    def _purge_speed_dedupe(self, now: float) -> None:
+        expired = [k for k, ts in self._speed_evidence_dedupe.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
+        for k in expired:
+            del self._speed_evidence_dedupe[k]
+        expired_ok = [k for k, ts in self._speed_evidence_ok.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
+        for k in expired_ok:
+            del self._speed_evidence_ok[k]
+
     def _should_skip_speed_evidence(self, camera_id: str, evt: dict[str, Any]) -> bool:
-        """True when another speeding Frigate capture is in-flight or recently succeeded."""
+        """True when this track already has an in-flight or recent successful capture."""
         if not self._is_speeding_event(evt):
             return False
-        track_id = evt.get("track_id")
+        key = self._speed_track_key(camera_id, evt)
+        if key is None:
+            return False
         now = time.time()
         with self._speed_evidence_lock:
-            expired = [k for k, ts in self._speed_evidence_dedupe.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
-            for k in expired:
-                del self._speed_evidence_dedupe[k]
-            expired_ok = [k for k, ts in self._speed_evidence_ok.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
-            for k in expired_ok:
-                del self._speed_evidence_ok[k]
-            if camera_id in self._speed_evidence_ok or camera_id in self._speed_evidence_inflight:
+            self._purge_speed_dedupe(now)
+            if key in self._speed_evidence_ok or key in self._speed_evidence_inflight:
                 return True
-            if track_id is not None and track_id != "":
-                key = (camera_id, str(track_id))
-                prev = self._speed_evidence_dedupe.get(key)
-                if prev is not None and now - prev < self._SPEED_EVIDENCE_DEDUPE_SEC:
-                    return True
-            return False
+            prev = self._speed_evidence_dedupe.get(key)
+            return prev is not None and now - prev < self._SPEED_EVIDENCE_DEDUPE_SEC
 
     def _begin_speed_evidence(self, camera_id: str, evt: dict[str, Any]) -> bool:
-        """Reserve a speeding capture slot. False ⇒ caller must skip."""
+        """Reserve a speeding capture slot for this track. False ⇒ caller must skip."""
         if not self._is_speeding_event(evt):
             return True
-        track_id = evt.get("track_id")
+        key = self._speed_track_key(camera_id, evt)
+        # No track_id → allow capture (cannot safely dedupe); avoid camera-wide lock.
+        if key is None:
+            return True
         now = time.time()
         with self._speed_evidence_lock:
-            expired = [k for k, ts in self._speed_evidence_dedupe.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
-            for k in expired:
-                del self._speed_evidence_dedupe[k]
-            expired_ok = [k for k, ts in self._speed_evidence_ok.items() if now - ts > self._SPEED_EVIDENCE_DEDUPE_SEC]
-            for k in expired_ok:
-                del self._speed_evidence_ok[k]
-            if camera_id in self._speed_evidence_ok or camera_id in self._speed_evidence_inflight:
+            self._purge_speed_dedupe(now)
+            if key in self._speed_evidence_ok or key in self._speed_evidence_inflight:
                 return False
-            # Track-level skip only after a prior *success* for that track (see finish).
-            if track_id is not None and track_id != "":
-                key = (camera_id, str(track_id))
-                prev = self._speed_evidence_dedupe.get(key)
-                if prev is not None and now - prev < self._SPEED_EVIDENCE_DEDUPE_SEC:
-                    return False
-            self._speed_evidence_inflight.add(camera_id)
+            prev = self._speed_evidence_dedupe.get(key)
+            if prev is not None and now - prev < self._SPEED_EVIDENCE_DEDUPE_SEC:
+                return False
+            self._speed_evidence_inflight.add(key)
             return True
 
     def _finish_speed_evidence(
@@ -544,34 +547,37 @@ class EvidenceCaptureService:
     ) -> None:
         if not self._is_speeding_event(evt):
             return
-        track_id = evt.get("track_id")
+        key = self._speed_track_key(camera_id, evt)
         with self._speed_evidence_lock:
-            self._speed_evidence_inflight.discard(camera_id)
-            if success:
-                self._speed_evidence_ok[camera_id] = time.time()
-                if track_id is not None and track_id != "":
-                    self._speed_evidence_dedupe[(camera_id, str(track_id))] = time.time()
-                if uploaded:
-                    self._speed_evidence_last[camera_id] = uploaded
+            if key is not None:
+                self._speed_evidence_inflight.discard(key)
+                if success:
+                    self._speed_evidence_ok[key] = time.time()
+                    self._speed_evidence_dedupe[key] = time.time()
+                    if uploaded:
+                        self._speed_evidence_last[key] = uploaded
 
-    def _reuse_speed_evidence(self, camera_id: str) -> dict[str, Any] | None:
-        """Return last good speeding package, waiting briefly if capture is in-flight."""
+    def _reuse_speed_evidence(self, camera_id: str, evt: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        """Return last good package for THIS track only (never another vehicle's scene)."""
+        key = self._speed_track_key(camera_id, evt or {})
+        if key is None:
+            return None
         deadline = time.time() + 20.0
         while time.time() < deadline:
             with self._speed_evidence_lock:
-                last = self._speed_evidence_last.get(camera_id)
-                inflight = camera_id in self._speed_evidence_inflight
+                last = self._speed_evidence_last.get(key)
+                inflight = key in self._speed_evidence_inflight
             if last is not None:
                 logger.info(
-                    "speed evidence dedupe reuse camera=%s",
-                    camera_id[:8],
+                    "speed evidence dedupe reuse camera=%s track=%s",
+                    camera_id[:8], key[1],
                 )
                 return last
             if not inflight:
                 return None
             time.sleep(0.4)
         with self._speed_evidence_lock:
-            return self._speed_evidence_last.get(camera_id)
+            return self._speed_evidence_last.get(key)
 
     def attach_evidence(
         self,
@@ -909,12 +915,12 @@ class EvidenceCaptureService:
         evt: dict[str, Any],
         policy: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
-        # Speeding: one Frigate attempt per camera window — rules-engine storms
+        # Speeding: one Frigate attempt per track — rules-engine storms
         # /evidence/capture for every pending event and must not stampede Frigate.
         speed_slot = False
         if self._is_speeding_event(evt):
             if not self._begin_speed_evidence(camera_id, evt):
-                reused = self._reuse_speed_evidence(camera_id)
+                reused = self._reuse_speed_evidence(camera_id, evt)
                 if reused is not None:
                     return reused
                 logger.info(
