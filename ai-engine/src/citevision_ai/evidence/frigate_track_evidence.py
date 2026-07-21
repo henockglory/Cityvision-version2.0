@@ -414,16 +414,15 @@ class FrigateTrackEvidence:
                     if fallback is not None:
                         break
             if fallback is not None:
-                # Demo: allow identity-agnostic Frigate media for red_light only when
-                # compose can still abort on non-red scene (scene_green gate). Soft-IoU
-                # overlays the IA offender bbox so we do not claim the Frigate track.
-                if str(evt.get("event_type") or "") == "red_light_violation":
-                    # Soft paths require explicit DEMO_MODE (resolved from environ + .env files).
+                # Demo: allow identity-agnostic Frigate media for road rules when
+                # compose overlays the IA offender bbox (soft IoU / scene gates).
+                et = str(evt.get("event_type") or "")
+                if et in ("red_light_violation", "speeding"):
                     if not settings.demo_relaxed_evidence():
                         logger.warning(
-                            "frigate_track: skip demo vehicle fallback for red_light cam=%s "
+                            "frigate_track: skip demo vehicle fallback for %s cam=%s "
                             "(DEMO_MODE=%s source=%s)",
-                            camera_id[:8], settings.demo_mode, settings.demo_mode_source,
+                            et, camera_id[:8], settings.demo_mode, settings.demo_mode_source,
                         )
                         fallback = None
                     else:
@@ -431,11 +430,14 @@ class FrigateTrackEvidence:
                         if meta is None:
                             evt["metadata"] = {}
                             meta = evt["metadata"]
-                        meta["frigate_red_light_soft_iou"] = -1.0
+                        if et == "red_light_violation":
+                            meta["frigate_red_light_soft_iou"] = -1.0
+                        else:
+                            meta["frigate_speed_soft_iou"] = -1.0
                         logger.warning(
-                            "frigate_track: red_light demo vehicle fallback cam=%s "
-                            "(IA bbox + scene_green gate) DEMO_MODE=%s source=%s",
-                            camera_id[:8], settings.demo_mode, settings.demo_mode_source,
+                            "frigate_track: %s demo vehicle fallback cam=%s "
+                            "(IA bbox on Frigate media) DEMO_MODE=%s source=%s",
+                            et, camera_id[:8], settings.demo_mode, settings.demo_mode_source,
                         )
             if fallback is not None:
                 matched = fallback
@@ -1227,25 +1229,37 @@ class FrigateTrackEvidence:
         soft_red = bool(meta.get("frigate_red_light_soft_iou") is not None)
         soft_speed = bool(meta.get("frigate_speed_soft_iou") is not None)
         soft_ia = soft_red or soft_speed
+        event_type = str(evt.get("event_type") or "")
+        # Road rules: never ship Frigate burned-in bbox (often frozen on asphalt).
+        # Prefer clean snapshot + IA offender box whenever the region has content.
+        force_ia_road = event_type in ("red_light_violation", "speeding")
 
-        # Soft-accept path: always draw the IA offender on Frigate media.
+        # Soft-accept / road force-IA path: draw the IA offender on Frigate media.
         soft_frame = clean_frame
         soft_bytes = clean_bytes
-        if soft_ia and soft_frame is None and scene_bytes:
+        if (soft_ia or force_ia_road) and soft_frame is None and scene_bytes:
             soft_frame = cv2.imdecode(np.frombuffer(scene_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
             soft_bytes = scene_bytes
-        if soft_ia and soft_frame is not None and ia_norm and bbox_region_has_content(soft_frame, ia_norm):
-            scene_out = soft_bytes
+        if (soft_ia or force_ia_road) and soft_frame is not None and ia_norm and bbox_region_has_content(soft_frame, ia_norm):
+            # Prefer clean bytes (no Frigate overlay) when available.
+            if clean_bytes and clean_frame is not None and bbox_region_has_content(clean_frame, ia_norm):
+                scene_out = clean_bytes
+                soft_frame = clean_frame
+            else:
+                scene_out = soft_bytes
             norm_bbox = ia_norm
             frigate_bbox_embedded = False
             bbox_quality_ok = True
             images_spec = policy.get("images") or default_evidence_policy()["images"]
-            _, subject_bytes, _ = capture_images_from_policy(
-                soft_frame, ia_norm, images_spec, JPEG_QUALITY, draw_bbox=False,
+            # Draw IA bbox onto scene so UI/thumbnail show the offender (not empty road).
+            drawn_scene, subject_bytes, _ = capture_images_from_policy(
+                soft_frame, ia_norm, images_spec, JPEG_QUALITY, draw_bbox=True,
             )
+            if drawn_scene:
+                scene_out = drawn_scene
             logger.info(
-                "frigate_track: soft-accept IA bbox cam=%s event=%s",
-                camera_id[:8], event_id[:24],
+                "frigate_track: road IA bbox on Frigate media cam=%s event=%s force=%s soft=%s",
+                camera_id[:8], event_id[:24], force_ia_road, soft_ia,
             )
             return scene_out, norm_bbox, frigate_bbox_embedded, bbox_quality_ok, subject_bytes
 

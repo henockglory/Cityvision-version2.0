@@ -431,16 +431,17 @@ class EvidenceCaptureService:
         self._gate.set_rules(camera_id, rules)
 
     def _allows_ring_buffer_fallback(self, evt: dict[str, Any]) -> bool:
-        """Ring-buffer capture is allowed for hybrid/legacy, cabin events in strict demo,
-        or red_light in DEMO_MODE (parallel demo_ring_buffer path — Tâche 5)."""
+        """Ring-buffer allowed for hybrid/legacy, or cabin events in strict demo.
+
+        Road rules (red_light / speeding) are fail-closed Frigate in strict_frigate:
+        never silently ship demo_ring_buffer as a complete proof.
+        """
         mode = self._evidence_backend_mode()
         if mode in ("ring_buffer", "hybrid", ""):
             return True
         et = str(evt.get("event_type") or "")
         if mode == "strict_frigate":
             if et in self._CABIN_EVENT_TYPES:
-                return True
-            if et == "red_light_violation" and settings.demo_relaxed_evidence():
                 return True
         return False
 
@@ -1127,20 +1128,8 @@ class EvidenceCaptureService:
         images_spec = policy.get("images") or default_evidence_policy()["images"]
         event_type = str(evt.get("event_type") or evt.get("event") or "")
 
-        # Tâche 5: freeze ring-buffer BEFORE Frigate waits (up to ~30s) so the 12s
-        # ring has not scrolled past the detection. Prefer Frigate if it succeeds.
-        early_ring: dict[str, Any] | None = None
-        if (
-            not no_clip
-            and event_type == "red_light_violation"
-            and settings.demo_relaxed_evidence()
-            and self._allows_ring_buffer_fallback(evt)
-        ):
-            early_ring = self._export_demo_ring_capture(
-                camera_id, evt, frame, policy, images_spec,
-                frame_ts=frame_ts, resolved=resolved, bbox_quality_ok=bbox_quality_ok,
-            )
-
+        # Road rules: Frigate-only in strict demo — no early ring freeze/fallback that
+        # used to ship demo_ring_buffer + emission_track bbox as "complete".
         if not no_clip:
             frigate_upload = self._try_frigate_capture(
                 camera_id, org_id, evt, policy, images_spec, return_upload,
@@ -1149,23 +1138,11 @@ class EvidenceCaptureService:
             if frigate_upload is not None:
                 return frigate_upload
             if self._evidence_backend_mode() in ("frigate", "strict_frigate"):
-                if early_ring is not None and early_ring.get("scene") and early_ring.get("clip_bytes"):
-                    logger.info(
-                        "frigate miss — using demo_ring_buffer cam=%s event=%s",
-                        camera_id[:8], event_id[:8],
-                    )
-                    return self._upload_capture_result(
-                        org_id, camera_id, event_id, evt, early_ring, images_spec, return_upload,
-                    )
                 if not (
                     self._evidence_backend_mode() == "strict_frigate"
                     and self._allows_ring_buffer_fallback(evt)
                 ):
                     return self._mark_frigate_failed(evt, return_upload)
-        if early_ring is not None and early_ring.get("scene") and early_ring.get("clip_bytes"):
-            return self._upload_capture_result(
-                org_id, camera_id, event_id, evt, early_ring, images_spec, return_upload,
-            )
         if not self._allows_ring_buffer_fallback(evt):
             return self._mark_frigate_failed(evt, return_upload)
         if resolved:

@@ -89,6 +89,7 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
   // Preuves historiques du mode segments (abandonné) ou capture avec bbox
   // sans contenu détecté : contenu visuel potentiellement non fiable.
   const captureSource = pkg?.metadata?.capture_source as string | undefined;
+  const bboxSource = pkg?.metadata?.bbox_source as string | undefined;
   const frigateBboxEmbedded = pkg?.metadata?.frigate_bbox_embedded === true;
   const bboxQualityOk = pkg?.metadata?.bbox_quality_ok as boolean | undefined;
   const evidenceStatus = String(pkg?.metadata?.evidence_status ?? aiStatus ?? '');
@@ -250,6 +251,22 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
                 {`capture_source: ${captureSource}`}
               </span>
             )}
+          {bboxSource && (
+            <span
+              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                bboxSource === 'frigate_mqtt' && frigateBboxEmbedded
+                  ? 'bg-amber-500/15 text-amber-700'
+                  : 'bg-cv-muted/20 text-cv-muted'
+              }`}
+              title={
+                frigateBboxEmbedded
+                  ? 'Bbox Frigate brûlée dans le JPEG (peut être stale)'
+                  : 'Bbox overlay IA / emission sur média Frigate'
+              }
+            >
+              {`bbox_source: ${bboxSource}${frigateBboxEmbedded ? ' (embedded)' : ''}`}
+            </span>
+          )}
         </div>
       </div>
       {badgeLabel && evidenceStatus === 'complete' && captureSource && captureSource !== 'frigate_track' && (
