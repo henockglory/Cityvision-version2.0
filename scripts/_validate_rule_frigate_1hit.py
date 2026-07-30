@@ -24,7 +24,7 @@ SETTLE_SEC = int(os.environ.get("DEMO_SETTLE_SEC", "10"))
 
 RULE_EVENT_TYPES: dict[str, list[str]] = {
     "Démo · Excès de vitesse": ["speeding"],
-    "Démo · Téléphone au volant": ["phone_use_violation", "phone_driving", "driver_phone"],
+    "Démo · Téléphone au volant": ["phone_use_violation"],
     "Démo · Feu rouge": ["red_light_violation"],
     "Démo · Ceinture": ["seatbelt_violation", "seatbelt"],
     "Démo · Non-port ceinture": ["seatbelt_violation", "seatbelt"],

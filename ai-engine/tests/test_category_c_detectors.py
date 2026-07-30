@@ -80,6 +80,7 @@ class TestCategoryCHeuristics:
 
 class TestCategoryCEventGenerator:
     def test_object_appeared_event(self):
+        """object_appeared purged — presence via zone_enter only."""
         gen = EventGenerator()
         ts = "2026-06-12T12:00:00+00:00"
         tracks = [
@@ -87,9 +88,7 @@ class TestCategoryCEventGenerator:
         ]
         events = gen.process_frame("cam-1", tracks, [], ts)
         appeared = [e for e in events if e["event_type"] == "object_appeared"]
-        assert len(appeared) == 1
-        assert appeared[0]["track_id"] == 42
-        assert appeared[0]["class_name"] == "backpack"
+        assert appeared == []
 
     def test_object_disappeared_event(self):
         gen = EventGenerator()
@@ -143,6 +142,7 @@ class TestCategoryCEventGenerator:
         assert enters[0]["class_name"] == "car"
 
     def test_emit_behavior_signals_falling(self):
+        """falling purged — heuristic may label, emit path must drop."""
         gen = EventGenerator()
         h = BehaviorHeuristics()
         bbox_history = [
@@ -158,5 +158,5 @@ class TestCategoryCEventGenerator:
             bbox_history=bbox_history,
         )
         events = gen.emit_behavior_signals("cam-1", [sig], "2026-06-12T12:00:00+00:00")
-        assert events[0]["event_type"] == "falling"
-        assert events[0]["severity"] == "critical"
+        assert events == []
+        assert "falling" not in {e.get("event_type") for e in events}

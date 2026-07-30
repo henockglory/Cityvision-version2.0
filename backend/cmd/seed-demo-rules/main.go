@@ -90,20 +90,20 @@ func demoRuleSpecs() []ruleSpec {
 		},
 		{
 			name:        "Démo · Téléphone au volant",
-			description: "Usage du téléphone au volant détecté dans Zone_bbox (modèle ONNX + repli heuristique).",
+			description: "Usage du téléphone au volant — Frigate détecte le véhicule dans Zone_bbox ; Gemini VLM juge (FRIGATE_VLM_BRIDGE).",
 			templateID:  "tpl-phone-driving",
 			severity:    "medium",
 			cameraMatch: "ceinture",
 			zoneName:    "Zone_bbox",
 			classFilter: "car",
-			// [F.58]/[P.134] Canonical ONNX event only; legacy heuristic emits phone_driving when model absent.
+			// Canonical Gemini/bridge event only (phone_driving purged).
 			eventTypes: []string{"phone_use_violation"},
 			withEmail:  true,
 			withClip:   true,
 		},
 		{
 			name:        "Démo · Non-port ceinture",
-			description: "Absence de ceinture détectée dans Zone_bbox (modèle ONNX + repli heuristique).",
+			description: "Absence de ceinture — Frigate détecte le véhicule dans Zone_bbox2 ; Gemini VLM juge (FRIGATE_VLM_BRIDGE).",
 			templateID:  "tpl-seatbelt",
 			severity:    "medium",
 			cameraMatch: "ceinture",

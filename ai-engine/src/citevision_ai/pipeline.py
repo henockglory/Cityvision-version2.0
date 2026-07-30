@@ -22,6 +22,7 @@ from citevision_ai.analytics.correlation import CorrelationEngine
 from citevision_ai.analytics.scene_correlation import SceneCorrelationEngine
 from citevision_ai.analytics.state import StateEngine
 from citevision_ai.evidence.config import EVIDENCE_WORTHY_TYPES
+from citevision_ai.events.purged_types import is_purged_event_type
 from citevision_ai.evidence.gate import default_evidence_policy
 from citevision_ai.evidence.capture import (
     bbox_valid,
@@ -159,9 +160,181 @@ class PipelineService:
         self._frame_shape: dict[str, tuple[int, int]] = {}
         self._blur_streak: dict[str, int] = {}
         self._latest_detection_payload: dict[str, dict[str, Any]] = {}
+        self._latest_frames: dict[str, np.ndarray] = {}
+        self._latest_frame_wall: dict[str, float] = {}
+        self._vlm_queue: Any | None = None
+        self._frigate_bridge: Any | None = None
         self._detection_broadcaster: Any | None = None
         self._tracker_lock = threading.RLock()
         self._burn_in_enabled: dict[str, bool] = {}
+        self._init_gemini_vlm()
+        gemini_on = bool(settings.gemini_enabled and (settings.gemini_api_key or "").strip())
+        self.face_engine.configure_gemini(
+            enabled=gemini_on and not bool(settings.frigate_vlm_bridge),
+            vlm_queue=self._vlm_queue,
+        )
+        self.plate_engine.configure_gemini(
+            enabled=gemini_on and not bool(settings.frigate_vlm_bridge),
+            vlm_queue=self._vlm_queue,
+        )
+        self._init_frigate_bridge()
+
+    def _init_gemini_vlm(self) -> None:
+        """Wire async Gemini queue for cabin (and optional face) judgments."""
+        key = (settings.gemini_api_key or "").strip()
+        if not settings.gemini_enabled or not key:
+            self.secondary.configure_gemini(False, None)
+            return
+        from citevision_ai.vlm.gemini_client import GeminiClient
+        from citevision_ai.vlm.queue import init_vlm_queue
+
+        client = GeminiClient(
+            key,
+            model=settings.gemini_model or "gemini-3.6-flash",
+            timeout=float(settings.gemini_timeout or 20.0),
+        )
+        self._vlm_queue = init_vlm_queue(
+            client,
+            maxsize=min(8, int(settings.gemini_queue_size or 8)),
+            min_interval_sec=float(
+                os.environ.get("GEMINI_MIN_INTERVAL_SEC", "8.0") or 8.0
+            ),
+            max_age_sec=20.0,
+        )
+        self._vlm_queue.set_emit_callback(self._on_vlm_event)
+        # YOLO cabin path only when Frigate VLM bridge is OFF.
+        if not settings.frigate_vlm_bridge:
+            self.secondary.configure_gemini(True, self._vlm_queue)
+            self.secondary.set_bbox_ts_resolver(lambda: time.time())
+        else:
+            self.secondary.configure_gemini(False, None)
+            self.secondary.set_frigate_bridge_active(True)
+        logger.info(
+            "Gemini VLM enabled model=%s queue=%s frigate_vlm_bridge=%s",
+            settings.gemini_model,
+            settings.gemini_queue_size,
+            bool(settings.frigate_vlm_bridge),
+        )
+
+    def _init_frigate_bridge(self) -> None:
+        """Frigate MQTT → Gemini cabin/face/plate + Frigate speed estimates."""
+        vlm_on = bool(settings.frigate_vlm_bridge) and self._vlm_queue is not None
+        speed_on = bool(settings.frigate_speed_bridge)
+        if not vlm_on and not speed_on:
+            return
+        from citevision_ai.frigate_bridge import FrigateEventBridge
+
+        def _spatial(cam_id: str) -> dict[str, Any] | None:
+            return self._spatial_configs.get(cam_id)
+
+        self._frigate_bridge = FrigateEventBridge(
+            frigate_url=settings.frigate_url,
+            mqtt_host=settings.resolved_mqtt_host(),
+            mqtt_port=settings.resolved_mqtt_port(),
+            mqtt_user=settings.mqtt_user,
+            mqtt_password=settings.mqtt_password,
+            spatial_resolver=_spatial,
+            vlm_queue=self._vlm_queue,
+            emit_event=self._on_bridge_event,
+            vlm_enabled=vlm_on,
+            speed_enabled=speed_on,
+            face_enabled=vlm_on,
+            plate_enabled=vlm_on,
+            snapshot_wait_sec=float(settings.frigate_bridge_snapshot_wait_sec or 25.0),
+            watchlist_resolver=lambda: list(getattr(self.face_engine, "_watchlist", None) or []),
+        )
+        if vlm_on:
+            self.face_engine.set_frigate_bridge_active(True)
+            self.plate_engine.set_frigate_bridge_active(True)
+        self._frigate_bridge.start()
+        logger.info(
+            "Frigate event bridge started vlm=%s speed=%s",
+            vlm_on, speed_on,
+        )
+
+    def _on_bridge_event(self, evt: dict[str, Any]) -> None:
+        """Publish Frigate-bridge events (speed, etc.) on the MQTT evidence path."""
+        self._on_vlm_event(evt)
+
+    def _on_vlm_event(self, evt: dict[str, Any]) -> None:
+        """Publish a Gemini / bridge verdict on the same MQTT → rules → evidence path."""
+        camera_id = str(evt.get("camera_id") or "")
+        if not camera_id:
+            return
+        if self._org_ids.get(camera_id):
+            evt["org_id"] = self._org_ids[camera_id]
+        # Gemini OCR → apply plate watchlists (blocked / allowed / unknown).
+        # Engine lists only — no second LLM (plate_* rewrite stays local).
+        plate = str(evt.get("plate_number") or "").strip()
+        if plate and str(evt.get("event_type") or "") in (
+            "plate_detected", "plate_ocr", "plate_unknown", "plate_blocked", "plate_allowed",
+        ):
+            status = self.plate_engine._match_plate(plate)
+            if status == "blocked":
+                evt["event_type"] = "plate_blocked"
+                evt["severity"] = "critical"
+            elif status == "allowed":
+                evt["event_type"] = "plate_allowed"
+                evt["severity"] = "info"
+            else:
+                # Keep plate_detected for pipeline rules; also emit-compatible unknown.
+                if str(evt.get("event_type")) != "plate_detected":
+                    evt["event_type"] = "plate_unknown"
+            meta = dict(evt.get("metadata") or {})
+            meta["status"] = status
+            meta["plate_number"] = plate
+            evt["metadata"] = meta
+            self.plate_engine._remember_plate(
+                camera_id, int(evt.get("track_id") or -1), plate,
+                float(evt.get("plate_confidence") or evt.get("confidence") or 0.0),
+            )
+
+        # Face under bridge: clear detection + unknown when a watchlist is configured
+        # (watchlist match is a separate Gemini job). No InsightFace double path.
+        et = str(evt.get("event_type") or "")
+        if et == "face_detected":
+            wl = list(getattr(self.face_engine, "_watchlist", None) or [])
+            if wl:
+                meta = dict(evt.get("metadata") or {})
+                meta["identity_status"] = "unknown"
+                meta["watchlist_size"] = len(wl)
+                evt["metadata"] = meta
+                # Publish face_detected first, then derived face_unknown.
+                evt.setdefault("event", "face_detected")
+                frame = self._latest_frames.get(camera_id)
+                if frame is None:
+                    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                wall = float(self._latest_frame_wall.get(camera_id) or time.time())
+                evt.setdefault("bbox_ts", wall)
+                try:
+                    self._publish_event_with_evidence(
+                        camera_id, evt, frame, [], wall, None,
+                    )
+                    unk = dict(evt)
+                    unk["event_id"] = str(uuid.uuid4())
+                    unk["event_type"] = "face_unknown"
+                    unk["event"] = "face_unknown"
+                    unk["severity"] = "warning"
+                    self._publish_event_with_evidence(
+                        camera_id, unk, frame, [], wall, None,
+                    )
+                except Exception:
+                    logger.exception("vlm/bridge face publish failed camera=%s", camera_id)
+                return
+
+        evt.setdefault("event", evt.get("event_type"))
+        # Prefer Frigate event id already on payload for evidence correlation.
+        frame = self._latest_frames.get(camera_id)
+        if frame is None:
+            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        wall = float(self._latest_frame_wall.get(camera_id) or time.time())
+        evt.setdefault("bbox_ts", wall)
+        try:
+            self._publish_event_with_evidence(
+                camera_id, evt, frame, [], wall, None,
+            )
+        except Exception:
+            logger.exception("vlm/bridge publish failed camera=%s", camera_id)
 
     def set_burn_in_enabled(self, camera_id: str, enabled: bool) -> None:
         self._burn_in_enabled[camera_id] = enabled
@@ -423,11 +596,11 @@ class PipelineService:
     # Non-speed MQTT noise suppressed on speed-only cameras.
     _SPEED_ONLY_SKIP_EVENTS = frozenset({
         "loitering", "loitering_near_entrance", "dwell_time_exceeded",
-        "crowd_gathering", "crowd_count_threshold", "fight_detected", "fighting",
+        "crowd_count_threshold",
         "sudden_stop", "vehicle_stopped", "person_stopped", "abandoned_object",
-        "crowd_dispersal", "group_gathering", "zone_enter", "zone_exit",
-        "line_cross", "behavior_anomaly", "presence_detected", "absence_detected",
-        "vehicle_count_threshold", "running",
+        "zone_enter", "zone_exit",
+        "line_cross", "presence_detected", "absence_detected",
+        "vehicle_count_threshold",
     })
 
     @classmethod
@@ -612,7 +785,8 @@ class PipelineService:
 
         if frame_id % skip != 0:
             pre_events: list[dict[str, Any]] = []
-            if tl_active:
+            # HSV traffic-light tick only when Frigate→Gemini bridge is OFF.
+            if tl_active and not bool(settings.frigate_vlm_bridge):
                 ts0 = datetime.now(timezone.utc).isoformat()
                 pre_events.extend(
                     self.traffic_light.process_frame(camera_id, frame, [], ts0, zones_cfg)
@@ -765,7 +939,9 @@ class PipelineService:
                 self.behavior.record_line_cross(camera_id, str(line_id), track_id, direction, now_ts)
 
             for sig in self.behavior.evaluate_line_behaviors(camera_id, now_ts):
-                evt_type = BEHAVIOR_EVENT_TYPES.get(sig.label, "behavior_anomaly")
+                evt_type = BEHAVIOR_EVENT_TYPES.get(sig.label)
+                if not evt_type:
+                    continue
                 all_events.append(self.event_generator.emit_behavior_event(
                     camera_id, sig.track_id, evt_type, sig.confidence,
                     {"behavior": sig.label.value, **sig.details}, ts,
@@ -849,33 +1025,44 @@ class PipelineService:
             if gated_tracks:
                 all_events.extend(self.plate_engine.process_frame(camera_id, frame, gated_tracks, ts))
 
-        # Dedicated, zone-driven red-light pipeline (color classification + synergy).
-        if tl_active:
+        # Dedicated red-light: HSV only when Frigate→Gemini bridge is OFF.
+        # With FRIGATE_VLM_BRIDGE, Gemini decides red_light_violation.
+        if tl_active and not bool(settings.frigate_vlm_bridge):
             all_events.extend(
                 self.traffic_light.process_frame(camera_id, frame, track_dicts, ts, zones_cfg)
             )
-        # Dedicated secondary ONNX models for cabin violations (phone, seatbelt).
+        # Cabin violations: secondary ONNX or async Gemini VLM (never both + heuristics).
         zone_behaviors = {str(z.get("behavior", "")) for z in zones_cfg}
         cabin_active = "driver_cabin" in zone_behaviors or "phone_use" in zone_behaviors or "seatbelt" in zone_behaviors
+        gemini_cabin = bool(settings.gemini_enabled and (settings.gemini_api_key or "").strip())
+        bridge_on = bool(settings.frigate_vlm_bridge) and gemini_cabin
+        self._latest_frames[camera_id] = frame
+        self._latest_frame_wall[camera_id] = float(frame_wall_ts or time.time())
+        self.secondary.set_bbox_ts_resolver(lambda: float(frame_wall_ts or time.time()))
         if not speed_only:
             if self.secondary.camera_has_behavior(zones_cfg):
                 all_events.extend(
                     self.secondary.process_frame(camera_id, frame, track_dicts, zones_cfg, ts)
                 )
-            # Legacy heuristics only as fallback on driver-cabin cameras (never on feux/ligne/décompte).
+            # Legacy heuristics only as fallback on cabin cams when Gemini is OFF.
             all_events.extend(
                 self.road_enforcement.process_frame(
                     camera_id, frame, track_dicts, ts, zones_cfg,
-                    disable_red_light=tl_active,
-                    disable_phone=not cabin_active,
-                    disable_seatbelt=not cabin_active,
+                    disable_red_light=tl_active or bridge_on,
+                    disable_phone=(not cabin_active) or gemini_cabin,
+                    disable_seatbelt=(not cabin_active) or gemini_cabin,
                 )
             )
         # Zone-distance speed measurement (real metres → km/h).
+        # Disabled when FRIGATE_SPEED_BRIDGE owns speed (XOR — avoid double emit).
         # Cabin cameras (phone_use / seatbelt) are mutually exclusive with
         # speed-measurement: running zone_speed on a driver-cabin feed wastes
         # GPU/CPU cycles and can be caused by a misconfigured zone in the DB.
-        if not cabin_active and self.zone_speed.camera_has_behavior(zones_cfg):
+        if (
+            not cabin_active
+            and not bool(settings.frigate_speed_bridge)
+            and self.zone_speed.camera_has_behavior(zones_cfg)
+        ):
             all_events.extend(
                 self.zone_speed.process_frame(
                     camera_id, track_dicts, zones_cfg, w, h, now_ts, ts,
@@ -1119,11 +1306,14 @@ class PipelineService:
         frame_wall_ts: float,
         segment_ctx: SegmentCaptureContext | None,
     ) -> None:
+        et = str(evt.get("event_type") or evt.get("event") or "")
+        if is_purged_event_type(et):
+            logger.debug("drop purged event_type=%s camera=%s", et, camera_id)
+            return
         org_id = self._org_ids.get(camera_id, "")
         if not org_id:
             self.mqtt.publish_event(camera_id, evt)
             return
-        et = str(evt.get("event_type") or evt.get("event") or "")
         if et in ("vehicle_corridor", "vehicle_count_threshold"):
             return
         if self._is_speed_only_camera(camera_id) and et in self._SPEED_ONLY_SKIP_EVENTS:

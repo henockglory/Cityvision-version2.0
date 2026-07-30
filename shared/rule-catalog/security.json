@@ -36,17 +36,6 @@
     "partial_status": "full"
   },
   {
-    "id": "tpl-object-appeared",
-    "redirect_to": "tpl-object-appeared",
-    "role_summary_fr": "Alerte quand un nouvel objet apparaît dans la zone — dépôt non autorisé.",
-    "deployment_scopes": [
-      "national",
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "full"
-  },
-  {
     "id": "tpl-proximity-alert",
     "name": "Proximité personne-véhicule",
     "category": "security",

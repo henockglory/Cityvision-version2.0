@@ -30,9 +30,9 @@
       "enterprise",
       "domestic"
     ],
-    "role_summary_fr": "Alerte quand un visage connu de la liste de surveillance est identifié par la caméra.",
-    "partial_status": "requires_face_ai",
-    "partial_reason_fr": "Correspondance liste noire : nécessite le module InsightFace + base de données de visages configurée."
+    "role_summary_fr": "Alerte quand un visage connu de la liste de surveillance est identifié (InsightFace, ou Gemini VLM en secours si GEMINI_ENABLED sans InsightFace).",
+    "partial_status": "requires_external",
+    "partial_reason_fr": "Préfère InsightFace + embeddings watchlist. Avec FRIGATE_VLM_BRIDGE : person∩zone Frigate → Gemini. Partial jusqu'à validate_rule."
   },
   {
     "id": "tpl-unknown-face",
@@ -57,9 +57,9 @@
       "enterprise",
       "domestic"
     ],
-    "role_summary_fr": "Signale la présence d'un visage non reconnu dans une zone à accès contrôlé.",
-    "partial_status": "requires_face_ai",
-    "partial_reason_fr": "Nécessite le module de reconnaissance faciale (InsightFace) actif."
+    "role_summary_fr": "Signale un visage non reconnu (InsightFace ou Gemini VLM en secours).",
+    "partial_status": "requires_external",
+    "partial_reason_fr": "InsightFace recommandé ; ou Frigate person∩zone → Gemini (FRIGATE_VLM_BRIDGE). Partial tant que non validé bout-en-bout."
   },
   {
     "id": "tpl-face-detected",
@@ -86,9 +86,9 @@
       "enterprise",
       "domestic"
     ],
-    "role_summary_fr": "Enregistre et alerte à chaque détection de visage — utile pour les zones à faible trafic.",
-    "partial_status": "requires_face_ai",
-    "partial_reason_fr": "Nécessite le module de détection/reconnaissance faciale (InsightFace) actif."
+    "role_summary_fr": "Détection de visage — InsightFace local ou Gemini VLM si GEMINI_ENABLED sans poids InsightFace.",
+    "partial_status": "requires_external",
+    "partial_reason_fr": "Module face local ou Frigate→Gemini. Badge partial — pas de full/real sans validation."
   },
   {
     "id": "tpl-blocked-plate",
@@ -117,7 +117,7 @@
     ],
     "role_summary_fr": "Alerte immédiate si une plaque figurant sur la liste noire est reconnue par la caméra.",
     "partial_status": "requires_ocr",
-    "partial_reason_fr": "Nécessite le module de lecture de plaques (PaddleOCR) + une liste noire configurée."
+    "partial_reason_fr": "Nécessite Gemini OCR (GEMINI_ENABLED) ou PaddleOCR + liste noire configurée."
   },
   {
     "id": "tpl-unknown-plate",
@@ -144,7 +144,7 @@
     ],
     "role_summary_fr": "Signale toute plaque non présente dans la liste blanche — contrôle d'accès véhicules.",
     "partial_status": "requires_ocr",
-    "partial_reason_fr": "Nécessite le module de lecture de plaques (PaddleOCR) + une liste blanche configurée."
+    "partial_reason_fr": "Nécessite Gemini OCR (GEMINI_ENABLED) ou PaddleOCR + liste blanche configurée."
   },
   {
     "id": "tpl-plate-whitelist",
@@ -173,7 +173,7 @@
     ],
     "role_summary_fr": "Autorise les véhicules dont la plaque est dans la liste blanche — alerte pour toute autre plaque.",
     "partial_status": "requires_ocr",
-    "partial_reason_fr": "Nécessite le module de lecture de plaques (PaddleOCR) + une liste blanche configurée."
+    "partial_reason_fr": "Nécessite Gemini OCR (GEMINI_ENABLED) ou PaddleOCR + liste blanche configurée."
   },
   {
     "id": "tpl-plate-detected",
@@ -200,7 +200,7 @@
     ],
     "role_summary_fr": "Enregistre et alerte à chaque détection de plaque d'immatriculation sur la scène.",
     "partial_status": "requires_ocr",
-    "partial_reason_fr": "Nécessite le module de lecture de plaques (PaddleOCR) actif sur une zone dédiée."
+    "partial_reason_fr": "Nécessite Gemini OCR (GEMINI_ENABLED) ou PaddleOCR actif sur une zone dédiée."
   },
   {
     "id": "tpl-identity-correlation",

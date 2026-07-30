@@ -34,11 +34,6 @@
     "partial_reason_fr": "Nécessite une calibration caméra pour détecter les variations de vitesse"
   },
   {
-    "id": "tpl-running-person",
-    "redirect_to": "tpl-running",
-    "_fusion_note": "[I.80] Doublon fusionné vers tpl-running (même heuristique de course). La variante « class_name=person AND speed_kmh>15 » faisait double emploi."
-  },
-  {
     "id": "tpl-traffic-jam",
     "redirect_to": "tpl-congestion",
     "_fusion_note": "[I.80] Doublon fusionné vers tpl-congestion. L'agrégat vehicle_count/avg_speed sur fenêtre n'est pas émis ; la congestion réelle s'appuie sur vehicle_count_threshold."

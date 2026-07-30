@@ -1,18 +1,12 @@
-"""Traffic-light color classification per zone + red-light violation synergy.
+"""Traffic-light color classification (legacy HSV) + internal state.
 
-This module implements the truthful red-light pipeline described in the demo plan:
+Under ``FRIGATE_VLM_BRIDGE`` + Gemini, the pipeline gates HSV violation emits;
+Gemini decides ``red_light_violation``. ``traffic_light_state`` is purged from
+the honest catalog and must not be published as a rules event (state stays
+internal for debug only).
 
-  * A zone with behavior ``traffic_light_color`` defines the ROI of the traffic
-    light. Its color (red / green / amber) is classified by HSV thresholds and
-    smoothed over N frames to avoid flicker. A ``traffic_light_state`` event is
-    emitted whenever the stable state changes.
-  * A zone with behavior ``red_light_observation`` is the intersection/stop area.
-    When the camera's stable light state is ``red`` AND a vehicle is *moving*
-    inside this zone, a ``red_light_violation`` event is emitted for that
-    specific vehicle (so ANPR / plate linking can target the offender).
-
-All polygons received here are expected normalized (0..1) like the rest of the
-spatial config; they are scaled to frame pixels internally.
+Zones: ``traffic_light_color`` (ROI feu) + ``red_light_observation`` (passage).
+Polygons are normalized 0..1 like the rest of the spatial config.
 """
 
 from __future__ import annotations
@@ -186,9 +180,7 @@ class TrafficLightEngine:
         prev_stable = self._stable_state.get(camera_id)
         if new_state != prev_stable:
             self._stable_state[camera_id] = new_state
-            events.append(
-                self._make_state_event(camera_id, new_state, timestamp)
-            )
+            # traffic_light_state purged from honest catalog — state kept internally only.
 
         # 2) Red-light synergy: moving vehicle in observation zone while red.
         # Require BOTH stable history and current-frame raw classification as red

@@ -717,6 +717,8 @@ func (o *Orchestrator) buildSpatialConfig(ctx context.Context, orgID, cameraID u
 		// Parse the rich behavior config; fall back to legacy zone_kind.
 		behavior, behaviorConfig := parseZoneBehavior(z.BehaviorConfig, z.ZoneKind)
 		zoneList = append(zoneList, map[string]interface{}{
+			"id":               z.ID.String(),
+			"uuid":             z.ID.String(),
 			"zone_id":          z.Name,
 			"name":             z.Name,
 			"zone_kind":        z.ZoneKind,

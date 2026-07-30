@@ -39,7 +39,6 @@ def main() -> None:
     if isinstance(rows, dict):
         rows = rows.get("items", [])
     types = [
-        "traffic_light_state",
         "red_light_violation",
         "speeding",
         "line_cross",

@@ -105,7 +105,7 @@ export default function LiveView() {
               <p className="text-xs text-cv-muted">
                 {t(
                   'liveView.detectionOverlayHintFrigate',
-                  'Cadres IA : overlay natif Frigate (live) ou SSE go2rtc (démo).',
+                  'Cadres : overlay Frigate (live média) ou SSE YOLO CitéVision (go2rtc). Frigate ne calcule pas la vitesse métier ni le jugement cabine Gemini.',
                 )}
               </p>
               <button

@@ -711,6 +711,10 @@ export const aiHealthApi = {
       face_loaded?: string;
       plate_loaded?: string;
       ffmpeg_available?: string;
+      gemini_enabled?: string;
+      gemini_configured?: string;
+      gemini_model?: string;
+      gemini_reachable?: string;
     }>('/ai-engine/health', { baseURL: '' }),
 };
 

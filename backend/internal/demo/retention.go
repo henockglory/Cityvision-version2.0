@@ -78,11 +78,10 @@ func (s *Service) purgeExpiredDemo(ctx context.Context, orgID uuid.UUID, cutoff 
 
 // demoViolationEventTypes are the high-value events backing the demo rules. They
 // are protected from the count-based trim so real violations stay visible in the
-// live feed even when noisy heuristic events (fighting, vehicle_stopped, …) flood
-// the table.
+// live feed even when noisy non-demo events flood the table.
 var demoViolationEventTypes = []string{
 	"speeding", "red_light_violation", "seatbelt_violation",
-	"phone_use_violation", "line_cross", "traffic_light_state",
+	"phone_use_violation", "line_cross",
 }
 
 func (s *Service) trimDemoEventsTotal(ctx context.Context, orgID uuid.UUID) error {

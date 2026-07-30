@@ -126,7 +126,7 @@ class PaddleOcrPlateBackend(PaddleOcrBackend):
 
 
 class PlateIdentityEngine:
-    """ANPR with watchlist matching."""
+    """ANPR with watchlist matching (PaddleOCR or Gemini OCR)."""
 
     def __init__(self, backend: PaddleOcrBackend | None = None) -> None:
         self._backend = backend or PaddleOcrPlateBackend()
@@ -136,6 +136,24 @@ class PlateIdentityEngine:
         self._frame_counter = 0
         self._last_plate: dict[tuple[str, int], tuple[str, float, float]] = {}
         self._cache_ttl = PLATE_TRACK_CACHE_SEC
+        self._gemini_enabled = False
+        self._vlm_queue: Any = None
+        self._frigate_bridge_active = False
+
+    def configure_gemini(self, enabled: bool, vlm_queue: Any = None) -> None:
+        self._gemini_enabled = bool(enabled) and vlm_queue is not None
+        self._vlm_queue = vlm_queue if self._gemini_enabled else None
+        if self._gemini_enabled:
+            logger.info("PlateIdentityEngine: Gemini OCR primary (Paddle short-circuited)")
+
+    def set_frigate_bridge_active(self, active: bool) -> None:
+        """When True, Frigate zone→Gemini owns plate_ocr (skip YOLO/Paddle crop OCR)."""
+        self._frigate_bridge_active = bool(active)
+        if self._frigate_bridge_active:
+            # Gemini-only under bridge: cut local Gemini enqueue + Paddle path.
+            self._gemini_enabled = False
+            self._vlm_queue = None
+            logger.info("PlateIdentityEngine: Frigate VLM bridge owns plate_ocr (Paddle+local Gemini cut)")
 
     def load(self) -> None:
         if hasattr(self._backend, "load"):
@@ -144,6 +162,8 @@ class PlateIdentityEngine:
 
     @property
     def is_loaded(self) -> bool:
+        if self._gemini_enabled or self._frigate_bridge_active:
+            return True
         return getattr(self._backend, "is_loaded", False)
 
     def set_plates(self, entries: list[dict[str, Any]]) -> None:
@@ -199,6 +219,12 @@ class PlateIdentityEngine:
         self._frame_counter += 1
         if self._frame_counter % self._process_every_n != 0:
             return []
+        # Frigate-primary plate path owns OCR for plate_ocr zones.
+        if self._frigate_bridge_active:
+            return []
+        if self._gemini_enabled and self._vlm_queue is not None:
+            self._enqueue_gemini_plates(camera_id, frame, tracks, timestamp)
+            return []
         if not getattr(self._backend, "is_loaded", False):
             return []
 
@@ -249,37 +275,10 @@ class PlateIdentityEngine:
                 if not plate.text:
                     continue
                 self._remember_plate(camera_id, int(track_id), plate.text, plate.confidence)
-                status = self._match_plate(plate.text)
-                event_type = "plate_unknown"
-                severity = "info"
-                if status == "blocked":
-                    event_type = "plate_blocked"
-                    severity = "critical"
-                elif status == "allowed":
-                    event_type = "plate_allowed"
-                    severity = "info"
-
-                # Normalized vehicle bbox so the consumer can draw/crop reliably.
-                norm_bbox = norm
-                base_meta = {
-                    "plate_number": plate.text,
-                    "plate_confidence": plate.confidence,
-                    "status": status,
-                }
-                events.append({
-                    "event_id": str(uuid.uuid4()),
-                    "camera_id": camera_id,
-                    "event_type": event_type,
-                    "timestamp": timestamp,
-                    "severity": severity,
-                    "track_id": track_id,
-                    "class_name": t.get("class_name"),
-                    # plate_number exposed at ROOT so rules-engine / evidence read it reliably.
-                    "plate_number": plate.text,
-                    "plate_confidence": plate.confidence,
-                    "bbox": norm_bbox,
-                    "metadata": base_meta,
-                })
+                events.append(self._plate_event(
+                    camera_id, timestamp, track_id, t.get("class_name"),
+                    plate.text, plate.confidence, norm,
+                ))
                 events.append({
                     "event_id": str(uuid.uuid4()),
                     "camera_id": camera_id,
@@ -290,13 +289,111 @@ class PlateIdentityEngine:
                     "class_name": t.get("class_name"),
                     "plate_number": plate.text,
                     "plate_confidence": plate.confidence,
-                    "bbox": norm_bbox,
+                    "bbox": norm,
                     "metadata": {
                         "plate_number": plate.text,
                         "plate_confidence": plate.confidence,
+                        "detection_method": "paddle_ocr",
                     },
                 })
         return events
+
+    def _enqueue_gemini_plates(
+        self,
+        camera_id: str,
+        frame: np.ndarray,
+        tracks: list[dict],
+        timestamp: str,
+    ) -> None:
+        from citevision_ai.vlm.queue import VlmJob
+
+        h, w = frame.shape[:2]
+        budget = MAX_PLATES_PER_FRAME
+        for t in tracks:
+            if budget <= 0:
+                break
+            if t.get("class_name") not in VEHICLE_CLASSES:
+                continue
+            b = t.get("bbox") or {}
+            track_id = t.get("track_id", -1)
+            norm = normalize_bbox(b, w, h)
+            if not norm:
+                continue
+            rear = bbox_rear_plate_region(norm)
+            x1 = max(0, int(rear["x"] * w))
+            y1 = max(0, int(rear["y"] * h))
+            x2 = min(w, int((rear["x"] + rear["width"]) * w))
+            y2 = min(h, int((rear["y"] + rear["height"]) * h))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            crop = frame[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+            ok, buf = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            if not ok:
+                continue
+            budget -= 1
+            skeleton = {
+                "event_id": str(uuid.uuid4()),
+                "camera_id": camera_id,
+                "event_type": "plate_detected",
+                "event": "plate_detected",
+                "timestamp": timestamp,
+                "track_id": track_id,
+                "class_name": t.get("class_name"),
+                "bbox": norm,
+                "severity": "info",
+                "metadata": {
+                    "detection_method": "gemini_ocr",
+                    "bridge_source": "yolo_crop",
+                },
+            }
+            self._vlm_queue.try_enqueue(
+                VlmJob(
+                    jpeg=buf.tobytes(),
+                    rule="plate_ocr",
+                    min_confidence=0.35,
+                    event_skeleton=skeleton,
+                )
+            )
+
+    def _plate_event(
+        self,
+        camera_id: str,
+        timestamp: str,
+        track_id: Any,
+        class_name: Any,
+        text: str,
+        confidence: float,
+        norm: dict[str, float],
+    ) -> dict[str, Any]:
+        status = self._match_plate(text)
+        event_type = "plate_unknown"
+        severity = "info"
+        if status == "blocked":
+            event_type = "plate_blocked"
+            severity = "critical"
+        elif status == "allowed":
+            event_type = "plate_allowed"
+            severity = "info"
+        return {
+            "event_id": str(uuid.uuid4()),
+            "camera_id": camera_id,
+            "event_type": event_type,
+            "timestamp": timestamp,
+            "severity": severity,
+            "track_id": track_id,
+            "class_name": class_name,
+            "plate_number": text,
+            "plate_confidence": confidence,
+            "bbox": norm,
+            "metadata": {
+                "plate_number": text,
+                "plate_confidence": confidence,
+                "status": status,
+                "detection_method": "paddle_ocr",
+            },
+        }
 
     def _match_plate(self, plate: str) -> str:
         for entry in self._plates:

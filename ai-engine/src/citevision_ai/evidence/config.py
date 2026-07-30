@@ -7,11 +7,15 @@ EVIDENCE_WORTHY_TYPES = frozenset({
     "loitering",
     "line_cross",
     "face_detected",
+    "face_unknown",
+    "face_watchlist_match",
     "plate_detected",
+    "seatbelt_violation",
+    "phone_use_violation",
+    "red_light_violation",
+    "speeding",
     "zone_absence",
     "intrusion",
-    "running",
-    "crowd_gathering",
 })
 
 CLIP_DURATION_SEC = 6

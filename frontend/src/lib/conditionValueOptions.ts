@@ -38,35 +38,31 @@ type EventHonesty =
   | 'requires_model'
   | 'requires_ocr'
   | 'requires_face'
+  | 'requires_external'
   | 'heuristic_partial'
   | 'deprecated_alias'
   | 'not_emitted';
 
 const EVENT_HONESTY: Record<string, EventHonesty> = {
-  // Core geometry / YOLO path — routinely emitted
+  // Core geometry / Frigate path — routinely emitted
   zone_enter: 'emitted',
   zone_exit: 'emitted',
   line_cross: 'emitted',
   loitering: 'emitted',
   dwell_time_exceeded: 'emitted',
   speeding: 'emitted',
-  red_light_violation: 'heuristic_partial',
-  seatbelt_violation: 'requires_model',
-  phone_use_violation: 'requires_model',
-  phone_driving: 'deprecated_alias',
   object_abandoned: 'emitted',
-  object_appeared: 'heuristic_partial',
+  // Frigate → Gemini semantic decisions (partial until validate_rule)
+  red_light_violation: 'requires_external',
+  seatbelt_violation: 'requires_external',
+  phone_use_violation: 'requires_external',
   plate_detected: 'requires_ocr',
   plate_blocked: 'requires_ocr',
   plate_watchlist_match: 'requires_ocr',
-  face_watchlist_match: 'requires_face',
+  face_watchlist_match: 'requires_external',
   face_recognized: 'requires_face',
-  // Heuristic / thin demos — deprioritize
-  running: 'heuristic_partial',
-  fighting: 'not_emitted',
-  falling: 'not_emitted',
-  crowd_gathering: 'heuristic_partial',
-  crowd_dispersion: 'heuristic_partial',
+  face_detected: 'requires_external',
+  face_unknown: 'requires_external',
 };
 
 const HONESTY_GROUP_FR: Record<EventHonesty, string> = {
@@ -74,6 +70,7 @@ const HONESTY_GROUP_FR: Record<EventHonesty, string> = {
   requires_model: 'Nécessite modèle ONNX',
   requires_ocr: 'Nécessite ANPR / OCR',
   requires_face: 'Nécessite InsightFace',
+  requires_external: 'Nécessite Gemini VLM ou modèle local',
   heuristic_partial: 'Partiel / heuristique',
   deprecated_alias: 'Alias déprécié',
   not_emitted: 'Non émis (ne pas utiliser)',
@@ -84,6 +81,7 @@ const HONESTY_GROUP_EN: Record<EventHonesty, string> = {
   requires_model: 'Requires ONNX model',
   requires_ocr: 'Requires ANPR / OCR',
   requires_face: 'Requires InsightFace',
+  requires_external: 'Requires Gemini VLM or local model',
   heuristic_partial: 'Partial / heuristic',
   deprecated_alias: 'Deprecated alias',
   not_emitted: 'Not emitted (do not use)',
@@ -94,6 +92,7 @@ const HONESTY_SORT: Record<EventHonesty, number> = {
   requires_model: 1,
   requires_ocr: 2,
   requires_face: 3,
+  requires_external: 3,
   heuristic_partial: 4,
   deprecated_alias: 5,
   not_emitted: 6,
@@ -118,14 +117,23 @@ export function buildEventTypeOptions(lang: 'fr' | 'en'): ExplanatoryOption[] {
               ? 'Not emitted by the live AI pipeline — catalog honesty [A.4].'
               : 'Non émis par le pipeline IA live — honnêteté catalogue [A.4].'
             : lang === 'en'
-              ? 'Prefer phone_use_violation (ONNX). phone_driving is the old heuristic alias.'
-              : 'Préférer phone_use_violation (ONNX). phone_driving = ancien alias heuristique.';
+              ? 'Removed from honest Frigate+Gemini catalog.'
+              : 'Retiré du catalogue honnête Frigate+Gemini.';
         opt.howItWorks = `${opt.howItWorks} — ${opt.disabledReason}`;
-      } else if (h === 'requires_model' || h === 'requires_ocr' || h === 'requires_face') {
+      } else if (
+        h === 'requires_model' ||
+        h === 'requires_ocr' ||
+        h === 'requires_face' ||
+        h === 'requires_external'
+      ) {
         const hint =
           lang === 'en'
-            ? `Requires loaded module (${h.replace('requires_', '')}). Activation blocked if /health missing.`
-            : `Nécessite module chargé (${h.replace('requires_', '')}). Activation bloquée si absent de /health.`;
+            ? h === 'requires_external'
+              ? 'Requires Gemini VLM (GEMINI_ENABLED) or local cabin/face module — partial until validated.'
+              : `Requires loaded module (${h.replace('requires_', '')}). Activation blocked if /health missing.`
+            : h === 'requires_external'
+              ? 'Nécessite Gemini VLM (GEMINI_ENABLED) ou module cabine/face local — partial jusqu’à validation.'
+              : `Nécessite module chargé (${h.replace('requires_', '')}). Activation bloquée si absent de /health.`;
         opt.howItWorks = `${opt.howItWorks} — ${hint}`;
       } else if (h === 'heuristic_partial') {
         const hint =

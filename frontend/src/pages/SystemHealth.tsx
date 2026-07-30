@@ -210,12 +210,34 @@ export default function SystemHealth() {
               hint={!m.loaded ? (m.notes || t('systemHealth.modelMissingHint')) : undefined}
             />
           ))}
+          <ModelRow
+            icon={Eye}
+            label={t('systemHealth.geminiVlm', 'Gemini VLM (Frigate→juge)')}
+            loaded={Boolean(aiHealth?.geminiConfigured)}
+            hint={
+              aiHealth?.geminiConfigured
+                ? `${aiHealth.geminiModel || 'gemini-3.6-flash'}${aiHealth.frigateVlmBridge ? ' · VLM bridge ON' : ''}${aiHealth.frigateSpeedBridge ? ' · Speed bridge ON' : ''}`
+                : t(
+                    'systemHealth.geminiHint',
+                    'GEMINI_ENABLED + clé .env WSL. Avec FRIGATE_VLM_BRIDGE : Frigate détecte · Gemini juge. Catalogue partial jusqu’à validate_rule.',
+                  )
+            }
+          />
         </div>
       ) : (
         <div id="health-ai-models" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <ModelRow icon={Cpu} label="YOLO (détection)" loaded={aiHealth?.yolo ?? false} hint={t('systemHealth.modelMissingHint')} />
           <ModelRow icon={Eye} label={t('systemHealth.faceModel', 'Reconnaissance faciale')} loaded={aiHealth?.face ?? false} hint={t('systemHealth.modelMissingHint')} />
           <ModelRow icon={ScanLine} label={t('systemHealth.plateModel', 'Lecture de plaques (OCR)')} loaded={aiHealth?.plate ?? false} hint={t('systemHealth.modelMissingHint')} />
+          <ModelRow
+            icon={Eye}
+            label={t('systemHealth.geminiVlm', 'Gemini VLM (Frigate→juge)')}
+            loaded={Boolean(aiHealth?.geminiConfigured)}
+            hint={t(
+              'systemHealth.geminiHint',
+              'GEMINI_ENABLED + FRIGATE_VLM_BRIDGE : Frigate détecte · Gemini juge.',
+            )}
+          />
         </div>
       )}
       {modelPack?.install_command && (

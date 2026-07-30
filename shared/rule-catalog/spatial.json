@@ -153,10 +153,21 @@
         "op": "RULE_SET_OR",
         "children": []
       },
-      "actions": [{ "type": "counter", "config": { "delta": 1 } }]
+      "actions": [
+        {
+          "type": "counter",
+          "config": {
+            "delta": 1
+          }
+        }
+      ]
     },
     "role_summary_fr": "Compte +1 dès qu'un des événements du groupe correspond (logique OU).",
-    "deployment_scopes": ["national", "enterprise", "domestic"],
+    "deployment_scopes": [
+      "national",
+      "enterprise",
+      "domestic"
+    ],
     "partial_status": "full"
   },
   {
@@ -170,14 +181,27 @@
         "op": "RULE_SET",
         "min_matches": 2,
         "window_seconds": 300,
-        "key_fields": ["camera_id", "track_id"],
+        "key_fields": [
+          "camera_id",
+          "track_id"
+        ],
         "member_event_types": [],
         "children": []
       },
-      "actions": [{ "type": "counter", "config": { "delta": 1 } }]
+      "actions": [
+        {
+          "type": "counter",
+          "config": {
+            "delta": 1
+          }
+        }
+      ]
     },
     "role_summary_fr": "Compte +1 quand au moins N types d'événements distincts ont été observés dans la fenêtre.",
-    "deployment_scopes": ["national", "enterprise"],
+    "deployment_scopes": [
+      "national",
+      "enterprise"
+    ],
     "partial_status": "full"
   }
 ]

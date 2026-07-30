@@ -93,11 +93,37 @@ func healthTrue(health map[string]string, key string) bool {
 
 func evaluateReady(requires []string, health map[string]string) (bool, string) {
 	var missing []string
+	bridgeOn := healthTrue(health, "frigate_vlm_bridge")
+	geminiOK := healthTrue(health, "gemini_configured") || healthTrue(health, "gemini_enabled")
+	paddleOK := healthTrue(health, "plate_loaded")
 	for _, req := range requires {
 		if strings.HasPrefix(req, "model:") {
 			model := strings.TrimPrefix(req, "model:")
-			if !healthTrue(health, modelHealthKey(model)) {
+			key := modelHealthKey(model)
+			// Under Frigate+Gemini bridge, cabin ONNX models are not required.
+			if bridgeOn && geminiOK && (model == "seatbelt" || model == "driver_phone" || model == "phone") {
+				continue
+			}
+			if !healthTrue(health, key) {
 				missing = append(missing, "modèle "+model)
+			}
+			continue
+		}
+		if req == "external:frigate_vlm_bridge" {
+			if !bridgeOn {
+				missing = append(missing, "FRIGATE_VLM_BRIDGE")
+			}
+			continue
+		}
+		if req == "external:gemini" {
+			if !geminiOK {
+				missing = append(missing, "GEMINI_ENABLED+clé")
+			}
+			continue
+		}
+		if req == "external:gemini_or_paddle" {
+			if !geminiOK && !paddleOK {
+				missing = append(missing, "Gemini ou PaddleOCR")
 			}
 			continue
 		}

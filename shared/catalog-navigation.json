@@ -146,25 +146,6 @@
     }
   ],
   "templates": {
-    "tpl-running": {
-      "megaId": "people",
-      "subId": "gestures",
-      "searchTags": [
-        "comportement",
-        "geste",
-        "personne",
-        "course"
-      ]
-    },
-    "tpl-crowd-gathering": {
-      "megaId": "people",
-      "subId": "crowd",
-      "searchTags": [
-        "foule",
-        "attroupement",
-        "rassemblement"
-      ]
-    },
     "tpl-crowd-density": {
       "megaId": "people",
       "subId": "crowd",
@@ -219,43 +200,6 @@
         "contre-sens"
       ]
     },
-    "tpl-tailgating": {
-      "megaId": "places",
-      "subId": "passages",
-      "searchTags": [
-        "tailgating",
-        "suivi",
-        "accès"
-      ]
-    },
-    "tpl-falling": {
-      "megaId": "people",
-      "subId": "gestures",
-      "searchTags": [
-        "comportement",
-        "geste",
-        "chute",
-        "detectee"
-      ]
-    },
-    "tpl-fighting": {
-      "megaId": "people",
-      "subId": "gestures",
-      "searchTags": [
-        "bagarre",
-        "violence"
-      ]
-    },
-    "tpl-queue-forming": {
-      "megaId": "people",
-      "subId": "crowd",
-      "searchTags": [
-        "foule",
-        "attroupement",
-        "formation",
-        "file"
-      ]
-    },
     "tpl-bottleneck": {
       "megaId": "people",
       "subId": "crowd",
@@ -277,48 +221,12 @@
         "eleve"
       ]
     },
-    "tpl-crowd-panic": {
-      "megaId": "people",
-      "subId": "crowd",
-      "searchTags": [
-        "foule",
-        "attroupement",
-        "panique"
-      ]
-    },
-    "tpl-group-formation": {
-      "megaId": "people",
-      "subId": "crowd",
-      "searchTags": [
-        "foule",
-        "attroupement",
-        "suspect"
-      ]
-    },
-    "tpl-fight": {
-      "megaId": "objects",
-      "subId": "emergencies",
-      "searchTags": [
-        "bagarre",
-        "violence"
-      ]
-    },
     "tpl-accident": {
       "megaId": "objects",
       "subId": "emergencies",
       "searchTags": [
         "accident",
         "collision"
-      ]
-    },
-    "tpl-vandalism": {
-      "megaId": "objects",
-      "subId": "emergencies",
-      "searchTags": [
-        "urgence",
-        "incident",
-        "vandalisme",
-        "suspect"
       ]
     },
     "tpl-face-watchlist": {
@@ -349,36 +257,6 @@
         "industriel",
         "usine",
         "site"
-      ]
-    },
-    "tpl-crouch-detected": {
-      "megaId": "people",
-      "subId": "gestures",
-      "searchTags": [
-        "comportement",
-        "geste",
-        "position",
-        "accroupie"
-      ]
-    },
-    "tpl-climb-detected": {
-      "megaId": "people",
-      "subId": "gestures",
-      "searchTags": [
-        "comportement",
-        "geste",
-        "escalade",
-        "detectee"
-      ]
-    },
-    "tpl-carry-object": {
-      "megaId": "people",
-      "subId": "gestures",
-      "searchTags": [
-        "comportement",
-        "geste",
-        "transport",
-        "objet"
       ]
     },
     "tpl-intrusion-after-hours": {
@@ -567,17 +445,6 @@
         "abandonne"
       ]
     },
-    "tpl-object-appeared": {
-      "megaId": "people",
-      "subId": "presence",
-      "searchTags": [
-        "présence",
-        "zone",
-        "errance",
-        "apparition",
-        "objet"
-      ]
-    },
     "tpl-object-disappeared": {
       "megaId": "people",
       "subId": "presence",
@@ -622,27 +489,6 @@
         "zone",
         "errance",
         "immobilite",
-        "prolongee"
-      ]
-    },
-    "tpl-erratic-motion": {
-      "megaId": "people",
-      "subId": "presence",
-      "searchTags": [
-        "présence",
-        "zone",
-        "errance",
-        "mouvement",
-        "erratique"
-      ]
-    },
-    "tpl-wandering": {
-      "megaId": "people",
-      "subId": "presence",
-      "searchTags": [
-        "présence",
-        "zone",
-        "errance",
         "prolongee"
       ]
     },
@@ -805,16 +651,6 @@
         "sombre"
       ]
     },
-    "tpl-behavior-anomaly": {
-      "megaId": "people",
-      "subId": "gestures",
-      "searchTags": [
-        "comportement",
-        "geste",
-        "anomalie",
-        "comportementale"
-      ]
-    },
     "tpl-crowd-count": {
       "megaId": "people",
       "subId": "crowd",
@@ -953,14 +789,6 @@
         "km/h",
         "arret",
         "brusque"
-      ]
-    },
-    "tpl-running-person": {
-      "megaId": "people",
-      "subId": "gestures",
-      "searchTags": [
-        "course",
-        "fuite"
       ]
     },
     "tpl-traffic-jam": {

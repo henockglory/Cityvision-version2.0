@@ -29,7 +29,7 @@ RULES = [
     },
     {
         "name": "Démo · Téléphone au volant",
-        "event_types": ["phone_use_violation", "phone_driving", "driver_phone"],
+        "event_types": ["phone_use_violation"],
         "key": "phone",
     },
     {

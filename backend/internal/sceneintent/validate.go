@@ -49,14 +49,21 @@ func ValidateDefinition(
 	zb, _ := capabilities.LoadZoneBehaviors(sharedPath)
 
 	// Model requirements for cabin / ANPR templates.
+	// Prefer Frigate+Gemini bridge over local ONNX cabin models when health says so.
+	bridgeGemini := healthOK(health, "frigate_vlm_bridge") &&
+		(healthOK(health, "gemini_configured") || healthOK(health, "gemini_enabled"))
 	switch tpl {
 	case "tpl-phone-driving":
-		if !healthOK(health, "driver_phone_model_loaded") {
-			errs = append(errs, "modèle téléphone (driver_phone) non chargé — activez la zone phone_use et vérifiez /health")
+		if bridgeGemini {
+			// Ready via FRIGATE_VLM_BRIDGE + GEMINI — no driver_phone ONNX required.
+		} else if !healthOK(health, "driver_phone_model_loaded") {
+			errs = append(errs, "modèle téléphone (driver_phone) non chargé — activez FRIGATE_VLM_BRIDGE+GEMINI ou vérifiez /health")
 		}
 	case "tpl-seatbelt":
-		if !healthOK(health, "seatbelt_model_loaded") {
-			errs = append(errs, "modèle ceinture (seatbelt) non chargé — vérifiez /health")
+		if bridgeGemini {
+			// Ready via FRIGATE_VLM_BRIDGE + GEMINI — no seatbelt ONNX required.
+		} else if !healthOK(health, "seatbelt_model_loaded") {
+			errs = append(errs, "modèle ceinture (seatbelt) non chargé — activez FRIGATE_VLM_BRIDGE+GEMINI ou vérifiez /health")
 		}
 	}
 
@@ -66,6 +73,9 @@ func ValidateDefinition(
 		}
 		if zoneName == "" {
 			warns = append(warns, "feu rouge : zone d'observation (red_light_observation) non liée dans bindings.zone_name")
+		}
+		if !bridgeGemini {
+			warns = append(warns, "feu rouge : FRIGATE_VLM_BRIDGE+GEMINI recommandé (décision couleur) — HSV local est gated sous bridge")
 		}
 	}
 

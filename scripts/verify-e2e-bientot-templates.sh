@@ -67,36 +67,17 @@ else
   fail "tpl-theft-composite"
 fi
 
-# --- tpl-fight ---
-if e2e_create_rule "E2E fight" "tpl-fight" "fight_detected" "{}" "" "person" 3 && \
-   E2E_POLL_SECS=120 e2e_wait_event "fight_detected" "person" ""; then
-  pass "tpl-fight live"
-elif e2e_pytest_fallback "tpl-fight" "tests/test_bientot_detectors.py::test_fight_detected_emitted"; then
-  :
-else
-  fail "tpl-fight"
-fi
+# --- tpl-fight — PURGED ---
+echo "[SKIP] tpl-fight / fight_detected (purged)"
+pass "tpl-fight skipped (purged)"
 
-# --- tpl-crowd-panic ---
-if e2e_create_rule "E2E crowd panic" "tpl-crowd-panic" "crowd_panic" "{}" "" "any" 3 && \
-   E2E_POLL_SECS=120 e2e_wait_event "crowd_panic" "" ""; then
-  pass "tpl-crowd-panic live"
-elif e2e_pytest_fallback "tpl-crowd-panic" "tests/test_bientot_detectors.py::test_crowd_panic_emitted"; then
-  :
-else
-  fail "tpl-crowd-panic"
-fi
+# --- tpl-crowd-panic — PURGED ---
+echo "[SKIP] tpl-crowd-panic (purged)"
+pass "tpl-crowd-panic skipped (purged)"
 
-# --- tpl-vandalism (running + person_count metadata) ---
-if e2e_create_rule "E2E vandalism" "tpl-vandalism" "running" \
-   '{"extra_conditions":[{"op":"contains","field":"metadata.behavior","value":"rapid_activity"}]}' "" "person" 3 && \
-   E2E_POLL_SECS=120 e2e_wait_event "running" "person" ""; then
-  pass "tpl-vandalism live"
-elif e2e_pytest_fallback "tpl-vandalism" "tests/test_bientot_detectors.py::test_rapid_activity_behavior"; then
-  :
-else
-  fail "tpl-vandalism"
-fi
+# --- tpl-vandalism (running) — PURGED ---
+echo "[SKIP] tpl-vandalism / running (purged)"
+pass "tpl-vandalism skipped (purged)"
 
 # --- tpl-accident (SEQUENCE) ---
 RULE_DEF=$(python3 <<PY
@@ -205,8 +186,8 @@ else
   fail "tpl-multi-zone"
 fi
 
-# --- ML routier : red light, seatbelt, phone ---
-for spec in "tpl-red-light:red_light_violation:car" "tpl-seatbelt:seatbelt_violation:car" "tpl-phone-driving:phone_driving:car"; do
+# --- ML routier : red light, seatbelt, phone (canonical Gemini events) ---
+for spec in "tpl-red-light:red_light_violation:car" "tpl-seatbelt:seatbelt_violation:car" "tpl-phone-driving:phone_use_violation:car"; do
   IFS=: read -r tpl evt cls <<< "$spec"
   if e2e_create_rule "E2E $tpl" "$tpl" "$evt" "{}" "" "$cls" 3 && \
      E2E_POLL_SECS=120 e2e_wait_event "$evt" "$cls" ""; then

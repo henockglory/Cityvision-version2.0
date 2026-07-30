@@ -12,6 +12,23 @@ import numpy as np
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle"}
 
 
+def _gemini_enabled() -> bool:
+    raw = (
+        os.environ.get("GEMINI_ENABLED")
+        or os.environ.get("CITEVISION_GEMINI_ENABLED")
+        or ""
+    ).strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    try:
+        from citevision_ai.config import settings
+        return bool(settings.gemini_enabled and (settings.gemini_api_key or "").strip())
+    except Exception:
+        return False
+
+
 def _point_in_polygon(px: float, py: float, polygon: list[dict]) -> bool:
     n = len(polygon)
     inside = False
@@ -62,6 +79,10 @@ class RoadEnforcementEngine:
         h, w = frame.shape[:2]
         red_active = False if disable_red_light else self._detect_red_signal(frame)
         events: list[dict[str, Any]] = []
+        # When Gemini VLM is on, cabin heuristics must never emit (plan fail-closed).
+        if _gemini_enabled():
+            disable_phone = True
+            disable_seatbelt = True
         # Cabin cameras (seatbelt/phone zones) see the driver as "person", not vehicle.
         _cabin = any(
             str(z.get("behavior", "")) in ("seatbelt", "phone_use", "driver_cabin")
@@ -108,19 +129,8 @@ class RoadEnforcementEngine:
                     )
 
             if not disable_phone and self._detect_phone_near_ear(frame, bbox):
-                if self._allow_emit(camera_id, tid, "phone_driving"):
-                    events.append(
-                        self._make_event(
-                            camera_id,
-                            "phone_driving",
-                            vehicle,
-                            timestamp,
-                            {
-                                "detection_method": "skin_blob_cabin",
-                                "confidence": 0.69,
-                            },
-                        )
-                    )
+                # phone_driving purged — use Frigate→Gemini phone_use_violation only.
+                pass
 
         return events
 

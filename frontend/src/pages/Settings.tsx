@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Shield, Bell, UserSearch, User, Building2, Lock, Mail, Sparkles, Palette, Film, Route, HardDrive,
+  Shield, Bell, UserSearch, User, Building2, Lock, Mail, Sparkles, Palette, Film, Route, HardDrive, Eye,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -11,6 +11,7 @@ import SurveillanceListsPanel from '@/components/settings/SurveillanceListsPanel
 import EvidenceDefaultsPanel from '@/components/settings/EvidenceDefaultsPanel';
 import AlertRoutingPanel from '@/components/settings/AlertRoutingPanel';
 import SystemPanel from '@/components/settings/SystemPanel';
+import IntegrationsStatusPanel from '@/components/settings/IntegrationsStatusPanel';
 import InfoTip from '@/components/ui/InfoTip';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { authApi, orgApi, type OrganizationSettings } from '@/api/client';
@@ -318,7 +319,8 @@ export default function Settings() {
           )}
 
           {tab === 'integrations' && org && (
-            <Section title="Email (SMTP)" icon={Mail}>
+            <>
+              <Section title="Email (SMTP)" icon={Mail}>
               <Field label="Hôte" value={org.smtp_config?.host ?? ''} onChange={(v) => setOrg({ ...org, smtp_config: { ...org.smtp_config, host: v } })} />
               <Field label="Port" value={String(org.smtp_config?.port ?? 587)} onChange={(v) => setOrg({ ...org, smtp_config: { ...org.smtp_config, port: Number(v) } })} type="number" />
               <Field label="Utilisateur" value={org.smtp_config?.user ?? ''} onChange={(v) => setOrg({ ...org, smtp_config: { ...org.smtp_config, user: v } })} />
@@ -352,7 +354,16 @@ export default function Settings() {
                 <button type="button" onClick={() => void testSmtp()} className="cv-btn-secondary">Tester</button>
                 <button type="button" onClick={() => void saveOrg()} className="cv-btn-primary">Enregistrer SMTP</button>
               </div>
-            </Section>
+              </Section>
+              <Section title="Vision & médias (lecture seule)" icon={Eye}>
+                <p className="text-sm text-cv-muted mb-3">
+                  Statuts pilotés par l&apos;environnement WSL (<code className="text-xs">.env</code>) —
+                  pas de clé API dans l&apos;UI. Frigate = plan média (clips / tracks) ;
+                  la vitesse métier et le feu restent CitéVision ; cabine = Gemini VLM ou ONNX.
+                </p>
+                <IntegrationsStatusPanel />
+              </Section>
+            </>
           )}
 
           {tab === 'evidence' && (

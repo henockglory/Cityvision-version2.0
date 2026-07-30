@@ -27,7 +27,7 @@
       "sha256": "122017a4ec26b2fcf9a1c885f46f8a8293e66b73d9f6cf690b64ea1f732d74e5",
       "license": "See Safe-Drive-TN/State-farm-detection on Hugging Face",
       "size_mb": 6,
-      "notes": "Export ONNX depuis Safe-Drive-TN/State-farm-detection (Ultralytics YOLOv8-cls). Script: build-secondary-models.sh"
+      "notes": "Export ONNX depuis Safe-Drive-TN/State-farm-detection (Ultralytics YOLOv8-cls). Script: build-secondary-models.sh. Non requis pour health si GEMINI_ENABLED=true."
     },
     {
       "id": "seatbelt",
@@ -43,7 +43,7 @@
       "sha256": "624be2813d19c64eb61c0ba1ba8b15da0da8a547ff46d52579966ec86119ff44",
       "license": "Apache-2.0 (Ultralytics)",
       "size_mb": 12,
-      "notes": "Entraîné/exporté via build-secondary-models.sh (Roboflow seat_belt ou poids publics)."
+      "notes": "Entraîné/exporté via build-secondary-models.sh. Non requis pour health si GEMINI_ENABLED=true."
     }
   ]
 }

@@ -38,7 +38,10 @@
       "capability": "real",
       "human_description_fr": "Détecte les entrées/sorties d'objets dans la zone (YOLO + suivi). Comportement par défaut.",
       "human_description_en": "Detects objects entering/leaving the zone (YOLO + tracking). Default behavior.",
-      "emits": ["zone_enter", "zone_exit"],
+      "emits": [
+        "zone_enter",
+        "zone_exit"
+      ],
       "requires": [],
       "config_fields": []
     },
@@ -51,11 +54,27 @@
       "capability": "real",
       "human_description_fr": "Alerte si une cible reste dans la zone au-delà d'une durée donnée.",
       "human_description_en": "Alerts when a target stays in the zone beyond a duration.",
-      "emits": ["zone_presence"],
+      "emits": [
+        "zone_presence"
+      ],
       "requires": [],
       "config_fields": [
-        { "key": "duration_seconds", "type": "number", "label_fr": "Durée (s)", "label_en": "Duration (s)", "default": 5, "min": 1, "max": 86400 },
-        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "person" }
+        {
+          "key": "duration_seconds",
+          "type": "number",
+          "label_fr": "Durée (s)",
+          "label_en": "Duration (s)",
+          "default": 5,
+          "min": 1,
+          "max": 86400
+        },
+        {
+          "key": "class_filter",
+          "type": "class_filter",
+          "label_fr": "Objet surveillé",
+          "label_en": "Watched object",
+          "default": "person"
+        }
       ]
     },
     {
@@ -67,7 +86,9 @@
       "capability": "real",
       "human_description_fr": "Toute entrée dans la zone est traitée comme une intrusion critique.",
       "human_description_en": "Any entry into the zone is treated as a critical breach.",
-      "emits": ["perimeter_breach"],
+      "emits": [
+        "perimeter_breach"
+      ],
       "requires": [],
       "config_fields": []
     },
@@ -80,7 +101,9 @@
       "capability": "real",
       "human_description_fr": "Toute sortie par cette zone est traitée comme une sortie non autorisée.",
       "human_description_en": "Any exit through this zone is treated as unauthorized.",
-      "emits": ["unauthorized_exit"],
+      "emits": [
+        "unauthorized_exit"
+      ],
       "requires": [],
       "config_fields": []
     },
@@ -93,10 +116,20 @@
       "capability": "real",
       "human_description_fr": "Alerte si un véhicule reste immobile dans la zone au-delà d'une durée.",
       "human_description_en": "Alerts when a vehicle stays immobile in the zone beyond a duration.",
-      "emits": ["vehicle_stopped"],
+      "emits": [
+        "vehicle_stopped"
+      ],
       "requires": [],
       "config_fields": [
-        { "key": "duration_seconds", "type": "number", "label_fr": "Durée (s)", "label_en": "Duration (s)", "default": 120, "min": 5, "max": 86400 }
+        {
+          "key": "duration_seconds",
+          "type": "number",
+          "label_fr": "Durée (s)",
+          "label_en": "Duration (s)",
+          "default": 120,
+          "min": 5,
+          "max": 86400
+        }
       ]
     },
     {
@@ -108,10 +141,18 @@
       "capability": "real",
       "human_description_fr": "Compte les objets qui franchissent (utilisé sur les lignes). Le compteur est persistant et visible.",
       "human_description_en": "Counts objects that cross (used on lines). Counter is persistent and visible.",
-      "emits": ["line_cross"],
+      "emits": [
+        "line_cross"
+      ],
       "requires": [],
       "config_fields": [
-        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet compté", "label_en": "Counted object", "default": "car" }
+        {
+          "key": "class_filter",
+          "type": "class_filter",
+          "label_fr": "Objet compté",
+          "label_en": "Counted object",
+          "default": "car"
+        }
       ]
     },
     {
@@ -120,13 +161,21 @@
       "applies_to": "zone",
       "label_fr": "Couleur du feu (rouge/vert/orange)",
       "label_en": "Traffic light color (red/green/amber)",
-      "capability": "real",
-      "human_description_fr": "Analyse la couleur du feu de circulation dans la zone (HSV + lissage temporel). Sert de référence pour le franchissement au rouge.",
-      "human_description_en": "Analyzes the traffic-light color inside the zone (HSV + temporal smoothing). Reference state for red-light running.",
-      "emits": ["traffic_light_state"],
+      "capability": "partial",
+      "human_description_fr": "Zone ROI du feu (crop pour Gemini). L'alerte est red_light_violation via Frigate véhicule∩observation + Gemini (FRIGATE_VLM_BRIDGE).",
+      "human_description_en": "Traffic-light ROI (crop for Gemini). Alerts are red_light_violation via Frigate vehicle∩observation + Gemini (FRIGATE_VLM_BRIDGE).",
+      "emits": [],
       "requires": [],
       "config_fields": [
-        { "key": "stable_frames", "type": "number", "label_fr": "Frames de stabilité", "label_en": "Stability frames", "default": 3, "min": 1, "max": 30 }
+        {
+          "key": "stable_frames",
+          "type": "number",
+          "label_fr": "Frames de stabilité",
+          "label_en": "Stability frames",
+          "default": 3,
+          "min": 1,
+          "max": 30
+        }
       ]
     },
     {
@@ -135,14 +184,34 @@
       "applies_to": "zone",
       "label_fr": "Observation feu rouge",
       "label_en": "Red-light observation",
-      "capability": "real",
-      "human_description_fr": "Zone d'observation : un véhicule en mouvement ici pendant que le feu (zone traffic_light_color) est rouge déclenche une infraction + ANPR ciblé.",
-      "human_description_en": "Observation zone: a moving vehicle here while the light (traffic_light_color zone) is red triggers a violation + targeted ANPR.",
-      "emits": ["red_light_violation"],
-      "requires": ["zone:traffic_light_color"],
+      "capability": "partial",
+      "human_description_fr": "Zone de passage : véhicule Frigate ici + jugement Gemini sur le feu (zone traffic_light_color) → red_light_violation.",
+      "human_description_en": "Crossing zone: Frigate vehicle here + Gemini light judgment (traffic_light_color ROI) → red_light_violation.",
+      "emits": [
+        "red_light_violation"
+      ],
+      "requires": [
+        "zone:traffic_light_color",
+        "external:frigate_vlm_bridge",
+        "external:gemini"
+      ],
       "config_fields": [
-        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "car" },
-        { "key": "min_speed_px", "type": "number", "label_fr": "Mouvement min (px/frame)", "label_en": "Min motion (px/frame)", "default": 2, "min": 0, "max": 100 }
+        {
+          "key": "class_filter",
+          "type": "class_filter",
+          "label_fr": "Objet surveillé",
+          "label_en": "Watched object",
+          "default": "car"
+        },
+        {
+          "key": "min_speed_px",
+          "type": "number",
+          "label_fr": "Mouvement min (px/frame)",
+          "label_en": "Min motion (px/frame)",
+          "default": 2,
+          "min": 0,
+          "max": 100
+        }
       ]
     },
     {
@@ -151,14 +220,33 @@
       "applies_to": "zone",
       "label_fr": "Mesure de vitesse (distance réelle)",
       "label_en": "Speed measurement (real distance)",
-      "capability": "real",
-      "human_description_fr": "Mesure la vitesse d'un véhicule via le temps d'entrée→sortie de la zone. Calibrez chaque segment du polygone (distance réelle en mètres entre deux points consécutifs) pour convertir le parcours en mètres au sol.",
-      "human_description_en": "Measures vehicle speed from zone entry→exit time. Calibrate each polygon segment (real metres between consecutive vertices) to convert the path to ground metres.",
-      "emits": ["speeding"],
-      "requires": ["polygon:edge_distances"],
+      "capability": "partial",
+      "human_description_fr": "Mesure la vitesse via Frigate (polygone 4 points + distances m syncées) quand FRIGATE_SPEED_BRIDGE=1 ; sinon zone_speed local CiteVision. Limite légale = speed_limit_kmh (CiteVision), pas Frigate. Partial tant que 4 points + distances non validés.",
+      "human_description_en": "Speed via Frigate (4-point polygon + synced metre distances) when FRIGATE_SPEED_BRIDGE=1; else local CiteVision zone_speed. Legal limit = speed_limit_kmh (CiteVision), not Frigate. Partial until 4 points + distances validated.",
+      "emits": [
+        "speeding"
+      ],
+      "requires": [
+        "polygon:edge_distances",
+        "polygon:four_points_for_frigate"
+      ],
       "config_fields": [
-        { "key": "speed_limit_kmh", "type": "number", "label_fr": "Limite (km/h)", "label_en": "Limit (km/h)", "default": 20, "min": 1, "max": 300 },
-        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "car" }
+        {
+          "key": "speed_limit_kmh",
+          "type": "number",
+          "label_fr": "Limite (km/h)",
+          "label_en": "Limit (km/h)",
+          "default": 20,
+          "min": 1,
+          "max": 300
+        },
+        {
+          "key": "class_filter",
+          "type": "class_filter",
+          "label_fr": "Objet surveillé",
+          "label_en": "Watched object",
+          "default": "car"
+        }
       ]
     },
     {
@@ -168,42 +256,85 @@
       "label_fr": "Habitacle conducteur (téléphone + ceinture)",
       "label_en": "Driver cabin (phone + seatbelt)",
       "capability": "partial",
-      "human_description_fr": "Analyse l'habitacle des véhicules dans la zone avec les modèles téléphone au volant et port de ceinture. Preuves cabine via ring/live (pas Frigate track). Nécessite les modèles secondaires.",
-      "human_description_en": "Analyzes vehicle cabins with phone + seatbelt models. Cabin evidence uses ring/live (not Frigate track). Requires secondary models.",
-      "emits": ["phone_use_violation", "seatbelt_violation"],
-      "requires": ["model:driver_phone", "model:seatbelt"],
+      "human_description_fr": "Frigate détecte le véhicule dans la zone syncée ; Gemini VLM juge ceinture/téléphone (FRIGATE_VLM_BRIDGE + GEMINI_*). Preuves Frigate si frigate_event_id. Partial jusqu'à validate_rule.",
+      "human_description_en": "Frigate detects the vehicle in the synced zone; Gemini VLM judges seatbelt/phone (FRIGATE_VLM_BRIDGE + GEMINI_*). Frigate evidence when frigate_event_id present. Partial until validate_rule.",
+      "emits": [
+        "phone_use_violation",
+        "seatbelt_violation"
+      ],
+      "requires": [
+        "external:frigate_vlm_bridge",
+        "external:gemini"
+      ],
       "config_fields": [
-        { "key": "confidence", "type": "number", "label_fr": "Confiance min", "label_en": "Min confidence", "default": 0.45, "min": 0.05, "max": 0.99, "step": 0.05 }
+        {
+          "key": "confidence",
+          "type": "number",
+          "label_fr": "Confiance min",
+          "label_en": "Min confidence",
+          "default": 0.45,
+          "min": 0.05,
+          "max": 0.99,
+          "step": 0.05
+        }
       ]
     },
     {
       "id": "phone_use",
       "group": "driver",
       "applies_to": "zone",
-      "label_fr": "Téléphone au volant (modèle)",
-      "label_en": "Phone use while driving (model)",
+      "label_fr": "Téléphone au volant (VLM / modèle)",
+      "label_en": "Phone use while driving (VLM / model)",
       "capability": "partial",
-      "human_description_fr": "Recadre l'habitacle du véhicule et exécute un modèle dédié de détection de distraction au téléphone. Preuves cabine via ring/live (pas Frigate track). Nécessite le modèle secondaire installé.",
-      "human_description_en": "Crops the vehicle cabin and runs a dedicated phone-distraction model. Cabin evidence uses ring/live (not Frigate track). Requires the secondary model installed.",
-      "emits": ["phone_use_violation"],
-      "requires": ["model:driver_phone"],
+      "human_description_fr": "Frigate véhicule∩zone → crop → Gemini VLM (FRIGATE_VLM_BRIDGE). Partial jusqu'à validation bout-en-bout.",
+      "human_description_en": "Frigate vehicle∩zone → crop → Gemini VLM (FRIGATE_VLM_BRIDGE). Partial until end-to-end validated.",
+      "emits": [
+        "phone_use_violation"
+      ],
+      "requires": [
+        "external:frigate_vlm_bridge",
+        "external:gemini"
+      ],
       "config_fields": [
-        { "key": "confidence", "type": "number", "label_fr": "Confiance min", "label_en": "Min confidence", "default": 0.45, "min": 0.05, "max": 0.99, "step": 0.05 }
+        {
+          "key": "confidence",
+          "type": "number",
+          "label_fr": "Confiance min",
+          "label_en": "Min confidence",
+          "default": 0.45,
+          "min": 0.05,
+          "max": 0.99,
+          "step": 0.05
+        }
       ]
     },
     {
       "id": "seatbelt",
       "group": "driver",
       "applies_to": "zone",
-      "label_fr": "Ceinture non portée (modèle)",
-      "label_en": "Seatbelt not worn (model)",
+      "label_fr": "Ceinture non portée (VLM / modèle)",
+      "label_en": "Seatbelt not worn (VLM / model)",
       "capability": "partial",
-      "human_description_fr": "Recadre l'habitacle et exécute un modèle dédié de détection du port de la ceinture. Preuves cabine via ring/live (pas Frigate track). Nécessite le modèle secondaire installé.",
-      "human_description_en": "Crops the cabin and runs a dedicated seatbelt model. Cabin evidence uses ring/live (not Frigate track). Requires the secondary model installed.",
-      "emits": ["seatbelt_violation"],
-      "requires": ["model:seatbelt"],
+      "human_description_fr": "Frigate véhicule∩zone → crop → Gemini VLM (FRIGATE_VLM_BRIDGE). Partial jusqu'à validation bout-en-bout.",
+      "human_description_en": "Frigate vehicle∩zone → crop → Gemini VLM (FRIGATE_VLM_BRIDGE). Partial until end-to-end validated.",
+      "emits": [
+        "seatbelt_violation"
+      ],
+      "requires": [
+        "external:frigate_vlm_bridge",
+        "external:gemini"
+      ],
       "config_fields": [
-        { "key": "confidence", "type": "number", "label_fr": "Confiance min", "label_en": "Min confidence", "default": 0.45, "min": 0.05, "max": 0.99, "step": 0.05 }
+        {
+          "key": "confidence",
+          "type": "number",
+          "label_fr": "Confiance min",
+          "label_en": "Min confidence",
+          "default": 0.45,
+          "min": 0.05,
+          "max": 0.99,
+          "step": 0.05
+        }
       ]
     },
     {
@@ -212,13 +343,23 @@
       "applies_to": "zone",
       "label_fr": "Lecture de plaque (ANPR)",
       "label_en": "License plate OCR (ANPR)",
-      "capability": "real",
-      "human_description_fr": "Active la lecture de plaque (PaddleOCR) pour les véhicules dans cette zone. Nécessite le module ANPR installé.",
-      "human_description_en": "Enables license plate OCR (PaddleOCR) for vehicles in this zone. Requires the ANPR module installed.",
-      "emits": ["plate_detected"],
-      "requires": ["model:paddleocr"],
+      "capability": "partial",
+      "human_description_fr": "Lecture de plaque via Gemini OCR quand GEMINI_ENABLED (Frigate crop si bridge ON) ; sinon PaddleOCR local. Partial jusqu'à validate_rule. Frigate LPR = zoom média seulement.",
+      "human_description_en": "Plate OCR via Gemini when GEMINI_ENABLED (Frigate crop if bridge ON); else local PaddleOCR. Partial until validate_rule. Frigate LPR is media zoom only.",
+      "emits": [
+        "plate_detected"
+      ],
+      "requires": [
+        "external:gemini_or_paddle"
+      ],
       "config_fields": [
-        { "key": "class_filter", "type": "class_filter", "label_fr": "Objet surveillé", "label_en": "Watched object", "default": "car" }
+        {
+          "key": "class_filter",
+          "type": "class_filter",
+          "label_fr": "Objet surveillé",
+          "label_en": "Watched object",
+          "default": "car"
+        }
       ]
     },
     {
@@ -230,10 +371,20 @@
       "capability": "real",
       "human_description_fr": "Alerte si une personne reste/erre dans la zone au-delà d'un seuil.",
       "human_description_en": "Alerts if a person lingers in the zone beyond a threshold.",
-      "emits": ["loitering"],
+      "emits": [
+        "loitering"
+      ],
       "requires": [],
       "config_fields": [
-        { "key": "duration_seconds", "type": "number", "label_fr": "Durée (s)", "label_en": "Duration (s)", "default": 30, "min": 5, "max": 86400 }
+        {
+          "key": "duration_seconds",
+          "type": "number",
+          "label_fr": "Durée (s)",
+          "label_en": "Duration (s)",
+          "default": 30,
+          "min": 5,
+          "max": 86400
+        }
       ]
     },
     {
@@ -245,10 +396,20 @@
       "capability": "partial",
       "human_description_fr": "Détecte un objet (sac, valise…) immobile dans la zone — heuristique cycle de vie d'objet.",
       "human_description_en": "Detects a static object (bag, suitcase…) in the zone — object lifecycle heuristic.",
-      "emits": ["object_abandoned"],
+      "emits": [
+        "object_abandoned"
+      ],
       "requires": [],
       "config_fields": [
-        { "key": "duration_seconds", "type": "number", "label_fr": "Durée (s)", "label_en": "Duration (s)", "default": 60, "min": 5, "max": 86400 }
+        {
+          "key": "duration_seconds",
+          "type": "number",
+          "label_fr": "Durée (s)",
+          "label_en": "Duration (s)",
+          "default": 60,
+          "min": 5,
+          "max": 86400
+        }
       ]
     }
   ]

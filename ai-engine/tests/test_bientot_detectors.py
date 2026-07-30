@@ -17,14 +17,16 @@ from citevision_ai.road_enforcement.detector import RoadEnforcementEngine
 
 
 def test_fight_detected_emitted():
+    """Purged: fighting / fight_detected must not be emitted."""
     gen = EventGenerator()
     from citevision_ai.behavior.heuristics import BehaviorSignal
 
     sig = BehaviorSignal(1, BehaviorLabel.FIGHTING, 0.8, {"overlap_ratio": 0.4})
     events = gen.emit_behavior_signals("cam-1", [sig], "2026-06-16T12:00:00+00:00")
     types = {e["event_type"] for e in events}
-    assert "fighting" in types
-    assert "fight_detected" in types
+    assert "fighting" not in types
+    assert "fight_detected" not in types
+    assert events == []
 
 
 def test_rapid_activity_behavior():
@@ -33,9 +35,15 @@ def test_rapid_activity_behavior():
     sig = bh.evaluate_track(5, history, "person")
     assert sig.label == BehaviorLabel.RAPID_ACTIVITY
     assert sig.details.get("behavior") == "rapid_activity"
+    # Emit path must drop purged cinematic labels.
+    events = EventGenerator().emit_behavior_signals(
+        "cam-1", [sig], "2026-06-16T12:00:00+00:00",
+    )
+    assert events == []
 
 
 def test_crowd_panic_emitted():
+    """Purged: crowd_panic stub returns no events."""
     analyzer = SceneAnalyzer(emit_interval=0)
     persons_dense = [
         {"track_id": i, "class_name": "person", "bbox": {"x": 100 + i * 5, "y": 100, "width": 40, "height": 80}}
@@ -50,7 +58,7 @@ def test_crowd_panic_emitted():
     for _ in range(4):
         _, batch = analyzer.analyze("cam1", sparse, 1920 * 1080)
         events.extend(batch)
-    assert any(e.get("event_type") == "crowd_panic" for e in events)
+    assert not any(e.get("event_type") == "crowd_panic" for e in events)
 
 
 def test_vehicle_stopped_has_zone_and_duration():
@@ -103,7 +111,8 @@ def test_road_enforcement_seatbelt_violation():
     assert any(e["event_type"] == "seatbelt_violation" for e in events)
 
 
-def test_road_enforcement_phone_driving():
+def test_road_enforcement_phone_use_violation():
+    """phone_driving purged — local HSV must not emit phone_driving; Gemini owns phone_use_violation."""
     engine = RoadEnforcementEngine()
     frame = np.full((480, 640, 3), 120, dtype=np.uint8)
     x, y, w, h = 200, 250, 180, 120
@@ -115,4 +124,4 @@ def test_road_enforcement_phone_driving():
     hsv[:, :, 2] = 180
     frame[y : y + h // 3, x : x + int(w * 0.35)] = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
     events = engine.process_frame("cam1", frame, [_synthetic_vehicle_track()], "2026-06-16T12:00:00+00:00")
-    assert any(e["event_type"] == "phone_driving" for e in events)
+    assert not any(e["event_type"] == "phone_driving" for e in events)

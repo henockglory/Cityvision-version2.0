@@ -115,6 +115,66 @@ func TestObservationModeSkipsInAggregateLogic(t *testing.T) {
 }
 
 
+func TestUpsertCameraSpeedDistancesFourPoints(t *testing.T) {
+	poly := json.RawMessage(`[{"x":0.1,"y":0.1},{"x":0.5,"y":0.1},{"x":0.5,"y":0.5},{"x":0.1,"y":0.5}]`)
+	camID := uuid.New()
+	cam := &models.Camera{ID: camID}
+	zoneID := uuid.New()
+	bcfg := json.RawMessage(`{"behavior":"speed_measurement","config":{"speed_limit_kmh":50,"edge_distances_m":[10,12,11,13]}}`)
+	zones := []models.Zone{{
+		ID: zoneID, CameraID: &camID, Polygon: poly, BehaviorConfig: bcfg,
+	}}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{
+		RecordEnabled: true, SnapshotsEnabled: true,
+	}, zones)
+	zn := ZoneID(zoneID.String())
+	ze, ok := cc.Entry.Zones[zn]
+	if !ok {
+		t.Fatalf("missing zone %s", zn)
+	}
+	if ze.Distances != "10.000,12.000,11.000,13.000" {
+		t.Fatalf("distances: got %q", ze.Distances)
+	}
+}
+
+func TestUpsertCameraSpeedNoDistancesWhenNotFourPoints(t *testing.T) {
+	poly := json.RawMessage(`[{"x":0.1,"y":0.2},{"x":0.5,"y":0.2},{"x":0.5,"y":0.6}]`)
+	camID := uuid.New()
+	cam := &models.Camera{ID: camID}
+	zoneID := uuid.New()
+	bcfg := json.RawMessage(`{"behavior":"speed_measurement","config":{"edge_distances_m":[10,12,11]}}`)
+	zones := []models.Zone{{
+		ID: zoneID, CameraID: &camID, Polygon: poly, BehaviorConfig: bcfg,
+	}}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{}, zones)
+	zn := ZoneID(zoneID.String())
+	ze := cc.Entry.Zones[zn]
+	if ze.Distances != "" {
+		t.Fatalf("expected empty distances for non-4-point zone, got %q", ze.Distances)
+	}
+}
+
+func TestUpsertCameraTracksPersonForCabinBehavior(t *testing.T) {
+	poly := json.RawMessage(`[{"x":0.1,"y":0.2},{"x":0.5,"y":0.2},{"x":0.5,"y":0.6}]`)
+	camID := uuid.New()
+	cam := &models.Camera{ID: camID}
+	zoneID := uuid.New()
+	bcfg := json.RawMessage(`{"behavior":"seatbelt","config":{}}`)
+	zones := []models.Zone{{
+		ID: zoneID, CameraID: &camID, Polygon: poly, BehaviorConfig: bcfg,
+	}}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{}, zones)
+	found := false
+	for _, lab := range cc.Entry.Objects.Track {
+		if lab == "person" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected person in objects.track, got %v", cc.Entry.Objects.Track)
+	}
+}
+
 func TestUpsertCameraStrictFrigateForcesRecord(t *testing.T) {
 	t.Setenv("FRIGATE_EVIDENCE", "true")
 	t.Setenv("FRIGATE_DEMO_MODE", "true")

@@ -28,7 +28,9 @@ detect:
   enabled: true
   fps: 10
 
-# Vehicle tracking for evidence correlation (zone_speed uses ai-engine; Frigate supplies media).
+# Vehicle tracking for evidence correlation + Frigate-primary bridges.
+# Speed estimation uses zone distances (synced from CiteVision when 4-point + edge_distances_m).
+# ui.unit_system must be metric for km/h estimates.
 objects:
   track:
     - car
@@ -36,6 +38,9 @@ objects:
     - motorcycle
     - bus
     - van
+
+ui:
+  unit_system: metric
 
 lpr:
   enabled: false

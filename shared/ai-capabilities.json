@@ -80,20 +80,6 @@
         "yolo"
       ]
     },
-    "running": {
-      "label_fr": "Course détectée",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "bbox",
-        "confidence",
-        "track_id"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
     "object_abandoned": {
       "label_fr": "Objet abandonné",
       "required_config": [
@@ -176,31 +162,6 @@
       ],
       "proof_fields": [
         "person_count"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "crowd_gathering": {
-      "label_fr": "Rassemblement",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "person_count"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "tailgating": {
-      "label_fr": "Passage groupé (tailgating)",
-      "required_config": [
-        "camera",
-        "line"
-      ],
-      "proof_fields": [
-        "track_id"
       ],
       "models": [
         "yolo"
@@ -307,19 +268,6 @@
         "brightness"
       ],
       "models": []
-    },
-    "behavior_anomaly": {
-      "label_fr": "Comportement anormal",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "behavior"
-      ],
-      "models": [
-        "yolo"
-      ]
     },
     "person_vehicle_proximity": {
       "label_fr": "Proximité personne-véhicule",
@@ -429,72 +377,6 @@
         "yolo"
       ]
     },
-    "falling": {
-      "label_fr": "Chute détectée",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "bbox",
-        "confidence",
-        "track_id"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "fighting": {
-      "label_fr": "Bagarre détectée",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "overlap"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "queue_forming": {
-      "label_fr": "Formation de file",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "aligned_count"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "erratic_motion": {
-      "label_fr": "Mouvement erratique",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "direction_changes"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "wandering": {
-      "label_fr": "Errance prolongée",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "path_ratio"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
     "zone_presence": {
       "label_fr": "Présence dans une zone",
       "required_config": [
@@ -526,19 +408,6 @@
         "yolo"
       ]
     },
-    "object_appeared": {
-      "label_fr": "Apparition d'objet",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "class_name"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
     "object_disappeared": {
       "label_fr": "Disparition d'objet",
       "required_config": [
@@ -547,45 +416,6 @@
       "proof_fields": [
         "track_id",
         "class_name"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "crouch_detected": {
-      "label_fr": "Position accroupie",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "bbox",
-        "track_id"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "climb_detected": {
-      "label_fr": "Escalade détectée",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "vertical_delta"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "carry_detected": {
-      "label_fr": "Transport d'objet",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "object_class"
       ],
       "models": [
         "yolo"
@@ -605,56 +435,6 @@
         "yolo"
       ]
     },
-    "crowd_panic": {
-      "label_fr": "Panique de foule",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "person_count"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "fight_detected": {
-      "label_fr": "Bagarre détectée",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "person_count"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "rapid_activity": {
-      "label_fr": "Activité rapide",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "behavior"
-      ],
-      "models": [
-        "yolo"
-      ]
-    },
-    "traffic_light_state": {
-      "label_fr": "État du feu de circulation",
-      "required_config": [
-        "camera",
-        "zone"
-      ],
-      "proof_fields": [
-        "state"
-      ],
-      "models": [
-        "opencv"
-      ]
-    },
     "red_light_violation": {
       "label_fr": "Franchissement feu rouge",
       "required_config": [
@@ -672,20 +452,6 @@
     },
     "seatbelt_violation": {
       "label_fr": "Ceinture non portée",
-      "required_config": [
-        "camera"
-      ],
-      "proof_fields": [
-        "track_id",
-        "confidence"
-      ],
-      "models": [
-        "yolo",
-        "opencv"
-      ]
-    },
-    "phone_driving": {
-      "label_fr": "Téléphone au volant",
       "required_config": [
         "camera"
       ],
@@ -1002,21 +768,6 @@
       },
       "role_summary_fr": "Alerte si une personne reste dans la zone plus longtemps que le seuil défini. Détecte la présence prolongée ou le stationnement."
     },
-    "tpl-running": {
-      "supported": true,
-      "capability_id": "running",
-      "human_description": "Détecte une personne qui court dans le champ.",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      }
-    },
     "tpl-object-abandoned": {
       "supported": true,
       "capability_id": "object_abandoned",
@@ -1241,42 +992,6 @@
         ]
       },
       "role_summary_fr": "Alerte quand le nombre de personnes visibles dépasse le seuil de foule configuré."
-    },
-    "tpl-crowd-gathering": {
-      "supported": true,
-      "capability_id": "crowd_gathering",
-      "human_description": "Rassemblement de personnes détecté.",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      }
-    },
-    "tpl-tailgating": {
-      "supported": true,
-      "capability_id": "tailgating",
-      "human_description": "Passage groupé détecté (tailgating).",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          },
-          {
-            "key": "line_name",
-            "type": "line",
-            "label": "Ligne",
-            "required": true
-          }
-        ]
-      }
     },
     "tpl-wrong-way": {
       "supported": true,
@@ -1961,35 +1676,6 @@
       },
       "role_summary_fr": "Déclenche quand un véhicule franchit un seuil de vitesse défini — configurable par voie."
     },
-    "tpl-running-person": {
-      "supported": true,
-      "capability_id": "running",
-      "human_description": "Personne en course rapide dépassant le seuil de vitesse.",
-      "tutorial": "Ajustez le seuil selon la distance caméra-sujet.",
-      "prerequisites": [
-        "Modèle YOLO actif"
-      ],
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          },
-          {
-            "key": "speed_kmh",
-            "type": "number",
-            "label": "Seuil course (km/h)",
-            "required": true,
-            "min": 5,
-            "max": 40,
-            "default": 15
-          }
-        ]
-      },
-      "role_summary_fr": "Alerte quand une personne court — signal d'urgence ou de poursuite dans un espace protégé."
-    },
     "tpl-flow-rate": {
       "supported": false,
       "capability_id": "crowd_count_threshold",
@@ -2017,83 +1703,6 @@
           }
         ]
       }
-    },
-    "tpl-falling": {
-      "supported": true,
-      "capability_id": "falling",
-      "human_description": "Détecte une chute ou posture couchée (heuristique bbox).",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      }
-    },
-    "tpl-fighting": {
-      "supported": true,
-      "capability_id": "fighting",
-      "human_description": "Détecte une bagarre par chevauchement de silhouettes.",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      }
-    },
-    "tpl-queue-forming": {
-      "supported": true,
-      "capability_id": "queue_forming",
-      "human_description": "Formation de file d'attente (alignement spatial).",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      }
-    },
-    "tpl-erratic-motion": {
-      "supported": false,
-      "capability_id": "erratic_motion",
-      "human_description": "Mouvement erratique avec changements de direction répétés.",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      },
-      "role_summary_fr": "Détecte les mouvements désordonnés ou imprévisibles — comportement inhabituel dans un lieu public."
-    },
-    "tpl-wandering": {
-      "supported": true,
-      "capability_id": "wandering",
-      "human_description": "Errance prolongée (ratio trajet/déplacement élevé).",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      },
-      "role_summary_fr": "Alerte quand une personne déambule sans trajectoire claire — peut signaler une personne désorientée."
     },
     "tpl-zone-presence": {
       "supported": true,
@@ -2169,22 +1778,6 @@
       },
       "role_summary_fr": "Alerte si la zone est vide alors qu'elle devrait être occupée (ex. poste de garde abandonné)."
     },
-    "tpl-object-appeared": {
-      "supported": true,
-      "capability_id": "object_appeared",
-      "human_description": "Apparition d'un nouvel objet dans la scène.",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      },
-      "role_summary_fr": "Alerte quand un nouvel objet apparaît dans la zone — dépôt non autorisé."
-    },
     "tpl-object-disappeared": {
       "supported": true,
       "capability_id": "object_disappeared",
@@ -2200,51 +1793,6 @@
         ]
       },
       "role_summary_fr": "Détecte la disparition d'un objet présent dans la scène — vol ou déplacement suspect."
-    },
-    "tpl-crouch-detected": {
-      "supported": true,
-      "capability_id": "crouch_detected",
-      "human_description": "Position accroupie détectée (ratio bbox).",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      }
-    },
-    "tpl-climb-detected": {
-      "supported": true,
-      "capability_id": "climb_detected",
-      "human_description": "Escalade détectée (mouvement vertical rapide).",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      }
-    },
-    "tpl-carry-object": {
-      "supported": true,
-      "capability_id": "carry_detected",
-      "human_description": "Personne transportant un objet à proximité.",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      }
     },
     "tpl-theft-composite": {
       "supported": true,
@@ -2301,33 +1849,6 @@
       },
       "role_summary_fr": "Détecte un scénario d'accident : arrêt brusque suivi d'immobilisation prolongée — SEQUENCE."
     },
-    "tpl-vandalism": {
-      "supported": false,
-      "capability_id": "crowd_gathering",
-      "human_description": "Vandalisme suspect : groupe + activité rapide.",
-      "tutorial": "Seuil foule + détection running/rapid_activity (métadonnée behavior).",
-      "prerequisites": [
-        "Modèle YOLO actif"
-      ],
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          },
-          {
-            "key": "crowd_threshold",
-            "type": "number",
-            "label": "Seuil personnes",
-            "required": true,
-            "default": 2
-          }
-        ]
-      },
-      "role_summary_fr": "Détecte les comportements de dégradation : présence longue + mouvement erratique."
-    },
     "tpl-identity-correlation": {
       "supported": true,
       "capability_id": "correlation_match",
@@ -2354,53 +1875,6 @@
         ]
       },
       "role_summary_fr": "Corrèle détections faciales et plaques pour identifier un profil combiné."
-    },
-    "tpl-crowd-panic": {
-      "supported": true,
-      "capability_id": "crowd_panic",
-      "human_description": "Dispersion rapide et soudaine d'un groupe.",
-      "tutorial": "Heuristique dispersion foule — seuil personnes + spread centroid.",
-      "prerequisites": [
-        "Modèle YOLO actif"
-      ],
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          },
-          {
-            "key": "crowd_threshold",
-            "type": "number",
-            "label": "Seuil personnes",
-            "required": true,
-            "default": 3
-          }
-        ]
-      },
-      "role_summary_fr": "Détecte un mouvement de panique dans la foule : dispersion brusque et rapide."
-    },
-    "tpl-fight": {
-      "supported": true,
-      "capability_id": "fight_detected",
-      "human_description": "Mouvements violents multi-personnes.",
-      "tutorial": "Chevauchement bbox personnes — émet fight_detected et fighting.",
-      "prerequisites": [
-        "Modèle YOLO actif"
-      ],
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      },
-      "role_summary_fr": "Détecte les comportements de combat ou altercation entre personnes — IA comportementale."
     },
     "tpl-wrong-direction": {
       "supported": true,
@@ -2675,22 +2149,6 @@
       },
       "role_summary_fr": "Véhicule avec plaque inconnue en zone restreinte"
     },
-    "tpl-behavior-anomaly": {
-      "supported": false,
-      "capability_id": "behavior_anomaly",
-      "human_description": "Comportement anormal générique (fallback heuristiques).",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          }
-        ]
-      },
-      "role_summary_fr": "Détecte les comportements hors norme par rapport à l'activité normale de la scène."
-    },
     "tpl-intrusion": {
       "supported": true,
       "capability_id": "zone_enter",
@@ -2789,29 +2247,6 @@
         ]
       },
       "role_summary_fr": "Détecte l'utilisation d'un téléphone au volant via modèle ONNX — event_type phone_use_violation."
-    },
-    "tpl-group-formation": {
-      "supported": true,
-      "capability_id": "crowd_gathering",
-      "human_description": "Attroupement suspect (seuil foule + durée).",
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          },
-          {
-            "key": "crowd_threshold",
-            "type": "number",
-            "label": "Seuil personnes",
-            "required": true,
-            "default": 5
-          }
-        ]
-      },
-      "role_summary_fr": "Formation rapide d'un groupe dense"
     },
     "tpl-stopped-traffic": {
       "supported": true,

@@ -212,6 +212,58 @@ class Settings(BaseSettings):
     plate_stop_conf: float = 0.88
     plate_min_conf: float = 0.35
 
+    # Gemini 3.6 Flash VLM (cabin / face judgments — async only; never blocks RTSP)
+    gemini_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "gemini_enabled", "GEMINI_ENABLED", "CITEVISION_GEMINI_ENABLED",
+        ),
+    )
+    gemini_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "gemini_api_key", "GEMINI_API_KEY", "CITEVISION_GEMINI_API_KEY",
+        ),
+    )
+    gemini_model: str = Field(
+        default="gemini-3.1-flash-lite",
+        validation_alias=AliasChoices(
+            "gemini_model", "GEMINI_MODEL", "CITEVISION_GEMINI_MODEL",
+        ),
+    )
+    gemini_timeout: float = Field(
+        default=20.0,
+        validation_alias=AliasChoices(
+            "gemini_timeout", "GEMINI_TIMEOUT", "CITEVISION_GEMINI_TIMEOUT",
+        ),
+    )
+    gemini_queue_size: int = Field(
+        default=32,
+        validation_alias=AliasChoices(
+            "gemini_queue_size", "GEMINI_QUEUE_SIZE", "CITEVISION_GEMINI_QUEUE_SIZE",
+        ),
+    )
+    # Frigate-primary bridges (1a / 2b) — kill-switches
+    frigate_vlm_bridge: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "frigate_vlm_bridge", "FRIGATE_VLM_BRIDGE", "CITEVISION_FRIGATE_VLM_BRIDGE",
+        ),
+    )
+    frigate_speed_bridge: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "frigate_speed_bridge", "FRIGATE_SPEED_BRIDGE", "CITEVISION_FRIGATE_SPEED_BRIDGE",
+        ),
+    )
+    frigate_bridge_snapshot_wait_sec: float = Field(
+        default=25.0,
+        validation_alias=AliasChoices(
+            "frigate_bridge_snapshot_wait_sec",
+            "FRIGATE_BRIDGE_SNAPSHOT_WAIT_SEC",
+        ),
+    )
+
     postgres_host: str = "localhost"
     postgres_port: int = 5433
     redis_host: str = "localhost"

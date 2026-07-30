@@ -385,6 +385,11 @@ export interface AiModelStatus {
   cuda: boolean;
   ffmpeg: boolean;
   reachable: boolean;
+    geminiConfigured?: boolean;
+  geminiEnabled?: boolean;
+  geminiModel?: string;
+  frigateVlmBridge?: boolean;
+  frigateSpeedBridge?: boolean;
 }
 
 export function useAiHealth() {
@@ -401,6 +406,11 @@ export function useAiHealth() {
           cuda: data.yolo_cuda === 'true',
           ffmpeg: data.ffmpeg_available === 'true',
           reachable: true,
+          geminiConfigured: data.gemini_configured === 'true',
+          geminiEnabled: data.gemini_enabled === 'true',
+          geminiModel: data.gemini_model || '',
+          frigateVlmBridge: data.frigate_vlm_bridge === 'true',
+          frigateSpeedBridge: data.frigate_speed_bridge === 'true',
         };
       } catch {
         return { yolo: false, face: false, plate: false, provider: 'unknown', cuda: false, ffmpeg: false, reachable: false };

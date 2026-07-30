@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# E2E famille spatial : zone_enter, zone_presence, perimeter_breach, line_cross, fighting
+# E2E famille spatial : zone_enter, zone_presence, perimeter_breach, line_cross
+# (fighting / cinematic heuristics purged from honest catalog — skipped)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/e2e/lib/common.sh
@@ -57,18 +58,9 @@ else
   fail "line_cross"
 fi
 
-# 5 fighting
-if e2e_ensure_zone "e2e-fighting" "" && \
-   E2E_POLL_SECS=120 e2e_create_rule "E2E fighting" "tpl-fighting" "fighting" '{"severity":"high"}' "e2e-fighting" "any" 3 && \
-   E2E_POLL_SECS=120 e2e_wait_event "fighting" "" "" && \
-   e2e_assert_evidence; then
-  pass "fighting + preuves"
-elif e2e_pytest_fallback "fighting" "tests/test_category_c_detectors.py::TestCategoryCHeuristics::test_fighting_detection"; then
-  :
-else
-  fail "fighting"
-fi
-
+# 5 fighting — PURGED from catalog (Frigate+Gemini honesty); skip assert
+echo "[SKIP] fighting (purged event_type — see docs/FRIGATE-GEMINI-HONEST-CATALOG.md)"
+pass "fighting skipped (purged)"
 
 # 6 loitering
 if e2e_ensure_zone "e2e-loitering" "" && \
@@ -82,29 +74,13 @@ else
   fail "loitering"
 fi
 
-# 7 crowd_gathering
-if e2e_ensure_zone "e2e-crowd" "" && \
-   e2e_create_rule "E2E crowd" "tpl-crowd-gathering" "crowd_gathering" '{"min_count":3}' "e2e-crowd" "person" 3 && \
-   E2E_POLL_SECS=120 e2e_wait_event "crowd_gathering" "person" "" && \
-   e2e_assert_evidence; then
-  pass "crowd_gathering + preuves"
-elif e2e_pytest_fallback "crowd_gathering" "tests/test_behavior.py::TestBehaviorHeuristics::test_crowd_gathering"; then
-  :
-else
-  fail "crowd_gathering"
-fi
+# 7 crowd_gathering — PURGED
+echo "[SKIP] crowd_gathering (purged event_type)"
+pass "crowd_gathering skipped (purged)"
 
-# 8 tailgating
-if e2e_ensure_zone "e2e-tailgating" "" && \
-   e2e_create_rule "E2E tailgating" "tpl-tailgating" "tailgating" "{}" "e2e-tailgating" "person" 3 && \
-   E2E_POLL_SECS=120 e2e_wait_event "tailgating" "person" "" && \
-   e2e_assert_evidence; then
-  pass "tailgating + preuves"
-elif e2e_pytest_fallback "tailgating" "tests/test_behavior.py::TestBehaviorHeuristics::test_tailgating"; then
-  :
-else
-  fail "tailgating"
-fi
+# 8 tailgating — PURGED
+echo "[SKIP] tailgating (purged event_type)"
+pass "tailgating skipped (purged)"
 
 # 9 wrong_way
 if e2e_ensure_zone "e2e-wrongway" "" && \

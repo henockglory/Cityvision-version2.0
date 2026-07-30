@@ -1,33 +1,5 @@
 [
   {
-    "id": "tpl-object-appeared",
-    "name": "Apparition d'objet",
-    "description": "Détecte l'apparition d'un nouvel objet dans la scène",
-    "category": "presence",
-    "severity": "low",
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "object_appeared"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "low"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Alerte quand un nouvel objet apparaît dans la zone — dépôt non autorisé.",
-    "deployment_scopes": [
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "full"
-  },
-  {
     "id": "tpl-object-disappeared",
     "name": "Disparition d'objet",
     "description": "Détecte la disparition d'un objet précédemment visible",

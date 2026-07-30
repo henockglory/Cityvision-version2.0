@@ -204,10 +204,11 @@ class EventGenerator:
         for signal in signals:
             if signal.label == BehaviorLabel.NORMAL:
                 continue
-            event_type = BEHAVIOR_EVENT_TYPES.get(signal.label, "behavior_anomaly")
+            event_type = BEHAVIOR_EVENT_TYPES.get(signal.label)
+            if not event_type:
+                # Purged cinematic heuristics — do not emit.
+                continue
             severity = "warning"
-            if signal.label in {BehaviorLabel.FALLING, BehaviorLabel.FIGHTING}:
-                severity = "critical"
             events.append(
                 self.emit_behavior_event(
                     camera_id,
@@ -219,22 +220,6 @@ class EventGenerator:
                     severity=severity,
                 )
             )
-            if signal.label == BehaviorLabel.FIGHTING:
-                events.append(
-                    self.emit_behavior_event(
-                        camera_id,
-                        signal.track_id,
-                        "fight_detected",
-                        signal.confidence,
-                        {
-                            "behavior": "fight_detected",
-                            "person_count": signal.details.get("overlap_ratio", 0),
-                            **signal.details,
-                        },
-                        timestamp,
-                        severity="critical",
-                    )
-                )
         return events
 
     def _track_class_name(self, camera_id: str, track_id: int, fallback: str = "unknown") -> str:
@@ -403,16 +388,8 @@ class EventGenerator:
             self._track_classes[(camera_id, tid)] = class_name
 
             if tid not in known and class_name in OBJECT_LIFECYCLE_CLASSES:
-                events.append(
-                    self._make_event(
-                        camera_id,
-                        "object_appeared",
-                        ts,
-                        tid,
-                        class_name=class_name,
-                        metadata={"class_name": class_name},
-                    )
-                )
+                # object_appeared purged — honest path is zone_enter / object_abandoned.
+                pass
 
         for tid in known - current:
             class_name = self._track_classes.get((camera_id, tid), "")

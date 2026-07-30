@@ -153,15 +153,17 @@ func healthTruthy(health map[string]string, key string) bool {
 func requiredHealthKeysForTemplate(t CatalogTemplate) []string {
 	switch t.PartialStatus {
 	case "requires_ocr":
+		// Gemini OCR under bridge also sets plate_loaded=true in /health.
 		return []string{"plate_loaded"}
 	case "requires_face_ai":
 		return []string{"face_loaded"}
 	case "requires_model":
 		switch t.ID {
-		case "tpl-phone-driving":
-			return []string{"driver_phone_model_loaded"}
-		case "tpl-seatbelt":
-			return []string{"seatbelt_model_loaded"}
+		case "tpl-phone-driving", "tpl-seatbelt":
+			// Prefer bridge+Gemini; fall back to cabin ONNX keys only when bridge off.
+			// EnrichCatalogWithHealth uses live health — accept either path via
+			// requiredHealthKeysForTemplateResolved.
+			return []string{"cabin_or_gemini_bridge"}
 		default:
 			// Unknown secondary model — block until any secondary is present is too harsh;
 			// require YOLO at minimum so activation is not claimed "ready" with zero AI.
@@ -170,6 +172,22 @@ func requiredHealthKeysForTemplate(t CatalogTemplate) []string {
 	default:
 		return nil
 	}
+}
+
+// healthSatisfies reports whether a required key is met, including Gemini bridge aliases.
+func healthSatisfies(health map[string]string, key string) bool {
+	if healthTruthy(health, key) {
+		return true
+	}
+	if key == "cabin_or_gemini_bridge" {
+		bridge := healthTruthy(health, "frigate_vlm_bridge")
+		gemini := healthTruthy(health, "gemini_configured") || healthTruthy(health, "gemini_enabled")
+		if bridge && gemini {
+			return true
+		}
+		return healthTruthy(health, "seatbelt_model_loaded") || healthTruthy(health, "driver_phone_model_loaded")
+	}
+	return false
 }
 
 // EnrichCatalogWithHealth enriches the catalog and marks activation_blocked when
@@ -227,7 +245,7 @@ func EnrichCatalogWithHealth(templates []CatalogTemplate, reg *CapabilitiesRegis
 			req := requiredHealthKeysForTemplate(t)
 			var missing []string
 			for _, k := range req {
-				if !healthTruthy(health, k) {
+				if !healthSatisfies(health, k) {
 					missing = append(missing, k)
 				}
 			}
@@ -235,7 +253,7 @@ func EnrichCatalogWithHealth(templates []CatalogTemplate, reg *CapabilitiesRegis
 				e.ActivationBlocked = true
 				e.MissingHealthKeys = missing
 				e.ActivationBlockReason = fmt.Sprintf(
-					"Modèle(s) requis non chargés (%s) — activation refusée tant que /health ne les expose pas.",
+					"Prérequis IA manquants (%s) — bridge Gemini (FRIGATE_VLM_BRIDGE+GEMINI_*) ou modèles ONNX requis.",
 					strings.Join(missing, ", "),
 				)
 			}

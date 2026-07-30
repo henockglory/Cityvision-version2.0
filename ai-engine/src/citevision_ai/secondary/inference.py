@@ -1,18 +1,14 @@
-"""Secondary ONNX inference for driver-cabin violations (phone use, seatbelt).
+"""Secondary inference for driver-cabin violations (phone use, seatbelt).
 
-For zones with behavior ``phone_use`` or ``seatbelt`` we crop the vehicle's
-bounding box (the driver cabin region), run a dedicated ONNX model, and emit
-``phone_use_violation`` / ``seatbelt_violation`` events when a *positive* class
-is detected above the configured confidence.
+Default path: crop vehicle/person bbox → secondary ONNX → emit canonical events.
+
+When ``GEMINI_ENABLED``: crop → async Gemini VLM queue → same event types
+(``phone_use_violation`` / ``seatbelt_violation``). ONNX cabin models are
+short-circuited; heuristics are disabled separately in the pipeline.
 
 Honesty guarantees:
-  * If onnxruntime is unavailable or the model file is missing, the model is
-    simply not loaded — it emits NOTHING (never a fabricated result) and the
-    health endpoint reports it as not loaded.
-  * Each emitted event carries the real model confidence and the source model id.
-
-The registry (shared/ai-models.json) declares each model's file, classes and the
-subset of ``positive_classes`` that constitute a violation.
+  * Missing ONNX / Gemini failures emit NOTHING (fail-closed).
+  * Events carry ``detection_method`` (secondary_onnx_model | gemini_vlm).
 """
 
 from __future__ import annotations
@@ -22,7 +18,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -33,6 +29,12 @@ _REPO_ROOT = _AI_ROOT.parent
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle"}
 # Cabin-camera zones (seatbelt / phone_use) analyse the driver, detected as "person".
 _CABIN_BEHAVIORS = {"seatbelt", "phone_use", "driver_cabin"}
+
+_BEHAVIOR_TO_RULES: dict[str, list[str]] = {
+    "seatbelt": ["seatbelt_violation"],
+    "phone_use": ["phone_use_violation"],
+    "driver_cabin": ["seatbelt_violation", "phone_use_violation"],
+}
 
 
 def _registry_path() -> Path:
@@ -239,6 +241,30 @@ class SecondaryInferenceEngine:
         self._process_every_n = 3
         self._cooldown: dict[tuple[str, int, str], int] = {}
         self._cooldown_frames = 45
+        self._gemini_enabled = False
+        self._vlm_queue: Any = None
+        self._bbox_ts_resolver: Callable[[], float] | None = None
+        self._frigate_bridge_active = False
+        # Gemini free-tier safe defaults (override via env if needed).
+        self._gemini_every_n = int(os.environ.get("GEMINI_PROCESS_EVERY_N", "75") or 75)
+        self._gemini_cooldown_frames = int(os.environ.get("GEMINI_COOLDOWN_FRAMES", "450") or 450)
+
+    def configure_gemini(self, enabled: bool, vlm_queue: Any = None) -> None:
+        self._gemini_enabled = bool(enabled) and vlm_queue is not None
+        self._vlm_queue = vlm_queue if self._gemini_enabled else None
+        if self._gemini_enabled:
+            logger.info("secondary cabin path: Gemini VLM (ONNX cabin short-circuited)")
+
+    def set_frigate_bridge_active(self, active: bool) -> None:
+        """When True, YOLO cabin crops are disabled (Frigate→Gemini is primary)."""
+        self._frigate_bridge_active = bool(active)
+        if self._frigate_bridge_active:
+            self._gemini_enabled = False
+            self._vlm_queue = None
+            logger.info("secondary cabin path: Frigate VLM bridge (YOLO crop cut)")
+
+    def set_bbox_ts_resolver(self, fn: Callable[[], float] | None) -> None:
+        self._bbox_ts_resolver = fn
 
     def load(self) -> None:
         self._models.clear()
@@ -267,11 +293,14 @@ class SecondaryInferenceEngine:
             return False
         for z in zones:
             b = str(z.get("behavior", ""))
-            if b in self._models or b == "driver_cabin":
-                if b == "driver_cabin" and self._cabin_models():
-                    return True
-                if b in self._models and self._models[b].is_loaded:
-                    return True
+            if b not in _CABIN_BEHAVIORS and b not in self._models:
+                continue
+            if self._gemini_enabled and b in _CABIN_BEHAVIORS:
+                return True
+            if b == "driver_cabin" and self._cabin_models():
+                return True
+            if b in self._models and self._models[b].is_loaded:
+                return True
         return False
 
     def _cabin_models(self) -> list[_OnnxModel]:
@@ -298,6 +327,17 @@ class SecondaryInferenceEngine:
         self._frame_counter += 1
         if frame is None or frame.size == 0 or not zones:
             return []
+        # Frigate-primary bridge owns cabin judgments — do not YOLO-crop.
+        if self._frigate_bridge_active:
+            return []
+        every_n = self._gemini_every_n if (self._gemini_enabled and self._vlm_queue is not None) else self._process_every_n
+        if (self._frame_counter - 1) % max(1, every_n) != 0:
+            return []
+
+        if self._gemini_enabled and self._vlm_queue is not None:
+            self._enqueue_gemini(camera_id, frame, tracks, zones, timestamp)
+            return []
+
         target_zones: list[tuple[dict, list[_OnnxModel]]] = []
         for z in zones:
             b = str(z.get("behavior", ""))
@@ -307,7 +347,7 @@ class SecondaryInferenceEngine:
                     target_zones.append((z, models))
             elif b in self._models:
                 target_zones.append((z, [self._models[b]]))
-        if not target_zones or (self._frame_counter - 1) % self._process_every_n != 0:
+        if not target_zones:
             return []
 
         h, w = frame.shape[:2]
@@ -346,6 +386,91 @@ class SecondaryInferenceEngine:
                     )
         return events
 
+    def _enqueue_gemini(
+        self,
+        camera_id: str,
+        frame: np.ndarray,
+        tracks: list[dict],
+        zones: list[dict],
+        timestamp: str,
+    ) -> None:
+        import cv2
+
+        from citevision_ai.vlm.queue import VlmJob
+
+        h, w = frame.shape[:2]
+        bbox_ts = float(self._bbox_ts_resolver()) if self._bbox_ts_resolver else 0.0
+        cabin_zones = [
+            z for z in zones
+            if str(z.get("behavior", "")) in _BEHAVIOR_TO_RULES
+        ]
+        if not cabin_zones:
+            return
+        # Prefer seatbelt for pilot stability under free-tier RPM (phone alternates later).
+        seat = [z for z in cabin_zones if str(z.get("behavior", "")) == "seatbelt"]
+        if seat and os.environ.get("GEMINI_SEATBELT_FIRST", "1").strip() not in ("0", "false", "no"):
+            zone = seat[0]
+        else:
+            zone = cabin_zones[self._frame_counter % len(cabin_zones)]
+        behavior = str(zone.get("behavior", ""))
+        rules = _BEHAVIOR_TO_RULES.get(behavior) or []
+        if not rules:
+            return
+        cfg = zone.get("behavior_config") or {}
+        try:
+            conf = float(cfg.get("confidence", 0.45))
+        except (TypeError, ValueError):
+            conf = 0.45
+        poly = zone.get("polygon") or []
+        zone_id = str(zone.get("zone_id") or zone.get("name") or "")
+        rule = rules[0]
+        for track in tracks:
+            if str(track.get("class_name", "")) not in (VEHICLE_CLASSES | {"person"}):
+                continue
+            bbox = track.get("bbox") or {}
+            cx = (float(bbox.get("x", 0)) + float(bbox.get("width", 0)) / 2) / max(w, 1)
+            cy = (float(bbox.get("y", 0)) + float(bbox.get("height", 0)) / 2) / max(h, 1)
+            if poly and not _point_in_polygon(cx, cy, poly):
+                continue
+            crop = self._crop(frame, bbox)
+            if crop is None or crop.size == 0:
+                continue
+            ok, buf = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            if not ok:
+                continue
+            jpeg = buf.tobytes()
+            tid = int(track.get("track_id", -1))
+            if not self._allow_emit(camera_id, tid, rule):
+                continue
+            skeleton = {
+                "event_id": str(uuid.uuid4()),
+                "camera_id": camera_id,
+                "event_type": rule,
+                "event": rule,
+                "timestamp": timestamp,
+                "track_id": track.get("track_id"),
+                "class_name": track.get("class_name"),
+                "zone_id": zone_id or None,
+                "bbox": dict(bbox) if isinstance(bbox, dict) else bbox,
+                "bbox_ts": bbox_ts,
+                "confidence": 0.0,
+                "severity": "high",
+                "metadata": {
+                    "detection_method": "gemini_vlm",
+                    "zone_behavior": behavior,
+                },
+            }
+            self._vlm_queue.try_enqueue(
+                VlmJob(
+                    jpeg=jpeg,
+                    rule=rule,
+                    min_confidence=conf,
+                    event_skeleton=skeleton,
+                )
+            )
+            # At most one track judged per scan tick.
+            break
+
     @staticmethod
     def _crop(frame: np.ndarray, bbox: dict) -> np.ndarray | None:
         if not bbox:
@@ -362,7 +487,8 @@ class SecondaryInferenceEngine:
     def _allow_emit(self, camera_id: str, track_id: int, event_type: str) -> bool:
         key = (camera_id, track_id, event_type)
         last = self._cooldown.get(key, -9999)
-        if self._frame_counter - last < self._cooldown_frames:
+        cool = self._gemini_cooldown_frames if self._gemini_enabled else self._cooldown_frames
+        if self._frame_counter - last < max(1, cool):
             return False
         self._cooldown[key] = self._frame_counter
         return True

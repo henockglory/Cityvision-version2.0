@@ -21,11 +21,21 @@ Référence unifiée pour preflight, démo Frigate et rétention disque.
 |----------|--------|-------------|
 | `FRIGATE_ENABLED` | `false` | Master switch preuve Frigate |
 | `FRIGATE_EVIDENCE` | `false` | Capture track evidence |
+| `FRIGATE_VLM_BRIDGE` | `false` | Frigate zone → crop → Gemini (cabine/faces/plaque/feu) |
+| `FRIGATE_SPEED_BRIDGE` | `false` | Frigate speed estimate vs `speed_limit_kmh` → `speeding` |
+| `FRIGATE_BRIDGE_SNAPSHOT_WAIT_SEC` | `25` | Attente snapshot Frigate avant drop fail-closed |
+| `FRIGATE_VLM_BRIDGE_CROP_MODE` | `vehicle_bbox` | `vehicle_bbox` (recommandé) \| `cabin_driver_subcrop` |
+| `CABIN_CROP_DRIVER_SIDE` | `left` | Sous-crop habitacle si mode `cabin_driver_subcrop` |
+| `GEMINI_ENABLED` | `false` | Active le juge VLM / OCR Gemini |
+| `GEMINI_API_KEY` | _(vide)_ | Clé API (WSL `.env` only — jamais git) |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Modèle Gemini runtime |
 | `EVIDENCE_BACKEND` | `ring_buffer` | Backend preuve |
 | `FRIGATE_DEMO_ACCEPT_MAX_ALIGN_SEC` | `5` | Gate accept corrélation (s) |
 | `FRIGATE_DEMO_MAX_ALIGN_SEC` | `5` | Fenêtre match démo (s) |
 | `FRIGATE_CORRELATE_WAIT_SEC` | `35` | Budget poll corrélation |
 | `FRIGATE_EVENT_MEDIA_WAIT_SEC` | `25` | Attente clip/snapshot |
+
+Voir aussi [FRIGATE-SYNC-HONESTY.md](./FRIGATE-SYNC-HONESTY.md) et [FRIGATE-GEMINI-HONEST-CATALOG.md](./FRIGATE-GEMINI-HONEST-CATALOG.md).
 
 ## Validation Frigate 1-hit
 
@@ -44,3 +54,5 @@ Référence unifiée pour preflight, démo Frigate et rétention disque.
 Édition : `C:\Users\gheno\citevision` → sync `~/citevision-v2` → restart services.
 
 Voir [SOURCE-OF-TRUTH.md](./SOURCE-OF-TRUTH.md).
+
+Frigate-primary + Gemini (bridges) : [FRIGATE-SYNC-HONESTY.md](./FRIGATE-SYNC-HONESTY.md), [FRIGATE-GEMINI-VALIDATION.md](./FRIGATE-GEMINI-VALIDATION.md).

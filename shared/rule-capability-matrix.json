@@ -1,47 +1,11 @@
 {
-  "generated_at": "2026-06-28T18:55:13.761Z",
-  "total": 89,
+  "generated_at": "2026-07-30T08:49:27.897Z",
+  "total": 54,
   "counts": {
-    "real": 70,
-    "partial": 19
+    "real": 34,
+    "partial": 20
   },
   "templates": [
-    {
-      "id": "tpl-behavior-anomaly",
-      "name": "Anomalie comportementale",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "behavior_anomaly"
-    },
-    {
-      "id": "tpl-fighting",
-      "name": "Bagarre détectée",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "fighting"
-    },
-    {
-      "id": "tpl-falling",
-      "name": "Chute détectée",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "falling"
-    },
-    {
-      "id": "tpl-flow-rate",
-      "name": "Débit piétons élevé",
-      "category": "behavior",
-      "status": "partial",
-      "requirement": "partial_aggregate",
-      "reason": "Débit piéton/véhiculaire : agrégat flow_rate pas encore émis par l'IA standard",
-      "event_type": 15
-    },
     {
       "id": "tpl-crowd-density",
       "name": "Densité foule élevée",
@@ -50,33 +14,6 @@
       "requirement": null,
       "reason": "",
       "event_type": "scene_density_high"
-    },
-    {
-      "id": "tpl-climb-detected",
-      "name": "Escalade détectée",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "climb_detected"
-    },
-    {
-      "id": "tpl-queue-forming",
-      "name": "Formation de file",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "queue_forming"
-    },
-    {
-      "id": "tpl-bottleneck",
-      "name": "Goulot d'étranglement",
-      "category": "behavior",
-      "status": "partial",
-      "requirement": "partial_aggregate",
-      "reason": "Détection de goulot d'étranglement : agrégat flow_bottleneck pas encore émis par l'IA standard",
-      "event_type": 0.005
     },
     {
       "id": "tpl-vehicle-count",
@@ -88,24 +25,6 @@
       "event_type": "vehicle_count_threshold"
     },
     {
-      "id": "tpl-scene-occupancy",
-      "name": "Occupation scène",
-      "category": "behavior",
-      "status": "partial",
-      "requirement": "partial_aggregate",
-      "reason": "Taux d'occupation de zone : agrégat scene_occupancy pas encore émis par l'IA standard",
-      "event_type": 10
-    },
-    {
-      "id": "tpl-running",
-      "name": "Personne en course",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "running"
-    },
-    {
       "id": "tpl-person-stopped",
       "name": "Personne immobile prolongée",
       "category": "behavior",
@@ -113,33 +32,6 @@
       "requirement": null,
       "reason": "",
       "event_type": "person_stopped"
-    },
-    {
-      "id": "tpl-crouch-detected",
-      "name": "Position accroupie",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "crouch_detected"
-    },
-    {
-      "id": "tpl-crowd-gathering",
-      "name": "Rassemblement foule",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "crowd_gathering"
-    },
-    {
-      "id": "tpl-wrong-way",
-      "name": "Sens interdit",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "wrong_way"
     },
     {
       "id": "tpl-crowd-count",
@@ -151,24 +43,6 @@
       "event_type": "crowd_count_threshold"
     },
     {
-      "id": "tpl-tailgating",
-      "name": "Tailgating",
-      "category": "behavior",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "tailgating"
-    },
-    {
-      "id": "tpl-carry-object",
-      "name": "Transport d'objet",
-      "category": "behavior",
-      "status": "partial",
-      "requirement": "partial_aggregate",
-      "reason": "Détecte le transport d'objets via l'heuristique carry_detected — fiabilité dépend de la taille des objets et de la résolution flux",
-      "event_type": "carry_detected"
-    },
-    {
       "id": "tpl-vehicle-stopped",
       "name": "Véhicule arrêté",
       "category": "behavior",
@@ -176,24 +50,6 @@
       "requirement": null,
       "reason": "",
       "event_type": "vehicle_stopped"
-    },
-    {
-      "id": "tpl-accident",
-      "name": "Accident routier probable",
-      "category": "composite",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
-    },
-    {
-      "id": "tpl-vandalism",
-      "name": "Vandalisme suspect",
-      "category": "composite",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
     },
     {
       "id": "tpl-theft-composite",
@@ -205,39 +61,12 @@
       "event_type": null
     },
     {
-      "id": "tpl-group-formation",
-      "name": "Attroupement suspect",
-      "category": "crowd",
-      "status": "partial",
-      "requirement": "partial_aggregate",
-      "reason": "Attroupement détecté via crowd_gathering — le seuil neighbor_count >= 5 peut nécessiter ajustement selon densité habituelle",
-      "event_type": null
-    },
-    {
-      "id": "tpl-crowd-panic",
-      "name": "Panique de foule",
-      "category": "crowd",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "crowd_panic"
-    },
-    {
-      "id": "tpl-face-count",
-      "name": "Comptage visages",
-      "category": "identity",
-      "status": "partial",
-      "requirement": "requires_face_ai",
-      "reason": "Comptage des visages nécessite le module InsightFace (non installé par défaut)",
-      "event_type": 3
-    },
-    {
       "id": "tpl-identity-correlation",
       "name": "Corrélation identité",
       "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_face_ai",
+      "reason": "Corrélation visage↔plaque : nécessite les modules InsightFace et PaddleOCR actifs simultanément.",
       "event_type": "correlation_match"
     },
     {
@@ -245,44 +74,44 @@
       "name": "Personne liste noire",
       "category": "identity",
       "status": "partial",
-      "requirement": "requires_face_ai",
-      "reason": "Nécessite le module InsightFace (non installé par défaut)",
+      "requirement": "requires_external",
+      "reason": "InsightFace recommandé ; Gemini VLM optionnel (partial) si GEMINI_ENABLED — pas de claim full.",
       "event_type": "face_watchlist_match"
     },
     {
       "id": "tpl-plate-whitelist",
       "name": "Plaque autorisée",
       "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_ocr",
+      "reason": "Nécessite Gemini OCR (GEMINI_ENABLED) ou PaddleOCR + liste blanche configurée.",
       "event_type": "plate_allowed"
     },
     {
       "id": "tpl-blocked-plate",
       "name": "Plaque bloquée",
       "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_ocr",
+      "reason": "Nécessite Gemini OCR (GEMINI_ENABLED) ou PaddleOCR + liste noire configurée.",
       "event_type": "plate_blocked"
     },
     {
       "id": "tpl-plate-detected",
       "name": "Plaque détectée",
       "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_ocr",
+      "reason": "Nécessite Gemini OCR (GEMINI_ENABLED) ou PaddleOCR actif sur une zone dédiée.",
       "event_type": "plate_detected"
     },
     {
       "id": "tpl-unknown-plate",
       "name": "Plaque inconnue",
       "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_ocr",
+      "reason": "Nécessite Gemini OCR (GEMINI_ENABLED) ou PaddleOCR + liste blanche configurée.",
       "event_type": "plate_unknown"
     },
     {
@@ -298,27 +127,27 @@
       "id": "tpl-plate-repeat",
       "name": "Plaque récurrente",
       "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_ocr",
+      "reason": "Nécessite le module de lecture de plaques (PaddleOCR) actif sur une zone dédiée.",
       "event_type": "plate_detected"
     },
     {
       "id": "tpl-face-detected",
       "name": "Visage détecté",
       "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_external",
+      "reason": "Module face local ou Frigate→Gemini. Badge partial — pas de full/real sans validation.",
       "event_type": "face_detected"
     },
     {
       "id": "tpl-unknown-face",
       "name": "Visage inconnu",
       "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_external",
+      "reason": "InsightFace recommandé ; ou Frigate person∩zone → Gemini (FRIGATE_VLM_BRIDGE). Partial tant que non validé bout-en-bout.",
       "event_type": "face_unknown"
     },
     {
@@ -326,27 +155,9 @@
       "name": "Visage liste de surveillance",
       "category": "identity",
       "status": "partial",
-      "requirement": "requires_face_ai",
-      "reason": "Correspondance liste noire nécessite le module InsightFace + base de données de visages configurée",
+      "requirement": "requires_external",
+      "reason": "Préfère InsightFace + embeddings watchlist. Avec FRIGATE_VLM_BRIDGE : person∩zone Frigate → Gemini. Partial jusqu'à validate_rule.",
       "event_type": "face_watchlist_match"
-    },
-    {
-      "id": "tpl-face-repeat",
-      "name": "Visage récurrent",
-      "category": "identity",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": 1
-    },
-    {
-      "id": "tpl-fight",
-      "name": "Bagarre probable",
-      "category": "incident",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "fight_detected"
     },
     {
       "id": "tpl-industrial-intrusion",
@@ -361,10 +172,10 @@
       "id": "tpl-abandoned-object",
       "name": "Objet abandonné",
       "category": "objects",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
+      "status": "partial",
+      "requirement": "partial_aggregate",
+      "reason": "Dépend du détecteur abandoned analytics ; distinct de object_appeared (heuristique durée).",
+      "event_type": "object_abandoned"
     },
     {
       "id": "tpl-object-removed",
@@ -385,15 +196,6 @@
       "event_type": null
     },
     {
-      "id": "tpl-object-appeared",
-      "name": "Apparition d'objet",
-      "category": "presence",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "object_appeared"
-    },
-    {
       "id": "tpl-object-disappeared",
       "name": "Disparition d'objet",
       "category": "presence",
@@ -401,33 +203,6 @@
       "requirement": null,
       "reason": "",
       "event_type": "object_disappeared"
-    },
-    {
-      "id": "tpl-wandering",
-      "name": "Errance prolongée",
-      "category": "presence",
-      "status": "partial",
-      "requirement": "partial_aggregate",
-      "reason": "Errance détectée via heuristique wandering — nécessite activité continue ≥45s dans le champ",
-      "event_type": "wandering"
-    },
-    {
-      "id": "tpl-immobility",
-      "name": "Immobilité prolongée",
-      "category": "presence",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
-    },
-    {
-      "id": "tpl-erratic-motion",
-      "name": "Mouvement erratique",
-      "category": "presence",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "erratic"
     },
     {
       "id": "tpl-zone-presence",
@@ -457,21 +232,12 @@
       "event_type": "video_darkness"
     },
     {
-      "id": "tpl-accident-composite",
-      "name": "Accident (arrêt brutal)",
-      "category": "road-enforcement",
-      "status": "partial",
-      "requirement": "requires_calibration",
-      "reason": "Détection composite : nécessite calibration caméra pour les métriques de vitesse",
-      "event_type": null
-    },
-    {
       "id": "tpl-seatbelt",
       "name": "Ceinture de sécurité",
       "category": "road-enforcement",
       "status": "partial",
-      "requirement": "requires_model",
-      "reason": "Nécessite le modèle ONNX « seatbelt » (scripts/download-secondary-models) + caméra orientée conducteur (angle ≤45°). Repli heuristique bêta sinon.",
+      "requirement": "requires_external",
+      "reason": "Nécessite FRIGATE_VLM_BRIDGE + GEMINI_ENABLED + clé API. Partial jusqu'à validate_rule — pas de claim full/real.",
       "event_type": "seatbelt_violation"
     },
     {
@@ -489,16 +255,16 @@
       "category": "road-enforcement",
       "status": "partial",
       "requirement": "requires_calibration",
-      "reason": "Nécessite une calibration caméra (homographie) + module ANPR optionnel",
+      "reason": "Exige polygone 4 points + edge_distances_m (Frigate) ou calibration zone_speed locale. Partial tant que non validé bout-en-bout.",
       "event_type": "speeding"
     },
     {
       "id": "tpl-red-light",
       "name": "Feu rouge",
       "category": "road-enforcement",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_calibration",
+      "reason": "Heuristique HSV (pas un modèle feu dédié). Preuve complète possible via frigate_track ou fallback demo_ring_buffer — vérifier capture_source.",
       "event_type": "red_light_violation"
     },
     {
@@ -523,28 +289,19 @@
       "id": "tpl-plate-pipeline",
       "name": "Plaque détectée (OCR)",
       "category": "road-enforcement",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
+      "status": "partial",
+      "requirement": "requires_external",
+      "reason": "Nécessite GEMINI_ENABLED (OCR cloud) ou PaddleOCR local — partial jusqu'à validate_rule.",
       "event_type": "plate_detected"
-    },
-    {
-      "id": "tpl-wrong-way",
-      "name": "Sens interdit",
-      "category": "road-enforcement",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "wrong_way"
     },
     {
       "id": "tpl-phone-driving",
       "name": "Téléphone au volant",
       "category": "road-enforcement",
       "status": "partial",
-      "requirement": "requires_model",
-      "reason": "Nécessite le modèle ONNX « driver_phone » (scripts/download-secondary-models). Repli heuristique bêta sinon — fiabilité variable.",
-      "event_type": "phone_driving"
+      "requirement": "requires_external",
+      "reason": "Nécessite FRIGATE_VLM_BRIDGE + GEMINI_ENABLED + clé API. Partial jusqu'à validate_rule — pas de badge full.",
+      "event_type": "phone_use_violation"
     },
     {
       "id": "tpl-loitering-entrance",
@@ -574,15 +331,6 @@
       "event_type": null
     },
     {
-      "id": "tpl-intrusion-zone",
-      "name": "Intrusion zone interdite",
-      "category": "security",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
-    },
-    {
       "id": "tpl-multi-person-vehicle",
       "name": "Plusieurs personnes, un véhicule",
       "category": "security",
@@ -599,6 +347,24 @@
       "requirement": null,
       "reason": "",
       "event_type": "person_vehicle_proximity"
+    },
+    {
+      "id": "tpl-observation-rule-set-n",
+      "name": "Comptage ensemble (N-sur-M)",
+      "category": "spatial",
+      "status": "real",
+      "requirement": null,
+      "reason": "",
+      "event_type": null
+    },
+    {
+      "id": "tpl-observation-rule-set-or",
+      "name": "Comptage ensemble (OU)",
+      "category": "spatial",
+      "status": "real",
+      "requirement": null,
+      "reason": "",
+      "event_type": null
     },
     {
       "id": "tpl-zone-enter",
@@ -637,15 +403,6 @@
       "event_type": "perimeter_breach"
     },
     {
-      "id": "tpl-zone-occupancy",
-      "name": "Occupation zone élevée",
-      "category": "spatial",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": 5
-    },
-    {
       "id": "tpl-multi-zone",
       "name": "Présence multi-zones",
       "category": "spatial",
@@ -653,15 +410,6 @@
       "requirement": null,
       "reason": "",
       "event_type": null
-    },
-    {
-      "id": "tpl-wrong-direction",
-      "name": "Sens interdit",
-      "category": "spatial",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "wrong_way"
     },
     {
       "id": "tpl-zone-exit",
@@ -700,24 +448,6 @@
       "event_type": "sudden_stop"
     },
     {
-      "id": "tpl-running-person",
-      "name": "Course / fuite",
-      "category": "speed",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
-    },
-    {
-      "id": "tpl-speeding",
-      "name": "Excès de vitesse véhicule",
-      "category": "speed",
-      "status": "partial",
-      "requirement": "requires_calibration",
-      "reason": "Nécessite une calibration caméra (homographie) pour mesurer la vitesse en km/h",
-      "event_type": null
-    },
-    {
       "id": "tpl-dwell-exceeded",
       "name": "Dépassement temps de présence",
       "category": "time",
@@ -734,24 +464,6 @@
       "requirement": null,
       "reason": "",
       "event_type": null
-    },
-    {
-      "id": "tpl-traffic-jam",
-      "name": "Embouteillage",
-      "category": "traffic",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
-    },
-    {
-      "id": "tpl-wrong-lane",
-      "name": "Mauvaise voie",
-      "category": "traffic",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": "wrong_way"
     },
     {
       "id": "tpl-pedestrian-zone",
@@ -772,24 +484,6 @@
       "event_type": null
     },
     {
-      "id": "tpl-stopped-traffic",
-      "name": "Véhicule arrêté sur voie",
-      "category": "traffic",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
-    },
-    {
-      "id": "tpl-vehicle-wrong-direction",
-      "name": "Véhicule sens interdit",
-      "category": "traffic",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
-    },
-    {
       "id": "tpl-slow-vehicle",
       "name": "Véhicule trop lent",
       "category": "traffic",
@@ -797,15 +491,6 @@
       "requirement": "requires_calibration",
       "reason": "Nécessite une calibration caméra pour estimer les vitesses relatives",
       "event_type": "speed_below_minimum"
-    },
-    {
-      "id": "tpl-speed-threshold",
-      "name": "Vitesse > seuil",
-      "category": "traffic",
-      "status": "partial",
-      "requirement": "requires_calibration",
-      "reason": "Nécessite une calibration caméra (homographie) pour mesurer la vitesse en km/h",
-      "event_type": 50
     }
   ]
 }

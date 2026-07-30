@@ -126,10 +126,35 @@ def _yolo_ok(device: str = "cuda") -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _gemini_cabin_active() -> bool:
+    raw = (
+        os.environ.get("GEMINI_ENABLED")
+        or os.environ.get("CITEVISION_GEMINI_ENABLED")
+        or ""
+    ).strip().lower()
+    if raw not in ("1", "true", "yes", "on"):
+        return False
+    key = (
+        os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("CITEVISION_GEMINI_API_KEY")
+        or ""
+    ).strip()
+    return bool(key)
+
+
 def _secondary_ok(device: str = "cuda") -> list[dict]:
     out: list[dict] = []
     if not SECONDARY.exists():
         return out
+    if _gemini_cabin_active():
+        return [
+            {
+                "id": "cabin_vlm",
+                "health_key": "gemini_configured",
+                "ok": True,
+                "detail": "GEMINI_ENABLED + key — secondary ONNX cabin skipped",
+            }
+        ]
     data = _load_json(SECONDARY)
     suffix = _stack_reg().get("secondary_health_suffix", "_model_loaded")
     dest = AI_ROOT / "models" / "secondary"

@@ -27,20 +27,10 @@ class BehaviorLabel(str, Enum):
 
 
 BEHAVIOR_EVENT_TYPES: dict[BehaviorLabel, str] = {
-    BehaviorLabel.RUNNING: "running",
-    BehaviorLabel.CROWDING: "crowd_gathering",
-    BehaviorLabel.TAILGATING: "tailgating",
+    # Honest remaining mappings only (Frigate+Gemini catalog purge).
     BehaviorLabel.WRONG_WAY: "wrong_way",
-    BehaviorLabel.ABANDONED_OBJECT: "object_appeared",
-    BehaviorLabel.FALLING: "falling",
-    BehaviorLabel.FIGHTING: "fighting",
-    BehaviorLabel.QUEUE_FORMING: "queue_forming",
-    BehaviorLabel.ERRATIC: "erratic_motion",
-    BehaviorLabel.WANDERING: "wandering",
-    BehaviorLabel.CROUCHING: "crouch_detected",
-    BehaviorLabel.CLIMBING: "climb_detected",
-    BehaviorLabel.CARRYING: "carry_detected",
-    BehaviorLabel.RAPID_ACTIVITY: "running",
+    BehaviorLabel.ABANDONED_OBJECT: "object_abandoned",
+    # Purged cinematic heuristics intentionally omitted (no emit).
 }
 
 

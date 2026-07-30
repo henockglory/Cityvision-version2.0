@@ -99,15 +99,19 @@
           }
         }
       ],
-      "dedup_key_fields": ["camera_id", "zone_id", "track_id"]
+      "dedup_key_fields": [
+        "camera_id",
+        "zone_id",
+        "track_id"
+      ]
     },
-    "role_summary_fr": "Alerte vitesse avancée avec calcul homographique précis et capture de la plaque.",
+    "role_summary_fr": "Alerte vitesse via estimation Frigate (distances syncées) si FRIGATE_SPEED_BRIDGE, sinon zone_speed CiteVision. Limite = speed_limit_kmh métier.",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
     "partial_status": "requires_calibration",
-    "partial_reason_fr": "Nécessite une calibration caméra (homographie) + module ANPR optionnel"
+    "partial_reason_fr": "Exige polygone 4 points + edge_distances_m (Frigate) ou calibration zone_speed locale. Partial tant que non validé bout-en-bout."
   },
   {
     "id": "tpl-line-cross-forbidden",
@@ -156,12 +160,13 @@
         }
       ]
     },
-    "role_summary_fr": "Capture et lecture automatique des plaques d'immatriculation à chaque passage.",
+    "role_summary_fr": "Capture et lecture de plaques via Gemini OCR (si GEMINI_ENABLED) ou PaddleOCR. Frigate LPR n'est pas la vérité métier.",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
-    "partial_status": "full"
+    "partial_status": "requires_external",
+    "partial_reason_fr": "Nécessite GEMINI_ENABLED (OCR cloud) ou PaddleOCR local — partial jusqu'à validate_rule."
   },
   {
     "id": "tpl-congestion",
@@ -255,20 +260,20 @@
       ]
     },
     "tutorial": {
-      "legend": "CV cabin conducteur — absence ligne diagonale ceinture",
+      "legend": "Frigate zone → crop → Gemini VLM",
       "steps": [
-        "Filtrer véhicules",
-        "Analyser habitacle conducteur",
-        "Alerter si violation"
+        "Frigate véhicule∩zone",
+        "Snapshot/crop bbox",
+        "Gemini → seatbelt_violation"
       ]
     },
-    "role_summary_fr": "Détecte l'absence de ceinture de sécurité dans l'habitacle via un modèle ONNX dédié (repli heuristique si modèle absent).",
+    "role_summary_fr": "Frigate détecte le véhicule dans la zone ; Gemini VLM juge l'absence de ceinture (FRIGATE_VLM_BRIDGE). Preuves Frigate si frigate_event_id.",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
-    "partial_status": "requires_model",
-    "partial_reason_fr": "Nécessite le modèle ONNX « seatbelt » (scripts/download-secondary-models) + caméra orientée conducteur (angle ≤45°). Repli heuristique bêta sinon."
+    "partial_status": "requires_external",
+    "partial_reason_fr": "Nécessite FRIGATE_VLM_BRIDGE + GEMINI_ENABLED + clé API. Partial jusqu'à validate_rule — pas de claim full/real."
   },
   {
     "id": "tpl-phone-driving",
@@ -292,19 +297,19 @@
       ]
     },
     "tutorial": {
-      "legend": "Blob peau près oreille (HSV cabin)",
+      "legend": "Frigate zone → crop → Gemini VLM",
       "steps": [
-        "Filtrer véhicules",
-        "ROI conducteur",
-        "Détection téléphone"
+        "Frigate véhicule∩zone",
+        "Snapshot/crop bbox",
+        "Gemini → phone_use_violation"
       ]
     },
-    "role_summary_fr": "Détecte l'utilisation d'un téléphone au volant via un modèle ONNX dédié (repli heuristique peau+forme si modèle absent).",
+    "role_summary_fr": "Frigate détecte le véhicule ; Gemini VLM juge le téléphone au volant (FRIGATE_VLM_BRIDGE). Event canonique phone_use_violation.",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
-    "partial_status": "requires_model",
-    "partial_reason_fr": "Nécessite le modèle ONNX « driver_phone » (scripts/download-secondary-models). Repli heuristique bêta sinon — fiabilité variable."
+    "partial_status": "requires_external",
+    "partial_reason_fr": "Nécessite FRIGATE_VLM_BRIDGE + GEMINI_ENABLED + clé API. Partial jusqu'à validate_rule — pas de badge full."
   }
 ]

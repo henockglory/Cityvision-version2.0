@@ -92,6 +92,25 @@ class FaceIdentityEngine:
         self._refresh_interval = 60.0
         self._process_every_n = 5
         self._frame_counter = 0
+        self._gemini_enabled = False
+        self._vlm_queue: Any = None
+        self._frigate_bridge_active = False
+        self._cooldown: dict[tuple[str, str], float] = {}
+        self._cooldown_sec = 8.0
+
+    def configure_gemini(self, enabled: bool, vlm_queue: Any = None) -> None:
+        self._gemini_enabled = bool(enabled) and vlm_queue is not None
+        self._vlm_queue = vlm_queue if self._gemini_enabled else None
+        if self._gemini_enabled:
+            logger.info("FaceIdentityEngine: Gemini VLM path available (InsightFace preferred when loaded)")
+
+    def set_frigate_bridge_active(self, active: bool) -> None:
+        """When True, local frame→Gemini face path is cut (Frigate person∩zone owns it)."""
+        self._frigate_bridge_active = bool(active)
+        if self._frigate_bridge_active:
+            self._gemini_enabled = False
+            self._vlm_queue = None
+            logger.info("FaceIdentityEngine: Frigate VLM bridge active (local Gemini face cut)")
 
     def load(self) -> None:
         if hasattr(self.recognizer, "load"):
@@ -99,7 +118,10 @@ class FaceIdentityEngine:
 
     @property
     def is_loaded(self) -> bool:
-        return hasattr(self.recognizer, "is_loaded") and bool(self.recognizer.is_loaded)
+        if hasattr(self.recognizer, "is_loaded") and bool(self.recognizer.is_loaded):
+            return True
+        # Honest: Gemini can emit face_detected without InsightFace weights.
+        return bool(self._gemini_enabled)
 
     def set_watchlist(self, entries: list[dict[str, Any]]) -> None:
         self._watchlist = entries
@@ -114,9 +136,25 @@ class FaceIdentityEngine:
         self._frame_counter += 1
         if self._frame_counter % self._process_every_n != 0:
             return []
-        if not hasattr(self.recognizer, "is_loaded") or not self.recognizer.is_loaded:
+
+        # Frigate-primary: person∩zone → Gemini; skip local frame enqueue.
+        if self._frigate_bridge_active:
             return []
 
+        if hasattr(self.recognizer, "is_loaded") and self.recognizer.is_loaded:
+            return self._process_insightface(camera_id, frame, timestamp)
+
+        if self._gemini_enabled and self._vlm_queue is not None:
+            self._enqueue_gemini_face(camera_id, frame, timestamp)
+            return []
+        return []
+
+    def _process_insightface(
+        self,
+        camera_id: str,
+        frame: np.ndarray,
+        timestamp: str,
+    ) -> list[dict[str, Any]]:
         import uuid
 
         events: list[dict[str, Any]] = []
@@ -139,6 +177,7 @@ class FaceIdentityEngine:
                         "identifier": match.get("identifier"),
                         "confidence": match.get("score"),
                         "bbox": face["bbox"],
+                        "detection_method": "insightface",
                     },
                 })
             else:
@@ -149,7 +188,11 @@ class FaceIdentityEngine:
                     "timestamp": timestamp,
                     "severity": "warning",
                     "track_id": -1,
-                    "metadata": {"bbox": face["bbox"], "confidence": face.get("confidence")},
+                    "metadata": {
+                        "bbox": face["bbox"],
+                        "confidence": face.get("confidence"),
+                        "detection_method": "insightface",
+                    },
                 })
             events.append({
                 "event_id": str(uuid.uuid4()),
@@ -158,9 +201,70 @@ class FaceIdentityEngine:
                 "timestamp": timestamp,
                 "severity": "info",
                 "track_id": -1,
-                "metadata": {"bbox": face["bbox"], "confidence": face.get("confidence")},
+                "metadata": {
+                    "bbox": face["bbox"],
+                    "confidence": face.get("confidence"),
+                    "detection_method": "insightface",
+                },
             })
         return events
+
+    def _enqueue_gemini_face(self, camera_id: str, frame: np.ndarray, timestamp: str) -> None:
+        """Fail-closed face_detected via Gemini when InsightFace is unavailable."""
+        import uuid
+
+        import cv2
+
+        from citevision_ai.vlm.queue import VlmJob
+
+        now = time.monotonic()
+        last = self._cooldown.get((camera_id, "face_detected"), 0.0)
+        if now - last < self._cooldown_sec:
+            return
+        self._cooldown[(camera_id, "face_detected")] = now
+
+        # Downscale to limit egress size (privacy: no disk write of face crops).
+        h, w = frame.shape[:2]
+        scale = min(1.0, 640.0 / max(w, 1))
+        small = cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale)))) if scale < 1.0 else frame
+        ok, buf = cv2.imencode(".jpg", small, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        if not ok:
+            return
+        jpeg = buf.tobytes()
+        logger.info(
+            "vlm_face_egress camera=%s bytes=%d (aggregated; no face image committed)",
+            camera_id, len(jpeg),
+        )
+        labels = []
+        for entry in self._watchlist[:8]:
+            lab = entry.get("label") or entry.get("identifier") or ""
+            if lab:
+                labels.append(str(lab)[:40])
+        extra = ""
+        rule = "face_detected"
+        if labels:
+            rule = "face_unknown"
+            extra = "watchlist_labels=" + ",".join(labels)
+        skeleton = {
+            "event_id": str(uuid.uuid4()),
+            "camera_id": camera_id,
+            "event_type": rule,
+            "event": rule,
+            "timestamp": timestamp,
+            "severity": "info" if rule == "face_detected" else "warning",
+            "track_id": -1,
+            "confidence": 0.0,
+            "metadata": {"detection_method": "gemini_vlm"},
+        }
+        self._vlm_queue.try_enqueue(
+            VlmJob(
+                jpeg=jpeg,
+                rule=rule,
+                min_confidence=0.45,
+                event_skeleton=skeleton,
+                extra_context=extra,
+            )
+        )
 
     def _match_embedding(self, embedding: list[float]) -> dict[str, Any] | None:
         if not self._watchlist:

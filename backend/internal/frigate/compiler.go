@@ -52,8 +52,10 @@ type CameraEntry struct {
 }
 
 type ZoneEntry struct {
-	Coordinates string `yaml:"coordinates"`
-	Filters     struct {
+	Coordinates    string  `yaml:"coordinates"`
+	Distances      string  `yaml:"distances,omitempty"`
+	SpeedThreshold float64 `yaml:"speed_threshold,omitempty"`
+	Filters        struct {
 		MinArea float64 `yaml:"min_area,omitempty"`
 	} `yaml:"filters,omitempty"`
 }
@@ -171,6 +173,7 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 		entry.Detect.Height = 720
 	}
 	entry.Objects.Track = []string{"car", "truck", "motorcycle", "bus", "van"}
+	needPerson := false
 	entry.Record.Enabled = agg.RecordEnabled
 	entry.Snapshots.Enabled = agg.SnapshotsEnabled
 	entry.LPR.Enabled = agg.LPREnabled
@@ -228,8 +231,25 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 			if coords == "" {
 				continue
 			}
-			entry.Zones[ZoneID(z.ID.String())] = ZoneEntry{Coordinates: coords}
+			ze := ZoneEntry{Coordinates: coords}
+			behavior, cfgMap := parseZoneBehaviorConfig(z.BehaviorConfig, z.ZoneKind)
+			if behaviorNeedsPerson(behavior) {
+				needPerson = true
+			}
+			if behavior == "speed_measurement" {
+				if dists, ok := speedDistancesCSV(z.Polygon, cfgMap); ok {
+					ze.Distances = dists
+					// Optional Frigate filter (min speed to count in zone) — NOT legal limit.
+					if st, ok := cfgMap["frigate_speed_threshold"].(float64); ok && st > 0 {
+						ze.SpeedThreshold = st
+					}
+				}
+			}
+			entry.Zones[ZoneID(z.ID.String())] = ze
 		}
+	}
+	if needPerson {
+		entry.Objects.Track = append(entry.Objects.Track, "person")
 	}
 	return CompiledCamera{
 		FrigateID:   fid,
@@ -305,4 +325,87 @@ func polygonToFrigateCoords(polygon json.RawMessage) string {
 		}
 	}
 	return strings.Join(parts, ",")
+}
+
+func polygonPointCount(polygon json.RawMessage) int {
+	if len(polygon) == 0 {
+		return 0
+	}
+	var pts []map[string]float64
+	if err := json.Unmarshal(polygon, &pts); err == nil {
+		return len(pts)
+	}
+	var alt [][]float64
+	if err := json.Unmarshal(polygon, &alt); err == nil {
+		return len(alt)
+	}
+	return 0
+}
+
+// parseZoneBehaviorConfig mirrors ingest parseZoneBehavior for Frigate compile.
+func parseZoneBehaviorConfig(raw json.RawMessage, zoneKind string) (string, map[string]interface{}) {
+	cfg := map[string]interface{}{}
+	behavior := ""
+	if len(raw) > 0 {
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(raw, &parsed); err == nil {
+			if b, _ := parsed["behavior"].(string); b != "" {
+				behavior = b
+			}
+			if c, ok := parsed["config"].(map[string]interface{}); ok {
+				cfg = c
+			}
+		}
+	}
+	if behavior == "" {
+		behavior = strings.TrimSpace(zoneKind)
+	}
+	return behavior, cfg
+}
+
+func behaviorNeedsPerson(behavior string) bool {
+	switch behavior {
+	case "seatbelt", "phone_use", "driver_cabin", "presence", "perimeter",
+		"loitering", "controlled_exit", "parking":
+		return true
+	default:
+		return false
+	}
+}
+
+// speedDistancesCSV returns Frigate distances CSV when polygon has exactly 4 points
+// and edge_distances_m has 4 positive metres. Otherwise ok=false (no false speed sync).
+func speedDistancesCSV(polygon json.RawMessage, cfg map[string]interface{}) (string, bool) {
+	if polygonPointCount(polygon) != 4 {
+		return "", false
+	}
+	raw, ok := cfg["edge_distances_m"]
+	if !ok {
+		return "", false
+	}
+	var nums []float64
+	switch v := raw.(type) {
+	case []interface{}:
+		for _, item := range v {
+			switch n := item.(type) {
+			case float64:
+				if n > 0 {
+					nums = append(nums, n)
+				}
+			case json.Number:
+				f, err := n.Float64()
+				if err == nil && f > 0 {
+					nums = append(nums, f)
+				}
+			}
+		}
+	}
+	if len(nums) != 4 {
+		return "", false
+	}
+	parts := make([]string, 4)
+	for i, n := range nums {
+		parts[i] = fmt.Sprintf("%.3f", n)
+	}
+	return strings.Join(parts, ","), true
 }

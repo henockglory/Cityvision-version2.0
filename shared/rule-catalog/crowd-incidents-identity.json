@@ -1,46 +1,5 @@
 [
   {
-    "id": "tpl-crowd-panic",
-    "name": "Panique de foule",
-    "description": "Dispersion rapide et soudaine d'un groupe",
-    "category": "crowd",
-    "severity": "critical",
-    "supported": true,
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "crowd_panic"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "critical"
-          }
-        },
-        {
-          "type": "record",
-          "config": {
-            "duration_sec": 120
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Détecte une dispersion soudaine et rapide d'un groupe — signal fort de panique ou d'incident grave.",
-    "partial_status": "full"
-  },
-  {
-    "id": "tpl-group-formation",
-    "redirect_to": "tpl-crowd-gathering",
-    "_fusion_note": "[I.80] Doublon fusionné vers tpl-crowd-gathering. Même événement crowd_gathering ; le seuil de voisins se configure sur la règle canonique."
-  },
-  {
-    "id": "tpl-fight",
-    "redirect_to": "tpl-fighting",
-    "_fusion_note": "[I.80] Doublon fusionné vers tpl-fighting. Écoutait 'fight_detected' (jamais émis) ; l'événement réel est 'fighting'."
-  },
-  {
     "id": "tpl-face-watchlist",
     "name": "Personne liste noire",
     "description": "Visage correspondant à la watchlist",
@@ -68,8 +27,8 @@
       ]
     },
     "role_summary_fr": "Alerte critique si un visage correspondant à la liste de surveillance est reconnu par la caméra.",
-    "partial_status": "requires_face_ai",
-    "partial_reason_fr": "Nécessite le module InsightFace (non installé par défaut)"
+    "partial_status": "requires_external",
+    "partial_reason_fr": "InsightFace recommandé ; Gemini VLM optionnel (partial) si GEMINI_ENABLED — pas de claim full."
   },
   {
     "id": "tpl-plate-unknown",

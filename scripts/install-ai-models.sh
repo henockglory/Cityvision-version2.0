@@ -35,6 +35,14 @@ if [[ ! -x "$VENV_PY" ]]; then
 fi
 
 ensure_secondary_models() {
+  local gemini_on="${GEMINI_ENABLED:-0}"
+  gemini_on="$(echo "$gemini_on" | tr '[:upper:]' '[:lower:]')"
+  local gemini_key="${GEMINI_API_KEY:-}"
+  if [[ ( "$gemini_on" == "1" || "$gemini_on" == "true" || "$gemini_on" == "yes" || "$gemini_on" == "on" ) && -n "$gemini_key" ]]; then
+    echo "=== Secondary ONNX (phone + seatbelt) — SKIPPED (GEMINI_ENABLED + key) ==="
+    echo "[OK] Cabin judgments via Gemini VLM; secondary ONNX not required"
+    return 0
+  fi
   echo "=== Secondary ONNX models (phone + seatbelt) ==="
   if bash "$ROOT/scripts/download-secondary-models.sh"; then
     echo "[OK] Secondary models present"

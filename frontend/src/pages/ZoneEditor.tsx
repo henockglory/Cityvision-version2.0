@@ -1378,6 +1378,23 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
                     {selectedZone.behavior === 'speed_measurement'
                       && vertexCountFromPoints(selectedZone.points) >= 3 && (
                       <div ref={edgeCalibrationRef}>
+                        {vertexCountFromPoints(selectedZone.points) !== 4 && (
+                          <p className="text-xs text-amber-400/90 mb-2">
+                            {t(
+                              'zoneEditor.frigateSpeedFourPoints',
+                              'Frigate speed (FRIGATE_SPEED_BRIDGE) exige exactement 4 sommets + distances m. Sinon estimation Frigate désactivée — zone_speed local si bridge off.',
+                            )}
+                          </p>
+                        )}
+                        {vertexCountFromPoints(selectedZone.points) === 4
+                          && !(selectedZone.edgeDistancesM || []).filter((d) => d != null && d > 0).length && (
+                          <p className="text-xs text-amber-400/90 mb-2">
+                            {t(
+                              'zoneEditor.frigateSpeedDistances',
+                              'Renseignez les 4 distances au sol (m) pour synchroniser Frigate distances.',
+                            )}
+                          </p>
+                        )}
                         <ZoneEdgeCalibration
                           points={selectedZone.points}
                           edgeDistancesM={

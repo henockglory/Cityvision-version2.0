@@ -236,16 +236,13 @@ class EvidenceCaptureService:
             self._frigate_binder.clear_camera(previous_camera_id)
             self._demo_loop_epoch.pop(previous_camera_id, None)
 
-    # Cabin-camera event types: Frigate only tracks vehicles/persons passing a scene,
-    # not driver-cabin close-ups. Attempting Frigate downloads for these event types
-    # always fails with IncompleteRead (Frigate returns a corrupt/empty clip), and each
-    # failed attempt holds its partial bytes in memory — causing multi-GB OOM when
-    # many events are processed concurrently. Skip Frigate entirely for cabin events.
+    # Cabin-camera event types: skip Frigate only when the event was NOT produced
+    # by the Frigate→Gemini bridge (no frigate_event_id). Bridge-triggered cabin
+    # events must use Frigate evidence like road rules.
     _CABIN_EVENT_TYPES: frozenset[str] = frozenset({
         "seatbelt_violation",
         "seatbelt",
         "phone_use_violation",
-        "phone_driving",
         "driver_phone",
         "driver_cabin",
     })
@@ -265,9 +262,15 @@ class EvidenceCaptureService:
         mode = self._evidence_backend_mode()
         if mode not in ("frigate", "hybrid", "strict_frigate") or not self._frigate_track.enabled():
             return None
-        # Skip Frigate for cabin events — see _CABIN_EVENT_TYPES docstring.
         event_type = str(evt.get("event_type") or "")
-        if event_type in self._CABIN_EVENT_TYPES:
+        meta0 = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        has_frigate_id = bool(
+            evt.get("frigate_event_id")
+            or meta0.get("frigate_event_id")
+            or meta0.get("bridge_source") == "frigate"
+        )
+        # Legacy YOLO/ring cabin events still skip Frigate (corrupt clips risk).
+        if event_type in self._CABIN_EVENT_TYPES and not has_frigate_id:
             return None
         try:
             fg = self._frigate_track.capture(

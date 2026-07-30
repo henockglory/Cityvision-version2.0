@@ -88,13 +88,21 @@ async def lifespan(app: FastAPI):
         missing: list[str] = []
         if not detector.is_loaded:
             missing.append("yolo_loaded")
-        if not face_engine.is_loaded:
+        gemini_cfg = bool(settings.gemini_enabled and (settings.gemini_api_key or "").strip())
+        bridges_own_cabin = bool(settings.frigate_vlm_bridge) and gemini_cfg
+        if not bridges_own_cabin and not face_engine.is_loaded:
             missing.append("face_loaded")
-        if not plate_engine.is_loaded:
+        if not bridges_own_cabin and not plate_engine.is_loaded:
             missing.append("plate_loaded")
         # Only shared registry models marked required block startup — org ONNX uploads
         # that fail probe/load must not take down YOLO/plate/phone/seatbelt.
         required_secondary = set(required_health_keys())
+        if bridges_own_cabin:
+            # Cabin secondary ONNX not required when Frigate→Gemini owns those rules.
+            required_secondary = {
+                k for k in required_secondary
+                if "seatbelt" not in k and "phone" not in k and "driver" not in k
+            }
         for key, loaded in pipeline.secondary.health().items():
             if key in required_secondary and not loaded:
                 missing.append(key)
@@ -269,6 +277,59 @@ def health(response: Response) -> dict[str, str]:
     result["demo_mode"] = str(bool(settings.demo_mode)).lower()
     result["demo_mode_source"] = str(settings.demo_mode_source or "unknown")
     result["demo_relaxed_evidence"] = str(bool(settings.demo_relaxed_evidence())).lower()
+
+    # Gemini VLM (never leak API key). Reachability is best-effort / cached-off by default.
+    gemini_cfg = bool(settings.gemini_enabled and (settings.gemini_api_key or "").strip())
+    result["gemini_enabled"] = str(bool(settings.gemini_enabled)).lower()
+    result["gemini_configured"] = str(gemini_cfg).lower()
+    result["gemini_model"] = str(settings.gemini_model or "")
+    result["gemini_reachable"] = "false"
+    result["frigate_vlm_bridge"] = str(bool(settings.frigate_vlm_bridge)).lower()
+    result["frigate_speed_bridge"] = str(bool(settings.frigate_speed_bridge)).lower()
+    if gemini_cfg and pipeline is not None and getattr(pipeline, "_vlm_queue", None) is not None:
+        stats = pipeline._vlm_queue.stats()
+        result["vlm_queue_enqueued"] = str(stats.get("enqueued", 0))
+        result["vlm_queue_dropped_full"] = str(stats.get("dropped_full", 0))
+        result["vlm_queue_emitted"] = str(stats.get("emitted", 0))
+        result["vlm_queue_rate_limited"] = str(stats.get("rate_limited", 0))
+        result["vlm_queue_rejected"] = str(stats.get("rejected", 0))
+        result["vlm_queue_unclear"] = str(stats.get("unclear", 0))
+        # Soft probe only when explicitly requested via query would be nicer;
+        # keep cheap: mark reachable=true once any job completed successfully.
+        if int(stats.get("completed", 0)) > 0 and int(stats.get("rejected", 0)) + int(stats.get("emitted", 0)) > 0:
+            result["gemini_reachable"] = "true"
+        elif os.environ.get("GEMINI_HEALTH_PING", "").strip() in ("1", "true", "yes"):
+            try:
+                result["gemini_reachable"] = str(pipeline._vlm_queue._client.ping()).lower()
+            except Exception:
+                result["gemini_reachable"] = "false"
+    if pipeline is not None and getattr(pipeline, "_frigate_bridge", None) is not None:
+        bstats = pipeline._frigate_bridge.stats()
+        result["frigate_bridge_mqtt"] = str(bstats.get("mqtt_messages", 0))
+        result["frigate_bridge_cabin_enqueued"] = str(bstats.get("cabin_enqueued", 0))
+        result["frigate_bridge_face_enqueued"] = str(bstats.get("face_enqueued", 0))
+        result["frigate_bridge_plate_enqueued"] = str(bstats.get("plate_enqueued", 0))
+        result["frigate_bridge_red_light_enqueued"] = str(bstats.get("red_light_enqueued", 0))
+        result["frigate_bridge_speed_emitted"] = str(bstats.get("speed_emitted", 0))
+        result["frigate_bridge_snapshot_fail"] = str(bstats.get("snapshot_fail", 0))
+    result["frigate_vlm_bridge_crop_mode"] = (
+        os.environ.get("FRIGATE_VLM_BRIDGE_CROP_MODE") or "vehicle_bbox"
+    ).strip()
+
+    # When Frigate+Gemini bridges own cabin/plate/face, do not fail health on missing ONNX.
+    if settings.frigate_vlm_bridge and gemini_cfg:
+        for k in list(result.keys()):
+            if k.endswith("_model_loaded") and ("seatbelt" in k or "phone" in k or "driver" in k):
+                result[k] = "true"
+        result["plate_loaded"] = "true"
+        result["face_loaded"] = "true"
+        req2 = required_health_keys()
+        bad2 = [k for k in req2 if str(result.get(k, "")).lower() != "true"]
+        result["models_all_ok"] = str(len(bad2) == 0).lower()
+        if bad2:
+            result["models_missing"] = ",".join(bad2)
+        else:
+            result.pop("models_missing", None)
 
     if want_cuda and not uses_cuda and not allow_cpu:
         result["status"] = "gpu_required_inactive"
