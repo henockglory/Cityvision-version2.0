@@ -43,3 +43,15 @@ Règles Gemini (ceinture, téléphone, feu, plaque, faces) = **`partial`** jusqu
 Pas de prompt VLM « correlation ». Le moteur peut lier des events déjà émis (`face_*`, `plate_*`) → `correlation_match` si encore au catalogue.
 
 Voir aussi [ENV-PLATFORM.md](./ENV-PLATFORM.md), [FRIGATE-SYNC-HONESTY.md](./FRIGATE-SYNC-HONESTY.md).
+
+## Append 2026-08-02 — cabine vehicle_bbox, fusion OCR/face
+
+| Décision | Valeur verrouillée |
+|---|---|
+| Crop cabine | **`vehicle_bbox` exclusivement** — `driver_roi` retiré du runtime bridge |
+| Emit cabine | **Oui/non** sur `violation` + confiance — **plus de gate `visible=false`** |
+| OCR plaque | **Gemini + PaddleOCR** en parallèle sur le même crop Frigate → `gemini_paddle_fusion` |
+| Visage | **InsightFace + Gemini** en parallèle → dedupe 30s zone/track (`detection_method`: `insightface` \| `gemini_vlm` \| `both`) |
+| Modèle | **`gemini-3.1-flash-lite`** (défaut `config.py`) |
+
+Sous `FRIGATE_VLM_BRIDGE=1` : ONNX cabine local reste coupé ; Paddle live + bridge fusion coexistent pour les plaques ; InsightFace continue sur RTSP.

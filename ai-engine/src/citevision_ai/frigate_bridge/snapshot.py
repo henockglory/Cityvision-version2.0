@@ -70,6 +70,9 @@ def download_snapshot_jpeg(frigate_url: str, event_id: str, *, quality: int = 85
 def _box_from_event(ev: dict[str, Any]) -> dict[str, float] | None:
     data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
     box = data.get("box") if isinstance(data, dict) else None
+    # MQTT `after` often has top-level `box` (xywh) without nesting under data.
+    if not isinstance(box, (list, tuple)) or len(box) < 4:
+        box = ev.get("box")
     if not isinstance(box, (list, tuple)) or len(box) < 4:
         return None
     x, y, w, h = float(box[0]), float(box[1]), float(box[2]), float(box[3])
@@ -196,13 +199,10 @@ def fetch_cabin_jpeg(
     wait_sec: float = 25.0,
     label: str = "",
 ) -> tuple[bytes | None, dict[str, float] | None, dict[str, Any] | None]:
-    """Vehicle-in-zone → cabin/driver sub-crop for Gemini seatbelt/phone.
+    """Vehicle-in-zone → full Frigate vehicle bbox crop for Gemini seatbelt/phone.
 
-    Uses Frigate vehicle bbox, then ``bbox_cabin_driver_region`` so Gemini sees
-    windshield/driver rather than the full car silhouette.
+    Cabine policy: ``vehicle_bbox`` only (never driver_roi / cabin sub-crop).
     """
-    crop_mode = (os.environ.get("FRIGATE_VLM_BRIDGE_CROP_MODE") or "vehicle_bbox").strip().lower()
-    use_vehicle_bbox = crop_mode in {"vehicle_bbox", "vehicle", "car_bbox", "passthrough"}
     ev = event_payload
     if ev is None or not (ev.get("has_snapshot") or (ev.get("data") or {}).get("has_snapshot")):
         ev = wait_snapshot_ready(frigate_url, event_id, timeout_sec=wait_sec) or ev
@@ -210,24 +210,18 @@ def fetch_cabin_jpeg(
     if not raw:
         return None, None, ev
     vehicle_box = _box_from_event(ev) if isinstance(ev, dict) else None
-    lab = (label or (ev or {}).get("label") or "").lower().strip()
-    if vehicle_box and lab in _VEHICLE and not use_vehicle_bbox:
-        cabin_box = bbox_cabin_driver_region(vehicle_box)
-        crop = crop_jpeg_from_snapshot(raw, cabin_box, pad=0.04, min_side=256)
+    if not vehicle_box:
+        return None, None, ev
+    area = float(vehicle_box.get("width") or 0) * float(vehicle_box.get("height") or 0)
+    height = float(vehicle_box.get("height") or 0)
+    if area < 0.035 or height < 0.12:
         logger.info(
-            "cabin_subcrop event=%s vehicle=(%.2f,%.2f,%.2fx%.2f) cabin=(%.2f,%.2f,%.2fx%.2f)",
-            (event_id or "")[:12],
-            float(vehicle_box["x"]), float(vehicle_box["y"]),
-            float(vehicle_box["width"]), float(vehicle_box["height"]),
-            float(cabin_box["x"]), float(cabin_box["y"]),
-            float(cabin_box["width"]), float(cabin_box["height"]),
+            "vehicle_bbox_too_small event=%s area=%.4f h=%.3f",
+            (event_id or "")[:12], area, height,
         )
-        return crop, cabin_box, ev
-    # "simple bbox passthrough": use the full vehicle bbox directly for Gemini.
-    pad = 0.04 if use_vehicle_bbox else 0.06
-    min_side = 256 if use_vehicle_bbox else 224
-    crop = crop_jpeg_from_snapshot(raw, vehicle_box, pad=pad, min_side=min_side)
-    if use_vehicle_bbox:
+        return None, vehicle_box, ev
+    crop = crop_jpeg_from_snapshot(raw, vehicle_box, pad=0.06, min_side=384)
+    if crop and vehicle_box:
         logger.info(
             "vehicle_bbox_crop event=%s vehicle=(%.2f,%.2f,%.2fx%.2f)",
             (event_id or "")[:12],
@@ -264,6 +258,35 @@ def polygon_to_norm_bbox(polygon: list[Any]) -> dict[str, float] | None:
     return {"x": x0, "y": y0, "width": w, "height": h, "norm": max(x1, y1) <= 1.5}
 
 
+def _union_norm_boxes(
+    a: dict[str, Any] | None,
+    b: dict[str, Any] | None,
+) -> dict[str, float] | None:
+    """Axis-aligned union of two boxes (norm or px). Prefer norm when either is norm."""
+    if not a and not b:
+        return None
+    if not a:
+        return dict(b) if isinstance(b, dict) else None  # type: ignore[arg-type]
+    if not b:
+        return dict(a)
+    use_norm = bool(a.get("norm") or b.get("norm")) or max(
+        float(a.get("x", 0)), float(a.get("y", 0)),
+        float(a.get("width", 0)), float(a.get("height", 0)),
+        float(b.get("x", 0)), float(b.get("y", 0)),
+        float(b.get("width", 0)), float(b.get("height", 0)),
+    ) <= 1.5
+    ax0, ay0 = float(a["x"]), float(a["y"])
+    ax1, ay1 = ax0 + float(a["width"]), ay0 + float(a["height"])
+    bx0, by0 = float(b["x"]), float(b["y"])
+    bx1, by1 = bx0 + float(b["width"]), by0 + float(b["height"])
+    x0, y0 = min(ax0, bx0), min(ay0, by0)
+    x1, y1 = max(ax1, bx1), max(ay1, by1)
+    out: dict[str, float] = {"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0}
+    if use_norm:
+        out["norm"] = True  # type: ignore[assignment]
+    return out
+
+
 def fetch_red_light_jpeg(
     frigate_url: str,
     event_id: str,
@@ -272,7 +295,11 @@ def fetch_red_light_jpeg(
     light_polygon: list[Any] | None = None,
     wait_sec: float = 25.0,
 ) -> tuple[bytes | None, dict[str, float] | None, dict[str, Any] | None]:
-    """Crop traffic-light ROI (preferred) or vehicle bbox for Gemini red-light judgment."""
+    """Crop for Gemini red-light judgment: lamp + vehicle (never lamp-only).
+
+    Lamp-only crops make Gemini fail-closed (no vehicle visible). Prefer the
+    union of traffic-light zone and vehicle bbox; fall back to full snapshot.
+    """
     ev = event_payload
     if ev is None or not (ev.get("has_snapshot") or (ev.get("data") or {}).get("has_snapshot")):
         ev = wait_snapshot_ready(frigate_url, event_id, timeout_sec=wait_sec) or ev
@@ -280,11 +307,16 @@ def fetch_red_light_jpeg(
     if not raw:
         return None, None, ev
     light_box = polygon_to_norm_bbox(list(light_polygon or []))
-    if light_box:
-        crop = crop_jpeg_from_snapshot(raw, light_box, pad=0.08, min_side=256)
-        if crop:
-            return crop, light_box, ev
-    # Fallback: vehicle bbox (scene still often includes the lamp).
     vehicle_box = _box_from_event(ev) if isinstance(ev, dict) else None
-    crop = crop_jpeg_from_snapshot(raw, vehicle_box, pad=0.1, min_side=320)
-    return crop, vehicle_box, ev
+    union = _union_norm_boxes(light_box, vehicle_box)
+    if union and float(union.get("width") or 0) > 0 and float(union.get("height") or 0) > 0:
+        crop = crop_jpeg_from_snapshot(raw, union, pad=0.10, min_side=400)
+        if crop:
+            return crop, union, ev
+    if vehicle_box:
+        crop = crop_jpeg_from_snapshot(raw, vehicle_box, pad=0.14, min_side=400)
+        if crop:
+            return crop, vehicle_box, ev
+    # Full snapshot: Gemini needs both signal and vehicle in one view.
+    crop = crop_jpeg_from_snapshot(raw, None, pad=0.0, min_side=0)
+    return crop, None, ev

@@ -53,7 +53,9 @@ logger = logging.getLogger(__name__)
 SUBJECT_MIN_TEXTURE = 50.0
 # Red-light evidence must stay close to the IA emission instant — wide demo skew
 # produces scenes where the lamp has already turned green.
-RED_LIGHT_MAX_ALIGN_SEC = 8.0
+# Demo go2rtc loops often skew IA↔Frigate by 10–30s; 8s was too tight and
+# suppressed every red-light alert (incomplete_evidence). Keep below accept_max.
+RED_LIGHT_MAX_ALIGN_SEC = 30.0
 RED_LIGHT_MIN_IOU = 0.08
 # Sprint 1 — deferred compose: wait for Frigate end_time before clip API (I4).
 RED_LIGHT_END_TIME_WAIT_SEC = 30.0
@@ -334,20 +336,36 @@ class FrigateTrackEvidence:
         anchor = float(anchor)
 
         bound_id = str(evt.get("frigate_event_id") or "").strip()
-        # Never trust a proactive binder id for red_light / speeding — it often freezes
-        # an early track box while the car has already moved (empty subject on snapshot).
+        meta0 = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        bridge_sourced = str(meta0.get("bridge_source") or "").lower() == "frigate"
         event_type0 = str(evt.get("event_type") or "")
-        if bound_id and event_type0 in ("red_light_violation", "speeding"):
+        # Trust Frigate-bridge event ids (Gemini/speed path). Only strip proactive
+        # YOLO binder ids which often freeze an early box while the car moved.
+        if (
+            bound_id
+            and event_type0 in ("red_light_violation", "speeding")
+            and not bridge_sourced
+        ):
             logger.info(
-                "frigate_track: ignore stale bind for %s cam=%s id=%s — re-correlate",
+                "frigate_track: ignore stale binder for %s cam=%s id=%s — re-correlate",
                 event_type0, camera_id[:8], bound_id[:24],
             )
+            try:
+                from citevision_ai.observability.rule_blockers import blockers
+                blockers.inc("bound_id_stripped")
+            except Exception:
+                pass
             bound_id = ""
             evt.pop("frigate_event_id", None)
-            meta = evt.get("metadata")
-            if isinstance(meta, dict):
-                meta.pop("frigate_event_id", None)
-                meta.pop("frigate_bind_iou", None)
+            if isinstance(meta0, dict):
+                meta0.pop("frigate_event_id", None)
+                meta0.pop("frigate_bind_iou", None)
+        elif bound_id and bridge_sourced:
+            try:
+                from citevision_ai.observability.rule_blockers import blockers
+                blockers.inc("bound_id_trusted")
+            except Exception:
+                pass
         if bound_id:
             bound_ev = self.fetch_event(bound_id)
             align_delta = min_time_delta(anchor, bound_ev) if bound_ev else 0.0
@@ -767,16 +785,24 @@ class FrigateTrackEvidence:
             meta_out["ia_bbox"] = ia_bbox
 
         if evt.get("frigate_event_id") and not frigate_bbox_embedded:
-            logger.warning(
-                "frigate_track: bound capture missing frigate bbox cam=%s event=%s — IA fallback",
-                camera_id[:8], event_id[:24],
-            )
-            if ia_bbox and norm_bbox:
-                # Keep real source label (do not pretend frigate_mqtt when box is IA).
-                meta_out["bbox_source"] = "ia_overlay"
-                frigate_bbox_embedded = True
+            bridge_sourced = str(
+                (evt.get("metadata") or {}).get("bridge_source") or ""
+            ).lower() == "frigate" if isinstance(evt.get("metadata"), dict) else False
+            if bridge_sourced and norm_bbox:
+                # MQTT box already on the CiteVision event — honest frigate_mqtt label.
+                meta_out["bbox_source"] = "frigate_mqtt"
+                meta_out["frigate_bbox_embedded"] = True
             else:
-                return None
+                logger.warning(
+                    "frigate_track: bound capture missing frigate bbox cam=%s event=%s — IA fallback",
+                    camera_id[:8], event_id[:24],
+                )
+                if ia_bbox and norm_bbox:
+                    # Keep real source label (do not pretend frigate_mqtt when box is IA).
+                    meta_out["bbox_source"] = "ia_overlay"
+                    frigate_bbox_embedded = True
+                else:
+                    return None
 
         return {
             "scene": scene_bytes,
@@ -1230,9 +1256,12 @@ class FrigateTrackEvidence:
         soft_speed = bool(meta.get("frigate_speed_soft_iou") is not None)
         soft_ia = soft_red or soft_speed
         event_type = str(evt.get("event_type") or "")
-        # Road rules: never ship Frigate burned-in bbox (often frozen on asphalt).
-        # Prefer clean snapshot + IA offender box whenever the region has content.
-        force_ia_road = event_type in ("red_light_violation", "speeding")
+        bridge_sourced = str(meta.get("bridge_source") or "").lower() == "frigate"
+        # Road rules: avoid Frigate burned-in bbox — except Frigate→Gemini bridge
+        # events whose bbox already comes from MQTT (must stay bbox_source=frigate_mqtt).
+        force_ia_road = (
+            event_type in ("red_light_violation", "speeding") and not bridge_sourced
+        )
 
         # Soft-accept / road force-IA path: draw the IA offender on Frigate media.
         soft_frame = clean_frame
@@ -1381,6 +1410,11 @@ class FrigateTrackEvidence:
         return best, best_delta
 
     def _list_events(self, frigate_id: str) -> list[dict[str, Any]]:
+        try:
+            from citevision_ai.observability.rule_blockers import blockers
+            blockers.inc("frigate_list_calls")
+        except Exception:
+            pass
         limit = max(10, int(settings.frigate_demo_events_limit))
         qs = urllib.parse.urlencode({"cameras": frigate_id, "limit": limit})
         url = f"{self._base}/api/events?{qs}"
@@ -1454,6 +1488,11 @@ class FrigateTrackEvidence:
         return None
 
     def _download_event_clip(self, event_id: str, meta: dict[str, Any]) -> bytes | None:
+        try:
+            from citevision_ai.observability.rule_blockers import blockers
+            blockers.inc("frigate_clip_http")
+        except Exception:
+            pass
         if meta.get("has_clip") is False:
             time.sleep(settings.frigate_clip_wait_if_missing)
         url = f"{self._base}/api/events/{event_id}/clip.mp4"

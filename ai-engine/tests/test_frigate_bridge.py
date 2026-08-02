@@ -123,6 +123,168 @@ def test_bridge_speed_no_emit_under_limit():
     before = {"current_zones": [f"cv_zone_{zone_uuid}"], "data": {"average_estimated_speed": 40.0}}
     bridge._handle_event(after, before)
     assert emitted == []
+    assert bridge.stats().get("speed_below_limit", 0) >= 1
+
+
+def test_bridge_cabin_dispatches_seatbelt(monkeypatch):
+    zone_uuid = "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"
+    cam_uuid = "d2eb7076-c3b3-40fd-9b2c-0d119bb975c9"
+    spatial = {
+        "zones": [
+            {
+                "id": zone_uuid,
+                "zone_id": "Cabin",
+                "behavior": "seatbelt",
+                "behavior_config": {"confidence": 0.4},
+            }
+        ]
+    }
+    called: list[tuple] = []
+
+    bridge = FrigateEventBridge(
+        frigate_url="http://127.0.0.1:5000",
+        mqtt_host="127.0.0.1",
+        mqtt_port=1884,
+        spatial_resolver=lambda _c: spatial,
+        vlm_enabled=True,
+        vlm_queue=object(),  # non-None so vlm_enabled sticks
+    )
+    # Force vlm path without real queue
+    bridge._vlm_enabled = True
+    bridge._vlm_queue = object()
+
+    def _fake_cabin(camera_id, event_id, after, zinfo, behavior):
+        called.append((camera_id, event_id, behavior))
+
+    monkeypatch.setattr(bridge, "_maybe_cabin", _fake_cabin)
+    after = {
+        "id": "evt-cabin",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "current_zones": [f"cv_zone_{zone_uuid}"],
+        "entered_zones": [f"cv_zone_{zone_uuid}"],
+    }
+    bridge._handle_event(after, {})
+    assert called and called[0][2] == "seatbelt"
+
+
+def test_bridge_cabin_enqueues_vehicle_bbox_crop(monkeypatch):
+    zone_uuid = "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"
+    cam_uuid = "d2eb7076-c3b3-40fd-9b2c-0d119bb975c9"
+    spatial = {
+        "zones": [
+            {
+                "id": zone_uuid,
+                "zone_id": "Cabin",
+                "behavior": "seatbelt",
+                "behavior_config": {"confidence": 0.4},
+            }
+        ]
+    }
+    enqueued: list[dict] = []
+
+    class _FakeQueue:
+        def try_enqueue(self, job):
+            enqueued.append(job)
+            return True
+
+    bridge = FrigateEventBridge(
+        frigate_url="http://127.0.0.1:5000",
+        mqtt_host="127.0.0.1",
+        mqtt_port=1884,
+        spatial_resolver=lambda _c: spatial,
+        vlm_enabled=True,
+        vlm_queue=_FakeQueue(),
+    )
+    bridge._vlm_enabled = True
+    bridge._vlm_queue = _FakeQueue()
+
+    monkeypatch.setattr(
+        "citevision_ai.frigate_bridge.bridge.fetch_cabin_jpeg",
+        lambda *_a, **_k: (b"\xff\xd8\xff", {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}, {}),
+    )
+    after = {
+        "id": "evt-cabin2",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "box": [0.1, 0.2, 0.3, 0.4],
+        "current_zones": [f"cv_zone_{zone_uuid}"],
+        "entered_zones": [f"cv_zone_{zone_uuid}"],
+    }
+    bridge._handle_event(after, {})
+    assert len(enqueued) == 1
+    assert enqueued[0].event_skeleton["metadata"]["crop_mode"] == "frigate_vehicle_bbox"
+    assert enqueued[0].rule == "seatbelt_violation"
+
+
+def test_bridge_red_light_skips_when_not_red(monkeypatch):
+    zone_obs = "cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee"
+    zone_light = "dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee"
+    cam_uuid = "d2eb7076-c3b3-40fd-9b2c-0d119bb975c9"
+    spatial = {
+        "zones": [
+            {"id": zone_obs, "zone_id": "Obs", "behavior": "red_light_observation"},
+            {"id": zone_light, "zone_id": "Feux", "behavior": "traffic_light_color"},
+        ]
+    }
+    bridge = FrigateEventBridge(
+        frigate_url="http://127.0.0.1:5000",
+        mqtt_host="127.0.0.1",
+        mqtt_port=1884,
+        spatial_resolver=lambda _c: spatial,
+        vlm_enabled=True,
+        vlm_queue=object(),
+        light_state_resolver=lambda _c: "green",
+    )
+    bridge._vlm_enabled = True
+    bridge._vlm_queue = object()
+    enqueued = []
+
+    def _boom(*_a, **_k):
+        enqueued.append(1)
+        raise AssertionError("must not fetch jpeg when not red")
+
+    monkeypatch.setattr(
+        "citevision_ai.frigate_bridge.bridge.fetch_red_light_jpeg",
+        _boom,
+    )
+    after = {
+        "id": "evt-red",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "current_zones": [f"cv_zone_{zone_obs}"],
+    }
+    bridge._handle_event(after, {})
+    assert enqueued == []
+    assert bridge.stats().get("red_light_skipped_not_red", 0) >= 1
+
+
+def test_bridge_gate_state_or_mode_raw_red_stable_green():
+    from citevision_ai.road_enforcement.traffic_light import TrafficLightEngine
+
+    eng = TrafficLightEngine()
+    eng.configure_bridge_gate(mode="or")
+    cam = "cam-1"
+    assert eng.bridge_gate_state(cam) == "unknown"
+    eng._stable_state[cam] = "green"
+    eng._raw_state[cam] = "red"
+    assert eng.bridge_gate_state(cam) == "red"
+    eng._raw_state[cam] = "green"
+    assert eng.bridge_gate_state(cam) == "green"
+
+
+def test_bridge_gate_state_and_mode_legacy():
+    from citevision_ai.road_enforcement.traffic_light import TrafficLightEngine
+
+    eng = TrafficLightEngine()
+    eng.configure_bridge_gate(mode="and")
+    cam = "cam-2"
+    eng._stable_state[cam] = "green"
+    eng._raw_state[cam] = "red"
+    assert eng.bridge_gate_state(cam) == "green"
+    eng._raw_state[cam] = "red"
+    eng._stable_state[cam] = "red"
+    assert eng.bridge_gate_state(cam) == "red"
 
 
 def test_crop_jpeg_full_frame_without_box():

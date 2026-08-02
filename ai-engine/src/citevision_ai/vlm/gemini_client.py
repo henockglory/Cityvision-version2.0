@@ -86,26 +86,26 @@ def _parse_verdict(data: dict[str, Any], *, expected_rule: str, latency_ms: floa
     )
 
 
+_CABIN_RULES = frozenset({"seatbelt_violation", "phone_use_violation"})
+
 CABIN_PROMPTS: dict[str, str] = {
     "seatbelt_violation": (
-        "You analyze a single crop of a vehicle from a traffic camera (may include more than just the cabin). "
-        "Task: focus on the visible driver area and decide if the visible driver is NOT wearing a seatbelt. "
+        "You analyze a vehicle_bbox crop from a traffic camera (full vehicle bounding box). "
+        "Answer yes/no: is the driver NOT wearing a seatbelt? "
         "Reply with ONLY one JSON object, no markdown:\n"
         '{"violation":bool,"rule":"seatbelt_violation","confidence":0.0-1.0,'
-        '"visible":bool,"reason_short":"<=120 chars","signals":["..."]}\n'
-        "Set visible=false if the driver/cabin is not clear enough. "
-        "Set violation=true only if you are confident the seatbelt is not worn. "
-        "If unclear, violation=false and signals must include \"unclear\"."
+        '"reason_short":"<=120 chars"}\n'
+        "violation=true only if you are confident the seatbelt is not worn; "
+        "violation=false if worn, unclear, or not enough detail (treat unclear as false)."
     ),
     "phone_use_violation": (
-        "You analyze a single crop of a vehicle from a traffic camera (may include more than just the cabin). "
-        "Task: focus on the visible driver area and decide if the visible driver is using a phone while driving (handset to ear or looking at phone). "
+        "You analyze a vehicle_bbox crop from a traffic camera (full vehicle bounding box). "
+        "Answer yes/no: is the driver using a phone while driving (handset to ear or looking at phone)? "
         "Reply with ONLY one JSON object, no markdown:\n"
         '{"violation":bool,"rule":"phone_use_violation","confidence":0.0-1.0,'
-        '"visible":bool,"reason_short":"<=120 chars","signals":["..."]}\n'
-        "Set visible=false if the driver/cabin is not clear enough. "
-        "Set violation=true only if phone use is clear. "
-        "If unclear, violation=false and signals must include \"unclear\"."
+        '"reason_short":"<=120 chars"}\n'
+        "violation=true only if phone use is clear; "
+        "violation=false if no phone, unclear, or not enough detail (treat unclear as false)."
     ),
 }
 
@@ -337,6 +337,8 @@ def should_emit(verdict: GeminiVerdict, *, min_confidence: float) -> bool:
     """Canonical emit gate for cabin/face/plate (violation=true means positive detection)."""
     if not verdict.raw_ok or verdict.error:
         return False
+    if verdict.rule in _CABIN_RULES:
+        return bool(verdict.violation) and float(verdict.confidence) >= float(min_confidence)
     if not verdict.visible:
         return False
     if "unclear" in {s.lower() for s in verdict.signals}:

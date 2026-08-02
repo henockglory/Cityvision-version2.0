@@ -147,13 +147,12 @@ class PlateIdentityEngine:
             logger.info("PlateIdentityEngine: Gemini OCR primary (Paddle short-circuited)")
 
     def set_frigate_bridge_active(self, active: bool) -> None:
-        """When True, Frigate zone→Gemini owns plate_ocr (skip YOLO/Paddle crop OCR)."""
+        """Frigate bridge enqueues Gemini OCR; Paddle stays active on live frames."""
         self._frigate_bridge_active = bool(active)
         if self._frigate_bridge_active:
-            # Gemini-only under bridge: cut local Gemini enqueue + Paddle path.
-            self._gemini_enabled = False
-            self._vlm_queue = None
-            logger.info("PlateIdentityEngine: Frigate VLM bridge owns plate_ocr (Paddle+local Gemini cut)")
+            logger.info(
+                "PlateIdentityEngine: Frigate bridge ON — Paddle live + Gemini bridge fusion",
+            )
 
     def load(self) -> None:
         if hasattr(self._backend, "load"):
@@ -219,10 +218,7 @@ class PlateIdentityEngine:
         self._frame_counter += 1
         if self._frame_counter % self._process_every_n != 0:
             return []
-        # Frigate-primary plate path owns OCR for plate_ocr zones.
-        if self._frigate_bridge_active:
-            return []
-        if self._gemini_enabled and self._vlm_queue is not None:
+        if self._gemini_enabled and self._vlm_queue is not None and not self._frigate_bridge_active:
             self._enqueue_gemini_plates(camera_id, frame, tracks, timestamp)
             return []
         if not getattr(self._backend, "is_loaded", False):

@@ -432,6 +432,7 @@ class SecondaryInferenceEngine:
             cy = (float(bbox.get("y", 0)) + float(bbox.get("height", 0)) / 2) / max(h, 1)
             if poly and not _point_in_polygon(cx, cy, poly):
                 continue
+            # Full vehicle bbox only — Gemini judges seatbelt/phone; no driver sub-crop.
             crop = self._crop(frame, bbox)
             if crop is None or crop.size == 0:
                 continue
@@ -458,6 +459,7 @@ class SecondaryInferenceEngine:
                 "metadata": {
                     "detection_method": "gemini_vlm",
                     "zone_behavior": behavior,
+                    "crop_mode": "vehicle_bbox",
                 },
             }
             self._vlm_queue.try_enqueue(

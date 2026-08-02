@@ -263,6 +263,31 @@ class Settings(BaseSettings):
             "FRIGATE_BRIDGE_SNAPSHOT_WAIT_SEC",
         ),
     )
+    # D1/D2 — red-light HSV→Gemini gate (campaign: or + 2.5s grace)
+    red_light_gate_mode: str = Field(
+        default="or",
+        validation_alias=AliasChoices(
+            "red_light_gate_mode",
+            "RED_LIGHT_GATE_MODE",
+            "CITEVISION_RED_LIGHT_GATE_MODE",
+        ),
+    )
+    red_light_post_red_grace_sec: float = Field(
+        default=2.5,
+        validation_alias=AliasChoices(
+            "red_light_post_red_grace_sec",
+            "RED_LIGHT_POST_RED_GRACE_SEC",
+            "CITEVISION_RED_LIGHT_POST_RED_GRACE_SEC",
+        ),
+    )
+    red_light_vote_mode: str = Field(
+        default="strict_and",
+        validation_alias=AliasChoices(
+            "red_light_vote_mode",
+            "RED_LIGHT_VOTE_MODE",
+            "CITEVISION_RED_LIGHT_VOTE_MODE",
+        ),
+    )
 
     postgres_host: str = "localhost"
     postgres_port: int = 5433

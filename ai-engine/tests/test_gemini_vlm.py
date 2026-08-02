@@ -29,26 +29,60 @@ def test_extract_json_object_fenced():
     assert data["violation"] is False
 
 
-def test_should_emit_fail_closed():
-    base = GeminiVerdict(
-        violation=True, rule="seatbelt_violation", confidence=0.9,
-        visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
+def test_should_emit_cabin_ignores_visible_and_unclear():
+    """Cabine: oui/non sur violation + confiance — pas de gate visible/unclear."""
+    assert should_emit(
+        GeminiVerdict(
+            violation=True, rule="seatbelt_violation", confidence=0.9,
+            visible=False, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
+        ),
+        min_confidence=0.45,
     )
-    assert should_emit(base, min_confidence=0.45)
-    assert not should_emit(
-        GeminiVerdict(True, "seatbelt_violation", 0.9, False, "", [], 1, True),
+    assert should_emit(
+        GeminiVerdict(
+            violation=True, rule="phone_use_violation", confidence=0.8,
+            visible=False, reason_short="ok", signals=["unclear"], latency_ms=10, raw_ok=True,
+        ),
         min_confidence=0.45,
     )
     assert not should_emit(
-        GeminiVerdict(True, "seatbelt_violation", 0.2, True, "", [], 1, True),
+        GeminiVerdict(
+            violation=False, rule="seatbelt_violation", confidence=0.9,
+            visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
+        ),
         min_confidence=0.45,
     )
     assert not should_emit(
-        GeminiVerdict(True, "seatbelt_violation", 0.9, True, "", ["unclear"], 1, True),
+        GeminiVerdict(
+            violation=True, rule="seatbelt_violation", confidence=0.2,
+            visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
+        ),
         min_confidence=0.45,
     )
     assert not should_emit(
-        GeminiVerdict(True, "seatbelt_violation", 0.9, True, "", [], 1, False, error="http"),
+        GeminiVerdict(
+            violation=True, rule="seatbelt_violation", confidence=0.9,
+            visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=False,
+            error="http",
+        ),
+        min_confidence=0.45,
+    )
+
+
+def test_should_emit_fail_closed_non_cabin():
+    """Feu/plaque/face: gate visible + unclear inchangé."""
+    assert not should_emit(
+        GeminiVerdict(
+            violation=True, rule="red_light_violation", confidence=0.9,
+            visible=False, reason_short="", signals=[], latency_ms=1, raw_ok=True,
+        ),
+        min_confidence=0.45,
+    )
+    assert not should_emit(
+        GeminiVerdict(
+            violation=True, rule="red_light_violation", confidence=0.9,
+            visible=True, reason_short="", signals=["unclear"], latency_ms=1, raw_ok=True,
+        ),
         min_confidence=0.45,
     )
 
@@ -140,6 +174,56 @@ def test_vlm_queue_emits_on_positive_verdict():
     assert len(emitted) == 1
     assert emitted[0]["metadata"]["detection_method"] == "gemini_vlm"
     assert emitted[0]["confidence"] == pytest.approx(0.91)
+
+
+def test_vlm_queue_plate_fusion_emits_paddle_winner():
+    client = MagicMock()
+    client.configured = True
+    client.model = "gemini-3.1-flash-lite"
+    client.judge_jpeg.return_value = GeminiVerdict(
+        violation=False,
+        rule="plate_ocr",
+        confidence=0.2,
+        visible=False,
+        reason_short="unreadable",
+        signals=["unclear"],
+        latency_ms=12.0,
+        raw_ok=True,
+        plate_text="",
+        readable=False,
+    )
+    emitted: list[dict] = []
+    done = threading.Event()
+
+    def _emit(evt):
+        emitted.append(evt)
+        done.set()
+
+    q = VlmQueue(client, maxsize=8, max_age_sec=30.0, min_interval_sec=0.0)
+    q.set_emit_callback(_emit)
+    q.start()
+    ok = q.try_enqueue(
+        VlmJob(
+            jpeg=b"abc",
+            rule="plate_ocr",
+            min_confidence=0.35,
+            event_skeleton={
+                "event_id": "e2",
+                "camera_id": "cam",
+                "event_type": "plate_detected",
+                "metadata": {},
+            },
+            paddle_plate_text="ABCD1234",
+            paddle_plate_confidence=0.88,
+        )
+    )
+    assert ok
+    assert done.wait(timeout=3.0)
+    q.stop()
+    assert len(emitted) == 1
+    assert emitted[0]["plate_number"] == "ABCD1234"
+    assert emitted[0]["metadata"]["detection_method"] == "gemini_paddle_fusion"
+    assert emitted[0]["metadata"]["ocr_winner"] == "paddle"
 
 
 def test_vlm_queue_drops_when_full():

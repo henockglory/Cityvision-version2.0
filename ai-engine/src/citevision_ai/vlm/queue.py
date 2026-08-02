@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from citevision_ai.vlm.gemini_client import GeminiClient, should_emit
+from citevision_ai.vlm.gemini_client import GeminiClient, _CABIN_RULES, should_emit
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,9 @@ class VlmJob:
     event_skeleton: dict[str, Any]
     extra_context: str = ""
     enqueued_at: float = field(default_factory=time.time)
+    shadow_only: bool = False
+    paddle_plate_text: str = ""
+    paddle_plate_confidence: float = 0.0
 
 
 class VlmQueue:
@@ -50,6 +54,7 @@ class VlmQueue:
             "rejected": 0,
             "unclear": 0,
             "rate_limited": 0,
+            "shadow_logged": 0,
         }
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -145,17 +150,126 @@ class VlmQueue:
                     break
             logger.warning("vlm_rate_limited — backing off 60s (drained=%d)", drained)
             return
-        if not should_emit(verdict, min_confidence=job.min_confidence):
+        plate_fusion_meta: dict[str, Any] = {}
+        fused_plate_text = ""
+        fused_plate_conf = 0.0
+        if job.rule == "plate_ocr":
+            from citevision_ai.identity.plate_fusion import (
+                PlateReading,
+                fuse_plate_readings,
+                reading_from_gemini_verdict,
+            )
+
+            paddle_hint = None
+            if job.paddle_plate_text:
+                paddle_hint = PlateReading(
+                    text=str(job.paddle_plate_text),
+                    confidence=float(job.paddle_plate_confidence or 0.0),
+                    source="paddle",
+                )
+            winner, plate_fusion_meta = fuse_plate_readings(
+                reading_from_gemini_verdict(verdict),
+                paddle_hint,
+            )
+            if winner and float(winner.confidence) >= float(job.min_confidence):
+                fused_plate_text = winner.text
+                fused_plate_conf = float(winner.confidence)
+            emit_ok = bool(fused_plate_text)
+        else:
+            emit_ok = should_emit(verdict, min_confidence=job.min_confidence)
+
+        if not emit_ok:
             with self._lock:
                 self._stats["rejected"] += 1
-                signals = [str(s).lower() for s in (verdict.signals or [])]
-                if "unclear" in signals or not bool(getattr(verdict, "visible", True)):
-                    self._stats["unclear"] += 1
+                if job.rule not in _CABIN_RULES:
+                    signals = [str(s).lower() for s in (verdict.signals or [])]
+                    if "unclear" in signals or not bool(getattr(verdict, "visible", True)):
+                        self._stats["unclear"] += 1
+            reason = (getattr(verdict, "reason_short", "") or "")[:120]
+            reject_reason = "low_confidence"
+            if job.rule in _CABIN_RULES:
+                if not bool(getattr(verdict, "violation", False)):
+                    reject_reason = "violation_false"
+                elif float(getattr(verdict, "confidence", 0.0) or 0.0) < float(job.min_confidence):
+                    reject_reason = "low_confidence"
+                else:
+                    reject_reason = "error"
+            elif job.rule == "plate_ocr":
+                reject_reason = "plate_fusion_empty"
+            elif not bool(getattr(verdict, "visible", True)):
+                reject_reason = "visible"
+            elif "unclear" in {str(s).lower() for s in (verdict.signals or [])}:
+                reject_reason = "unclear"
+            logger.info(
+                "vlm_reject rule=%s reason=%s violation=%s visible=%s conf=%.2f min=%.2f "
+                "reason_short=%s signals=%s err=%s fusion=%s",
+                job.rule,
+                reject_reason,
+                bool(getattr(verdict, "violation", False)),
+                bool(getattr(verdict, "visible", False)),
+                float(getattr(verdict, "confidence", 0.0) or 0.0),
+                float(job.min_confidence),
+                reason,
+                list(getattr(verdict, "signals", None) or [])[:6],
+                getattr(verdict, "error", "") or "",
+                plate_fusion_meta if job.rule == "plate_ocr" else "",
+            )
+            try:
+                from citevision_ai.observability.rule_blockers import blockers
+                blockers.note(
+                    "vlm_reject",
+                    rule=job.rule,
+                    violation=bool(getattr(verdict, "violation", False)),
+                    visible=bool(getattr(verdict, "visible", False)),
+                    reason_short=reason,
+                    reject_reason=reject_reason,
+                )
+            except Exception:
+                pass
+            return
+        if job.rule == "red_light_violation":
+            from citevision_ai.road_enforcement.red_light_vote import (
+                local_already_emitted,
+                red_light_vote_mode,
+            )
+            fe_id = str(job.event_skeleton.get("frigate_event_id") or "")
+            if red_light_vote_mode() == "lf_or_g" and local_already_emitted(fe_id):
+                with self._lock:
+                    self._stats["rejected"] += 1
+                logger.info(
+                    "vlm_skip rule=%s frigate_event=%s reason=lf_or_g_local_already_emitted",
+                    job.rule, fe_id[:12],
+                )
+                return
+        shadow_env = str(os.environ.get("GEMINI_SHADOW_MODE", "")).strip().lower() in (
+            "1", "true", "yes",
+        )
+        if job.shadow_only or shadow_env:
+            with self._lock:
+                self._stats["shadow_logged"] += 1
+            logger.info(
+                "vlm_shadow rule=%s violation=%s visible=%s conf=%.2f (no emit)",
+                job.rule,
+                bool(getattr(verdict, "violation", False)),
+                bool(getattr(verdict, "visible", False)),
+                float(getattr(verdict, "confidence", 0.0) or 0.0),
+            )
+            try:
+                from citevision_ai.observability.rule_blockers import blockers
+                blockers.note(
+                    "vlm_shadow",
+                    rule=job.rule,
+                    violation=bool(getattr(verdict, "violation", False)),
+                    visible=bool(getattr(verdict, "visible", False)),
+                    reason_short=(getattr(verdict, "reason_short", "") or "")[:120],
+                )
+            except Exception:
+                pass
             return
         evt = dict(job.event_skeleton)
         evt["confidence"] = round(float(verdict.confidence), 3)
         meta = dict(evt.get("metadata") or {})
-        detection_method = "gemini_ocr" if job.rule == "plate_ocr" else "gemini_vlm"
+        detection_method = "gemini_paddle_fusion" if job.rule == "plate_ocr" else "gemini_vlm"
         meta.update(
             {
                 "detection_method": detection_method,
@@ -167,11 +281,15 @@ class VlmQueue:
                 "confidence": round(float(verdict.confidence), 3),
             }
         )
-        if job.rule == "plate_ocr" and verdict.plate_text:
-            evt["plate_number"] = verdict.plate_text
-            evt["plate_confidence"] = round(float(verdict.confidence), 3)
-            meta["plate_number"] = verdict.plate_text
-            meta["plate_confidence"] = round(float(verdict.confidence), 3)
+        if job.rule == "plate_ocr":
+            meta.update(plate_fusion_meta)
+            if fused_plate_text:
+                evt["plate_number"] = fused_plate_text
+                evt["plate_confidence"] = round(fused_plate_conf, 3)
+                meta["plate_number"] = fused_plate_text
+                meta["plate_confidence"] = round(fused_plate_conf, 3)
+                evt["confidence"] = round(fused_plate_conf, 3)
+                meta["confidence"] = round(fused_plate_conf, 3)
             evt["event_type"] = str(evt.get("event_type") or "plate_detected")
             evt["event"] = evt["event_type"]
         else:

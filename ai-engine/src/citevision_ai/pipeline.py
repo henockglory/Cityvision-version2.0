@@ -190,7 +190,7 @@ class PipelineService:
 
         client = GeminiClient(
             key,
-            model=settings.gemini_model or "gemini-3.6-flash",
+            model=settings.gemini_model or "gemini-3.1-flash-lite",
             timeout=float(settings.gemini_timeout or 20.0),
         )
         self._vlm_queue = init_vlm_queue(
@@ -202,18 +202,17 @@ class PipelineService:
             max_age_sec=20.0,
         )
         self._vlm_queue.set_emit_callback(self._on_vlm_event)
-        # YOLO cabin path only when Frigate VLM bridge is OFF.
-        if not settings.frigate_vlm_bridge:
-            self.secondary.configure_gemini(True, self._vlm_queue)
-            self.secondary.set_bbox_ts_resolver(lambda: time.time())
-        else:
-            self.secondary.configure_gemini(False, None)
-            self.secondary.set_frigate_bridge_active(True)
+        # Cabin Gemini crops: Frigate bbox only when bridge ON (no local YOLO→Gemini).
+        bridge_owns_cabin = bool(settings.frigate_vlm_bridge)
+        self.secondary.configure_gemini(not bridge_owns_cabin, self._vlm_queue)
+        self.secondary.set_bbox_ts_resolver(lambda: time.time())
+        self.secondary.set_frigate_bridge_active(bridge_owns_cabin)
         logger.info(
-            "Gemini VLM enabled model=%s queue=%s frigate_vlm_bridge=%s",
+            "Gemini VLM enabled model=%s queue=%s frigate_vlm_bridge=%s cabin_source=%s",
             settings.gemini_model,
             settings.gemini_queue_size,
-            bool(settings.frigate_vlm_bridge),
+            bridge_owns_cabin,
+            "frigate" if bridge_owns_cabin else "local_yolo",
         )
 
     def _init_frigate_bridge(self) -> None:
@@ -227,6 +226,12 @@ class PipelineService:
         def _spatial(cam_id: str) -> dict[str, Any] | None:
             return self._spatial_configs.get(cam_id)
 
+        self.traffic_light.configure_bridge_gate(
+            mode=str(getattr(settings, "red_light_gate_mode", None) or "or"),
+            post_red_grace_sec=float(
+                getattr(settings, "red_light_post_red_grace_sec", None) or 2.5
+            ),
+        )
         self._frigate_bridge = FrigateEventBridge(
             frigate_url=settings.frigate_url,
             mqtt_host=settings.resolved_mqtt_host(),
@@ -242,24 +247,64 @@ class PipelineService:
             plate_enabled=vlm_on,
             snapshot_wait_sec=float(settings.frigate_bridge_snapshot_wait_sec or 25.0),
             watchlist_resolver=lambda: list(getattr(self.face_engine, "_watchlist", None) or []),
+            light_state_resolver=lambda cam: self.traffic_light.bridge_gate_state(cam),
+            light_debug_resolver=lambda cam: self.traffic_light.bridge_gate_debug(cam),
         )
         if vlm_on:
             self.face_engine.set_frigate_bridge_active(True)
             self.plate_engine.set_frigate_bridge_active(True)
+            self.secondary.set_frigate_bridge_active(True)
         self._frigate_bridge.start()
         logger.info(
-            "Frigate event bridge started vlm=%s speed=%s",
-            vlm_on, speed_on,
+            "Frigate event bridge started vlm=%s speed=%s cabin_source=%s",
+            vlm_on, speed_on, "frigate" if vlm_on else "n/a",
         )
 
     def _on_bridge_event(self, evt: dict[str, Any]) -> None:
         """Publish Frigate-bridge events (speed, etc.) on the MQTT evidence path."""
         self._on_vlm_event(evt)
 
+    def _identity_emit_dedupe(self, evt: dict[str, Any]) -> bool:
+        """Return True when a parallel identity emit should be skipped (30s TTL)."""
+        from citevision_ai.identity.emit_dedupe import (
+            face_dedupe_key,
+            merged_detection_method,
+            plate_dedupe_key,
+            should_skip_emit,
+        )
+
+        camera_id = str(evt.get("camera_id") or "")
+        et = str(evt.get("event_type") or "")
+        meta = dict(evt.get("metadata") or {})
+        if et in ("face_detected", "face_unknown", "face_watchlist_match"):
+            src = str(meta.get("detection_method") or "gemini_vlm")
+            key = face_dedupe_key(
+                camera_id,
+                et,
+                zone_id=str(evt.get("zone_id") or ""),
+                frigate_event_id=str(
+                    evt.get("frigate_event_id") or meta.get("frigate_event_id") or ""
+                ),
+                track_id=evt.get("track_id"),
+            )
+            meta["detection_method"] = merged_detection_method(key, src)
+            evt["metadata"] = meta
+            if should_skip_emit(key, source=src):
+                return True
+            return False
+        plate = str(evt.get("plate_number") or "").strip()
+        if plate and et in (
+            "plate_detected", "plate_ocr", "plate_unknown", "plate_blocked", "plate_allowed",
+        ):
+            return should_skip_emit(plate_dedupe_key(camera_id, plate))
+        return False
+
     def _on_vlm_event(self, evt: dict[str, Any]) -> None:
         """Publish a Gemini / bridge verdict on the same MQTT → rules → evidence path."""
         camera_id = str(evt.get("camera_id") or "")
         if not camera_id:
+            return
+        if self._identity_emit_dedupe(evt):
             return
         if self._org_ids.get(camera_id):
             evt["org_id"] = self._org_ids[camera_id]
@@ -289,8 +334,7 @@ class PipelineService:
                 float(evt.get("plate_confidence") or evt.get("confidence") or 0.0),
             )
 
-        # Face under bridge: clear detection + unknown when a watchlist is configured
-        # (watchlist match is a separate Gemini job). No InsightFace double path.
+        # Face under bridge: Gemini + InsightFace parallel (dedupe above).
         et = str(evt.get("event_type") or "")
         if et == "face_detected":
             wl = list(getattr(self.face_engine, "_watchlist", None) or [])
@@ -785,11 +829,19 @@ class PipelineService:
 
         if frame_id % skip != 0:
             pre_events: list[dict[str, Any]] = []
-            # HSV traffic-light tick only when Frigate→Gemini bridge is OFF.
-            if tl_active and not bool(settings.frigate_vlm_bridge):
+            # HSV always updates colour state when TL zones exist.
+            # Under FRIGATE_VLM_BRIDGE: state_only (gate Gemini) — no HSV violation emit.
+            if tl_active:
                 ts0 = datetime.now(timezone.utc).isoformat()
                 pre_events.extend(
-                    self.traffic_light.process_frame(camera_id, frame, [], ts0, zones_cfg)
+                    self.traffic_light.process_frame(
+                        camera_id,
+                        frame,
+                        [],
+                        ts0,
+                        zones_cfg,
+                        state_only=bool(settings.frigate_vlm_bridge),
+                    )
                 )
             for evt in pre_events:
                 if self._org_ids.get(camera_id):
@@ -1025,11 +1077,18 @@ class PipelineService:
             if gated_tracks:
                 all_events.extend(self.plate_engine.process_frame(camera_id, frame, gated_tracks, ts))
 
-        # Dedicated red-light: HSV only when Frigate→Gemini bridge is OFF.
-        # With FRIGATE_VLM_BRIDGE, Gemini decides red_light_violation.
-        if tl_active and not bool(settings.frigate_vlm_bridge):
+        # HSV colour state always; violation emits only when bridge OFF.
+        # With FRIGATE_VLM_BRIDGE: state_only gate for Gemini red_light.
+        if tl_active:
             all_events.extend(
-                self.traffic_light.process_frame(camera_id, frame, track_dicts, ts, zones_cfg)
+                self.traffic_light.process_frame(
+                    camera_id,
+                    frame,
+                    track_dicts,
+                    ts,
+                    zones_cfg,
+                    state_only=bool(settings.frigate_vlm_bridge),
+                )
             )
         # Cabin violations: secondary ONNX or async Gemini VLM (never both + heuristics).
         zone_behaviors = {str(z.get("behavior", "")) for z in zones_cfg}
@@ -1113,6 +1172,8 @@ class PipelineService:
             if self._org_ids.get(camera_id):
                 evt["org_id"] = self._org_ids[camera_id]
             evt.setdefault("event", evt.get("event_type"))
+            if self._identity_emit_dedupe(evt):
+                continue
             tid = evt.get("track_id")
             fh, fw = frame.shape[:2]
 

@@ -12,6 +12,8 @@ Polygons are normalized 0..1 like the rest of the spatial config.
 from __future__ import annotations
 
 import logging
+import os
+import time
 import uuid
 from collections import deque
 from typing import Any
@@ -25,6 +27,24 @@ logger = logging.getLogger(__name__)
 
 TRAFFIC_LIGHT_BEHAVIOR = "traffic_light_color"
 OBSERVATION_BEHAVIOR = "red_light_observation"
+
+# Campaign defaults (D1/D2): OR gate + 2.5s post-red grace. Kill-switches via env.
+_VALID_GATE_MODES = frozenset({"and", "or", "raw"})
+
+
+def _env_gate_mode(default: str = "or") -> str:
+    raw = (os.environ.get("RED_LIGHT_GATE_MODE") or default).strip().lower()
+    return raw if raw in _VALID_GATE_MODES else default
+
+
+def _env_post_red_grace_sec(default: float = 2.5) -> float:
+    raw = os.environ.get("RED_LIGHT_POST_RED_GRACE_SEC")
+    if raw is None or str(raw).strip() == "":
+        return float(default)
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def _point_in_polygon(px: float, py: float, polygon: list[dict]) -> bool:
@@ -100,6 +120,7 @@ class TrafficLightEngine:
         # Smoothed state machine per camera.
         self._state_history: dict[str, deque[str]] = {}
         self._stable_state: dict[str, str] = {}
+        self._raw_state: dict[str, str] = {}
         # Previous centroids to estimate per-track motion (pixels/frame).
         self._prev_centroid: dict[tuple[str, int], tuple[float, float]] = {}
         self._cooldown: dict[tuple[str, int], int] = {}
@@ -107,16 +128,126 @@ class TrafficLightEngine:
         self._obs_streak: dict[tuple[str, int], int] = {}
         self._frame_counter = 0
         self._cooldown_frames = 45
+        # D1/D2 — Frigate→Gemini enqueue gate (defaults from env; overridable).
+        self._gate_mode: str = _env_gate_mode("or")
+        self._post_red_grace_sec: float = _env_post_red_grace_sec(2.5)
+        self._last_raw_red_mono: dict[str, float] = {}
+        self._gate_debug: dict[str, dict[str, Any]] = {}
+
+    def configure_bridge_gate(
+        self,
+        *,
+        mode: str | None = None,
+        post_red_grace_sec: float | None = None,
+    ) -> None:
+        """Apply kill-switches from settings/env (campaign D1/D2)."""
+        if mode is not None:
+            m = str(mode).strip().lower()
+            self._gate_mode = m if m in _VALID_GATE_MODES else "or"
+        if post_red_grace_sec is not None:
+            try:
+                self._post_red_grace_sec = max(0.0, float(post_red_grace_sec))
+            except (TypeError, ValueError):
+                self._post_red_grace_sec = 2.5
+        logger.info(
+            "traffic_light bridge_gate mode=%s post_red_grace_sec=%.2f",
+            self._gate_mode,
+            self._post_red_grace_sec,
+        )
 
     def reset_camera(self, camera_id: str) -> None:
         """Clear smoothed state when spatial config is hot-reloaded."""
         self._state_history.pop(camera_id, None)
         self._stable_state.pop(camera_id, None)
+        self._raw_state.pop(camera_id, None)
+        self._last_raw_red_mono.pop(camera_id, None)
+        self._gate_debug.pop(camera_id, None)
         drop = [k for k in self._prev_centroid if k[0] == camera_id]
         for k in drop:
             self._prev_centroid.pop(k, None)
             self._cooldown.pop(k, None)
             self._obs_streak.pop(k, None)
+
+    def stable_state(self, camera_id: str) -> str:
+        """Return smoothed HSV light state: red / green / amber / unknown."""
+        return str(self._stable_state.get(camera_id) or "unknown")
+
+    def raw_state(self, camera_id: str) -> str:
+        """Return last-frame HSV light state (unsmoothed)."""
+        return str(self._raw_state.get(camera_id) or "unknown")
+
+    def bridge_gate_debug(self, camera_id: str) -> dict[str, Any]:
+        """Last gate evaluation snapshot (raw/stable/mode/grace) for blockers."""
+        snap = self._gate_debug.get(camera_id)
+        if isinstance(snap, dict):
+            return dict(snap)
+        return {
+            "raw": self.raw_state(camera_id),
+            "stable": self.stable_state(camera_id),
+            "gate": self.bridge_gate_state(camera_id),
+            "gate_mode": self._gate_mode,
+            "post_red_grace_sec": self._post_red_grace_sec,
+            "grace_active": False,
+        }
+
+    def bridge_gate_state(self, camera_id: str) -> str:
+        """HSV gate for Frigate→Gemini red-light enqueue.
+
+        Campaign defaults (D1/D2):
+        - ``RED_LIGHT_GATE_MODE=or`` → red if ``stable==red OR raw==red``
+        - ``and`` → legacy dual-red (anti-sticky)
+        - ``raw`` → raw frame only
+        - ``RED_LIGHT_POST_RED_GRACE_SEC`` (default 2.5) keeps gate red briefly
+          after the last ``raw==red`` frame (vehicle-in-obs still required by bridge).
+        """
+        stable = str(self._stable_state.get(camera_id) or "unknown")
+        raw = str(self._raw_state.get(camera_id) or "unknown")
+        now = time.monotonic()
+        if raw == "red":
+            self._last_raw_red_mono[camera_id] = now
+
+        mode = self._gate_mode if self._gate_mode in _VALID_GATE_MODES else "or"
+        if mode == "and":
+            mode_red = stable == "red" and raw == "red"
+        elif mode == "raw":
+            mode_red = raw == "red"
+        else:
+            mode_red = stable == "red" or raw == "red"
+
+        grace_active = False
+        if not mode_red and self._post_red_grace_sec > 0:
+            last = self._last_raw_red_mono.get(camera_id)
+            if last is not None and (now - last) <= self._post_red_grace_sec:
+                mode_red = True
+                grace_active = True
+
+        if mode_red:
+            gate = "red"
+        elif stable == "unknown" and raw == "unknown":
+            gate = "unknown"
+        else:
+            gate = "unknown"
+            for s in (raw, stable):
+                if s in ("green", "amber", "yellow"):
+                    gate = s
+                    break
+
+        self._gate_debug[camera_id] = {
+            "raw": raw,
+            "stable": stable,
+            "gate": gate,
+            "gate_mode": mode,
+            "post_red_grace_sec": self._post_red_grace_sec,
+            "grace_active": grace_active,
+            "mode_red_before_grace": bool(
+                (stable == "red" and raw == "red")
+                if mode == "and"
+                else (raw == "red")
+                if mode == "raw"
+                else (stable == "red" or raw == "red")
+            ),
+        }
+        return gate
 
     def camera_has_behavior(self, zones: list[dict] | None) -> bool:
         if not zones:
@@ -133,6 +264,8 @@ class TrafficLightEngine:
         tracks: list[dict],
         timestamp: str,
         zones: list[dict] | None,
+        *,
+        state_only: bool = False,
     ) -> list[dict[str, Any]]:
         self._frame_counter += 1
         if frame is None or frame.size == 0 or not zones:
@@ -165,6 +298,7 @@ class TrafficLightEngine:
                 continue
             x1, y1, x2, y2 = box
             raw_state, hsv_ratios = classify_light_color(frame[y1:y2, x1:x2])
+            self._raw_state[camera_id] = raw_state
             hist = self._state_history.setdefault(camera_id, deque(maxlen=max(stable_window, 1)))
             hist.append(raw_state)
             if len(hist) >= hist.maxlen:
@@ -181,6 +315,17 @@ class TrafficLightEngine:
         if new_state != prev_stable:
             self._stable_state[camera_id] = new_state
             # traffic_light_state purged from honest catalog — state kept internally only.
+        elif camera_id not in self._stable_state and new_state:
+            self._stable_state[camera_id] = new_state
+
+        # Bridge mode: HSV updates colour only; Gemini owns red_light_violation emits.
+        if state_only:
+            for track in tracks:
+                bbox = track.get("bbox") or {}
+                cx = float(bbox.get("x", 0)) + float(bbox.get("width", 0)) / 2
+                cy = float(bbox.get("y", 0)) + float(bbox.get("height", 0)) / 2
+                self._prev_centroid[(camera_id, int(track.get("track_id", -1)))] = (cx, cy)
+            return []
 
         # 2) Red-light synergy: moving vehicle in observation zone while red.
         # Require BOTH stable history and current-frame raw classification as red

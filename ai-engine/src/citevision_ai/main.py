@@ -307,14 +307,44 @@ def health(response: Response) -> dict[str, str]:
         bstats = pipeline._frigate_bridge.stats()
         result["frigate_bridge_mqtt"] = str(bstats.get("mqtt_messages", 0))
         result["frigate_bridge_cabin_enqueued"] = str(bstats.get("cabin_enqueued", 0))
+        result["frigate_bridge_cabin_snapshot_fail"] = str(bstats.get("cabin_snapshot_fail", 0))
+        result["frigate_bridge_cabin_skipped_too_small"] = str(
+            bstats.get("cabin_skipped_too_small", 0)
+        )
         result["frigate_bridge_face_enqueued"] = str(bstats.get("face_enqueued", 0))
         result["frigate_bridge_plate_enqueued"] = str(bstats.get("plate_enqueued", 0))
         result["frigate_bridge_red_light_enqueued"] = str(bstats.get("red_light_enqueued", 0))
+        result["frigate_bridge_red_light_skipped_not_red"] = str(
+            bstats.get("red_light_skipped_not_red", 0)
+        )
+        result["frigate_bridge_red_light_skipped_unknown"] = str(
+            bstats.get("red_light_skipped_unknown", 0)
+        )
         result["frigate_bridge_speed_emitted"] = str(bstats.get("speed_emitted", 0))
+        result["frigate_bridge_speed_below_limit"] = str(bstats.get("speed_below_limit", 0))
+        result["frigate_bridge_speed_no_estimate"] = str(bstats.get("speed_no_estimate", 0))
         result["frigate_bridge_snapshot_fail"] = str(bstats.get("snapshot_fail", 0))
+        result["frigate_bridge_dropped_dedupe"] = str(bstats.get("dropped_dedupe", 0))
+        mqtt_by = bstats.get("mqtt_by_camera") or {}
+        if isinstance(mqtt_by, dict) and mqtt_by:
+            result["frigate_bridge_mqtt_cameras"] = str(len(mqtt_by))
     result["frigate_vlm_bridge_crop_mode"] = (
         os.environ.get("FRIGATE_VLM_BRIDGE_CROP_MODE") or "vehicle_bbox"
     ).strip()
+    result["cabin_source"] = (
+        "frigate" if (settings.frigate_vlm_bridge and gemini_cfg) else "local_yolo"
+    )
+    try:
+        from citevision_ai.observability.rule_blockers import blockers
+        snap = blockers.snapshot()
+        ctr = snap.get("counters") or {}
+        result["blocker_bound_id_trusted"] = str(ctr.get("bound_id_trusted", 0))
+        result["blocker_bound_id_stripped"] = str(ctr.get("bound_id_stripped", 0))
+        result["blocker_frigate_list_calls"] = str(ctr.get("frigate_list_calls", 0))
+        result["blocker_frigate_clip_http"] = str(ctr.get("frigate_clip_http", 0))
+        result["blocker_vlm_reject"] = str(ctr.get("vlm_reject", 0))
+    except Exception:
+        pass
 
     # When Frigate+Gemini bridges own cabin/plate/face, do not fail health on missing ONNX.
     if settings.frigate_vlm_bridge and gemini_cfg:
@@ -348,6 +378,70 @@ def evidence_abort_stats() -> dict[str, Any]:
     from citevision_ai.evidence import abort_stats
 
     return abort_stats.snapshot()
+
+
+@app.get("/debug/rule-blockers")
+def debug_rule_blockers() -> dict[str, Any]:
+    """Frigate→Gemini entonnoir + evidence hammer counters (process-local, no DB)."""
+    from citevision_ai.observability.rule_blockers import blockers
+
+    out: dict[str, Any] = blockers.snapshot()
+    if pipeline is not None and getattr(pipeline, "_frigate_bridge", None) is not None:
+        out["frigate_bridge"] = pipeline._frigate_bridge.stats()
+    if pipeline is not None and getattr(pipeline, "_vlm_queue", None) is not None:
+        out["vlm_queue"] = pipeline._vlm_queue.stats()
+    try:
+        from citevision_ai.evidence import abort_stats
+        out["evidence_aborts"] = abort_stats.snapshot()
+    except Exception:
+        pass
+    if pipeline is not None:
+        # Expose HSV light states for cameras with TL zones (gate diagnosis).
+        states: dict[str, str] = {}
+        gate_debug: dict[str, dict[str, Any]] = {}
+        tl_behaviors = frozenset({"traffic_light_color", "red_light_observation"})
+        spatial_raw = getattr(pipeline, "_spatial_configs", {}) or {}
+        if not isinstance(spatial_raw, dict):
+            spatial_raw = {}
+        spatial_tl_summary: dict[str, list[str]] = {}
+        for cam_id, cfg in list(spatial_raw.items()):
+            if not isinstance(cfg, dict):
+                continue
+            zones = cfg.get("zones") or []
+            if not isinstance(zones, list):
+                continue
+            tl_zone_behaviors = [
+                str(z.get("behavior") or "")
+                for z in zones
+                if isinstance(z, dict) and str(z.get("behavior") or "") in tl_behaviors
+            ]
+            if tl_zone_behaviors:
+                spatial_tl_summary[cam_id] = tl_zone_behaviors
+        out["spatial_camera_count"] = len(spatial_raw)
+        out["spatial_tl_summary"] = spatial_tl_summary
+        for cam_id, cfg in list(spatial_raw.items()):
+            if not isinstance(cfg, dict):
+                continue
+            zones = cfg.get("zones") or []
+            if not isinstance(zones, list):
+                continue
+            has_tl = any(
+                str(z.get("behavior") or "") in tl_behaviors
+                for z in zones
+                if isinstance(z, dict)
+            )
+            if not has_tl:
+                continue
+            try:
+                st = pipeline.traffic_light.stable_state(cam_id)
+                if st and st != "unknown":
+                    states[cam_id] = st
+                gate_debug[cam_id] = pipeline.traffic_light.bridge_gate_debug(cam_id)
+            except Exception:
+                continue
+        out["hsv_light_states"] = states
+        out["hsv_gate_debug"] = gate_debug
+    return out
 
 
 @app.post("/admin/reload-secondary-models")
@@ -480,10 +574,20 @@ def camera_spatial(camera_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Pipeline not ready")
     cfg = pipeline._spatial_configs.get(camera_id) or {}
     zones = cfg.get("zones") or []
+    zone_ids = []
+    for z in zones:
+        if not isinstance(z, dict):
+            continue
+        zone_ids.append({
+            "id": z.get("id") or z.get("uuid"),
+            "zone_id": z.get("zone_id") or z.get("name"),
+            "behavior": z.get("behavior") or z.get("zone_kind"),
+        })
     return {
         "camera_id": camera_id,
         "zone_count": len(zones),
         "behaviors": [str(z.get("behavior", "")) for z in zones],
+        "zone_ids": zone_ids,
         "lines": len(cfg.get("lines") or []),
         "traffic_light_active": pipeline.traffic_light.camera_has_behavior(zones),
         "zone_speed_active": pipeline.zone_speed.camera_has_behavior(zones),

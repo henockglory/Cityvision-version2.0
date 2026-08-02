@@ -105,12 +105,12 @@ class FaceIdentityEngine:
             logger.info("FaceIdentityEngine: Gemini VLM path available (InsightFace preferred when loaded)")
 
     def set_frigate_bridge_active(self, active: bool) -> None:
-        """When True, local frame→Gemini face path is cut (Frigate person∩zone owns it)."""
+        """Frigate bridge enqueues Gemini face jobs; InsightFace keeps running on RTSP."""
         self._frigate_bridge_active = bool(active)
         if self._frigate_bridge_active:
-            self._gemini_enabled = False
-            self._vlm_queue = None
-            logger.info("FaceIdentityEngine: Frigate VLM bridge active (local Gemini face cut)")
+            logger.info(
+                "FaceIdentityEngine: Frigate bridge ON — InsightFace + Gemini parallel",
+            )
 
     def load(self) -> None:
         if hasattr(self.recognizer, "load"):
@@ -135,10 +135,6 @@ class FaceIdentityEngine:
     ) -> list[dict[str, Any]]:
         self._frame_counter += 1
         if self._frame_counter % self._process_every_n != 0:
-            return []
-
-        # Frigate-primary: person∩zone → Gemini; skip local frame enqueue.
-        if self._frigate_bridge_active:
             return []
 
         if hasattr(self.recognizer, "is_loaded") and self.recognizer.is_loaded:
