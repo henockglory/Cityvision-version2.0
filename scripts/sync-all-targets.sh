@@ -21,6 +21,7 @@ RSYNC_EXCLUDES=(
   --exclude .env
   --exclude dist
   --exclude data/videos
+  --exclude backend/data
   --exclude infra/data
   --exclude video-engine/build
   --exclude .git
