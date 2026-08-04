@@ -128,7 +128,22 @@ if curl -sf --max-time 8 "$FRIGATE_URL/api/version" >/dev/null 2>&1; then
 d=json.load(sys.stdin)
 print(len(d.get("cameras") or {}))' 2>/dev/null || echo err)"
     if [[ "$CAMS" == "0" ]]; then
-      warn "Frigate cameras={} — backend compiler has not pushed cameras yet"
+      warn "Frigate cameras={} — attempting docker restart + re-check"
+      docker restart citevision-v2-frigate >/dev/null 2>&1 || true
+      sleep 25
+      CFG2="$(curl -sf --max-time 10 "$FRIGATE_URL/api/config" || true)"
+      if [[ -n "$CFG2" ]]; then
+        CAMS2="$(printf '%s' "$CFG2" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+print(len(d.get("cameras") or {}))' 2>/dev/null || echo err)"
+        if [[ "$CAMS2" != "0" ]] && [[ "$CAMS2" != "err" ]]; then
+          ok "Frigate cameras count=$CAMS2 after heal"
+        else
+          warn "Frigate cameras still empty after restart — backend compiler pending"
+        fi
+      else
+        warn "Frigate /api/config empty after restart"
+      fi
     elif [[ "$CAMS" == "err" ]]; then
       warn "could not parse Frigate /api/config"
     else
@@ -212,7 +227,18 @@ echo "--- backend ---"
 if curl -sf --max-time 5 "$API_URL/health" >/dev/null 2>&1 || curl -sf --max-time 5 "$API_URL/api/v1/health" >/dev/null 2>&1; then
   ok "API reachable at $API_URL"
 else
-  warn "API not responding at $API_URL"
+  warn "API not responding at $API_URL — attempting _restart_backend.sh"
+  if [[ -f "$ROOT/scripts/_restart_backend.sh" ]]; then
+    bash "$ROOT/scripts/_restart_backend.sh" >/dev/null 2>&1 || true
+    sleep 15
+    if curl -sf --max-time 5 "$API_URL/health" >/dev/null 2>&1 || curl -sf --max-time 5 "$API_URL/api/v1/health" >/dev/null 2>&1; then
+      ok "API reachable at $API_URL after heal"
+    else
+      fail "API still down at $API_URL after restart"
+    fi
+  else
+    fail "API not responding at $API_URL (missing _restart_backend.sh)"
+  fi
 fi
 echo
 

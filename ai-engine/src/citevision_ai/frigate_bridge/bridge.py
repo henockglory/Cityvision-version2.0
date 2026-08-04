@@ -13,7 +13,12 @@ from typing import Any, Callable
 import paho.mqtt.client as mqtt
 
 from citevision_ai.frigate_bridge.ids import parse_camera_uuid, parse_zone_uuid
-from citevision_ai.frigate_bridge.snapshot import fetch_cabin_jpeg, fetch_red_light_jpeg, fetch_subject_jpeg
+from citevision_ai.frigate_bridge.snapshot import (
+    cabin_bbox_too_small,
+    fetch_cabin_jpeg,
+    fetch_red_light_jpeg,
+    fetch_subject_jpeg,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -360,7 +365,7 @@ class FrigateEventBridge:
         if isinstance(box_probe, (list, tuple)) and len(box_probe) >= 4:
             try:
                 _x, _y, w, h = (float(box_probe[i]) for i in range(4))
-                if w * h < 0.035 or h < 0.12:
+                if cabin_bbox_too_small(w * h, h):
                     with self._stats_lock:
                         self._stats["cabin_skipped_too_small"] = int(
                             self._stats.get("cabin_skipped_too_small") or 0

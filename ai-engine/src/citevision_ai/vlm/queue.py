@@ -52,6 +52,7 @@ class VlmQueue:
             "completed": 0,
             "emitted": 0,
             "rejected": 0,
+            "cabin_ignored": 0,
             "unclear": 0,
             "rate_limited": 0,
             "shadow_logged": 0,
@@ -179,21 +180,31 @@ class VlmQueue:
             emit_ok = should_emit(verdict, min_confidence=job.min_confidence)
 
         if not emit_ok:
+            reason = (getattr(verdict, "reason_short", "") or "")[:120]
+            reject_reason = "low_confidence"
+            cabin_no = (
+                job.rule in _CABIN_RULES
+                and not bool(getattr(verdict, "violation", False))
+                and not getattr(verdict, "error", "")
+            )
+            if cabin_no:
+                with self._lock:
+                    self._stats["cabin_ignored"] += 1
+                logger.info(
+                    "vlm_cabin_no rule=%s conf=%.2f reason_short=%s",
+                    job.rule,
+                    float(getattr(verdict, "confidence", 0.0) or 0.0),
+                    reason,
+                )
+                return
             with self._lock:
                 self._stats["rejected"] += 1
                 if job.rule not in _CABIN_RULES:
                     signals = [str(s).lower() for s in (verdict.signals or [])]
                     if "unclear" in signals or not bool(getattr(verdict, "visible", True)):
                         self._stats["unclear"] += 1
-            reason = (getattr(verdict, "reason_short", "") or "")[:120]
-            reject_reason = "low_confidence"
             if job.rule in _CABIN_RULES:
-                if not bool(getattr(verdict, "violation", False)):
-                    reject_reason = "violation_false"
-                elif float(getattr(verdict, "confidence", 0.0) or 0.0) < float(job.min_confidence):
-                    reject_reason = "low_confidence"
-                else:
-                    reject_reason = "error"
+                reject_reason = str(getattr(verdict, "error", "") or "error")
             elif job.rule == "plate_ocr":
                 reject_reason = "plate_fusion_empty"
             elif not bool(getattr(verdict, "visible", True)):

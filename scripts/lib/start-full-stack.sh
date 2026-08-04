@@ -138,6 +138,11 @@ echo "[OK] rules-engine :${RULES_PORT}"
 VENV_PY="${ROOT}/ai-engine/.venv/bin/python3"
 setup_cuda_library_path "$VENV_PY" 2>/dev/null || true
 bash "$ROOT/scripts/_copy_working_cudnn.sh" 2>/dev/null || true
+ensure_demo_validation_env "$ROOT" "$ENV_FILE" 2>/dev/null || true
+if [[ -f "$ROOT/scripts/preflight-validate.sh" ]]; then
+  PREFLIGHT_VALIDATE_LIGHT=1 bash "$ROOT/scripts/preflight-validate.sh" "$LOGDIR/preflight-validate-light.log" \
+    2>&1 | tail -15 || echo "[WARN] preflight-validate light skipped"
+fi
 if [[ -f "$ROOT/scripts/_restart_ai.py" ]]; then
   python3 "$ROOT/scripts/_restart_ai.py" || true
 else

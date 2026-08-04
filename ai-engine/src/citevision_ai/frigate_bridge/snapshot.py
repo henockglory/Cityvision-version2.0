@@ -16,6 +16,21 @@ logger = logging.getLogger(__name__)
 _VEHICLE = frozenset({"car", "truck", "bus", "motorcycle", "motorbike", "van", "vehicle"})
 
 
+def cabin_size_gate_enabled() -> bool:
+    """When false, do not skip distant/small vehicle bboxes before cabin Gemini."""
+    if str(os.environ.get("FRIGATE_CABIN_SIZE_GATE", "1")).strip().lower() in ("0", "false", "no"):
+        return False
+    if str(os.environ.get("DEMO_MODE", "")).strip().lower() in ("1", "true", "yes"):
+        return False
+    return True
+
+
+def cabin_bbox_too_small(area: float, height: float) -> bool:
+    if not cabin_size_gate_enabled():
+        return False
+    return area < 0.035 or height < 0.12
+
+
 def wait_snapshot_ready(
     frigate_url: str,
     event_id: str,
@@ -214,7 +229,7 @@ def fetch_cabin_jpeg(
         return None, None, ev
     area = float(vehicle_box.get("width") or 0) * float(vehicle_box.get("height") or 0)
     height = float(vehicle_box.get("height") or 0)
-    if area < 0.035 or height < 0.12:
+    if cabin_bbox_too_small(area, height):
         logger.info(
             "vehicle_bbox_too_small event=%s area=%.4f h=%.3f",
             (event_id or "")[:12], area, height,

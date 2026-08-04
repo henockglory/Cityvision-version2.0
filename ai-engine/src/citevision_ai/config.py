@@ -238,7 +238,7 @@ class Settings(BaseSettings):
         ),
     )
     gemini_queue_size: int = Field(
-        default=32,
+        default=24,
         validation_alias=AliasChoices(
             "gemini_queue_size", "GEMINI_QUEUE_SIZE", "CITEVISION_GEMINI_QUEUE_SIZE",
         ),

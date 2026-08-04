@@ -30,7 +30,7 @@ def test_extract_json_object_fenced():
 
 
 def test_should_emit_cabin_ignores_visible_and_unclear():
-    """Cabine: oui/non sur violation + confiance — pas de gate visible/unclear."""
+    """Cabine: oui/non sur violation seule — pas de gate visible/unclear/min_confidence."""
     assert should_emit(
         GeminiVerdict(
             violation=True, rule="seatbelt_violation", confidence=0.9,
@@ -45,16 +45,16 @@ def test_should_emit_cabin_ignores_visible_and_unclear():
         ),
         min_confidence=0.45,
     )
-    assert not should_emit(
+    assert should_emit(
         GeminiVerdict(
-            violation=False, rule="seatbelt_violation", confidence=0.9,
+            violation=True, rule="seatbelt_violation", confidence=0.2,
             visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
         ),
         min_confidence=0.45,
     )
     assert not should_emit(
         GeminiVerdict(
-            violation=True, rule="seatbelt_violation", confidence=0.2,
+            violation=False, rule="seatbelt_violation", confidence=0.9,
             visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
         ),
         min_confidence=0.45,
@@ -67,6 +67,16 @@ def test_should_emit_cabin_ignores_visible_and_unclear():
         ),
         min_confidence=0.45,
     )
+
+
+def test_cabin_prompts_no_fail_closed_wording():
+    from citevision_ai.vlm.gemini_client import CABIN_PROMPTS
+
+    for rule, prompt in CABIN_PROMPTS.items():
+        low = prompt.lower()
+        assert "treat unclear as false" not in low
+        assert "only if you are confident" not in low
+        assert "violation=true means yes" in low
 
 
 def test_should_emit_fail_closed_non_cabin():
@@ -224,6 +234,32 @@ def test_vlm_queue_plate_fusion_emits_paddle_winner():
     assert emitted[0]["plate_number"] == "ABCD1234"
     assert emitted[0]["metadata"]["detection_method"] == "gemini_paddle_fusion"
     assert emitted[0]["metadata"]["ocr_winner"] == "paddle"
+
+
+def test_vlm_queue_cabin_no_increments_ignored_not_rejected():
+    client = MagicMock()
+    client.configured = True
+    client.model = "gemini-3.6-flash"
+    client.judge_jpeg.return_value = GeminiVerdict(
+        False, "seatbelt_violation", 0.9, False, "no belt visible", [], 12.0, True,
+    )
+    q = VlmQueue(client, maxsize=8, max_age_sec=30.0, min_interval_sec=0.0)
+    q.start()
+    ok = q.try_enqueue(
+        VlmJob(
+            jpeg=b"abc",
+            rule="seatbelt_violation",
+            min_confidence=0.45,
+            event_skeleton={"metadata": {}},
+        )
+    )
+    assert ok
+    time.sleep(0.3)
+    q.stop()
+    st = q.stats()
+    assert st["cabin_ignored"] >= 1
+    assert st["rejected"] == 0
+    assert st["emitted"] == 0
 
 
 def test_vlm_queue_drops_when_full():

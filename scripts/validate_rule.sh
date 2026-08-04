@@ -44,5 +44,13 @@ if [[ -x "$ROOT/scripts/health_check_all.sh" ]]; then
   }
 fi
 
+if [[ -f "$ROOT/scripts/preflight-validate.sh" ]]; then
+  echo "=== preflight-validate (permanent Demo5 env + heal) ==="
+  bash "$ROOT/scripts/preflight-validate.sh" "$ROOT/logs/preflight-validate-$(date -u +%Y%m%dT%H%M%SZ).log" || {
+    echo "[FAIL] preflight-validate — fix stack before validation"
+    exit 1
+  }
+fi
+
 export PYTHONPATH="${PYTHONPATH:-}"
 exec python3 "$ROOT/scripts/validate_rule_dod.py" --alias "$ALIAS"

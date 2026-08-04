@@ -146,7 +146,8 @@ fi
 _step "Environment file"
 ensure_env_file "$ROOT" >/dev/null
 ensure_demo_runtime_env "$ROOT" "$ROOT/.env" >/dev/null
-_ok ".env ready (DEMO_MODE=1, Frigate, VIDEOS_PATH, RULE_CATALOG)"
+ensure_demo_validation_env "$ROOT" "$ROOT/.env" >/dev/null
+_ok ".env ready (DEMO_MODE=1, Frigate, VIDEOS_PATH, validation env)"
 
 # ── Docker images (frigate + ocr profiles) ────────────────────
 _step "Docker images (frigate + ocr)"
