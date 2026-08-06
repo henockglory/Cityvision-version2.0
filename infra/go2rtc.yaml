@@ -17,3 +17,13 @@ webrtc:
 
 streams:
   # Flux enregistrés dynamiquement via API (upload démo / caméras) — pas de hardcode ici.
+  demo-74d51ead-f046692c:
+    - ffmpeg:/videos/demo/74d51ead-97a7-4e41-a488-503a9b90c466/f046692c-d830-4431-b8ec-8bc509eab00a_stream.mp4#video=copy#loop
+  demo-74d51ead-aaea7c30:
+    - ffmpeg:/videos/demo/74d51ead-97a7-4e41-a488-503a9b90c466/aaea7c30-1c4c-4ce5-9cd6-4b1f8ded4118_stream.mp4#video=copy#loop
+  demo-74d51ead-e774ae7a:
+    - ffmpeg:/videos/demo/74d51ead-97a7-4e41-a488-503a9b90c466/e774ae7a-137c-4c2f-901a-7324bb64c8b2_stream.mp4#video=copy#loop
+  demo-74d51ead-1a7dd0c0:
+    - ffmpeg:/videos/demo/74d51ead-97a7-4e41-a488-503a9b90c466/1a7dd0c0-1557-427c-9a9e-03da850561d9_stream.mp4#video=copy#loop
+  cam-d303433b-df7e-4993-bba3-0f1acd2e9683:
+    - ffmpeg:rtsp://admin:hids+1234@192.168.1.108:554/live#video=h264

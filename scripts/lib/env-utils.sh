@@ -57,6 +57,15 @@ ensure_env_file() {
   echo "$env_path"
 }
 
+_upsert_env_kv_file() {
+  local env_path="$1" key="$2" val="$3"
+  if grep -q "^${key}=" "$env_path" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$env_path"
+  else
+    echo "${key}=${val}" >>"$env_path"
+  fi
+}
+
 # Demo / installer launch defaults — DEMO_MODE, Frigate, videos, rule catalog.
 # Upserts keys so silent DEMO_MODE=0 / FRIGATE_*=0 cannot leave Health RED.
 ensure_demo_runtime_env() {
@@ -71,30 +80,114 @@ ensure_demo_runtime_env() {
   local catalog="$root/shared/rule-catalog"
   local shared="$root/shared"
 
-  _upsert_env_kv() {
-    local key="$1" val="$2"
-    if grep -q "^${key}=" "$env_path" 2>/dev/null; then
-      sed -i "s|^${key}=.*|${key}=${val}|" "$env_path"
-    else
-      echo "${key}=${val}" >>"$env_path"
-    fi
-  }
-
-  _upsert_env_kv DEMO_MODE 1
-  _upsert_env_kv VIDEOS_PATH "$videos"
-  _upsert_env_kv RULE_CATALOG_PATH "$catalog"
-  _upsert_env_kv SHARED_PATH "$shared"
-  _upsert_env_kv FRIGATE_ENABLED 1
-  _upsert_env_kv FRIGATE_LIVE 1
-  _upsert_env_kv FRIGATE_EVIDENCE 1
-  _upsert_env_kv FRIGATE_EVENTS 1
-  _upsert_env_kv FRIGATE_CONFIG_SYNC 1
-  _upsert_env_kv FRIGATE_URL "http://127.0.0.1:5000"
-  _upsert_env_kv VITE_FRIGATE_ENABLED 1
-  _upsert_env_kv VITE_FRIGATE_LIVE 1
+  _upsert_env_kv_file "$env_path" DEMO_MODE 1
+  _upsert_env_kv_file "$env_path" VIDEOS_PATH "$videos"
+  _upsert_env_kv_file "$env_path" RULE_CATALOG_PATH "$catalog"
+  _upsert_env_kv_file "$env_path" SHARED_PATH "$shared"
+  _upsert_env_kv_file "$env_path" FRIGATE_ENABLED 1
+  _upsert_env_kv_file "$env_path" FRIGATE_LIVE 1
+  _upsert_env_kv_file "$env_path" FRIGATE_EVIDENCE 1
+  _upsert_env_kv_file "$env_path" FRIGATE_EVENTS 1
+  _upsert_env_kv_file "$env_path" FRIGATE_CONFIG_SYNC 1
+  _upsert_env_kv_file "$env_path" FRIGATE_URL "http://127.0.0.1:5000"
+  _upsert_env_kv_file "$env_path" VITE_FRIGATE_ENABLED 1
+  _upsert_env_kv_file "$env_path" VITE_FRIGATE_LIVE 1
   grep -q '^ALERT_EMAIL_TO=' "$env_path" 2>/dev/null \
     || echo 'ALERT_EMAIL_TO=demo@citevision.local' >>"$env_path"
+  ensure_demo_validation_env "$root" "$env_path" || true
   echo "[INFO] Demo runtime env: DEMO_MODE=1 Frigate=on VIDEOS_PATH=$videos" >&2
+}
+
+# Gemini + Frigate cabin bridges — permanent Demo5 profile (never overwrites GEMINI_API_KEY).
+ensure_demo_validation_env() {
+  local root="${1:-.}"
+  local env_path="${2:-$root/.env}"
+  [[ -f "$env_path" ]] || return 1
+  root="$(cd "$root" && pwd)"
+  env_path="$(cd "$(dirname "$env_path")" && pwd)/$(basename "$env_path")"
+  sed -i 's/\r$//' "$env_path" 2>/dev/null || true
+
+  local gemini_model="gemini-3.1-flash-lite"
+  if grep -q '^GEMINI_MODEL=' "$env_path" 2>/dev/null; then
+    gemini_model="$(grep '^GEMINI_MODEL=' "$env_path" | head -1 | cut -d= -f2- | tr -d ' "\r')"
+    [[ -n "$gemini_model" ]] || gemini_model="gemini-3.1-flash-lite"
+  fi
+
+  _upsert_env_kv_file "$env_path" RED_LIGHT_GATE_MODE or
+  _upsert_env_kv_file "$env_path" RED_LIGHT_POST_RED_GRACE_SEC 2.5
+  _upsert_env_kv_file "$env_path" GEMINI_QUEUE_SIZE 24
+  _upsert_env_kv_file "$env_path" GEMINI_MIN_INTERVAL_SEC 3
+  _upsert_env_kv_file "$env_path" GEMINI_MODEL "$gemini_model"
+  _upsert_env_kv_file "$env_path" GEMINI_ENABLED 1
+  _upsert_env_kv_file "$env_path" FRIGATE_VLM_BRIDGE 1
+  _upsert_env_kv_file "$env_path" FRIGATE_SPEED_BRIDGE 1
+  _upsert_env_kv_file "$env_path" FRIGATE_VLM_BRIDGE_CROP_MODE vehicle_bbox
+  _upsert_env_kv_file "$env_path" FRIGATE_CABIN_DEDUPE_SEC 15
+  _upsert_env_kv_file "$env_path" FRIGATE_CABIN_SIZE_GATE 0
+  _upsert_env_kv_file "$env_path" RED_LIGHT_DEBUG_FORCE_ENQUEUE 0
+  _upsert_env_kv_file "$env_path" GEMINI_SHADOW_MODE 0
+  _upsert_env_kv_file "$env_path" FRIGATE_SPEED_EMIT_MODE exit
+
+  if [[ -x "$root/scripts/ensure-rules-sync-env.sh" ]]; then
+    bash "$root/scripts/ensure-rules-sync-env.sh" --resolve-org 2>/dev/null || true
+  fi
+  echo "[INFO] Demo validation env: Gemini queue=24 cabin_gate=0 bridges=on" >&2
+}
+
+ensure_frigate_paths_env() {
+  local root="${1:-.}"
+  local env_path="${2:-$root/.env}"
+  [[ -f "$env_path" ]] || return 1
+  root="$(cd "$root" && pwd)"
+  _upsert_env_kv_file "$env_path" FRIGATE_CONFIG_PATH "$root/infra/frigate-config/config.yml"
+  _upsert_env_kv_file "$env_path" FRIGATE_BASE_YAML "$root/infra/frigate.base.yaml"
+  _upsert_env_kv_file "$env_path" FRIGATE_GENERATED_DIR "$root/infra/frigate-config"
+  _upsert_env_kv_file "$env_path" PROJECT_ROOT "$root"
+  if [[ -f "$root/backend/infra/frigate-config/config.yml" ]]; then
+    cp -f "$root/backend/infra/frigate-config/config.yml" "$root/infra/frigate-config/config.yml" 2>/dev/null || true
+  fi
+}
+
+ensure_gemini_key_env() {
+  local root="${1:-.}"
+  local env_path="${2:-$root/.env}"
+  python3 - <<PY
+from pathlib import Path
+import os
+
+root = Path(${root@Q} if False else "$root")
+env_path = Path(${env_path@Q} if False else "$env_path")
+root = Path("$root")
+env_path = Path("$env_path")
+text = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+key = ""
+for line in text.splitlines():
+    if line.startswith("GEMINI_API_KEY="):
+        key = line.split("=", 1)[1].strip().strip('"').strip("'")
+        break
+if len(key) >= 20:
+    print("gemini_key=present")
+    raise SystemExit(0)
+kf = Path(os.environ.get("GEMINI_KEY_FILE", str(Path.home() / ".citevision_gemini_key.tmp")))
+if kf.is_file():
+    key = kf.read_text(encoding="utf-8").strip()
+    if len(key) >= 20:
+        lines, seen = text.splitlines(), False
+        out = []
+        for line in lines:
+            if line.startswith("GEMINI_API_KEY="):
+                out.append(f"GEMINI_API_KEY={key}")
+                seen = True
+            else:
+                out.append(line)
+        if not seen:
+            out.append(f"GEMINI_API_KEY={key}")
+        env_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+        print("gemini_key=restored_from_file")
+        raise SystemExit(0)
+print("gemini_key=MISSING")
+raise SystemExit(1)
+PY
 }
 
 wait_http_ok() {

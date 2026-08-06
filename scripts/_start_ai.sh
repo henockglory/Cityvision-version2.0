@@ -3,6 +3,8 @@ pkill -9 -f 'uvicorn citevision_ai' 2>/dev/null || true
 sleep 3
 cd ~/citevision-v2
 PYTHON=ai-engine/.venv/bin/python3
+source scripts/lib/cuda-utils.sh
+setup_cuda_library_path "$PYTHON" >/dev/null 2>&1 || true
 nohup $PYTHON -m uvicorn citevision_ai.main:app --host 0.0.0.0 --port 8001 --workers 1 \
     >> logs/ai-engine.log 2>&1 &
 PID=$!

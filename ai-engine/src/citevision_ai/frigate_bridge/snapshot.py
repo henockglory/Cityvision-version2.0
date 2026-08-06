@@ -11,9 +11,26 @@ from typing import Any
 import cv2
 import numpy as np
 
+from citevision_ai.road_enforcement.traffic_light import classify_light_color
+
 logger = logging.getLogger(__name__)
 
 _VEHICLE = frozenset({"car", "truck", "bus", "motorcycle", "motorbike", "van", "vehicle"})
+
+
+def cabin_size_gate_enabled() -> bool:
+    """When false, do not skip distant/small vehicle bboxes before cabin Gemini."""
+    if str(os.environ.get("FRIGATE_CABIN_SIZE_GATE", "1")).strip().lower() in ("0", "false", "no"):
+        return False
+    if str(os.environ.get("DEMO_MODE", "")).strip().lower() in ("1", "true", "yes"):
+        return False
+    return True
+
+
+def cabin_bbox_too_small(area: float, height: float) -> bool:
+    if not cabin_size_gate_enabled():
+        return False
+    return area < 0.035 or height < 0.12
 
 
 def wait_snapshot_ready(
@@ -67,6 +84,27 @@ def download_snapshot_jpeg(frigate_url: str, event_id: str, *, quality: int = 85
     return None
 
 
+def download_latest_jpeg(frigate_url: str, camera: str, *, quality: int = 85) -> bytes | None:
+    base = frigate_url.rstrip("/")
+    cam = str(camera or "").strip()
+    if not cam:
+        return None
+    urls = [
+        f"{base}/api/{cam}/latest.jpg?quality={int(quality)}",
+        f"{base}/api/{cam}/latest.jpg",
+    ]
+    for u in urls:
+        try:
+            req = urllib.request.Request(u, method="GET")
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                data = resp.read()
+            if data and len(data) > 200:
+                return data
+        except (urllib.error.URLError, TimeoutError, OSError):
+            continue
+    return None
+
+
 def _box_from_event(ev: dict[str, Any]) -> dict[str, float] | None:
     data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
     box = data.get("box") if isinstance(data, dict) else None
@@ -76,6 +114,8 @@ def _box_from_event(ev: dict[str, Any]) -> dict[str, float] | None:
     if not isinstance(box, (list, tuple)) or len(box) < 4:
         return None
     x, y, w, h = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+    if max(x, y, w, h) > 1.5 and w > x and h > y:
+        w, h = w - x, h - y
     if w <= 0 or h <= 0:
         return None
     if max(x, y, w, h) <= 1.5:
@@ -214,7 +254,7 @@ def fetch_cabin_jpeg(
         return None, None, ev
     area = float(vehicle_box.get("width") or 0) * float(vehicle_box.get("height") or 0)
     height = float(vehicle_box.get("height") or 0)
-    if area < 0.035 or height < 0.12:
+    if cabin_bbox_too_small(area, height):
         logger.info(
             "vehicle_bbox_too_small event=%s area=%.4f h=%.3f",
             (event_id or "")[:12], area, height,
@@ -256,6 +296,31 @@ def polygon_to_norm_bbox(polygon: list[Any]) -> dict[str, float] | None:
     if w <= 0 or h <= 0:
         return None
     return {"x": x0, "y": y0, "width": w, "height": h, "norm": max(x1, y1) <= 1.5}
+
+
+def classify_snapshot_light_state(jpeg: bytes, light_polygon: list[Any] | None) -> str:
+    """HSV classify the traffic-light ROI on a Frigate snapshot JPEG."""
+    poly = list(light_polygon or [])
+    if len(poly) < 3 or not jpeg:
+        return "unknown"
+    try:
+        arr = np.frombuffer(jpeg, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    except Exception:
+        return "unknown"
+    if frame is None or frame.size == 0:
+        return "unknown"
+    box = polygon_to_norm_bbox(poly)
+    if not box:
+        return "unknown"
+    h, w = frame.shape[:2]
+    x1 = int(max(0, min(w - 1, float(box["x"]) * w)))
+    y1 = int(max(0, min(h - 1, float(box["y"]) * h)))
+    x2 = int(max(x1 + 1, min(w, (float(box["x"]) + float(box["width"])) * w)))
+    y2 = int(max(y1 + 1, min(h, (float(box["y"]) + float(box["height"])) * h)))
+    roi = frame[y1:y2, x1:x2]
+    state, _ = classify_light_color(roi)
+    return str(state or "unknown").lower().strip()
 
 
 def _union_norm_boxes(
@@ -303,12 +368,12 @@ def fetch_red_light_jpeg(
     ev = event_payload
     if ev is None or not (ev.get("has_snapshot") or (ev.get("data") or {}).get("has_snapshot")):
         ev = wait_snapshot_ready(frigate_url, event_id, timeout_sec=wait_sec) or ev
-    raw = download_snapshot_jpeg(frigate_url, event_id)
-    if not raw:
-        return None, None, ev
     light_box = polygon_to_norm_bbox(list(light_polygon or []))
     vehicle_box = _box_from_event(ev) if isinstance(ev, dict) else None
     union = _union_norm_boxes(light_box, vehicle_box)
+    raw = download_snapshot_jpeg(frigate_url, event_id)
+    if not raw:
+        return None, None, ev
     if union and float(union.get("width") or 0) > 0 and float(union.get("height") or 0) > 0:
         crop = crop_jpeg_from_snapshot(raw, union, pad=0.10, min_side=400)
         if crop:

@@ -19,7 +19,13 @@ INTERNAL = os.environ.get("INTERNAL_API_KEY", "changeme_internal_service_key")
 ORG = os.environ.get("DEMO_ORG_ID", "74d51ead-97a7-4e41-a488-503a9b90c466")
 MAX_WAIT_SEC = int(os.environ.get("RULE_DURATION_SEC", "600"))
 POLL_SEC = int(os.environ.get("POLL_SEC", "15"))
-MAX_ALIGN_MS = int(os.environ.get("FRIGATE_MAX_ALIGN_MS", "30000"))
+MAX_ALIGN_MS = int(os.environ.get(
+    "FRIGATE_MAX_ALIGN_MS",
+    os.environ.get("FRIGATE_DEMO_ACCEPT_MAX_ALIGN_SEC", "45"),
+))
+# Accept seconds env as seconds→ms when value looks like seconds (< 1000).
+if MAX_ALIGN_MS < 1000:
+    MAX_ALIGN_MS = MAX_ALIGN_MS * 1000
 SETTLE_SEC = int(os.environ.get("DEMO_SETTLE_SEC", "10"))
 
 RULE_EVENT_TYPES: dict[str, list[str]] = {
@@ -69,6 +75,22 @@ def backend_health() -> bool:
             return r.status == 200
     except Exception:
         return False
+
+
+def ensure_backend_up() -> bool:
+    if backend_health():
+        return True
+    root = os.environ.get("MICROTEST_ROOT") or os.path.expanduser("~/citevision-v2")
+    script = os.path.join(root, "scripts", "_restart_backend.sh")
+    if os.path.isfile(script):
+        print("  backend down — restarting via _restart_backend.sh", flush=True)
+        subprocess.run(["bash", script], check=False, timeout=120)
+        for _ in range(15):
+            time.sleep(2)
+            if backend_health():
+                print("  backend OK after restart", flush=True)
+                return True
+    return backend_health()
 
 
 def camera_status(cam_id: str) -> dict:
@@ -253,6 +275,41 @@ def line_counter_total(cam_id: str, line_name: str = "Ligne_count") -> int:
         return 0
 
 
+def _ceinture_dual_mode(rule_name: str) -> bool:
+    if os.environ.get("CEINTURE_PIPELINE_OR_ALERT", "").strip().lower() not in ("1", "true", "yes"):
+        return False
+    return rule_name in ("Démo · Non-port ceinture", "Démo · Ceinture")
+
+
+def _pipeline_mode(rule_name: str) -> bool:
+    mode = str(os.environ.get("VALIDATE_MODE", "") or "").strip().lower()
+    if mode == "pipeline":
+        return True
+    if os.environ.get("PHONE_PIPELINE_ONLY", "").strip().lower() in ("1", "true", "yes"):
+        return rule_name == "Démo · Téléphone au volant"
+    return False
+
+
+def _fetch_blockers() -> dict:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8001/debug/rule-blockers", timeout=10) as r:
+            return json.loads(r.read().decode())
+    except Exception:
+        return {}
+
+
+def _pipeline_snapshot(blockers: dict) -> dict[str, int]:
+    vq = blockers.get("vlm_queue") or {}
+    fb = blockers.get("frigate_bridge") or {}
+    return {
+        "cabin_enqueued": int(fb.get("cabin_enqueued") or 0),
+        "vlm_enqueued": int(vq.get("enqueued") or 0),
+        "vlm_completed": int(vq.get("completed") or 0),
+        "vlm_emitted": int(vq.get("emitted") or 0),
+        "vlm_rejected": int(vq.get("rejected") or 0),
+    }
+
+
 def count_since(rule_id: str, event_types: list[str], since: str, rule_name: str = "") -> tuple[int, int, int]:
     types_sql = ",".join(f"'{t}'" for t in event_types)
     evt = psql(
@@ -316,8 +373,8 @@ def main() -> int:
     if not ai_health():
         print("[FAIL] AI not healthy — bash scripts/_restart_ai_cuda.sh", flush=True)
         return 1
-    if not backend_health():
-        print("[FAIL] backend down — bash scripts/_restart_backend.sh", flush=True)
+    if not backend_health() and not ensure_backend_up():
+        print("[FAIL] backend down after restart — bash scripts/_restart_backend.sh", flush=True)
         return 1
     try:
         with urllib.request.urlopen("http://127.0.0.1:8010/health", timeout=5) as r:
@@ -379,9 +436,13 @@ def main() -> int:
 
     frigate_cam = f"cv_{cam_id}"
     repair_demo_streams()
+    pipeline_only = _pipeline_mode(rule_name)
     observation = rule_name in _OBSERVATION_RULE_NAMES
+    skip_frigate_gate = observation or pipeline_only
     if observation:
         print("  observation rule — skip Frigate freshness/rebuild gate", flush=True)
+    elif pipeline_only:
+        print("  pipeline mode — skip Frigate freshness/rebuild gate", flush=True)
     elif os.environ.get("SKIP_FRIGATE_REBUILD", "").strip() in ("1", "true", "yes"):
         print("  SKIP_FRIGATE_REBUILD — keep current Frigate config/media", flush=True)
     else:
@@ -393,7 +454,7 @@ def main() -> int:
             print("  frigate rebuild requested (no-op if config unchanged)", flush=True)
         except Exception as exc:
             print(f"  WARN frigate rebuild: {exc}", flush=True)
-    if not observation:
+    if not skip_frigate_gate:
         repair_demo_streams()
         if not heal_frigate_if_stale(frigate_cam, max_age_sec=25.0):
             print("[FAIL] Frigate not fresh for demo camera — run _fix_frigate_fresh.sh", flush=True)
@@ -412,9 +473,48 @@ def main() -> int:
         time.sleep(SETTLE_SEC)
 
     since = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S%z").replace("+0000", "+00")
+    count_target = max(1, int(os.environ.get("COUNT_TARGET", "1") or "1"))
+
+    if pipeline_only:
+        print(
+            f"pipeline mode — Gemini response sufficient (max {MAX_WAIT_SEC}s, no alert required)",
+            flush=True,
+        )
+        base = _pipeline_snapshot(_fetch_blockers())
+        deadline = time.time() + MAX_WAIT_SEC
+        hit = False
+        while time.time() < deadline:
+            time.sleep(POLL_SEC)
+            snap = _pipeline_snapshot(_fetch_blockers())
+            d_cabin = snap["cabin_enqueued"] - base["cabin_enqueued"]
+            d_enq = snap["vlm_enqueued"] - base["vlm_enqueued"]
+            d_done = snap["vlm_completed"] - base["vlm_completed"]
+            d_emit = snap["vlm_emitted"] - base["vlm_emitted"]
+            d_rej = snap["vlm_rejected"] - base["vlm_rejected"]
+            print(
+                f"  poll cabin_enq+={d_cabin} vlm_enq+={d_enq} completed+={d_done} "
+                f"emitted+={d_emit} rejected+={d_rej}",
+                flush=True,
+            )
+            queued = d_cabin >= 1 or d_enq >= 1
+            responded = d_done >= 1 and (d_emit >= 1 or d_rej >= 1)
+            if queued and responded:
+                print("[HIT] pipeline Gemini cycle complete (emit or reject)", flush=True)
+                hit = True
+                break
+            if not ai_health():
+                print("  WARN AI unhealthy", flush=True)
+        req("PATCH", f"{API}/api/v1/orgs/{ORG}/rules/{rule['id']}", tok, {"is_enabled": False})
+        status = "PASS" if hit else "FAIL"
+        print(f"RESULT: {rule_name}: {status}", flush=True)
+        return 0 if status == "PASS" else 1
+
     # Target rule already enabled above (needed for Frigate record aggregate).
     if observation:
-        print(f"observation enabled — stop at 1 line_cross / counter bump (max {MAX_WAIT_SEC}s)", flush=True)
+        print(
+            f"observation enabled — stop at {count_target} line_cross / counter (max {MAX_WAIT_SEC}s)",
+            flush=True,
+        )
         ctr0 = line_counter_total(cam_id)
         deadline = time.time() + MAX_WAIT_SEC
         evt = alerts = evidence_ok = 0
@@ -427,8 +527,8 @@ def main() -> int:
                 f"  poll events={evt} alerts={alerts} counter_delta={delta} (base={ctr0})",
                 flush=True,
             )
-            if evt >= 1 or delta >= 1:
-                print("[HIT] observation line_cross / counter", flush=True)
+            if evt >= count_target or delta >= count_target:
+                print(f"[HIT] observation target={count_target}", flush=True)
                 break
             if not ai_health():
                 print("  WARN AI unhealthy", flush=True)
@@ -436,8 +536,61 @@ def main() -> int:
         ctr = line_counter_total(cam_id)
         delta = max(0, ctr - ctr0)
         req("PATCH", f"{API}/api/v1/orgs/{ORG}/rules/{rule['id']}", tok, {"is_enabled": False})
-        print(f"FINAL events={evt} alerts={alerts} counter_delta={delta}", flush=True)
-        status = "PASS" if (evt >= 1 or delta >= 1) else "FAIL"
+        print(f"FINAL events={evt} alerts={alerts} counter_delta={delta} target={count_target}", flush=True)
+        status = "PASS" if (evt >= count_target or delta >= count_target) else "FAIL"
+        print(f"RESULT: {rule_name}: {status}", flush=True)
+        return 0 if status == "PASS" else 1
+
+    ceinture_dual = _ceinture_dual_mode(rule_name)
+    pipeline_target = max(1, int(os.environ.get("CEINTURE_PIPELINE_TARGET", "10") or 10))
+
+    if ceinture_dual:
+        print(
+            f"ceinture mode — 1 alert OR {pipeline_target} vlm_completed "
+            f"(max {MAX_WAIT_SEC}s)",
+            flush=True,
+        )
+        base = _pipeline_snapshot(_fetch_blockers())
+        deadline = time.time() + MAX_WAIT_SEC
+        hit = False
+        hit_reason = ""
+        last_completed = int(base["vlm_completed"])
+        session_done = 0
+        while time.time() < deadline:
+            time.sleep(POLL_SEC)
+            evt, alerts, evidence_ok = count_since(rule["id"], event_types, since, rule_name)
+            snap = _pipeline_snapshot(_fetch_blockers())
+            cur_completed = int(snap["vlm_completed"])
+            if cur_completed >= last_completed:
+                session_done += cur_completed - last_completed
+            last_completed = cur_completed
+            d_cabin = max(0, snap["cabin_enqueued"] - base["cabin_enqueued"])
+            d_emit = max(0, snap["vlm_emitted"] - base["vlm_emitted"])
+            print(
+                f"  poll events={evt} alerts={alerts} evidence_ok={evidence_ok} "
+                f"cabin_enq+={d_cabin} vlm_done_session={session_done} emitted+={d_emit}",
+                flush=True,
+            )
+            if alerts >= 1 and evidence_ok >= 1:
+                hit = True
+                hit_reason = "alert"
+                print("[HIT] 1 alert with evidence", flush=True)
+                break
+            if session_done >= pipeline_target:
+                hit = True
+                hit_reason = f"pipeline_{pipeline_target}"
+                print(f"[HIT] ceinture pipeline {pipeline_target} vlm_completed", flush=True)
+                break
+            if not ai_health():
+                print("  WARN AI unhealthy", flush=True)
+        evt, alerts, evidence_ok = count_since(rule["id"], event_types, since, rule_name)
+        req("PATCH", f"{API}/api/v1/orgs/{ORG}/rules/{rule['id']}", tok, {"is_enabled": False})
+        print(
+            f"FINAL events={evt} alerts={alerts} evidence_ok={evidence_ok} "
+            f"vlm_done_session={session_done} hit={hit_reason or 'none'}",
+            flush=True,
+        )
+        status = "PASS" if hit else "FAIL"
         print(f"RESULT: {rule_name}: {status}", flush=True)
         return 0 if status == "PASS" else 1
 

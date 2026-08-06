@@ -7,7 +7,7 @@ source "$ROOT/scripts/lib/env-utils.sh"
 ENV_FILE="$(ensure_env_file "$ROOT")"
 load_dotenv "$ENV_FILE"
 
-ORG="${DEMO_ORG_ID:-e312f375-7442-4089-8022-ed232abc09e8}"
+ORG="${DEMO_ORG_ID:-74d51ead-97a7-4e41-a488-503a9b90c466}"
 ZONE_NAME="${DEMO_SPEED_ZONE_NAME:-Zone_distance_parcourue}"
 LIMIT="${DEMO_SPEED_LIMIT_KMH:-1}"
 DIST_M="${DEMO_SPEED_DISTANCE_M:-8}"

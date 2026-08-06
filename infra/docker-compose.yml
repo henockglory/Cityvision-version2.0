@@ -83,7 +83,7 @@ services:
       - "${GO2RTC_WEBRTC_PORT:-8555}:8555/udp"
     volumes:
       - ./go2rtc.yaml:/config/go2rtc.yaml
-      - ${VIDEOS_PATH:-./data/videos}:/videos:ro
+      - /home/gheno/citevision-v2/data/videos:/videos:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:1984/api || exit 1"]
       interval: 15s
@@ -104,6 +104,7 @@ services:
       - frigate_recordings:/media/frigate/recordings
       - frigate_clips:/media/frigate/clips
       - ./frigate.base.yaml:/config/frigate.base.yaml:ro
+      - /home/gheno/citevision-v2/data/videos:/videos:ro
     shm_size: "256mb"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5000/api/version || exit 1"]

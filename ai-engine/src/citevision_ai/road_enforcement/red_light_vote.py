@@ -12,7 +12,16 @@ _local_emit_seen: dict[str, float] = {}
 
 
 def red_light_vote_mode(default: str = "strict_and") -> str:
-    raw = (os.environ.get("RED_LIGHT_VOTE_MODE") or default).strip().lower()
+    raw = (os.environ.get("RED_LIGHT_VOTE_MODE") or "").strip().lower()
+    if raw not in _VALID_VOTE_MODES:
+        try:
+            from citevision_ai.config import settings
+
+            raw = str(getattr(settings, "red_light_vote_mode", "") or "").strip().lower()
+        except Exception:
+            raw = ""
+    if raw not in _VALID_VOTE_MODES:
+        raw = default.strip().lower()
     return raw if raw in _VALID_VOTE_MODES else default
 
 

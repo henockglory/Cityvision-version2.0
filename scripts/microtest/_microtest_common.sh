@@ -51,60 +51,12 @@ archive_blockers() {
 }
 
 patch_env_kv() {
-  python3 - <<'PY'
-from pathlib import Path
-
-def resolve_gemini_model(text: str) -> str:
-    default = "gemini-3.1-flash-lite"
-    for line in text.splitlines():
-        if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        if k.strip() == "GEMINI_MODEL":
-            m = v.strip().strip('"').strip("'")
-            if m:
-                return m
-    return default
-
-p = Path.home() / "citevision-v2" / ".env"
-text = p.read_text(encoding="utf-8") if p.exists() else ""
-gemini_model = resolve_gemini_model(text)
-wanted = {
-  "RED_LIGHT_GATE_MODE": "or",
-  "RED_LIGHT_POST_RED_GRACE_SEC": "2.5",
-  "GEMINI_QUEUE_SIZE": "12",
-  "GEMINI_MIN_INTERVAL_SEC": "5",
-  "GEMINI_MODEL": gemini_model,
-  "FRIGATE_VLM_BRIDGE": "1",
-  "FRIGATE_SPEED_BRIDGE": "1",
-  "FRIGATE_VLM_BRIDGE_CROP_MODE": "vehicle_bbox",
-  "FRIGATE_CABIN_DEDUPE_SEC": "25",
-  "RED_LIGHT_DEBUG_FORCE_ENQUEUE": "0",
-  "GEMINI_SHADOW_MODE": "0",
-  "FRIGATE_SPEED_EMIT_MODE": "exit",
-}
-lines = text.splitlines()
-seen = set()
-out = []
-for line in lines:
-  if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
-    out.append(line)
-    continue
-  k = line.split("=", 1)[0].strip()
-  if k in wanted:
-    out.append(f"{k}={wanted[k]}")
-    seen.add(k)
-  elif k == "GEMINI_API_KEY":
-    out.append(line)
-    seen.add(k)
-  else:
-    out.append(line)
-for k, v in wanted.items():
-  if k not in seen:
-    out.append(f"{k}={v}")
-p.write_text("\n".join(out) + "\n", encoding="utf-8")
-print("patched", p, list(wanted.keys()), "GEMINI_MODEL=" + gemini_model)
-PY
+  # Delegate to permanent env-utils (no hardcoded org UUID).
+  # shellcheck source=scripts/lib/env-utils.sh
+  source "$ROOT/scripts/lib/env-utils.sh"
+  ensure_demo_runtime_env "$ROOT" "$ROOT/.env"
+  ensure_demo_validation_env "$ROOT" "$ROOT/.env"
+  echo "patched $ROOT/.env via ensure_demo_validation_env"
 }
 
 resolve_gemini_model() {

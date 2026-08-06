@@ -98,6 +98,21 @@ def classify_light_color(roi: np.ndarray) -> tuple[str, dict[str, float]]:
         "amber": float(np.count_nonzero(amber)) / total,
         "green": float(np.count_nonzero(green)) / total,
     }
+    # A real traffic light is often a small illuminated blob inside a larger ROI.
+    # Keep the proof gate strict, but do not let dark housing/background dilute a
+    # compact red lamp below the whole-ROI dominant-colour heuristic.
+    red_components, red_labels, red_stats, _ = cv2.connectedComponentsWithStats(red, 8)
+    red_blob = 0
+    if red_components > 1:
+        red_blob = int(red_stats[1:, cv2.CC_STAT_AREA].max())
+    red_blob_ratio = float(red_blob) / total
+    ratios["red_blob"] = red_blob_ratio
+    if (
+        ratios["red"] >= 0.003
+        and red_blob_ratio >= 0.0015
+        and ratios["green"] < max(0.03, ratios["red"] * 6.0)
+    ):
+        return "red", ratios
     # Minimum illuminated ratio for any colour to count.
     min_ratio = 0.008
     state = max(ratios, key=ratios.get)
@@ -177,7 +192,10 @@ class TrafficLightEngine:
         return str(self._raw_state.get(camera_id) or "unknown")
 
     def bridge_gate_debug(self, camera_id: str) -> dict[str, Any]:
-        """Last gate evaluation snapshot (raw/stable/mode/grace) for blockers."""
+        """Fresh gate evaluation snapshot (raw/stable/mode/grace) for blockers."""
+        # The Frigate bridge uses this method as its live gate source. Recompute
+        # before returning so the bridge cannot keep reading a stale green state.
+        self.bridge_gate_state(camera_id)
         snap = self._gate_debug.get(camera_id)
         if isinstance(snap, dict):
             return dict(snap)
@@ -215,7 +233,7 @@ class TrafficLightEngine:
             mode_red = stable == "red" or raw == "red"
 
         grace_active = False
-        if not mode_red and self._post_red_grace_sec > 0:
+        if mode != "and" and not mode_red and self._post_red_grace_sec > 0:
             last = self._last_raw_red_mono.get(camera_id)
             if last is not None and (now - last) <= self._post_red_grace_sec:
                 mode_red = True

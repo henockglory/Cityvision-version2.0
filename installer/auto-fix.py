@@ -92,6 +92,12 @@ def _check_imports() -> bool:
 
 def remediate_stream(missing: list[str]) -> Iterator[str]:
     """Yield log lines for each remediation action."""
+    yield "Application profil env démo validation (Gemini/Frigate cabin)…"
+    rc, out = _run_bash("scripts/ensure-demo-validation-env.sh", timeout=60)
+    for line in out.splitlines()[-5:]:
+        if line.strip():
+            yield line.strip()
+
     if "ai_down" in missing or not _check_imports():
         yield "Installation / réparation des dépendances Python (InsightFace + PaddleOCR)…"
         rc, out = _run_bash(

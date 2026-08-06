@@ -20,6 +20,7 @@ warn() { echo "WARN|$1" >> "$RESULTS_FILE"; echo "[WARN] $1"; }
 echo "=== Phase E — validate-install-gate ==="
 
 ENV_FILE="$(ensure_env_file "$ROOT" 2>/dev/null || echo "$ROOT/.env")"
+ensure_demo_validation_env "$ROOT" "$ENV_FILE" >/dev/null 2>&1 || true
 load_dotenv "$ENV_FILE"
 BACKEND_PORT="${API_PORT:-8081}"
 AI_PORT="${AI_ENGINE_PORT:-8001}"
@@ -67,6 +68,22 @@ if curl -sf "http://127.0.0.1:$FRONTEND_PORT/" >/dev/null 2>&1; then
   pass "frontend :$FRONTEND_PORT"
 else
   warn "frontend :$FRONTEND_PORT"
+fi
+
+if [[ -f "$ROOT/scripts/preflight-validate.sh" ]]; then
+  if PREFLIGHT_VALIDATE_LIGHT=1 bash "$ROOT/scripts/preflight-validate.sh" "$ROOT/logs/install-gate-preflight.log" 2>/dev/null; then
+    pass "preflight-validate (light)"
+  else
+    warn "preflight-validate (light) — stack may need full start-linux"
+  fi
+fi
+
+if [[ -x "$ROOT/scripts/health_check_all.sh" ]]; then
+  if bash "$ROOT/scripts/health_check_all.sh" >/dev/null 2>&1; then
+    pass "health_check_all"
+  else
+    fail "health_check_all (backend FAIL durci)"
+  fi
 fi
 
 SETUP_INIT="unknown"

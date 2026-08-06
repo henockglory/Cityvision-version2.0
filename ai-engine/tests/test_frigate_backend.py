@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -25,6 +27,32 @@ def _textured_frame_for_bbox(x: float = 0.2, y: float = 0.3, w: float = 0.2, h: 
     rng = np.random.default_rng(42)
     frame[y1:y2, x1:x2] = rng.integers(40, 220, size=(y2 - y1, x2 - x1, 3), dtype=np.uint8)
     return frame
+
+
+def _traffic_light_frame(colour_bgr: tuple[int, int, int]) -> np.ndarray:
+    frame = _textured_frame_for_bbox()
+    frame[40:90, 40:90] = colour_bgr
+    return frame
+
+
+def _mp4_bytes(frames: list[np.ndarray], fps: float = 5.0) -> bytes:
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    tmp.close()
+    try:
+        h, w = frames[0].shape[:2]
+        writer = cv2.VideoWriter(tmp.name, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+        if not writer.isOpened():
+            raise unittest.SkipTest("OpenCV mp4 writer unavailable")
+        for frame in frames:
+            writer.write(frame)
+        writer.release()
+        with open(tmp.name, "rb") as fh:
+            return fh.read()
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
 
 
 class FrigateTrackEvidenceTests(unittest.TestCase):
@@ -127,6 +155,145 @@ class FrigateTrackEvidenceTests(unittest.TestCase):
         self.assertEqual(out["meta"]["bbox_source"], "frigate_mqtt")
         self.assertTrue(out["scene"])
         self.assertTrue(out["clip_bytes"])
+
+    @patch("citevision_ai.evidence.frigate_track_evidence.settings")
+    def test_red_light_anchor_frame_selects_red_scene_and_subject(self, mock_settings: MagicMock) -> None:
+        mock_settings.frigate_demo_timeline_align = False
+        mock_settings.frigate_clip_pad_before = 0.0
+        mock_settings.frigate_clip_pad_after = 0.0
+        engine = FrigateTrackEvidence()
+        clip = _mp4_bytes([
+            _traffic_light_frame((0, 255, 0)),
+            _traffic_light_frame((0, 0, 255)),
+            _traffic_light_frame((0, 255, 0)),
+        ])
+        evt = {
+            "bbox_ts": 100.2,
+            "metadata": {
+                "light_zone_polygon": [
+                    {"x": 40 / 640, "y": 40 / 480},
+                    {"x": 90 / 640, "y": 40 / 480},
+                    {"x": 90 / 640, "y": 90 / 480},
+                    {"x": 40 / 640, "y": 90 / 480},
+                ],
+                "violation_instant_ts": 100.2,
+            },
+        }
+        matched = {"start_time": 100.0, "end_time": 100.6}
+        norm_bbox = {"x": 0.2, "y": 0.3, "width": 0.2, "height": 0.2, "norm": True}
+        out = engine._red_light_frame_from_clip_at_anchor(
+            clip, matched, evt, "cam-1", 100.2, norm_bbox, default_evidence_policy(),
+        )
+        self.assertIsNotNone(out)
+        assert out is not None
+        scene, subject, _plate, _bbox, capture_ts, capture_pts = out
+        self.assertEqual(engine._scene_light_state(scene, evt), "red")
+        self.assertIsNotNone(subject)
+        self.assertIsNotNone(capture_ts)
+        self.assertIsNotNone(capture_pts)
+
+    @patch("citevision_ai.evidence.frigate_track_evidence.settings")
+    def test_red_light_anchor_frame_recenters_to_path_data(self, mock_settings: MagicMock) -> None:
+        mock_settings.frigate_demo_timeline_align = False
+        mock_settings.frigate_clip_pad_before = 0.0
+        mock_settings.frigate_clip_pad_after = 0.0
+        engine = FrigateTrackEvidence()
+        clip = _mp4_bytes([
+            _traffic_light_frame((0, 255, 0)),
+            _traffic_light_frame((0, 0, 255)),
+            _traffic_light_frame((0, 255, 0)),
+        ])
+        evt = {
+            "bbox_ts": 500.0,
+            "metadata": {
+                "light_zone_polygon": [
+                    {"x": 40 / 640, "y": 40 / 480},
+                    {"x": 90 / 640, "y": 40 / 480},
+                    {"x": 90 / 640, "y": 90 / 480},
+                    {"x": 40 / 640, "y": 90 / 480},
+                ],
+                "violation_instant_ts": 500.0,
+            },
+        }
+        matched = {
+            "start_time": 100.0,
+            "end_time": 100.6,
+            "data": {"path_data": [[[0.3, 0.4], 100.2]]},
+        }
+        norm_bbox = {"x": 0.2, "y": 0.3, "width": 0.2, "height": 0.2, "norm": True}
+        out = engine._red_light_frame_from_clip_at_anchor(
+            clip, matched, evt, "cam-1", 500.0, norm_bbox, default_evidence_policy(),
+        )
+        self.assertIsNotNone(out)
+        assert out is not None
+        scene, _subject, _plate, _bbox, capture_ts, capture_pts = out
+        self.assertEqual(engine._scene_light_state(scene, evt), "red")
+        self.assertAlmostEqual(float(capture_ts or 0), 100.2, places=1)
+        self.assertAlmostEqual(float(capture_pts or 0), 0.2, places=1)
+
+    @patch("citevision_ai.evidence.frigate_track_evidence.settings")
+    def test_red_light_anchor_frame_rejects_green_scene(self, mock_settings: MagicMock) -> None:
+        mock_settings.frigate_demo_timeline_align = False
+        mock_settings.frigate_clip_pad_before = 0.0
+        mock_settings.frigate_clip_pad_after = 0.0
+        engine = FrigateTrackEvidence()
+        clip = _mp4_bytes([
+            _traffic_light_frame((0, 255, 0)),
+            _traffic_light_frame((0, 255, 0)),
+            _traffic_light_frame((0, 255, 0)),
+        ])
+        evt = {
+            "bbox_ts": 100.2,
+            "metadata": {
+                "light_zone_polygon": [
+                    {"x": 40 / 640, "y": 40 / 480},
+                    {"x": 90 / 640, "y": 40 / 480},
+                    {"x": 90 / 640, "y": 90 / 480},
+                    {"x": 40 / 640, "y": 90 / 480},
+                ],
+                "violation_instant_ts": 100.2,
+            },
+        }
+        matched = {"start_time": 100.0, "end_time": 100.6}
+        norm_bbox = {"x": 0.2, "y": 0.3, "width": 0.2, "height": 0.2, "norm": True}
+        out = engine._red_light_frame_from_clip_at_anchor(
+            clip, matched, evt, "cam-1", 100.2, norm_bbox, default_evidence_policy(),
+        )
+        self.assertIsNone(out)
+
+    @patch("citevision_ai.evidence.frigate_track_evidence.settings")
+    def test_red_light_anchor_skips_offset_for_bridge_sourced_event(self, mock_settings: MagicMock) -> None:
+        """bbox_ts from the Frigate bridge is already Frigate-native: re-applying
+        the learned wall-clock<->Frigate offset would double-correct it and push
+        the anchor outside the track window (bug 2 in the temporal alignment fix).
+        """
+        mock_settings.frigate_demo_timeline_align = True
+        mock_settings.frigate_clip_pad_before = 0.0
+        mock_settings.frigate_clip_pad_after = 0.0
+        engine = FrigateTrackEvidence()
+        engine._demo_clock_offset["cam-1"] = 5.0
+        matched = {"start_time": 100.0, "end_time": 110.0}
+
+        bridge_evt = {
+            "bbox_ts": 105.0,
+            "metadata": {"bridge_source": "frigate", "violation_instant_ts": 105.0},
+        }
+        _pts, _duration, _clip_start, debug = engine._red_light_anchor_pts(
+            "no-such-clip.mp4", matched, bridge_evt, "cam-1", 105.0,
+        )
+        self.assertEqual(debug["anchor_aligned"], 105.0)
+        self.assertEqual(debug["anchor_used"], 105.0)
+        self.assertFalse(debug["anchor_recentered"])
+
+        non_bridge_evt = {
+            "bbox_ts": 105.0,
+            "metadata": {"violation_instant_ts": 105.0},
+        }
+        _pts2, _duration2, _clip_start2, debug2 = engine._red_light_anchor_pts(
+            "no-such-clip.mp4", matched, non_bridge_evt, "cam-1", 105.0,
+        )
+        self.assertEqual(debug2["anchor_aligned"], 100.0)
+        self.assertEqual(debug2["anchor_used"], 100.0)
 
     @patch("citevision_ai.evidence.frigate_track_evidence.urllib.request.urlopen")
     @patch("citevision_ai.evidence.frigate_track_evidence.settings")
@@ -366,6 +533,135 @@ class FrigateTrackEvidenceTests(unittest.TestCase):
         evt = {"class_name": "car", "bbox": {"x": 0.2, "y": 0.3, "width": 0.2, "height": 0.2}}
         matched = {"id": "e1", "label": "car", "data": {"box": [0.2, 0.3, 0.2, 0.2]}}
         self.assertTrue(engine._accept_correlation(evt, matched, 0.4, "cam1"))
+
+    def test_red_light_candidate_loop_falls_back_to_valid_candidate(self) -> None:
+        engine = FrigateTrackEvidence()
+        evt = {
+            "event_type": "red_light_violation",
+            "bbox_ts": 100.0,
+            "bbox": {"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.1},
+            "metadata": {
+                "bridge_source": "frigate",
+                "frigate_candidate_events": [
+                    {
+                        "id": "primary",
+                        "bbox": {"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.1},
+                        "bbox_ts": 100.0,
+                        "score": 9.0,
+                    },
+                    {
+                        "id": "fallback",
+                        "bbox": {"x": 0.2, "y": 0.3, "width": 0.2, "height": 0.2},
+                        "bbox_ts": 101.0,
+                        "score": 8.0,
+                    },
+                ],
+            },
+        }
+        missing = {"status": "missing", "meta": {"abort_reason": "subject_empty", "red_frames": 0}}
+        success = {
+            "status": "complete",
+            "meta": {
+                "scene_light_state": "red",
+                "bbox_source": "frigate_mqtt",
+                "subject_vehicle_ok": True,
+            },
+        }
+
+        with patch.object(engine, "fetch_event", side_effect=lambda eid: {"id": eid, "start_time": 100.0}):
+            with patch.object(engine, "_compose_from_matched", side_effect=[missing, success]) as compose:
+                out = engine._compose_bridge_red_light_candidates(
+                    bound_id="primary",
+                    policy=default_evidence_policy(),
+                    evt=evt,
+                    camera_id="cam",
+                    org_id="org",
+                )
+
+        self.assertIsNotNone(out)
+        assert out is not None
+        self.assertEqual(out["meta"]["frigate_candidate_selected"], "fallback")
+        self.assertEqual(out["meta"]["frigate_candidate_rank"], 1)
+        fallback_evt = compose.call_args_list[1].args[3]
+        self.assertEqual(fallback_evt["frigate_event_id"], "fallback")
+        self.assertEqual(fallback_evt["bbox"], {"x": 0.2, "y": 0.3, "width": 0.2, "height": 0.2})
+        self.assertEqual(fallback_evt["metadata"]["violation_instant_ts"], 101.0)
+
+    def test_red_light_candidate_loop_returns_explicit_abort_when_all_invalid(self) -> None:
+        engine = FrigateTrackEvidence()
+        evt = {
+            "event_type": "red_light_violation",
+            "bbox_ts": 100.0,
+            "bbox": {"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.1},
+            "metadata": {
+                "bridge_source": "frigate",
+                "frigate_candidate_events": [
+                    {"id": "primary", "bbox": {"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.1}, "bbox_ts": 100.0},
+                    {"id": "fallback", "bbox": {"x": 0.2, "y": 0.3, "width": 0.2, "height": 0.2}, "bbox_ts": 101.0},
+                ],
+            },
+        }
+        missing = {
+            "status": "missing",
+            "meta": {
+                "abort_reason": "subject_empty",
+                "red_frames": 0,
+                "content_frames": 0,
+                "best_texture": None,
+                "target_pts": 0.4,
+            },
+        }
+
+        with patch.object(engine, "fetch_event", side_effect=lambda eid: {"id": eid, "start_time": 100.0}):
+            with patch.object(engine, "_compose_from_matched", return_value=missing):
+                out = engine._compose_bridge_red_light_candidates(
+                    bound_id="primary",
+                    policy=default_evidence_policy(),
+                    evt=evt,
+                    camera_id="cam",
+                    org_id="org",
+                )
+
+        self.assertIsNotNone(out)
+        assert out is not None
+        self.assertEqual(out["status"], "missing")
+        self.assertEqual(out["meta"]["abort_reason"], "no_candidate_with_red_frame")
+        self.assertEqual(out["meta"]["frigate_candidate_count"], 2)
+        self.assertEqual(len(out["meta"]["frigate_candidate_attempts"]), 2)
+        self.assertEqual(out["meta"]["frigate_candidate_attempts"][0]["red_frames"], 0)
+
+    def test_red_light_candidate_loop_rejects_non_frigate_bbox_source(self) -> None:
+        engine = FrigateTrackEvidence()
+        evt = {
+            "event_type": "red_light_violation",
+            "bbox_ts": 100.0,
+            "bbox": {"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.1},
+            "metadata": {"bridge_source": "frigate"},
+        }
+        bad_source = {
+            "status": "complete",
+            "meta": {
+                "scene_light_state": "red",
+                "bbox_source": "ia_overlay",
+                "subject_vehicle_ok": True,
+            },
+        }
+
+        with patch.object(engine, "fetch_event", return_value={"id": "primary", "start_time": 100.0}):
+            with patch.object(engine, "_compose_from_matched", return_value=bad_source):
+                out = engine._compose_bridge_red_light_candidates(
+                    bound_id="primary",
+                    policy=default_evidence_policy(),
+                    evt=evt,
+                    camera_id="cam",
+                    org_id="org",
+                )
+
+        self.assertIsNotNone(out)
+        assert out is not None
+        self.assertEqual(out["status"], "missing")
+        self.assertEqual(out["meta"]["abort_reason"], "no_candidate_with_red_frame")
+        self.assertEqual(out["meta"]["frigate_candidate_attempts"][0]["bbox_source"], "ia_overlay")
 
 
 class FrigateBackendWrapperTests(unittest.TestCase):

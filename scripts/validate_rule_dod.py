@@ -190,6 +190,11 @@ def asset_roles(alert: dict[str, Any]) -> dict[str, Any]:
         for a in assets:
             if isinstance(a, dict) and a.get("role"):
                 out[str(a["role"])] = a
+    images = pkg.get("images") or []
+    if isinstance(images, list):
+        for img in images:
+            if isinstance(img, dict) and img.get("role"):
+                out[str(img["role"])] = img
     for role in ("scene", "subject", "plate", "clip"):
         if role in pkg and role not in out:
             out[role] = pkg[role]

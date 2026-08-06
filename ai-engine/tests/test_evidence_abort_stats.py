@@ -54,6 +54,62 @@ def test_missing_package_structure():
     abort_stats.reset()
 
 
+def test_compose_red_light_waits_end_time_before_align_guard(monkeypatch):
+    """Active Frigate events lack path_data — compose must wait for end_time and
+    recompute align_delta instead of aborting align_too_wide with 1e18."""
+    abort_stats.reset()
+    ft = FrigateTrackEvidence()
+    calls = {"n": 0}
+
+    def fake_meta(_eid):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            return {"id": "e1", "start_time": 100.0, "data": {"box": [0.1, 0.1, 0.2, 0.2]}}
+        return {
+            "id": "e1",
+            "start_time": 100.0,
+            "end_time": 106.0,
+            "data": {
+                "box": [0.1, 0.1, 0.2, 0.2],
+                "path_data": [[(0.15, 0.15), 100.5]],
+            },
+            "has_clip": True,
+            "has_snapshot": True,
+        }
+
+    monkeypatch.setattr(ft, "_event_meta", fake_meta)
+    monkeypatch.setattr(
+        "citevision_ai.evidence.frigate_track_evidence.time.sleep",
+        lambda _s: None,
+    )
+    from citevision_ai import config as cfg
+
+    monkeypatch.setattr(cfg.settings, "frigate_red_light_end_time_wait_sec", 5.0, raising=False)
+    monkeypatch.setattr(cfg.settings, "frigate_red_light_end_time_backoff_initial", 0.01, raising=False)
+    monkeypatch.setattr(cfg.settings, "frigate_red_light_end_time_backoff_max", 0.01, raising=False)
+    monkeypatch.setattr(cfg.settings, "demo_mode", False, raising=False)
+    monkeypatch.setattr(ft, "_download_event_clip", lambda *_a, **_k: b"")
+    monkeypatch.setattr(ft, "_red_light_frame_from_clip_at_anchor", lambda *_a, **_k: None)
+
+    # Stale align_delta=1e18 as if fetch_event had no timestamps yet.
+    out = ft._compose_from_matched(
+        {"id": "e1", "start_time": 100.0, "data": {"box": [0.1, 0.1, 0.2, 0.2]}},
+        align_delta=1e18,
+        policy={"clip_seconds": 6, "images": []},
+        evt={
+            "event_type": "red_light_violation",
+            "bbox_ts": 100.5,
+            "metadata": {"hsv_light_state": "red", "bridge_source": "frigate"},
+        },
+        camera_id="camera-uuid-aaaa",
+        org_id="org",
+    )
+    assert calls["n"] >= 2
+    assert out is not None
+    assert out["meta"]["abort_reason"] != abort_stats.ABORT_ALIGN_TOO_WIDE
+    abort_stats.reset()
+
+
 def test_compose_aborts_align_too_wide(monkeypatch):
     abort_stats.reset()
     ft = FrigateTrackEvidence()

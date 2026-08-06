@@ -158,6 +158,8 @@ class Settings(BaseSettings):
     # Demo-only: hard |bbox_ts−Frigate| gate + same-loop-cycle check (stale capture H1).
     # Live cameras have no loop boundary — leave False outside DEMO_MODE.
     demo_loop_guard: bool = True
+    # Isolated 1-hit feu test: fail-closed — no ia_overlay / soft-accept for red_light.
+    feu_1hit_strict: bool = Field(default=False, validation_alias=AliasChoices("FEU_1HIT_STRICT"))
 
     # Frigate track evidence (ported from citevision_videoverbalisation)
     frigate_event_match_sec: float = 12.0
@@ -238,7 +240,7 @@ class Settings(BaseSettings):
         ),
     )
     gemini_queue_size: int = Field(
-        default=32,
+        default=24,
         validation_alias=AliasChoices(
             "gemini_queue_size", "GEMINI_QUEUE_SIZE", "CITEVISION_GEMINI_QUEUE_SIZE",
         ),

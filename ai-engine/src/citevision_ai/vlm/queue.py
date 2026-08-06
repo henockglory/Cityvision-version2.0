@@ -52,6 +52,7 @@ class VlmQueue:
             "completed": 0,
             "emitted": 0,
             "rejected": 0,
+            "cabin_ignored": 0,
             "unclear": 0,
             "rate_limited": 0,
             "shadow_logged": 0,
@@ -178,22 +179,50 @@ class VlmQueue:
         else:
             emit_ok = should_emit(verdict, min_confidence=job.min_confidence)
 
+        red_light_hsv_override = False
+        if not emit_ok and job.rule == "red_light_violation":
+            evt0 = job.event_skeleton if isinstance(job.event_skeleton, dict) else {}
+            meta0 = evt0.get("metadata") if isinstance(evt0.get("metadata"), dict) else {}
+            hsv_values = {
+                str(meta0.get("hsv_light_state") or "").lower().strip(),
+                str(meta0.get("hsv_raw") or "").lower().strip(),
+                str(meta0.get("hsv_stable") or "").lower().strip(),
+            }
+            if str(meta0.get("bridge_source") or "").lower() == "frigate" and "red" in hsv_values:
+                emit_ok = True
+                red_light_hsv_override = True
+                logger.info(
+                    "vlm_red_light_hsv_override frigate_event=%s reason_short=%s",
+                    str(evt0.get("frigate_event_id") or "")[:12],
+                    (getattr(verdict, "reason_short", "") or "")[:120],
+                )
+
         if not emit_ok:
+            reason = (getattr(verdict, "reason_short", "") or "")[:120]
+            reject_reason = "low_confidence"
+            cabin_no = (
+                job.rule in _CABIN_RULES
+                and not bool(getattr(verdict, "violation", False))
+                and not getattr(verdict, "error", "")
+            )
+            if cabin_no:
+                with self._lock:
+                    self._stats["cabin_ignored"] += 1
+                logger.info(
+                    "vlm_cabin_no rule=%s conf=%.2f reason_short=%s",
+                    job.rule,
+                    float(getattr(verdict, "confidence", 0.0) or 0.0),
+                    reason,
+                )
+                return
             with self._lock:
                 self._stats["rejected"] += 1
                 if job.rule not in _CABIN_RULES:
                     signals = [str(s).lower() for s in (verdict.signals or [])]
                     if "unclear" in signals or not bool(getattr(verdict, "visible", True)):
                         self._stats["unclear"] += 1
-            reason = (getattr(verdict, "reason_short", "") or "")[:120]
-            reject_reason = "low_confidence"
             if job.rule in _CABIN_RULES:
-                if not bool(getattr(verdict, "violation", False)):
-                    reject_reason = "violation_false"
-                elif float(getattr(verdict, "confidence", 0.0) or 0.0) < float(job.min_confidence):
-                    reject_reason = "low_confidence"
-                else:
-                    reject_reason = "error"
+                reject_reason = str(getattr(verdict, "error", "") or "error")
             elif job.rule == "plate_ocr":
                 reject_reason = "plate_fusion_empty"
             elif not bool(getattr(verdict, "visible", True)):
@@ -216,6 +245,8 @@ class VlmQueue:
             )
             try:
                 from citevision_ai.observability.rule_blockers import blockers
+                evt0 = job.event_skeleton if isinstance(job.event_skeleton, dict) else {}
+                meta0 = evt0.get("metadata") if isinstance(evt0.get("metadata"), dict) else {}
                 blockers.note(
                     "vlm_reject",
                     rule=job.rule,
@@ -223,6 +254,15 @@ class VlmQueue:
                     visible=bool(getattr(verdict, "visible", False)),
                     reason_short=reason,
                     reject_reason=reject_reason,
+                    event_id=evt0.get("event_id"),
+                    frigate_event_id=evt0.get("frigate_event_id"),
+                    camera_id=evt0.get("camera_id"),
+                    zone_id=evt0.get("zone_id"),
+                    bbox_ts=evt0.get("bbox_ts"),
+                    bbox=evt0.get("bbox"),
+                    hsv_light_state=meta0.get("hsv_light_state"),
+                    hsv_raw=meta0.get("hsv_raw"),
+                    hsv_stable=meta0.get("hsv_stable"),
                 )
             except Exception:
                 pass
@@ -281,6 +321,12 @@ class VlmQueue:
                 "confidence": round(float(verdict.confidence), 3),
             }
         )
+        if red_light_hsv_override:
+            meta["vlm_hsv_override"] = True
+            meta["vlm_original_violation"] = bool(getattr(verdict, "violation", False))
+            meta["vlm_original_reason"] = verdict.reason_short
+            evt["confidence"] = max(float(evt.get("confidence") or 0.0), float(job.min_confidence))
+            meta["confidence"] = evt["confidence"]
         if job.rule == "plate_ocr":
             meta.update(plate_fusion_meta)
             if fused_plate_text:

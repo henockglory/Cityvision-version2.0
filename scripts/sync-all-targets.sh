@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Sync Windows checkout -> WSL home, Windows citevision-v2 mirror, and C:\Citevision runtime.
+# Sync WSL source of truth -> Windows clones (4 targets).
 set -euo pipefail
 
-SRC="${1:-/mnt/c/Users/gheno/citevision}"
+SRC="${SYNC_SRC:-${HOME}/citevision-v2}"
 TARGETS=(
-  "${HOME}/citevision-v2"
+  "/mnt/c/Users/gheno/citevision"
   "/mnt/c/Users/gheno/citevision-v2"
+  "/mnt/c/Users/gheno/citevision_optimized"
   "/mnt/c/Citevision"
 )
 
@@ -35,10 +36,17 @@ if [[ ! -d "$SRC" ]]; then
   exit 1
 fi
 
+SRC="$(cd "$SRC" && pwd)"
+echo "=== sync-all-targets SRC=$SRC ==="
+
 for DEST in "${TARGETS[@]}"; do
+  DEST="$(readlink -f "$DEST" 2>/dev/null || echo "$DEST")"
+  if [[ "$(cd "$SRC" && pwd)" == "$(cd "$DEST" 2>/dev/null && pwd)" ]]; then
+    echo "[SKIP] $DEST same as source"
+    continue
+  fi
   echo "==> Syncing $SRC -> $DEST"
   mkdir -p "$DEST"
-  # Protect destination demo/transcoded videos from --delete (excluded from source transfer).
   rsync -a --delete --no-group --no-owner \
     --filter 'P data/videos/' \
     --filter 'P ai-engine/models/secondary/' \
@@ -51,4 +59,4 @@ for DEST in "${TARGETS[@]}"; do
   echo "[OK] $DEST"
 done
 
-echo "=== All targets synced ==="
+echo "=== All targets synced from WSL source ==="

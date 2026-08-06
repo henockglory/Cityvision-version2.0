@@ -249,6 +249,7 @@ class PipelineService:
             watchlist_resolver=lambda: list(getattr(self.face_engine, "_watchlist", None) or []),
             light_state_resolver=lambda cam: self.traffic_light.bridge_gate_state(cam),
             light_debug_resolver=lambda cam: self.traffic_light.bridge_gate_debug(cam),
+            camera_ids_resolver=lambda: list(self._spatial_configs.keys()),
         )
         if vlm_on:
             self.face_engine.set_frigate_bridge_active(True)

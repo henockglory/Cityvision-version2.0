@@ -91,21 +91,19 @@ _CABIN_RULES = frozenset({"seatbelt_violation", "phone_use_violation"})
 CABIN_PROMPTS: dict[str, str] = {
     "seatbelt_violation": (
         "You analyze a vehicle_bbox crop from a traffic camera (full vehicle bounding box). "
-        "Answer yes/no: is the driver NOT wearing a seatbelt? "
+        "Answer yes or no: is the driver NOT wearing a seatbelt? "
         "Reply with ONLY one JSON object, no markdown:\n"
         '{"violation":bool,"rule":"seatbelt_violation","confidence":0.0-1.0,'
         '"reason_short":"<=120 chars"}\n'
-        "violation=true only if you are confident the seatbelt is not worn; "
-        "violation=false if worn, unclear, or not enough detail (treat unclear as false)."
+        "violation=true means YES (seatbelt not worn). violation=false means NO."
     ),
     "phone_use_violation": (
         "You analyze a vehicle_bbox crop from a traffic camera (full vehicle bounding box). "
-        "Answer yes/no: is the driver using a phone while driving (handset to ear or looking at phone)? "
+        "Answer yes or no: is the driver using a phone while driving? "
         "Reply with ONLY one JSON object, no markdown:\n"
         '{"violation":bool,"rule":"phone_use_violation","confidence":0.0-1.0,'
         '"reason_short":"<=120 chars"}\n'
-        "violation=true only if phone use is clear; "
-        "violation=false if no phone, unclear, or not enough detail (treat unclear as false)."
+        "violation=true means YES (phone use detected). violation=false means NO."
     ),
 }
 
@@ -338,7 +336,7 @@ def should_emit(verdict: GeminiVerdict, *, min_confidence: float) -> bool:
     if not verdict.raw_ok or verdict.error:
         return False
     if verdict.rule in _CABIN_RULES:
-        return bool(verdict.violation) and float(verdict.confidence) >= float(min_confidence)
+        return bool(verdict.violation)
     if not verdict.visible:
         return False
     if "unclear" in {s.lower() for s in verdict.signals}:
