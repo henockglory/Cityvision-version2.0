@@ -1,0 +1,128 @@
+{
+  "phase": "A0",
+  "timestamp": "2026-08-07T07:32:56.118588+00:00",
+  "audit_dir": "/home/gheno/citevision-v2/validation-evidence/audit-integration/20260807T072926Z",
+  "stack_health": "RED",
+  "antidegrade_static": {
+    "geometry_skip_set_found": true,
+    "protected_events_in_geometry_skip": [],
+    "protected_absent_from_skip_OK": true,
+    "frigate_speed_bridge_xor_in_pipeline": true,
+    "geometry_enabled_wired": true,
+    "face_xor_process_frame": true,
+    "face_match_jpeg": true,
+    "plate_xor_process_frame": true,
+    "health_exposes_geometry_bridge": true
+  },
+  "artefacts_inventory": {
+    "speeding": {
+      "formal_dod": [],
+      "recent_1hit": [
+        "1hit-vitesse-20260806T201501Z",
+        "1hit-vitesse-20260806T204636Z",
+        "1hit-vitesse-20260806T233828Z"
+      ],
+      "1hit_pass_flags": [
+        {
+          "dir": "1hit-vitesse-20260806T201501Z",
+          "overall_pass": false
+        },
+        {
+          "dir": "1hit-vitesse-20260806T204636Z",
+          "overall_pass": true
+        },
+        {
+          "dir": "1hit-vitesse-20260806T233828Z",
+          "overall_pass": true
+        }
+      ]
+    },
+    "red_light": {
+      "formal_dod": [
+        {
+          "path": "red_light/20260805T194555Z",
+          "result": "PARTIAL"
+        },
+        {
+          "path": "red_light/20260806T063944Z",
+          "result": "PASS"
+        }
+      ],
+      "recent_1hit": [
+        "1hit-feu-20260806T093500Z",
+        "1hit-feu-20260806T101217Z",
+        "1hit-feu-20260806T120500Z"
+      ],
+      "1hit_pass_flags": [
+        {
+          "dir": "1hit-feu-20260806T093500Z",
+          "overall_pass": false
+        },
+        {
+          "dir": "1hit-feu-20260806T101217Z",
+          "overall_pass": false
+        },
+        {
+          "dir": "1hit-feu-20260806T120500Z",
+          "overall_pass": true
+        }
+      ]
+    },
+    "seatbelt": {
+      "formal_dod": [
+        {
+          "path": "seatbelt/20260729T084737Z",
+          "result": "PARTIAL"
+        },
+        {
+          "path": "seatbelt/20260729T084844Z",
+          "result": "PARTIAL"
+        }
+      ],
+      "recent_1hit": [
+        "1hit-cabin-20260806T160315Z",
+        "1hit-cabin-20260806T235337Z",
+        "1hit-cabin-syntheticcabin001"
+      ],
+      "1hit_pass_flags": [
+        {
+          "dir": "1hit-cabin-20260806T160315Z",
+          "overall_pass": true
+        },
+        {
+          "dir": "1hit-cabin-20260806T235337Z",
+          "overall_pass": true
+        },
+        {
+          "dir": "1hit-cabin-syntheticcabin001",
+          "overall_pass": true
+        }
+      ]
+    },
+    "phone": {
+      "formal_dod": [],
+      "recent_1hit": [
+        "1hit-cabin-20260806T160315Z",
+        "1hit-cabin-20260806T235337Z",
+        "1hit-cabin-syntheticcabin001"
+      ],
+      "1hit_pass_flags": [
+        {
+          "dir": "1hit-cabin-20260806T160315Z",
+          "overall_pass": true
+        },
+        {
+          "dir": "1hit-cabin-20260806T235337Z",
+          "overall_pass": true
+        },
+        {
+          "dir": "1hit-cabin-syntheticcabin001",
+          "overall_pass": true
+        }
+      ]
+    }
+  },
+  "verdict_antidegrade_code": "PASS",
+  "verdict_a0": "PARTIAL_STACK_DOWN",
+  "note": "Live validate_rule of 4 rules blocked while stack RED (Frigate/AI). Code anti-degrade PASS means continue audit; do not claim live DoD."
+}

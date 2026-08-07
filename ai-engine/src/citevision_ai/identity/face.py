@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -105,11 +109,12 @@ class FaceIdentityEngine:
             logger.info("FaceIdentityEngine: Gemini VLM path available (InsightFace preferred when loaded)")
 
     def set_frigate_bridge_active(self, active: bool) -> None:
-        """Frigate bridge enqueues Gemini face jobs; InsightFace keeps running on RTSP."""
+        """Frigate bridge owns face: InsightFace/Gemini run on Frigate crops only (XOR)."""
         self._frigate_bridge_active = bool(active)
         if self._frigate_bridge_active:
             logger.info(
-                "FaceIdentityEngine: Frigate bridge ON — InsightFace + Gemini parallel",
+                "FaceIdentityEngine: Frigate bridge ON — full-frame InsightFace/Gemini disabled; "
+                "match_jpeg on Frigate crops only",
             )
 
     def load(self) -> None:
@@ -133,6 +138,9 @@ class FaceIdentityEngine:
         frame: np.ndarray,
         timestamp: str,
     ) -> list[dict[str, Any]]:
+        # XOR: Frigate bridge owns face — never InsightFace/Gemini on full RTSP frame.
+        if self._frigate_bridge_active:
+            return []
         self._frame_counter += 1
         if self._frame_counter % self._process_every_n != 0:
             return []
@@ -144,6 +152,70 @@ class FaceIdentityEngine:
             self._enqueue_gemini_face(camera_id, frame, timestamp)
             return []
         return []
+
+    def match_jpeg(self, jpeg: bytes) -> list[dict[str, Any]]:
+        """InsightFace on a Frigate subject crop (bridge-only path)."""
+        import cv2
+
+        if not jpeg:
+            return []
+        if not (hasattr(self.recognizer, "is_loaded") and self.recognizer.is_loaded):
+            return []
+        arr = np.frombuffer(jpeg, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if frame is None:
+            return []
+        events: list[dict[str, Any]] = []
+        faces = self.recognizer.detect_faces(frame)
+        ts = datetime.now(timezone.utc).isoformat()
+        for face in faces:
+            emb = face.get("embedding")
+            if emb is None:
+                continue
+            match = self._match_embedding(emb)
+            meta_base = {
+                "bbox": face.get("bbox"),
+                "confidence": face.get("confidence"),
+                "detection_method": "insightface_on_frigate_crop",
+            }
+            events.append({
+                "event_type": "face_detected",
+                "timestamp": ts,
+                "metadata": dict(meta_base),
+            })
+            if match:
+                events.append({
+                    "event_type": "face_watchlist_match",
+                    "timestamp": ts,
+                    "metadata": {
+                        **meta_base,
+                        "label": match.get("label"),
+                        "identifier": match.get("identifier"),
+                        "confidence": match.get("score"),
+                        "embedding_score": match.get("score"),
+                    },
+                })
+            else:
+                events.append({
+                    "event_type": "face_unknown",
+                    "timestamp": ts,
+                    "metadata": dict(meta_base),
+                })
+            dump_dir = str(os.environ.get("VLM_FACE_DUMP_DIR") or "").strip()
+            if dump_dir:
+                try:
+                    from pathlib import Path
+                    Path(dump_dir).mkdir(parents=True, exist_ok=True)
+                    (Path(dump_dir) / f"embedding_match_{uuid.uuid4().hex[:10]}.json").write_text(
+                        json.dumps({
+                            "match": match,
+                            "embedding_dim": len(emb) if hasattr(emb, "__len__") else None,
+                        }, indent=2),
+                        encoding="utf-8",
+                    )
+                except OSError:
+                    pass
+        return events
 
     def _process_insightface(
         self,

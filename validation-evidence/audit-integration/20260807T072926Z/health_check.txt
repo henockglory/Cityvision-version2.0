@@ -1,0 +1,57 @@
+=== CitéVision health_check_all 2026-08-07T08:29:26+01:00 ===
+ROOT=/home/gheno/citevision-v2
+
+--- disk ---
+[OK]   root filesystem 8% used (avail=886G)
+[OK]   Windows C: free 111G
+
+--- dockerd (native WSL) ---
+[WARN] dockerd down — starting via scripts/_start_dockerd_wsl.sh
+starting dockerd...
+dockerd pid=97
+wait 1
+docker_ok after 2s
+citevision-v2-go2rtc Up Less than a second (health: starting)
+citevision-v2-frigate Exited (143) 5 hours ago
+citevision-v2-postgres Up Less than a second (health: starting)
+citevision-v2-redis Up Less than a second (health: starting)
+citevision-v2-ocr Up Less than a second (health: starting)
+citevision-v2-mosquitto Up Less than a second (health: starting)
+citevision-v2-minio Up Less than a second (health: starting)
+citevision-v2-mailhog Up Less than a second (health: starting)
+[OK]   dockerd started
+
+--- postgres ---
+[FAIL] Postgres unreachable (citevision-v2-postgres / :5433)
+
+--- containers ---
+[OK]   citevision-v2-postgres running
+[OK]   citevision-v2-redis running
+[OK]   citevision-v2-mosquitto running
+[OK]   citevision-v2-minio running
+[OK]   citevision-v2-mailhog running
+[OK]   citevision-v2-go2rtc running
+[FAIL] citevision-v2-frigate status=exited
+
+--- frigate ---
+[FAIL] Frigate API unreachable at http://127.0.0.1:5000
+
+--- go2rtc ---
+[OK]   go2rtc streams_registered=5
+
+--- ai-engine ---
+[WARN] no uvicorn citevision_ai process detected
+[FAIL] AI /health HTTP 000 (GPU/models) 
+
+--- backend ---
+[WARN] API not responding at http://127.0.0.1:8081 — attempting _restart_backend.sh
+[OK]   API reachable at http://127.0.0.1:8081 after heal
+
+--- ui ---
+[WARN] UI http://127.0.0.1:5174 down — start Vite before visual validation
+
+--- mailhog ---
+[OK]   Mailhog UI at http://127.0.0.1:8025
+
+=== summary FAIL=4 WARN=4 ===
+RESULT: RED — fix FAIL items before validation

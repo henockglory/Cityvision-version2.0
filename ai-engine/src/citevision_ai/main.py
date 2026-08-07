@@ -286,6 +286,8 @@ def health(response: Response) -> dict[str, str]:
     result["gemini_reachable"] = "false"
     result["frigate_vlm_bridge"] = str(bool(settings.frigate_vlm_bridge)).lower()
     result["frigate_speed_bridge"] = str(bool(settings.frigate_speed_bridge)).lower()
+    result["frigate_geometry_bridge"] = str(bool(settings.frigate_geometry_bridge)).lower()
+    result["frigate_geometry_bridge"] = str(bool(settings.frigate_geometry_bridge)).lower()
     if gemini_cfg and pipeline is not None and getattr(pipeline, "_vlm_queue", None) is not None:
         stats = pipeline._vlm_queue.stats()
         result["vlm_queue_enqueued"] = str(stats.get("enqueued", 0))
@@ -323,6 +325,13 @@ def health(response: Response) -> dict[str, str]:
         result["frigate_bridge_speed_emitted"] = str(bstats.get("speed_emitted", 0))
         result["frigate_bridge_speed_below_limit"] = str(bstats.get("speed_below_limit", 0))
         result["frigate_bridge_speed_no_estimate"] = str(bstats.get("speed_no_estimate", 0))
+        result["frigate_bridge_geometry_emitted"] = str(bstats.get("geometry_emitted", 0))
+        result["frigate_bridge_dwell_emitted"] = str(bstats.get("dwell_emitted", 0))
+        result["frigate_bridge_absence_emitted"] = str(bstats.get("absence_emitted", 0))
+        result["frigate_bridge_count_emitted"] = str(bstats.get("count_emitted", 0))
+        result["frigate_bridge_proximity_emitted"] = str(bstats.get("proximity_emitted", 0))
+        result["frigate_bridge_slow_emitted"] = str(bstats.get("slow_emitted", 0))
+        result["frigate_bridge_sudden_stop_emitted"] = str(bstats.get("sudden_stop_emitted", 0))
         result["frigate_bridge_snapshot_fail"] = str(bstats.get("snapshot_fail", 0))
         result["frigate_bridge_dropped_dedupe"] = str(bstats.get("dropped_dedupe", 0))
         mqtt_by = bstats.get("mqtt_by_camera") or {}

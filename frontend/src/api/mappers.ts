@@ -187,6 +187,15 @@ export function mapRuleCatalogItem(raw: RuleCatalogTemplate): RuleCatalogTemplat
     activation_blocked: raw.activation_blocked,
     activation_block_reason: raw.activation_block_reason,
     missing_health_keys: raw.missing_health_keys,
+    signal_owner: raw.signal_owner,
+    judgment_owner: raw.judgment_owner,
+    vlm_role: raw.vlm_role,
+    emit_moment: raw.emit_moment,
+    dod_alias: raw.dod_alias,
+    archetype: raw.archetype,
+    catalog_badge: raw.catalog_badge,
+    dod_verified: raw.dod_verified,
+    track_objects: raw.track_objects,
   };
 }
 

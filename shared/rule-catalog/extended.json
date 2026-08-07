@@ -11,7 +11,7 @@
           {
             "op": "eq",
             "field": "event_type",
-            "value": "zone_enter"
+            "value": "perimeter_breach"
           },
           {
             "op": "eq",
@@ -38,8 +38,9 @@
       "enterprise",
       "domestic"
     ],
-    "role_summary_fr": "Alerte pour toute présence humaine détectée en dehors des horaires d'ouverture définis.",
-    "partial_status": "full"
+    "role_summary_fr": "Atome perimeter_breach Frigate + fenêtre horaires rules-engine (hors ouverture).",
+    "partial_status": "requires_external",
+    "_orchestration_note": "No separate detector — schedule binding on geometry atom."
   },
   {
     "id": "tpl-pedestrian-zone",
@@ -53,12 +54,7 @@
           {
             "op": "eq",
             "field": "event_type",
-            "value": "zone_enter"
-          },
-          {
-            "op": "eq",
-            "field": "class",
-            "value": "person"
+            "value": "pedestrian_in_vehicle_zone"
           }
         ]
       },
@@ -73,8 +69,8 @@
       "national",
       "enterprise"
     ],
-    "role_summary_fr": "Alerte si un piéton entre dans une zone réservée aux véhicules (configurez la zone + filtre de classe piéton).",
-    "partial_status": "full"
+    "role_summary_fr": "Alerte si un piéton entre dans une zone réservée aux véhicules (label person ∩ zone trafic Frigate).",
+    "partial_status": "requires_external"
   },
   {
     "id": "tpl-plate-repeat",

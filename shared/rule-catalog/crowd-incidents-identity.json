@@ -76,9 +76,9 @@
         "op": "ET",
         "children": [
           {
-            "op": "in_zone",
-            "field": "zone_id",
-            "value": "machine-zone"
+            "op": "eq",
+            "field": "event_type",
+            "value": "perimeter_breach"
           },
           {
             "op": "eq",
@@ -96,7 +96,8 @@
         }
       ]
     },
-    "role_summary_fr": "Alerte si une personne pénètre dans une zone machine ou dangereuse sur site industriel.",
-    "partial_status": "full"
+    "role_summary_fr": "Atome perimeter_breach Frigate sur zone machine — pas de détecteur dédié.",
+    "partial_status": "requires_external",
+    "_orchestration_note": "Industrial intrusion = perimeter atom + zone binding."
   }
 ]

@@ -1,0 +1,76 @@
+{
+  "phase": "A1",
+  "total_templates": 53,
+  "missing_fields_count": 0,
+  "missing_fields_sample": [],
+  "dod_verified_real_ids": [
+    "tpl-seatbelt",
+    "tpl-speeding-premium",
+    "tpl-red-light",
+    "tpl-phone-driving"
+  ],
+  "claim_vs_disk": [
+    {
+      "template_id": "tpl-seatbelt",
+      "dod_alias": "ceinture",
+      "formal_reports": [
+        {
+          "alias": "seatbelt",
+          "path": "20260729T084737Z",
+          "result": "PARTIAL"
+        },
+        {
+          "alias": "seatbelt",
+          "path": "20260729T084844Z",
+          "result": "PARTIAL"
+        }
+      ],
+      "has_validate_rule_PASS": false,
+      "honesty": "CLAIM_AHEAD_OF_ARTIFACT"
+    },
+    {
+      "template_id": "tpl-speeding-premium",
+      "dod_alias": "vitesse",
+      "formal_reports": [],
+      "has_validate_rule_PASS": false,
+      "honesty": "CLAIM_AHEAD_OF_ARTIFACT"
+    },
+    {
+      "template_id": "tpl-red-light",
+      "dod_alias": "feu",
+      "formal_reports": [
+        {
+          "alias": "red_light",
+          "path": "20260806T063944Z",
+          "result": "PASS"
+        },
+        {
+          "alias": "red_light",
+          "path": "20260805T194555Z",
+          "result": "PARTIAL"
+        }
+      ],
+      "has_validate_rule_PASS": true,
+      "honesty": "OK"
+    },
+    {
+      "template_id": "tpl-phone-driving",
+      "dod_alias": "telephone",
+      "formal_reports": [],
+      "has_validate_rule_PASS": false,
+      "honesty": "CLAIM_AHEAD_OF_ARTIFACT"
+    }
+  ],
+  "claim_ahead_count": 3,
+  "ui_badges": {
+    "requires_dod_and_real_for_operational": true,
+    "no_blind_full_operational": true,
+    "fallback_operational_without_dod_removed": true
+  },
+  "go_test_orchestration": {
+    "exit": 0,
+    "stdout": "ok  \tgithub.com/citevision/citevision-v2/backend/internal/rules\t0.004s\n",
+    "stderr": ""
+  },
+  "verdict_a1": "PASS"
+}

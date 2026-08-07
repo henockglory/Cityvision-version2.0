@@ -260,6 +260,15 @@ class Settings(BaseSettings):
             "frigate_speed_bridge", "FRIGATE_SPEED_BRIDGE", "CITEVISION_FRIGATE_SPEED_BRIDGE",
         ),
     )
+    # Frigate MQTT owns enter/exit/dwell/perimeter/loitering (XOR vs local spatial emits).
+    frigate_geometry_bridge: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "frigate_geometry_bridge",
+            "FRIGATE_GEOMETRY_BRIDGE",
+            "CITEVISION_FRIGATE_GEOMETRY_BRIDGE",
+        ),
+    )
     frigate_bridge_snapshot_wait_sec: float = Field(
         default=25.0,
         validation_alias=AliasChoices(

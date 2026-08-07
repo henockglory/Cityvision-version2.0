@@ -3,27 +3,27 @@
 #
 # Usage:
 #   bash scripts/validate_rule.sh <alias>
-#   bash scripts/validate_rule.sh speeding
-#   bash scripts/validate_rule.sh red_light
-#   bash scripts/validate_rule.sh phone
-#   bash scripts/validate_rule.sh seatbelt
-#   bash scripts/validate_rule.sh counting
+# Demo (real DoD): speeding|red_light|phone|seatbelt|counting
+#   + synonyms: vitesse|feu|ceinture|telephone
+# Geometry/identity scaffolds: zone-presence|perimeter|loitering|face-detected|face-watchlist|plate-detected
 #
 # Env:
 #   VALIDATE_MODE=wait|audit   (default wait — runs 1-hit then DoD; audit = latest only)
 #   SKIP_1HIT=1                skip live 1-hit, audit latest alert only
 #   SKIP_UI_CAPTURE=1          skip Playwright screenshot
+#   FORCE_LIVE_DOD=1           force live path even for scaffold aliases
 #   UI_URL=http://127.0.0.1:5174
 #   RULE_DURATION_SEC=600
 #
 # Artefacts: validation-evidence/<alias>/<timestamp>/{report.json,report.md,ui.png}
 # A global 5/5 claim requires FIVE recent PASS artefacts (one per alias) — never verbal.
+# catalog_badge=real requires PASS + gallery — never scaffold PARTIAL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ALIAS="${1:-}"
 if [[ -z "$ALIAS" ]]; then
-  echo "Usage: bash scripts/validate_rule.sh <speeding|red_light|phone|seatbelt|counting>"
+  echo "Usage: bash scripts/validate_rule.sh <speeding|red_light|phone|seatbelt|counting|zone-presence|perimeter|loitering|face-detected|plate-detected|…>"
   exit 2
 fi
 
@@ -36,20 +36,30 @@ fi
 
 cd "$ROOT"
 
-if [[ -x "$ROOT/scripts/health_check_all.sh" ]]; then
-  echo "=== preflight health_check_all ==="
-  bash "$ROOT/scripts/health_check_all.sh" || {
-    echo "[FAIL] health_check_all RED — fix infra before validation (R.1)"
-    exit 1
-  }
-fi
+# Scaffold aliases skip heavy preflight (honest PARTIAL without stack).
+SCAFFOLD=0
+case "$ALIAS" in
+  zone-presence|perimeter|loitering|face-detected|face-watchlist|plate-detected|presence|face|plate)
+    SCAFFOLD=1
+    ;;
+esac
 
-if [[ -f "$ROOT/scripts/preflight-validate.sh" ]]; then
-  echo "=== preflight-validate (permanent Demo5 env + heal) ==="
-  bash "$ROOT/scripts/preflight-validate.sh" "$ROOT/logs/preflight-validate-$(date -u +%Y%m%dT%H%M%SZ).log" || {
-    echo "[FAIL] preflight-validate — fix stack before validation"
-    exit 1
-  }
+if [[ "$SCAFFOLD" -eq 0 ]] || [[ "${FORCE_LIVE_DOD:-}" == "1" ]]; then
+  if [[ -x "$ROOT/scripts/health_check_all.sh" ]]; then
+    echo "=== preflight health_check_all ==="
+    bash "$ROOT/scripts/health_check_all.sh" || {
+      echo "[FAIL] health_check_all RED — fix infra before validation (R.1)"
+      exit 1
+    }
+  fi
+
+  if [[ -f "$ROOT/scripts/preflight-validate.sh" ]]; then
+    echo "=== preflight-validate (permanent Demo5 env + heal) ==="
+    bash "$ROOT/scripts/preflight-validate.sh" "$ROOT/logs/preflight-validate-$(date -u +%Y%m%dT%H%M%SZ).log" || {
+      echo "[FAIL] preflight-validate — fix stack before validation"
+      exit 1
+    }
+  fi
 fi
 
 export PYTHONPATH="${PYTHONPATH:-}"

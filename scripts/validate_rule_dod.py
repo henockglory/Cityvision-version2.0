@@ -30,6 +30,7 @@ UI_URL = os.environ.get("UI_URL", "http://127.0.0.1:5174").rstrip("/")
 MAILHOG = os.environ.get("MAILHOG_URL", "http://127.0.0.1:8025").rstrip("/")
 
 # alias → (RULE_NAME for 1hit, event_types, road_plate_required)
+# French contract dod_alias synonyms resolve via ALIAS_ALIASES below.
 RULE_CATALOG: dict[str, dict[str, Any]] = {
     "speeding": {
         "rule_name": "Démo · Excès de vitesse",
@@ -60,8 +61,62 @@ RULE_CATALOG: dict[str, dict[str, Any]] = {
             "zone_count",
         ],
         "road_plate": False,
-        "evidence_optional": True,  # pipeline skips some count events by design
+        "evidence_optional": True,
     },
+    "zone-presence": {
+        "rule_name": "Présence zone",
+        "event_types": ["zone_presence", "dwell_time_exceeded"],
+        "road_plate": False,
+        "evidence_optional": True,
+        "scaffold_only": True,
+    },
+    "perimeter": {
+        "rule_name": "Périmètre",
+        "event_types": ["perimeter_breach"],
+        "road_plate": False,
+        "evidence_optional": True,
+        "scaffold_only": True,
+    },
+    "loitering": {
+        "rule_name": "Loitering",
+        "event_types": ["loitering", "loitering_near_entrance"],
+        "road_plate": False,
+        "evidence_optional": True,
+        "scaffold_only": True,
+    },
+    "face-detected": {
+        "rule_name": "Face detected",
+        "event_types": ["face_detected", "face_unknown", "face_watchlist_match"],
+        "road_plate": False,
+        "evidence_optional": True,
+        "scaffold_only": True,
+    },
+    "face-watchlist": {
+        "rule_name": "Face watchlist",
+        "event_types": ["face_watchlist_match"],
+        "road_plate": False,
+        "evidence_optional": True,
+        "scaffold_only": True,
+    },
+    "plate-detected": {
+        "rule_name": "Plaque détectée",
+        "event_types": ["plate_detected", "plate_blocked", "plate_unknown", "plate_allowed", "plate_repeat"],
+        "road_plate": True,
+        "evidence_optional": True,
+        "scaffold_only": True,
+    },
+}
+
+ALIAS_ALIASES: dict[str, str] = {
+    "vitesse": "speeding",
+    "feu": "red_light",
+    "ceinture": "seatbelt",
+    "telephone": "phone",
+    "téléphone": "phone",
+    "presence": "zone-presence",
+    "zone_presence": "zone-presence",
+    "face": "face-detected",
+    "plate": "plate-detected",
 }
 
 
@@ -389,9 +444,13 @@ def write_report(out_dir: Path, alias: str, cfg: dict[str, Any], checks: list[di
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--alias", required=True, choices=sorted(RULE_CATALOG.keys()))
+    ap.add_argument("--alias", required=True)
     args = ap.parse_args()
-    alias = args.alias
+    raw = str(args.alias).strip()
+    alias = ALIAS_ALIASES.get(raw, raw)
+    if alias not in RULE_CATALOG:
+        print(f"unknown alias={raw!r}; known={sorted(RULE_CATALOG)} synonyms={sorted(ALIAS_ALIASES)}", flush=True)
+        return 2
     cfg = RULE_CATALOG[alias]
     mode = os.environ.get("VALIDATE_MODE", "wait").strip().lower()
     skip_1hit = os.environ.get("SKIP_1HIT", "").strip().lower() in ("1", "true", "yes") or mode == "audit"
@@ -400,8 +459,38 @@ def main() -> int:
     out_dir = ROOT / "validation-evidence" / alias / ts
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Scaffold aliases: honest PARTIAL artefact until live 1-hit + UI DoD exist.
+    if bool(cfg.get("scaffold_only")) and os.environ.get("FORCE_LIVE_DOD", "").strip() not in ("1", "true", "yes"):
+        report = {
+            "alias": alias,
+            "rule_name": cfg["rule_name"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "result": "PARTIAL",
+            "dod_checks": [
+                check("1_rule_and_zones", True, "scaffold — zones user-owned"),
+                check("2_event_type", False, "awaiting live 1hit / FORCE_LIVE_DOD=1"),
+                check("3_evidence_files", False, "awaiting live evidence"),
+                check("4_metadata", False, "awaiting live"),
+                check("5_alert_persisted", False, "awaiting live"),
+                check("6_mail_if_configured", False, "scaffold"),
+                check("7_ui_screenshot", False, "scaffold — no fake PASS (R.3)"),
+            ],
+            "ui_capture": {"ok": False, "detail": "scaffold_only"},
+            "alert_id": None,
+            "note": "Scaffold PARTIAL — catalog badge stays partial until validate_rule PASS + gallery.",
+            "scaffold_only": True,
+        }
+        (out_dir / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        (out_dir / "report.md").write_text(
+            f"# Validation {alias} — PARTIAL\n\nScaffold only. No claim of real/DoD.\n",
+            encoding="utf-8",
+        )
+        print(json.dumps({"result": "PARTIAL", "out_dir": str(out_dir)}, ensure_ascii=False), flush=True)
+        print(f"RESULT: {alias}: PARTIAL", flush=True)
+        print(f"ARTEFACT: {out_dir}", flush=True)
+        return 1
+
     if not skip_1hit:
-        # counting 1hit may not produce frigate_track — still run to gather events
         rc = run_1hit(cfg["rule_name"])
         print(f"1hit_exit={rc}", flush=True)
     else:

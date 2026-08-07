@@ -1,0 +1,23 @@
+{
+  "global_verdict": "PARTIAL",
+  "timestamp": "2026-08-07T07:40:01.349281+00:00",
+  "audit_dir": "/home/gheno/citevision-v2/validation-evidence/audit-integration/20260807T072926Z",
+  "report": "docs/AUDIT-INTEGRATION-CATALOGUE-20260807T072926Z.md",
+  "phases": {
+    "A0": "PARTIAL_STACK_DOWN",
+    "A1": "PASS",
+    "A2": "WIRED",
+    "A3": "WIRED_STATIC",
+    "A4": "PARTIAL",
+    "A5": "PARTIAL"
+  },
+  "claim_ahead_count": 3,
+  "matrix_summary": {
+    "total": 53,
+    "pass": 1,
+    "partial": 52,
+    "fail": 0,
+    "claim_ahead": 3
+  },
+  "degraded": false
+}

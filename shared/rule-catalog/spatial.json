@@ -162,13 +162,14 @@
         }
       ]
     },
-    "role_summary_fr": "Compte +1 dès qu'un des événements du groupe correspond (logique OU).",
+    "role_summary_fr": "Compte +1 dès qu'un des événements du groupe correspond (logique OU) — composite observation.",
     "deployment_scopes": [
       "national",
       "enterprise",
       "domestic"
     ],
-    "partial_status": "full"
+    "partial_status": "requires_external",
+    "_orchestration_note": "Observation set OR — rules-engine on counting atoms; evidence optional."
   },
   {
     "id": "tpl-observation-rule-set-n",

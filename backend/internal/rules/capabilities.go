@@ -50,6 +50,16 @@ type EnrichedCatalogTemplate struct {
 	ActivationBlocked      bool     `json:"activation_blocked"`
 	ActivationBlockReason  string   `json:"activation_block_reason,omitempty"`
 	MissingHealthKeys      []string `json:"missing_health_keys,omitempty"`
+	// Orchestration contract (Frigate→CiteVision→Gemini) — see rule-orchestration-contract.json
+	SignalOwner   string   `json:"signal_owner,omitempty"`
+	JudgmentOwner string   `json:"judgment_owner,omitempty"`
+	VlmRole       string   `json:"vlm_role,omitempty"`
+	EmitMoment    string   `json:"emit_moment,omitempty"`
+	DodAlias      string   `json:"dod_alias,omitempty"`
+	Archetype     string   `json:"archetype,omitempty"`
+	CatalogBadge  string   `json:"catalog_badge,omitempty"`
+	DodVerified   bool     `json:"dod_verified,omitempty"`
+	TrackObjects  []string `json:"track_objects,omitempty"`
 }
 
 func LoadCapabilities(dir string) (*CapabilitiesRegistry, error) {

@@ -216,15 +216,19 @@ class PipelineService:
         )
 
     def _init_frigate_bridge(self) -> None:
-        """Frigate MQTT → Gemini cabin/face/plate + Frigate speed estimates."""
+        """Frigate MQTT → Gemini cabin/face/plate + Frigate speed/geometry."""
         vlm_on = bool(settings.frigate_vlm_bridge) and self._vlm_queue is not None
         speed_on = bool(settings.frigate_speed_bridge)
-        if not vlm_on and not speed_on:
+        geometry_on = bool(settings.frigate_geometry_bridge)
+        if not vlm_on and not speed_on and not geometry_on:
             return
         from citevision_ai.frigate_bridge import FrigateEventBridge
 
         def _spatial(cam_id: str) -> dict[str, Any] | None:
             return self._spatial_configs.get(cam_id)
+
+        def _face_match_jpeg(jpeg: bytes) -> list[dict[str, Any]]:
+            return self.face_engine.match_jpeg(jpeg)
 
         self.traffic_light.configure_bridge_gate(
             mode=str(getattr(settings, "red_light_gate_mode", None) or "or"),
@@ -245,11 +249,13 @@ class PipelineService:
             speed_enabled=speed_on,
             face_enabled=vlm_on,
             plate_enabled=vlm_on,
+            geometry_enabled=geometry_on,
             snapshot_wait_sec=float(settings.frigate_bridge_snapshot_wait_sec or 25.0),
             watchlist_resolver=lambda: list(getattr(self.face_engine, "_watchlist", None) or []),
             light_state_resolver=lambda cam: self.traffic_light.bridge_gate_state(cam),
             light_debug_resolver=lambda cam: self.traffic_light.bridge_gate_debug(cam),
             camera_ids_resolver=lambda: list(self._spatial_configs.keys()),
+            face_match_jpeg=_face_match_jpeg if vlm_on else None,
         )
         if vlm_on:
             self.face_engine.set_frigate_bridge_active(True)
@@ -257,8 +263,8 @@ class PipelineService:
             self.secondary.set_frigate_bridge_active(True)
         self._frigate_bridge.start()
         logger.info(
-            "Frigate event bridge started vlm=%s speed=%s cabin_source=%s",
-            vlm_on, speed_on, "frigate" if vlm_on else "n/a",
+            "Frigate event bridge started vlm=%s speed=%s geometry=%s cabin_source=%s",
+            vlm_on, speed_on, geometry_on, "frigate" if vlm_on else "n/a",
         )
 
     def _on_bridge_event(self, evt: dict[str, Any]) -> None:
@@ -314,6 +320,7 @@ class PipelineService:
         plate = str(evt.get("plate_number") or "").strip()
         if plate and str(evt.get("event_type") or "") in (
             "plate_detected", "plate_ocr", "plate_unknown", "plate_blocked", "plate_allowed",
+            "plate_repeat",
         ):
             status = self.plate_engine._match_plate(plate)
             if status == "blocked":
@@ -324,8 +331,13 @@ class PipelineService:
                 evt["severity"] = "info"
             else:
                 # Keep plate_detected for pipeline rules; also emit-compatible unknown.
-                if str(evt.get("event_type")) != "plate_detected":
+                if str(evt.get("event_type")) not in ("plate_detected", "plate_repeat"):
                     evt["event_type"] = "plate_unknown"
+            # Repeat = same plate seen again within TTL (list match, no re-OCR).
+            if self.plate_engine.is_repeat_sighting(camera_id, plate):
+                if str(evt.get("event_type")) == "plate_detected":
+                    evt["event_type"] = "plate_repeat"
+                    evt["severity"] = "medium"
             meta = dict(evt.get("metadata") or {})
             meta["status"] = status
             meta["plate_number"] = plate
@@ -334,38 +346,18 @@ class PipelineService:
                 camera_id, int(evt.get("track_id") or -1), plate,
                 float(evt.get("plate_confidence") or evt.get("confidence") or 0.0),
             )
+            self.plate_engine.remember_sighting(camera_id, plate)
 
-        # Face under bridge: Gemini + InsightFace parallel (dedupe above).
+        # Face under Frigate bridge: InsightFace already emitted match/unknown on crop.
+        # Do not fabricate face_unknown from Gemini-text watchlist labels (not biometric).
         et = str(evt.get("event_type") or "")
-        if et == "face_detected":
-            wl = list(getattr(self.face_engine, "_watchlist", None) or [])
-            if wl:
-                meta = dict(evt.get("metadata") or {})
-                meta["identity_status"] = "unknown"
-                meta["watchlist_size"] = len(wl)
+        if et in ("face_watchlist_match", "face_unknown", "face_detected"):
+            meta = dict(evt.get("metadata") or {})
+            method = str(meta.get("detection_method") or "")
+            if "gemini" in method and "insightface" not in method and et == "face_detected":
+                # Clear-face gate only — keep as face_detected audit/emit, no fake watchlist.
+                meta.setdefault("face_pipeline", "gemini_clear_face_gate")
                 evt["metadata"] = meta
-                # Publish face_detected first, then derived face_unknown.
-                evt.setdefault("event", "face_detected")
-                frame = self._latest_frames.get(camera_id)
-                if frame is None:
-                    frame = np.zeros((480, 640, 3), dtype=np.uint8)
-                wall = float(self._latest_frame_wall.get(camera_id) or time.time())
-                evt.setdefault("bbox_ts", wall)
-                try:
-                    self._publish_event_with_evidence(
-                        camera_id, evt, frame, [], wall, None,
-                    )
-                    unk = dict(evt)
-                    unk["event_id"] = str(uuid.uuid4())
-                    unk["event_type"] = "face_unknown"
-                    unk["event"] = "face_unknown"
-                    unk["severity"] = "warning"
-                    self._publish_event_with_evidence(
-                        camera_id, unk, frame, [], wall, None,
-                    )
-                except Exception:
-                    logger.exception("vlm/bridge face publish failed camera=%s", camera_id)
-                return
 
         evt.setdefault("event", evt.get("event_type"))
         # Prefer Frigate event id already on payload for evidence correlation.
@@ -636,6 +628,21 @@ class PipelineService:
     _LOITERING_SKIP_BEHAVIORS = frozenset({
         "speed_measurement", "traffic_light", "red_light", "phone_use",
         "seatbelt", "driver_cabin", "vehicle_count", "line_crossing",
+        # Frigate geometry bridge owns these when FRIGATE_GEOMETRY_BRIDGE=1.
+        "presence", "perimeter", "controlled_exit", "loitering", "parking",
+        "abandoned_object",
+    })
+
+    # Local EventGenerator event types suppressed when geometry bridge owns spatial.
+    _GEOMETRY_BRIDGE_SKIP_EVENTS = frozenset({
+        "zone_enter", "zone_exit", "zone_presence", "zone_absence",
+        "perimeter_breach", "unauthorized_exit",
+        "loitering", "loitering_near_entrance", "dwell_time_exceeded",
+        "vehicle_stopped", "person_stopped", "illegal_parking",
+        "crowd_count_threshold", "vehicle_count_threshold",
+        "scene_density_high", "congestion",
+        "person_vehicle_proximity", "multiple_persons_one_vehicle",
+        "abandoned_object", "object_removed", "object_disappeared",
     })
 
     # Non-speed MQTT noise suppressed on speed-only cameras.
@@ -969,7 +976,21 @@ class PipelineService:
                 if not r.get("camera_id") or r.get("camera_id") == camera_id
             ]
             scaled_rules = self._scale_rules_to_frame(camera_rules, w, h)
+            # When Frigate geometry bridge owns spatial, drop parasitic local
+            # loitering/presence rules; keep lines + zone polygons for state.
+            if bool(settings.frigate_geometry_bridge):
+                scaled_rules = [
+                    r for r in scaled_rules
+                    if str(r.get("rule_type") or "") not in (
+                        "loitering", "zone_presence",
+                    )
+                ]
             all_events.extend(self.event_generator.process_frame(camera_id, track_dicts_inframe, scaled_rules, ts))
+            if bool(settings.frigate_geometry_bridge):
+                all_events = [
+                    e for e in all_events
+                    if str(e.get("event_type") or "") not in self._GEOMETRY_BRIDGE_SKIP_EVENTS
+                ]
 
             for evt in all_events:
                 if evt.get("event_type") != "line_cross":
@@ -1071,13 +1092,17 @@ class PipelineService:
                         ))
 
             persons = [t for t in track_dicts_inframe if t.get("class_name") == "person"]
-            all_events.extend(self.abandoned.process(camera_id, track_dicts_inframe, persons, ts))
-            all_events.extend(self.scene_correlation.analyze(camera_id, track_dicts_inframe, zone_dwell, ts))
+            # Abandoned / proximity: Frigate geometry bridge owns when ON (XOR).
+            if not bool(settings.frigate_geometry_bridge):
+                all_events.extend(self.abandoned.process(camera_id, track_dicts_inframe, persons, ts))
+                all_events.extend(self.scene_correlation.analyze(camera_id, track_dicts_inframe, zone_dwell, ts))
             all_events.extend(self._correlation_events(camera_id, all_events, track_dicts_inframe, ts))
 
+            # Video quality stays citevision_local (contract: blur/darkness).
             quality_events = self._check_video_quality(camera_id, frame, ts)
             all_events.extend(quality_events)
 
+            # Face/plate full-frame paths XOR'd inside engines when Frigate bridge ON.
             all_events.extend(self.face_engine.process_frame(camera_id, frame, ts))
 
             gated_tracks = [t for t in track_dicts if self._track_in_capability_zone(camera_id, t, "plate_ocr")]

@@ -111,10 +111,24 @@ done
 FRIGATE_ST="$(docker inspect -f '{{.State.Status}}' citevision-v2-frigate 2>/dev/null || echo missing)"
 if [[ "$FRIGATE_ST" == "running" ]]; then
   ok "citevision-v2-frigate running"
-elif [[ "$FRIGATE_ST" == "missing" ]]; then
-  warn "citevision-v2-frigate not present (compose --profile frigate?)"
 else
-  fail "citevision-v2-frigate status=$FRIGATE_ST"
+  warn "citevision-v2-frigate status=$FRIGATE_ST — bringing up via compose --profile frigate"
+  # shellcheck source=scripts/lib/env-utils.sh
+  source "$ROOT/scripts/lib/env-utils.sh" 2>/dev/null || true
+  ENV_FILE="${ENV_FILE:-$ROOT/.env}"
+  [[ -f "$ENV_FILE" ]] || ENV_FILE="$(ensure_env_file "$ROOT" 2>/dev/null || echo "$ROOT/.env")"
+  if [[ -f "$ROOT/infra/docker-compose.yml" ]]; then
+    (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate) >/dev/null 2>&1 || true
+    sleep 8
+  fi
+  FRIGATE_ST="$(docker inspect -f '{{.State.Status}}' citevision-v2-frigate 2>/dev/null || echo missing)"
+  if [[ "$FRIGATE_ST" == "running" ]]; then
+    ok "citevision-v2-frigate running after heal"
+  elif [[ "$FRIGATE_ST" == "missing" ]]; then
+    fail "citevision-v2-frigate still missing after compose --profile frigate"
+  else
+    fail "citevision-v2-frigate status=$FRIGATE_ST after heal"
+  fi
 fi
 echo
 
@@ -153,7 +167,15 @@ print(len(d.get("cameras") or {}))' 2>/dev/null || echo err)"
     warn "Frigate /api/config empty/failed"
   fi
 else
-  fail "Frigate API unreachable at $FRIGATE_URL"
+  warn "Frigate API unreachable — retry compose up + wait"
+  ENV_FILE="${ENV_FILE:-$ROOT/.env}"
+  (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate) >/dev/null 2>&1 || true
+  sleep 15
+  if curl -sf --max-time 8 "$FRIGATE_URL/api/version" >/dev/null 2>&1; then
+    ok "Frigate API up after heal"
+  else
+    fail "Frigate API unreachable at $FRIGATE_URL"
+  fi
 fi
 echo
 
@@ -184,6 +206,12 @@ fi
 echo
 
 echo "--- ai-engine ---"
+# Ensure bridge kill-switches in .env before any AI restart (Frigate-primary).
+if [[ -f "$ROOT/scripts/lib/env-utils.sh" ]]; then
+  # shellcheck source=scripts/lib/env-utils.sh
+  source "$ROOT/scripts/lib/env-utils.sh" 2>/dev/null || true
+  ensure_demo_validation_env "$ROOT" "${ENV_FILE:-$ROOT/.env}" 2>/dev/null || true
+fi
 UVICORN_N="$(pgrep -af 'uvicorn.*citevision|citevision_ai' 2>/dev/null | grep -vE 'grep|pgrep|health_check' | wc -l | tr -d ' ')"
 UVICORN_N="${UVICORN_N:-0}"
 if (( UVICORN_N > 1 )); then
@@ -192,12 +220,34 @@ if (( UVICORN_N > 1 )); then
     python3 "$ROOT/scripts/_restart_ai.py" || warn "_restart_ai.py failed"
   fi
 elif (( UVICORN_N == 0 )); then
-  warn "no uvicorn citevision_ai process detected"
+  warn "no uvicorn citevision_ai — starting via scripts/_restart_ai.py"
+  if [[ -f "$ROOT/scripts/_restart_ai.py" ]]; then
+    python3 "$ROOT/scripts/_restart_ai.py" || warn "_restart_ai.py failed"
+    sleep 5
+  elif [[ -f "$ROOT/scripts/run-ai-engine.sh" ]]; then
+    bash "$ROOT/scripts/run-ai-engine.sh" >/tmp/citevision-ai-heal.log 2>&1 &
+    sleep 8
+  else
+    warn "missing _restart_ai.py / run-ai-engine.sh"
+  fi
+  UVICORN_N="$(pgrep -af 'uvicorn.*citevision|citevision_ai' 2>/dev/null | grep -vE 'grep|pgrep|health_check' | wc -l | tr -d ' ')"
+  UVICORN_N="${UVICORN_N:-0}"
+  if (( UVICORN_N >= 1 )); then
+    ok "AI process started (count=$UVICORN_N)"
+  else
+    warn "AI process still absent after heal attempt"
+  fi
 else
   ok "single AI process detected"
 fi
 
 HEALTH_RAW="$(curl -sS --max-time 5 -w '\n%{http_code}' "$AI_URL/health" 2>/dev/null || true)"
+if [[ -z "$HEALTH_RAW" ]]; then
+  warn "AI /health unreachable — one more restart attempt"
+  [[ -f "$ROOT/scripts/_restart_ai.py" ]] && python3 "$ROOT/scripts/_restart_ai.py" || true
+  sleep 8
+  HEALTH_RAW="$(curl -sS --max-time 8 -w '\n%{http_code}' "$AI_URL/health" 2>/dev/null || true)"
+fi
 if [[ -z "$HEALTH_RAW" ]]; then
   fail "AI /health unreachable at $AI_URL"
 else
@@ -218,6 +268,43 @@ if req in ("true","1","yes") and gpu not in ("true","1","yes"):
       ok "GPU health coherent"
     else
       fail "AI /health GPU required but inactive (A.5)"
+    fi
+    # Frigate-primary bridges: upsert once then FAIL if still missing (permanent heal).
+    BRIDGE_PROBE="$(printf '%s' "$BODY" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+geom=str(d.get("frigate_geometry_bridge","")).lower()
+speed=str(d.get("frigate_speed_bridge","")).lower()
+missing=[]
+if geom not in ("true","1","yes"):
+  missing.append("frigate_geometry_bridge")
+if speed not in ("true","1","yes"):
+  missing.append("frigate_speed_bridge")
+print(",".join(missing) if missing else "ok")
+' 2>/dev/null || echo "parse_err")"
+    if [[ "$BRIDGE_PROBE" == "ok" ]]; then
+      ok "Frigate bridge flags present (geometry+speed)"
+    else
+      warn "AI /health missing bridges ($BRIDGE_PROBE) — upsert .env + restart AI once"
+      ensure_demo_validation_env "$ROOT" "${ENV_FILE:-$ROOT/.env}" 2>/dev/null || true
+      [[ -f "$ROOT/scripts/_restart_ai.py" ]] && python3 "$ROOT/scripts/_restart_ai.py" || true
+      sleep 10
+      BODY2="$(curl -sf --max-time 8 "$AI_URL/health" 2>/dev/null || true)"
+      BRIDGE_PROBE2="$(printf '%s' "$BODY2" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+geom=str(d.get("frigate_geometry_bridge","")).lower()
+speed=str(d.get("frigate_speed_bridge","")).lower()
+missing=[]
+if geom not in ("true","1","yes"):
+  missing.append("frigate_geometry_bridge")
+if speed not in ("true","1","yes"):
+  missing.append("frigate_speed_bridge")
+print(",".join(missing) if missing else "ok")
+' 2>/dev/null || echo "parse_err")"
+      if [[ "$BRIDGE_PROBE2" == "ok" ]]; then
+        ok "Frigate bridge flags present after env upsert + AI restart"
+      else
+        fail "Frigate bridge flags still missing after heal ($BRIDGE_PROBE2) — see docs/LIVE-RTSP-CHECKLIST.md"
+      fi
     fi
   fi
 fi

@@ -1,0 +1,2193 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-07T04:36:57Z",
+  "description": "Orchestration contract Frigate→CiteVision→Gemini for every rule template. catalog_badge=real only when dod_verified (validate_rule + gallery). Scopes national/enterprise/domestic are UI navigation only.",
+  "enums": {
+    "signal_owner": [
+      "frigate",
+      "citevision_local",
+      "hybrid"
+    ],
+    "judgment_owner": [
+      "geometry",
+      "frigate_speed",
+      "gemini",
+      "insightface",
+      "ocr_fusion",
+      "rules_composite"
+    ],
+    "vlm_role": [
+      "none",
+      "yes_no",
+      "clear_face_gate",
+      "ocr",
+      "anti_fp_optional"
+    ],
+    "emit_moment": [
+      "on_enter",
+      "on_exit",
+      "after_duration",
+      "on_end_time",
+      "on_vlm_verdict",
+      "on_embed_match"
+    ],
+    "catalog_badge": [
+      "real",
+      "partial",
+      "beta"
+    ]
+  },
+  "kill_switches": {
+    "FRIGATE_VLM_BRIDGE": "cabin/face/plate Gemini on Frigate crops",
+    "FRIGATE_SPEED_BRIDGE": "Frigate average_estimated_speed owns speeding",
+    "FRIGATE_GEOMETRY_BRIDGE": "Frigate MQTT owns enter/exit/dwell/perimeter emits",
+    "FRIGATE_SPEED_EMIT_MODE": "exit|max_in_zone|shadow"
+  },
+  "total": 53,
+  "counts": {
+    "real": 4,
+    "partial": 49,
+    "dod_verified": 4
+  },
+  "templates": [
+    {
+      "id": "tpl-crowd-density",
+      "name": "Densité foule élevée",
+      "category": "behavior",
+      "event_type": "scene_density_high",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "count:density:{camera}:{zone}",
+      "xor_disables": [
+        "local_crowd_density"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 0,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": []
+      },
+      "dod_alias": "crowd-density",
+      "archetype": "aggregate"
+    },
+    {
+      "id": "tpl-vehicle-count",
+      "name": "Nombre véhicules élevé",
+      "category": "behavior",
+      "event_type": "vehicle_count_threshold",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle"
+      ],
+      "dedupe_key": "count:vehicle:{camera}:{zone}",
+      "xor_disables": [
+        "local_vehicle_count"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 0,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": []
+      },
+      "dod_alias": "vehicle-count",
+      "archetype": "aggregate"
+    },
+    {
+      "id": "tpl-person-stopped",
+      "name": "Personne immobile prolongée",
+      "category": "behavior",
+      "event_type": "person_stopped",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:person_stopped:{zone}",
+      "xor_disables": [
+        "local_person_stopped"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "person-stopped",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-crowd-count",
+      "name": "Seuil foule atteint",
+      "category": "behavior",
+      "event_type": "crowd_count_threshold",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "count:crowd:{camera}:{zone}",
+      "xor_disables": [
+        "local_crowd_count"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 0,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": []
+      },
+      "dod_alias": "crowd-count",
+      "archetype": "aggregate"
+    },
+    {
+      "id": "tpl-vehicle-stopped",
+      "name": "Véhicule arrêté",
+      "category": "behavior",
+      "event_type": "vehicle_stopped",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle"
+      ],
+      "dedupe_key": "geom:{event_id}:vehicle_stopped:{zone}",
+      "xor_disables": [
+        "local_vehicle_stopped"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "vehicle-stopped",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-theft-composite",
+      "name": "Vol suspect (composite)",
+      "category": "composite",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "comp:theft:{window}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "theft-composite",
+      "archetype": "composite"
+    },
+    {
+      "id": "tpl-identity-correlation",
+      "name": "Corrélation identité",
+      "category": "identity",
+      "event_type": "correlation_match",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_face_ai",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person",
+        "car"
+      ],
+      "dedupe_key": "corr:{window}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "identity-correlation",
+      "archetype": "composite"
+    },
+    {
+      "id": "tpl-face-watchlist",
+      "name": "Personne liste noire",
+      "category": "identity",
+      "event_type": "face_watchlist_match",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_external",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "insightface",
+      "vlm_role": "clear_face_gate",
+      "emit_moment": "on_embed_match",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "face:{event_id}:face_watchlist_match",
+      "xor_disables": [
+        "local_face_frame_path",
+        "gemini_text_watchlist_as_real"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "face",
+            "crop": "bbox"
+          }
+        ],
+        "fail_closed": [
+          "face"
+        ]
+      },
+      "dod_alias": "face-watchlist",
+      "archetype": "face"
+    },
+    {
+      "id": "tpl-plate-whitelist",
+      "name": "Plaque autorisée",
+      "category": "identity",
+      "event_type": "plate_allowed",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_ocr",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "ocr",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car"
+      ],
+      "dedupe_key": "plate_list:allowed:{text}",
+      "xor_disables": [
+        "local_plate_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "plate-whitelist",
+      "archetype": "plate"
+    },
+    {
+      "id": "tpl-blocked-plate",
+      "name": "Plaque bloquée",
+      "category": "identity",
+      "event_type": "plate_blocked",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_ocr",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "ocr",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car"
+      ],
+      "dedupe_key": "plate_list:blocked:{text}",
+      "xor_disables": [
+        "local_plate_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "plate-blocked",
+      "archetype": "plate"
+    },
+    {
+      "id": "tpl-plate-detected",
+      "name": "Plaque détectée",
+      "category": "identity",
+      "event_type": "plate_detected",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_ocr",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "ocr_fusion",
+      "vlm_role": "ocr",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle"
+      ],
+      "dedupe_key": "plate:{event_id}",
+      "xor_disables": [
+        "local_plate_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "plate-detected",
+      "archetype": "plate"
+    },
+    {
+      "id": "tpl-unknown-plate",
+      "name": "Plaque inconnue",
+      "category": "identity",
+      "event_type": "plate_unknown",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_ocr",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "ocr",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car"
+      ],
+      "dedupe_key": "plate_list:unknown:{text}",
+      "xor_disables": [
+        "local_plate_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "plate-unknown",
+      "archetype": "plate"
+    },
+    {
+      "id": "tpl-plate-unknown",
+      "name": "Plaque non enregistrée",
+      "category": "identity",
+      "event_type": "plate_unknown",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_ocr",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "ocr",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car"
+      ],
+      "dedupe_key": "plate_list:unknown:{text}",
+      "xor_disables": [
+        "local_plate_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "plate-unknown",
+      "archetype": "plate"
+    },
+    {
+      "id": "tpl-plate-repeat",
+      "name": "Plaque récurrente",
+      "category": "identity",
+      "event_type": "plate_detected",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_ocr",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "ocr",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "car"
+      ],
+      "dedupe_key": "plate_repeat:{text}",
+      "xor_disables": [
+        "local_plate_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "plate-repeat",
+      "archetype": "plate"
+    },
+    {
+      "id": "tpl-face-detected",
+      "name": "Visage détecté",
+      "category": "identity",
+      "event_type": "face_detected",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_external",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "insightface",
+      "vlm_role": "clear_face_gate",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "face:{event_id}:face_detected",
+      "xor_disables": [
+        "local_face_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "face",
+            "crop": "bbox"
+          }
+        ],
+        "fail_closed": [
+          "face"
+        ]
+      },
+      "dod_alias": "face-detected",
+      "archetype": "face"
+    },
+    {
+      "id": "tpl-unknown-face",
+      "name": "Visage inconnu",
+      "category": "identity",
+      "event_type": "face_unknown",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_external",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "insightface",
+      "vlm_role": "clear_face_gate",
+      "emit_moment": "on_embed_match",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "face:{event_id}:face_unknown",
+      "xor_disables": [
+        "local_face_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "face",
+            "crop": "bbox"
+          }
+        ],
+        "fail_closed": [
+          "face"
+        ]
+      },
+      "dod_alias": "face-unknown",
+      "archetype": "face"
+    },
+    {
+      "id": "tpl-watchlist-match",
+      "name": "Visage liste de surveillance",
+      "category": "identity",
+      "event_type": "face_watchlist_match",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_external",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "insightface",
+      "vlm_role": "clear_face_gate",
+      "emit_moment": "on_embed_match",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "face:{event_id}:face_watchlist_match",
+      "xor_disables": [
+        "local_face_frame_path",
+        "gemini_text_watchlist_as_real"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "face",
+            "crop": "bbox"
+          }
+        ],
+        "fail_closed": [
+          "face"
+        ]
+      },
+      "dod_alias": "face-watchlist",
+      "archetype": "face"
+    },
+    {
+      "id": "tpl-industrial-intrusion",
+      "name": "Intrusion site industriel",
+      "category": "industrial",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:industrial:{zone}",
+      "xor_disables": [
+        "local_perimeter"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "industrial-intrusion",
+      "archetype": "composite"
+    },
+    {
+      "id": "tpl-abandoned-object",
+      "name": "Objet abandonné",
+      "category": "objects",
+      "event_type": "object_abandoned",
+      "matrix_status": "partial",
+      "matrix_requirement": "partial_aggregate",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "hybrid",
+      "judgment_owner": "geometry",
+      "vlm_role": "anti_fp_optional",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "backpack",
+        "handbag",
+        "suitcase"
+      ],
+      "dedupe_key": "obj:abandoned:{event_id}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "abandoned",
+      "archetype": "objects"
+    },
+    {
+      "id": "tpl-object-removed",
+      "name": "Objet retiré",
+      "category": "objects",
+      "event_type": "object_removed",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "hybrid",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_exit",
+      "track_objects": [],
+      "dedupe_key": "obj:removed:{event_id}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "object-removed",
+      "archetype": "objects"
+    },
+    {
+      "id": "tpl-zone-absence",
+      "name": "Absence prolongée dans une zone",
+      "category": "presence",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:absence:{camera}:{zone}",
+      "xor_disables": [
+        "local_zone_absence"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 0,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": []
+      },
+      "dod_alias": "zone-absence",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-object-disappeared",
+      "name": "Disparition d'objet",
+      "category": "presence",
+      "event_type": "object_disappeared",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "hybrid",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [],
+      "dedupe_key": "obj:disappeared:{event_id}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 0,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": []
+      },
+      "dod_alias": "object-disappeared",
+      "archetype": "objects"
+    },
+    {
+      "id": "tpl-zone-presence",
+      "name": "Présence dans une zone",
+      "category": "presence",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:{rule}:{zone}",
+      "xor_disables": [
+        "local_zone_presence"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "zone-presence",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-video-blur",
+      "name": "Vidéo floue",
+      "category": "quality",
+      "event_type": "video_blur",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "citevision_local",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [],
+      "dedupe_key": "quality:blur:{camera}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 0,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": []
+      },
+      "dod_alias": "video-blur",
+      "archetype": "quality"
+    },
+    {
+      "id": "tpl-video-darkness",
+      "name": "Vidéo sombre",
+      "category": "quality",
+      "event_type": "video_darkness",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "citevision_local",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [],
+      "dedupe_key": "quality:dark:{camera}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 0,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": []
+      },
+      "dod_alias": "video-darkness",
+      "archetype": "quality"
+    },
+    {
+      "id": "tpl-seatbelt",
+      "name": "Ceinture de sécurité",
+      "category": "road-enforcement",
+      "event_type": "seatbelt_violation",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_external",
+      "catalog_badge": "real",
+      "dod_verified": true,
+      "signal_owner": "frigate",
+      "judgment_owner": "gemini",
+      "vlm_role": "yes_no",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle"
+      ],
+      "dedupe_key": "cabin:{event_id}:seatbelt_violation",
+      "xor_disables": [
+        "local_cabin_yolo"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "ceinture",
+      "archetype": "cabin"
+    },
+    {
+      "id": "tpl-congestion",
+      "name": "Embouteillage",
+      "category": "road-enforcement",
+      "event_type": "vehicle_count_threshold",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus"
+      ],
+      "dedupe_key": "count:congestion:{camera}:{zone}",
+      "xor_disables": [
+        "local_vehicle_count"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 0,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": []
+      },
+      "dod_alias": "congestion",
+      "archetype": "aggregate"
+    },
+    {
+      "id": "tpl-speeding-premium",
+      "name": "Excès de vitesse",
+      "category": "road-enforcement",
+      "event_type": "speeding",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_calibration",
+      "catalog_badge": "real",
+      "dod_verified": true,
+      "signal_owner": "frigate",
+      "judgment_owner": "frigate_speed",
+      "vlm_role": "none",
+      "emit_moment": "on_exit",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle"
+      ],
+      "dedupe_key": "speed:{event_id}:{zone}",
+      "xor_disables": [
+        "CalibrationEngine",
+        "ZoneSpeedEngine"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "vitesse",
+      "archetype": "measure"
+    },
+    {
+      "id": "tpl-red-light",
+      "name": "Feu rouge",
+      "category": "road-enforcement",
+      "event_type": "red_light_violation",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_calibration",
+      "catalog_badge": "real",
+      "dod_verified": true,
+      "signal_owner": "hybrid",
+      "judgment_owner": "geometry",
+      "vlm_role": "yes_no",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle"
+      ],
+      "dedupe_key": "red:{event_id}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "feu",
+      "archetype": "dual_signal"
+    },
+    {
+      "id": "tpl-line-cross-forbidden",
+      "name": "Franchissement ligne continue",
+      "category": "road-enforcement",
+      "event_type": "line_cross",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus"
+      ],
+      "dedupe_key": "line:{event_id}:forbidden",
+      "xor_disables": [
+        "local_line_cross_when_frigate"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "line-cross-forbidden",
+      "archetype": "line"
+    },
+    {
+      "id": "tpl-traffic-pipeline",
+      "name": "Pipeline voiture → plaque + vitesse",
+      "category": "road-enforcement",
+      "event_type": null,
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_calibration",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "ocr",
+      "emit_moment": "on_exit",
+      "track_objects": [
+        "car"
+      ],
+      "dedupe_key": "pipe:traffic:{event_id}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "traffic-pipeline",
+      "archetype": "composite"
+    },
+    {
+      "id": "tpl-plate-pipeline",
+      "name": "Plaque détectée (OCR)",
+      "category": "road-enforcement",
+      "event_type": "plate_detected",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_external",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "ocr_fusion",
+      "vlm_role": "ocr",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car"
+      ],
+      "dedupe_key": "plate:{event_id}",
+      "xor_disables": [
+        "local_plate_frame_path"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "plate-pipeline",
+      "archetype": "plate"
+    },
+    {
+      "id": "tpl-phone-driving",
+      "name": "Téléphone au volant",
+      "category": "road-enforcement",
+      "event_type": "phone_use_violation",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_external",
+      "catalog_badge": "real",
+      "dod_verified": true,
+      "signal_owner": "frigate",
+      "judgment_owner": "gemini",
+      "vlm_role": "yes_no",
+      "emit_moment": "on_vlm_verdict",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle"
+      ],
+      "dedupe_key": "cabin:{event_id}:phone_use_violation",
+      "xor_disables": [
+        "local_cabin_yolo"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "telephone",
+      "archetype": "cabin"
+    },
+    {
+      "id": "tpl-loitering-entrance",
+      "name": "Flânerie près entrée",
+      "category": "security",
+      "event_type": "loitering_near_entrance",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:loitering_entrance:{zone}",
+      "xor_disables": [
+        "local_loitering"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "loitering-entrance",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-intrusion-after-hours",
+      "name": "Intrusion hors horaires",
+      "category": "security",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:intrusion_hours:{zone}",
+      "xor_disables": [
+        "local_perimeter"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "intrusion-after-hours",
+      "archetype": "composite"
+    },
+    {
+      "id": "tpl-intrusion",
+      "name": "Intrusion zone interdite",
+      "category": "security",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:intrusion:{zone}",
+      "xor_disables": [
+        "local_perimeter"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "intrusion",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-multi-person-vehicle",
+      "name": "Plusieurs personnes, un véhicule",
+      "category": "security",
+      "event_type": "multiple_persons_one_vehicle",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person",
+        "car"
+      ],
+      "dedupe_key": "rel:multiperson:{vehicle_track}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "multi-person-vehicle",
+      "archetype": "relational"
+    },
+    {
+      "id": "tpl-proximity-alert",
+      "name": "Proximité personne-véhicule",
+      "category": "security",
+      "event_type": "person_vehicle_proximity",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person",
+        "car"
+      ],
+      "dedupe_key": "rel:proximity:{frame}",
+      "xor_disables": [
+        "local_proximity"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "proximity",
+      "archetype": "relational"
+    },
+    {
+      "id": "tpl-observation-rule-set-n",
+      "name": "Comptage ensemble (N-sur-M)",
+      "category": "spatial",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [],
+      "dedupe_key": "obs:n:{rule}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "obs-n",
+      "archetype": "composite"
+    },
+    {
+      "id": "tpl-observation-rule-set-or",
+      "name": "Comptage ensemble (OU)",
+      "category": "spatial",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "rules_composite",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [],
+      "dedupe_key": "obs:or:{rule}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "obs-or",
+      "archetype": "composite"
+    },
+    {
+      "id": "tpl-zone-enter",
+      "name": "Entrée dans une zone",
+      "category": "spatial",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person",
+        "car"
+      ],
+      "dedupe_key": "geom:{event_id}:{rule}:{zone}",
+      "xor_disables": [
+        "local_zone_enter"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "zone-enter",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-line-cross-bidir",
+      "name": "Franchissement bidirectionnel",
+      "category": "spatial",
+      "event_type": "line_cross",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person",
+        "car"
+      ],
+      "dedupe_key": "line:{event_id}:{line}",
+      "xor_disables": [
+        "local_line_cross_when_frigate"
+      ],
+      "evidence_policy": {
+        "enabled": false,
+        "clip_seconds": 0,
+        "images": [],
+        "fail_closed": []
+      },
+      "dod_alias": "line-cross-bidir",
+      "archetype": "line"
+    },
+    {
+      "id": "tpl-line-cross",
+      "name": "Franchissement de ligne",
+      "category": "spatial",
+      "event_type": "entry-line",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person",
+        "car"
+      ],
+      "dedupe_key": "line:{event_id}:{line}",
+      "xor_disables": [
+        "local_line_cross_when_frigate"
+      ],
+      "evidence_policy": {
+        "enabled": false,
+        "clip_seconds": 0,
+        "images": [],
+        "fail_closed": []
+      },
+      "dod_alias": "line-cross",
+      "archetype": "line"
+    },
+    {
+      "id": "tpl-perimeter-breach",
+      "name": "Intrusion périmétrique",
+      "category": "spatial",
+      "event_type": "perimeter_breach",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:perimeter:{zone}",
+      "xor_disables": [
+        "local_perimeter"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "perimeter",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-multi-zone",
+      "name": "Présence multi-zones",
+      "category": "spatial",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person",
+        "car"
+      ],
+      "dedupe_key": "geom:{event_id}:multi_zone",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "multi-zone",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-zone-exit",
+      "name": "Sortie d'une zone",
+      "category": "spatial",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_exit",
+      "track_objects": [
+        "person",
+        "car"
+      ],
+      "dedupe_key": "geom:{event_id}:{rule}:{zone}",
+      "xor_disables": [
+        "local_zone_exit"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "zone-exit",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-unauthorized-exit",
+      "name": "Sortie non autorisée",
+      "category": "spatial",
+      "event_type": "unauthorized_exit",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_exit",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:unauth_exit:{zone}",
+      "xor_disables": [
+        "local_controlled_exit"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "unauthorized-exit",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-sudden-stop",
+      "name": "Arrêt brusque",
+      "category": "speed",
+      "event_type": "sudden_stop",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_calibration",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "frigate_speed",
+      "vlm_role": "none",
+      "emit_moment": "on_exit",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus"
+      ],
+      "dedupe_key": "speed_stop:{event_id}:{zone}",
+      "xor_disables": [
+        "CalibrationEngine"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "sudden-stop",
+      "archetype": "measure"
+    },
+    {
+      "id": "tpl-dwell-exceeded",
+      "name": "Dépassement temps de présence",
+      "category": "time",
+      "event_type": "dwell_time_exceeded",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:dwell:{zone}",
+      "xor_disables": [
+        "local_dwell"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "dwell",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-loitering",
+      "name": "Présence prolongée (loitering)",
+      "category": "time",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:loitering:{zone}",
+      "xor_disables": [
+        "local_loitering"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "loitering",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-pedestrian-zone",
+      "name": "Piéton en zone véhicules",
+      "category": "traffic",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_enter",
+      "track_objects": [
+        "person"
+      ],
+      "dedupe_key": "geom:{event_id}:ped_zone:{zone}",
+      "xor_disables": [],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "pedestrian-zone",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-illegal-parking",
+      "name": "Stationnement illégal",
+      "category": "traffic",
+      "event_type": null,
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "after_duration",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle"
+      ],
+      "dedupe_key": "geom:{event_id}:parking:{zone}",
+      "xor_disables": [
+        "local_parking"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "illegal-parking",
+      "archetype": "geometry"
+    },
+    {
+      "id": "tpl-slow-vehicle",
+      "name": "Véhicule trop lent",
+      "category": "traffic",
+      "event_type": "speed_below_minimum",
+      "matrix_status": "partial",
+      "matrix_requirement": "requires_calibration",
+      "catalog_badge": "partial",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "frigate_speed",
+      "vlm_role": "none",
+      "emit_moment": "on_exit",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus"
+      ],
+      "dedupe_key": "speed_slow:{event_id}:{zone}",
+      "xor_disables": [
+        "CalibrationEngine",
+        "ZoneSpeedEngine"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox"
+          },
+          {
+            "role": "plate",
+            "crop": "plate"
+          }
+        ],
+        "fail_closed": [
+          "subject",
+          "plate"
+        ]
+      },
+      "dod_alias": "slow-vehicle",
+      "archetype": "measure"
+    }
+  ]
+}

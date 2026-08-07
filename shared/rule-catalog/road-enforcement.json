@@ -73,8 +73,8 @@
       "national",
       "enterprise"
     ],
-    "partial_status": "requires_calibration",
-    "partial_reason_fr": "Pipeline multi-étapes : nécessite calibration vitesse + module ANPR (PaddleOCR)"
+    "partial_status": "requires_external",
+    "partial_reason_fr": "Composite Phase 6 — real seulement après DoD vitesse+plaque (docs/COMPOSITES-ORCHESTRATION.md)."
   },
   {
     "id": "tpl-speeding-premium",

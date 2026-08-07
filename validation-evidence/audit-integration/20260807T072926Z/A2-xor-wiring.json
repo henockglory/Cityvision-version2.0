@@ -1,0 +1,52 @@
+{
+  "phase": "A2",
+  "wiring": {
+    "geometry_enabled_from_settings": true,
+    "geometry_skip_events_filter": true,
+    "face_process_frame_xor": true,
+    "face_match_jpeg": true,
+    "face_match_jpeg_passed_to_bridge": true,
+    "plate_process_frame_xor": true,
+    "plate_repeat_helpers": true,
+    "health_geometry_bridge": true,
+    "health_geometry_emitted": true
+  },
+  "bridge_methods_defined": {
+    "_maybe_geometry_active": true,
+    "_maybe_geometry_exit": true,
+    "_maybe_zone_absence": true,
+    "_maybe_zone_counts": true,
+    "_maybe_proximity": true,
+    "_maybe_slow_vehicle": true,
+    "_maybe_sudden_stop": true,
+    "_maybe_abandoned_active": true,
+    "_maybe_pedestrian_in_traffic": true,
+    "_maybe_face": true,
+    "_maybe_plate": true,
+    "_maybe_speed": true,
+    "_maybe_cabin": true,
+    "_maybe_red_light": true
+  },
+  "bridge_methods_called": {
+    "_maybe_geometry_active": true,
+    "_maybe_geometry_exit": true,
+    "_maybe_zone_absence": true,
+    "_maybe_zone_counts": true,
+    "_maybe_proximity": true,
+    "_maybe_slow_vehicle": true,
+    "_maybe_sudden_stop": true,
+    "_maybe_abandoned_active": true,
+    "_maybe_pedestrian_in_traffic": true,
+    "_maybe_face": true,
+    "_maybe_plate": true,
+    "_maybe_speed": true,
+    "_maybe_cabin": true,
+    "_maybe_red_light": true
+  },
+  "pytest": {
+    "exit": 0,
+    "stdout": "...........                                                              [100%]\n11 passed in 0.72s\n",
+    "stderr": ""
+  },
+  "verdict_a2": "WIRED"
+}

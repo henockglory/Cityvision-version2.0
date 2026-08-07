@@ -26,9 +26,9 @@
         "op": "ET",
         "children": [
           {
-            "op": "in_zone",
-            "field": "zone_id",
-            "value": "restricted"
+            "op": "eq",
+            "field": "event_type",
+            "value": "perimeter_breach"
           },
           {
             "op": "eq",
@@ -47,8 +47,9 @@
         }
       ]
     },
-    "role_summary_fr": "Alerte dès qu'une personne entre dans la zone interdite que vous avez dessinée sur la caméra.",
-    "partial_status": "full"
+    "role_summary_fr": "Alerte dès qu'une personne franchit le périmètre (atome Frigate perimeter_breach + binding rules-engine).",
+    "partial_status": "requires_external",
+    "_orchestration_note": "Atom = perimeter_breach from FRIGATE_GEOMETRY_BRIDGE; schedule windows live on after-hours / industrial variants."
   },
   {
     "id": "tpl-loitering",
@@ -211,8 +212,9 @@
         "track_id"
       ]
     },
-    "role_summary_fr": "Règle composite : alerte si une personne entre dans une zone PUIS y traîne — séquence de vol probable.",
-    "partial_status": "full"
+    "role_summary_fr": "Composite rules-engine: zone_enter puis loitering (atomes Frigate geometry) — pas de détecteur dédié.",
+    "partial_status": "requires_external",
+    "_orchestration_note": "See docs/COMPOSITES-ORCHESTRATION.md — evidence = union of atom packages."
   },
   {
     "id": "tpl-abandoned-object",
@@ -223,7 +225,7 @@
       "condition": {
         "op": "eq",
         "field": "event_type",
-        "value": "object_abandoned"
+        "value": "abandoned_object"
       },
       "actions": [
         {
@@ -234,8 +236,8 @@
         }
       ]
     },
-    "role_summary_fr": "Signale un objet abandonné (événement object_abandoned) resté sans propriétaire après le délai configuré.",
-    "partial_status": "partial_aggregate",
+    "role_summary_fr": "Objet immobile (atome Frigate abandoned_object, Gemini anti-FP optionnel).",
+    "partial_status": "requires_external",
     "partial_reason_fr": "Dépend du détecteur abandoned analytics ; distinct de object_appeared (heuristique durée)."
   }
 ]

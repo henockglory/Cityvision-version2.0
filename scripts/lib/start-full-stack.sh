@@ -27,6 +27,8 @@ echo "ROOT=$ROOT"
 ENV_FILE="$(ensure_env_file "$ROOT")"
 sync_project_root "$ROOT"
 ensure_demo_runtime_env "$ROOT" "$ENV_FILE"
+# Permanent Frigate-primary bridges (VLM + speed + geometry) before any service start.
+ensure_demo_validation_env "$ROOT" "$ENV_FILE" 2>/dev/null || true
 load_dotenv "$ENV_FILE"
 
 export RULE_CATALOG_PATH="${RULE_CATALOG_PATH:-$ROOT/shared/rule-catalog}"

@@ -109,11 +109,22 @@ export interface RuleCatalogTemplate {
   tutorial?: string;
   prerequisites?: string[];
   unsupported_message_fr?: string;
-  partial_status?: "full" | "requires_calibration" | "requires_ocr" | "requires_face_ai" | "partial_aggregate" | "beta" | "requires_model" | "not_emitted";
+  partial_status?: "full" | "requires_calibration" | "requires_ocr" | "requires_face_ai" | "partial_aggregate" | "beta" | "requires_model" | "not_emitted" | "requires_external";
   partial_reason_fr?: string;
   activation_blocked?: boolean;
   activation_block_reason?: string;
   missing_health_keys?: string[];
+  /** Orchestration contract (Frigate→CiteVision→Gemini) */
+  signal_owner?: "frigate" | "citevision_local" | "hybrid";
+  judgment_owner?: string;
+  vlm_role?: "none" | "yes_no" | "clear_face_gate" | "ocr" | "anti_fp_optional";
+  emit_moment?: string;
+  dod_alias?: string;
+  archetype?: string;
+  /** real only when dod_verified — never claim operational without DoD */
+  catalog_badge?: "real" | "partial" | "beta";
+  dod_verified?: boolean;
+  track_objects?: string[];
 }
 
 export interface RuleCondition {

@@ -1,0 +1,49 @@
+{
+  "phase": "A5",
+  "checklist_doc": "docs/LIVE-RTSP-CHECKLIST.md",
+  "checks": {
+    "frigate_api": {
+      "http": 200,
+      "body": "0.17.2-3d4dd3a"
+    },
+    "frigate_cameras": {
+      "cv_8ed20433-57d5-4999-a6ab-0bea028b23a3": {
+        "camera_fps": 10.0,
+        "detection_fps": 14.4,
+        "pid": 897
+      },
+      "cv_9a3cd323-3820-46f0-aa5b-86c086a4a782": {
+        "camera_fps": 10.1,
+        "detection_fps": 14.4,
+        "pid": 1022
+      },
+      "cv_55694d53-8f58-4981-91b2-7c6cd528a25d": {
+        "camera_fps": 10.0,
+        "detection_fps": 13.6,
+        "pid": 1143
+      },
+      "cv_f691ef55-6791-495b-a35e-be215e7ac109": {
+        "camera_fps": 10.0,
+        "detection_fps": 14.0,
+        "pid": 1264
+      }
+    },
+    "go2rtc_streams": {
+      "http": 200,
+      "bytes": 6852
+    },
+    "ai_health": {
+      "http": null,
+      "bridges": {},
+      "raw_type": "str"
+    },
+    "backend_health": {
+      "http": 200
+    },
+    "mailhog": {
+      "http": 200
+    }
+  },
+  "verdict_a5": "PARTIAL",
+  "note": "No zone DB writes. AI may be down \u2014 note bridges only if /health up."
+}

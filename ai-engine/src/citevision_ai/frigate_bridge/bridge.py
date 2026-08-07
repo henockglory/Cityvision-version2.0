@@ -50,6 +50,26 @@ _FACE_SKIP_BEHAVIORS = frozenset({
     "phone_use",
     "driver_cabin",
 })
+_GEOMETRY_ENTER_BEHAVIORS = frozenset({
+    "", "presence", "perimeter", "loitering", "parking", "abandoned_object",
+})
+_GEOMETRY_EXIT_BEHAVIORS = frozenset({"controlled_exit"})
+_DWELL_BEHAVIOR_EVENTS = {
+    "presence": ("zone_presence", "person"),
+    "loitering": ("loitering", "person"),
+    "parking": ("vehicle_stopped", "vehicle"),
+}
+_VEHICLE_LABELS_GEOM = frozenset({
+    "car", "truck", "bus", "motorcycle", "motorbike", "van", "vehicle",
+})
+_PERSON_LABELS = frozenset({"person"})
+_OBJECT_LIKE_LABELS = frozenset({
+    "backpack", "handbag", "suitcase", "umbrella", "bottle", "cup",
+    "sports ball", "bag", "package", "box",
+})
+_TRAFFIC_ZONE_BEHAVIORS = frozenset({
+    "speed_measurement", "parking", "red_light_observation",
+})
 
 
 class FrigateEventBridge:
@@ -68,6 +88,7 @@ class FrigateEventBridge:
         speed_enabled: bool = False,
         face_enabled: bool = False,
         plate_enabled: bool = False,
+        geometry_enabled: bool = False,
         mqtt_user: str = "",
         mqtt_password: str = "",
         snapshot_wait_sec: float = 25.0,
@@ -75,6 +96,7 @@ class FrigateEventBridge:
         light_state_resolver: LightStateResolver | None = None,
         light_debug_resolver: LightDebugResolver | None = None,
         camera_ids_resolver: CameraIdsResolver | None = None,
+        face_match_jpeg: Callable[[bytes], list[dict[str, Any]]] | None = None,
     ) -> None:
         self._frigate_url = (frigate_url or "http://127.0.0.1:5000").rstrip("/")
         self._mqtt_host = mqtt_host
@@ -88,16 +110,26 @@ class FrigateEventBridge:
         self._speed_enabled = bool(speed_enabled)
         self._face_enabled = bool(face_enabled) and vlm_queue is not None
         self._plate_enabled = bool(plate_enabled) and vlm_queue is not None
+        self._geometry_enabled = bool(geometry_enabled)
         self._snapshot_wait = float(snapshot_wait_sec)
         self._watchlist_resolver = watchlist_resolver
         self._light_state = light_state_resolver
         self._light_debug = light_debug_resolver
         self._camera_ids = camera_ids_resolver
+        self._face_match_jpeg = face_match_jpeg
         self._client: mqtt.Client | None = None
         self._stop = threading.Event()
         self._seen: dict[str, float] = {}
         self._red_light_active: dict[str, tuple[float, dict[str, Any], dict[str, Any], dict[str, dict[str, Any]]]] = {}
         self._seen_lock = threading.Lock()
+        # dwell: key = f"{event_id}:{zone_uuid}:{rule}" → first_seen_monotonic
+        self._dwell_since: dict[str, float] = {}
+        # zone occupancy for absence: key = f"{camera_id}:{zone_uuid}" → last_seen_monotonic
+        self._zone_last_seen: dict[str, float] = {}
+        # proximity: last emit per pair
+        self._proximity_seen: dict[str, float] = {}
+        # count snapshots for density
+        self._zone_track_counts: dict[str, set[str]] = {}
         self._stats: dict[str, Any] = {
             "mqtt_messages": 0,
             "cabin_enqueued": 0,
@@ -105,6 +137,14 @@ class FrigateEventBridge:
             "cabin_skipped_too_small": 0,
             "face_enqueued": 0,
             "plate_enqueued": 0,
+            "geometry_emitted": 0,
+            "dwell_emitted": 0,
+            "absence_emitted": 0,
+            "count_emitted": 0,
+            "proximity_emitted": 0,
+            "slow_emitted": 0,
+            "sudden_stop_emitted": 0,
+            "abandoned_emitted": 0,
             "red_light_enqueued": 0,
             "red_light_skipped_not_red": 0,
             "red_light_skipped_unknown": 0,
@@ -139,7 +179,13 @@ class FrigateEventBridge:
 
     @property
     def enabled(self) -> bool:
-        return self._vlm_enabled or self._speed_enabled or self._face_enabled or self._plate_enabled
+        return (
+            self._vlm_enabled
+            or self._speed_enabled
+            or self._face_enabled
+            or self._plate_enabled
+            or self._geometry_enabled
+        )
 
     def stats(self) -> dict[str, Any]:
         with self._stats_lock:
@@ -374,6 +420,29 @@ class FrigateEventBridge:
                 self._maybe_face(camera_id, event_id, after, zinfo)
             if self._plate_enabled and self._label_allowed(label, zinfo) and behavior == "plate_ocr":
                 self._maybe_plate(camera_id, event_id, after, zinfo)
+            if self._geometry_enabled and self._label_allowed(
+                label, zinfo, allow_person_default=(behavior in ("presence", "perimeter", "loitering", "")),
+            ):
+                self._maybe_geometry_active(camera_id, event_id, after, zinfo, behavior, label)
+                self._maybe_pedestrian_in_traffic(camera_id, event_id, after, zinfo, behavior, label)
+                if behavior == "abandoned_object" or label in _OBJECT_LIKE_LABELS:
+                    self._maybe_abandoned_active(camera_id, event_id, after, zinfo, behavior, label)
+
+        # Geometry: zone exit emits (controlled_exit / zone_exit)
+        if self._geometry_enabled:
+            for fz in exited:
+                zuuid = parse_zone_uuid(fz)
+                if not zuuid:
+                    continue
+                zinfo = zone_by_uuid.get(zuuid)
+                if not zinfo:
+                    continue
+                behavior = str(zinfo.get("behavior") or zinfo.get("zone_kind") or "")
+                if not self._label_allowed(label, zinfo, allow_person_default=True):
+                    continue
+                self._maybe_geometry_exit(camera_id, event_id, after, zinfo, behavior, label)
+                if behavior == "abandoned_object" or label in _OBJECT_LIKE_LABELS:
+                    self._maybe_object_removed(camera_id, event_id, after, zinfo, behavior, label)
 
         # Speed: peak tracking in-zone (shadow / diagnostics only when exit mode).
         # Label filtering is per-zone via _label_allowed (track_objects config,
@@ -403,6 +472,13 @@ class FrigateEventBridge:
                 if not self._label_allowed(label, zinfo):
                     continue
                 self._maybe_speed(camera_id, event_id, after, before, zinfo)
+                self._maybe_slow_vehicle(camera_id, event_id, after, before, zinfo)
+                self._maybe_sudden_stop(camera_id, event_id, after, before, zinfo)
+
+        if self._geometry_enabled:
+            self._maybe_proximity(camera_id, event_id, after, zone_by_uuid, label)
+            self._maybe_zone_absence(camera_id, zone_by_uuid)
+            self._maybe_zone_counts(camera_id, zone_by_uuid)
 
         self._retry_cached_red_light_tracks(skip_event_id=event_id)
 
@@ -1406,6 +1482,10 @@ class FrigateEventBridge:
         after: dict[str, Any],
         zinfo: dict[str, Any],
     ) -> None:
+        """Frigate person crop → Gemini clear-face gate → InsightFace on crop.
+
+        Production watchlist match is InsightFace embeddings only (not Gemini text).
+        """
         if self._dedupe(f"face:{event_id}"):
             return
         jpeg, box, _ev = fetch_subject_jpeg(
@@ -1419,11 +1499,64 @@ class FrigateEventBridge:
 
         zone_name = str(zinfo.get("zone_id") or zinfo.get("name") or "")
         base_meta = {
-            "detection_method": "gemini_vlm",
+            "detection_method": "gemini_clear_face_gate",
             "bridge_source": "frigate",
             "frigate_event_id": event_id,
+            "face_pipeline": "frigate_crop_gate_insightface",
         }
-        # Always: clear-face detection.
+        # Persist audit dump root for face (YES and NO).
+        dump_dir = str(os.environ.get("VLM_FACE_DUMP_DIR") or "").strip()
+        if dump_dir:
+            try:
+                from pathlib import Path
+                Path(dump_dir).mkdir(parents=True, exist_ok=True)
+                stamp = time.strftime("%H%M%S")
+                (Path(dump_dir) / f"{stamp}_{event_id[:12]}_crop.jpg").write_bytes(jpeg)
+            except OSError:
+                pass
+
+        # Prefer InsightFace on the Frigate crop when available (biometric truth).
+        if self._face_match_jpeg is not None:
+            try:
+                matches = self._face_match_jpeg(jpeg) or []
+            except Exception:
+                logger.exception("face_match_jpeg failed")
+                matches = []
+            for m in matches:
+                et = str(m.get("event_type") or "")
+                if et not in ("face_detected", "face_unknown", "face_watchlist_match"):
+                    continue
+                if self._dedupe(f"face:{event_id}:{et}", ttl=90.0):
+                    continue
+                evt = {
+                    "event_id": str(uuid.uuid4()),
+                    "camera_id": camera_id,
+                    "event_type": et,
+                    "event": et,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "zone_id": zone_name,
+                    "frigate_event_id": event_id,
+                    "bbox": box,
+                    "severity": "critical" if et == "face_watchlist_match" else (
+                        "warning" if et == "face_unknown" else "info"
+                    ),
+                    "metadata": {
+                        **base_meta,
+                        **(m.get("metadata") or {}),
+                        "detection_method": "insightface_on_frigate_crop",
+                    },
+                }
+                if self._emit:
+                    try:
+                        self._emit(evt)
+                        with self._stats_lock:
+                            self._stats["face_enqueued"] += 1
+                    except Exception:
+                        logger.exception("face emit failed")
+            # Still enqueue Gemini gate for audit / face_detected when no IF faces.
+            if matches:
+                return
+
         ok_det = self._vlm_queue.try_enqueue(
             VlmJob(
                 jpeg=jpeg,
@@ -1443,49 +1576,7 @@ class FrigateEventBridge:
                 },
             )
         )
-        enqueued = bool(ok_det)
-
-        # Watchlist cameras: Gemini match against label/identifier text context.
-        wl = self._watchlist_entries()
-        if wl:
-            labels: list[str] = []
-            for entry in wl[:20]:
-                if not isinstance(entry, dict):
-                    continue
-                for key in ("label", "identifier", "name", "display_name"):
-                    val = str(entry.get(key) or "").strip()
-                    if val and val not in labels:
-                        labels.append(val)
-            ctx = (
-                f"frigate_event={event_id} zone={zone_name} "
-                f"watchlist_labels={', '.join(labels) if labels else '(empty)'}"
-            )
-            ok_wl = self._vlm_queue.try_enqueue(
-                VlmJob(
-                    jpeg=jpeg,
-                    rule="face_watchlist_match",
-                    min_confidence=0.55,
-                    extra_context=ctx,
-                    event_skeleton={
-                        "event_id": str(uuid.uuid4()),
-                        "camera_id": camera_id,
-                        "event_type": "face_watchlist_match",
-                        "event": "face_watchlist_match",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "zone_id": zone_name,
-                        "frigate_event_id": event_id,
-                        "bbox": box,
-                        "severity": "critical",
-                        "metadata": {
-                            **base_meta,
-                            "watchlist_labels": labels,
-                        },
-                    },
-                )
-            )
-            enqueued = enqueued or bool(ok_wl)
-
-        if enqueued:
+        if ok_det:
             with self._stats_lock:
                 self._stats["face_enqueued"] += 1
 
@@ -1540,6 +1631,557 @@ class FrigateEventBridge:
         if ok:
             with self._stats_lock:
                 self._stats["plate_enqueued"] += 1
+
+    def _behavior_cfg(self, zinfo: dict[str, Any]) -> dict[str, Any]:
+        bcfg = zinfo.get("behavior_config")
+        if isinstance(bcfg, dict):
+            cfg = bcfg.get("config")
+            if isinstance(cfg, dict):
+                return cfg
+            return bcfg
+        return {}
+
+    def _duration_sec(self, zinfo: dict[str, Any], default: float = 5.0) -> float:
+        cfg = self._behavior_cfg(zinfo)
+        try:
+            return max(1.0, float(cfg.get("duration_seconds") or default))
+        except (TypeError, ValueError):
+            return default
+
+    def _geom_box(self, after: dict[str, Any]) -> dict[str, Any] | None:
+        data = after.get("data") if isinstance(after.get("data"), dict) else {}
+        data_box = data.get("box") if isinstance(data, dict) else None
+        if isinstance(data_box, (list, tuple)) and len(data_box) >= 4:
+            return {
+                "x": float(data_box[0]),
+                "y": float(data_box[1]),
+                "width": float(data_box[2]),
+                "height": float(data_box[3]),
+                "norm": True,
+            }
+        return None
+
+    def _emit_geometry(
+        self,
+        *,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zinfo: dict[str, Any],
+        event_type: str,
+        severity: str = "medium",
+        extra_meta: dict[str, Any] | None = None,
+    ) -> None:
+        if self._emit is None:
+            return
+        zone_name = str(zinfo.get("zone_id") or zinfo.get("name") or "")
+        meta = {
+            "detection_method": "frigate_geometry",
+            "bridge_source": "frigate",
+            "frigate_event_id": event_id,
+            "frigate_label": after.get("label"),
+            "bbox_source": "frigate",
+            "zone_behavior": str(zinfo.get("behavior") or ""),
+        }
+        if extra_meta:
+            meta.update(extra_meta)
+        evt = {
+            "event_id": str(uuid.uuid4()),
+            "camera_id": camera_id,
+            "event_type": event_type,
+            "event": event_type,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "zone_id": zone_name,
+            "frigate_event_id": event_id,
+            "bbox": self._geom_box(after),
+            "severity": severity,
+            "metadata": meta,
+        }
+        try:
+            self._emit(evt)
+            with self._stats_lock:
+                self._stats["geometry_emitted"] = int(self._stats.get("geometry_emitted") or 0) + 1
+        except Exception:
+            logger.exception("geometry emit failed type=%s", event_type)
+
+    def _maybe_geometry_active(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zinfo: dict[str, Any],
+        behavior: str,
+        label: str,
+    ) -> None:
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        self._zone_last_seen[f"{camera_id}:{zone_key}"] = time.monotonic()
+        tracks = self._zone_track_counts.setdefault(f"{camera_id}:{zone_key}", set())
+        tracks.add(event_id)
+
+        # Enter emits
+        entered = set(self._zone_list(after.get("entered_zones")))
+        fz_ids = {f"cv_zone_{zone_key}", zone_key}
+        just_entered = bool(entered & fz_ids) or bool(
+            entered and any(zone_key in str(x) for x in entered)
+        )
+        if just_entered or behavior == "perimeter":
+            if behavior == "perimeter":
+                if not self._dedupe(f"geom:{event_id}:perimeter_breach:{zone_key}", ttl=60.0):
+                    self._emit_geometry(
+                        camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+                        event_type="perimeter_breach", severity="critical",
+                    )
+            elif just_entered:
+                if not self._dedupe(f"geom:{event_id}:zone_enter:{zone_key}", ttl=60.0):
+                    self._emit_geometry(
+                        camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+                        event_type="zone_enter", severity="medium",
+                    )
+                if label in _PERSON_LABELS and str(
+                    (self._behavior_cfg(zinfo).get("class_filter") or "person")
+                ).lower() in ("person", "any", "*"):
+                    # pedestrian in vehicle zone when behavior empty + class vehicle expected elsewhere
+                    pass
+
+        # Dwell / loitering / parking / presence
+        dwell_map = dict(_DWELL_BEHAVIOR_EVENTS)
+        if behavior == "loitering":
+            dwell_map["loitering"] = ("loitering", "person")
+        if behavior in dwell_map:
+            event_type, kind = dwell_map[behavior]
+            if kind == "person" and label not in _PERSON_LABELS:
+                return
+            if kind == "vehicle" and label not in _VEHICLE_LABELS_GEOM:
+                return
+            dur = self._duration_sec(zinfo, 30.0 if behavior == "loitering" else 5.0)
+            if behavior == "parking":
+                dur = self._duration_sec(zinfo, 120.0)
+                event_type = "vehicle_stopped"
+            dkey = f"{event_id}:{zone_key}:{event_type}"
+            now = time.monotonic()
+            first = self._dwell_since.get(dkey)
+            if first is None:
+                self._dwell_since[dkey] = now
+                return
+            if now - first < dur:
+                return
+            if self._dedupe(f"geom:{dkey}", ttl=max(60.0, dur)):
+                return
+            sev = "high" if event_type == "loitering" else "medium"
+            self._emit_geometry(
+                camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+                event_type=event_type, severity=sev,
+                extra_meta={"dwell_sec": round(now - first, 1), "duration_threshold_sec": dur},
+            )
+            with self._stats_lock:
+                self._stats["dwell_emitted"] = int(self._stats.get("dwell_emitted") or 0) + 1
+            # Also emit dwell_time_exceeded / person_stopped aliases when relevant
+            if event_type == "zone_presence" and not self._dedupe(
+                f"geom:{event_id}:dwell_time_exceeded:{zone_key}", ttl=max(60.0, dur)
+            ):
+                self._emit_geometry(
+                    camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+                    event_type="dwell_time_exceeded", severity="medium",
+                    extra_meta={"dwell_sec": round(now - first, 1)},
+                )
+            if event_type in ("zone_presence", "loitering") and label in _PERSON_LABELS:
+                if not self._dedupe(f"geom:{event_id}:person_stopped:{zone_key}", ttl=max(60.0, dur)):
+                    self._emit_geometry(
+                        camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+                        event_type="person_stopped", severity="medium",
+                        extra_meta={"dwell_sec": round(now - first, 1)},
+                    )
+
+    def _maybe_geometry_exit(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zinfo: dict[str, Any],
+        behavior: str,
+        label: str,
+    ) -> None:
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        if behavior == "controlled_exit":
+            if not self._dedupe(f"geom:{event_id}:unauthorized_exit:{zone_key}", ttl=60.0):
+                self._emit_geometry(
+                    camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+                    event_type="unauthorized_exit", severity="high",
+                )
+        if not self._dedupe(f"geom:{event_id}:zone_exit:{zone_key}", ttl=60.0):
+            self._emit_geometry(
+                camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+                event_type="zone_exit", severity="info",
+            )
+
+    def _maybe_zone_absence(self, camera_id: str, zone_by_uuid: dict[str, dict[str, Any]]) -> None:
+        now = time.monotonic()
+        for zuuid, zinfo in zone_by_uuid.items():
+            behavior = str(zinfo.get("behavior") or "")
+            if behavior not in ("presence", ""):
+                continue
+            key = f"{camera_id}:{zuuid}"
+            last = self._zone_last_seen.get(key)
+            if last is None:
+                self._zone_last_seen[key] = now
+                continue
+            dur = self._duration_sec(zinfo, 60.0)
+            if now - last < dur:
+                continue
+            if self._dedupe(f"geom:absence:{camera_id}:{zuuid}", ttl=max(120.0, dur)):
+                continue
+            # Synthetic absence event (no frigate track)
+            if self._emit is None:
+                continue
+            try:
+                self._emit({
+                    "event_id": str(uuid.uuid4()),
+                    "camera_id": camera_id,
+                    "event_type": "zone_absence",
+                    "event": "zone_absence",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "zone_id": str(zinfo.get("zone_id") or zinfo.get("name") or ""),
+                    "severity": "medium",
+                    "metadata": {
+                        "detection_method": "frigate_geometry",
+                        "bridge_source": "frigate",
+                        "absence_sec": round(now - last, 1),
+                        "duration_threshold_sec": dur,
+                    },
+                })
+                with self._stats_lock:
+                    self._stats["absence_emitted"] = int(self._stats.get("absence_emitted") or 0) + 1
+            except Exception:
+                logger.exception("absence emit failed")
+
+    def _maybe_zone_counts(self, camera_id: str, zone_by_uuid: dict[str, dict[str, Any]]) -> None:
+        for zuuid, zinfo in list(zone_by_uuid.items()):
+            key = f"{camera_id}:{zuuid}"
+            tracks = self._zone_track_counts.get(key) or set()
+            n = len(tracks)
+            if n <= 0:
+                continue
+            cfg = self._behavior_cfg(zinfo)
+            try:
+                threshold = int(cfg.get("count_threshold") or cfg.get("threshold") or 0)
+            except (TypeError, ValueError):
+                threshold = 0
+            if threshold <= 0:
+                # Default density emit only when many tracks
+                if n < 8:
+                    continue
+                threshold = 8
+            if n < threshold:
+                continue
+            if self._dedupe(f"count:{camera_id}:{zuuid}:{threshold}", ttl=45.0):
+                continue
+            label = str(cfg.get("class_filter") or "person").lower()
+            et = "crowd_count_threshold" if label == "person" else "vehicle_count_threshold"
+            if n >= max(threshold, 12) and label == "person":
+                et = "scene_density_high"
+            if self._emit is None:
+                continue
+            try:
+                self._emit({
+                    "event_id": str(uuid.uuid4()),
+                    "camera_id": camera_id,
+                    "event_type": et,
+                    "event": et,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "zone_id": str(zinfo.get("zone_id") or zinfo.get("name") or ""),
+                    "severity": "medium",
+                    "count": n,
+                    "metadata": {
+                        "detection_method": "frigate_geometry",
+                        "bridge_source": "frigate",
+                        "count": n,
+                        "threshold": threshold,
+                    },
+                })
+                with self._stats_lock:
+                    self._stats["count_emitted"] = int(self._stats.get("count_emitted") or 0) + 1
+            except Exception:
+                logger.exception("count emit failed")
+            # prune set periodically
+            if n > 50:
+                self._zone_track_counts[key] = set(list(tracks)[-20:])
+
+    def _maybe_proximity(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zone_by_uuid: dict[str, dict[str, Any]],
+        label: str,
+    ) -> None:
+        """Emit person_vehicle_proximity when person+vehicle boxes are close (same event stream)."""
+        if label not in _PERSON_LABELS and label not in _VEHICLE_LABELS_GEOM:
+            return
+        box = self._geom_box(after)
+        if not box:
+            return
+        # Store last boxes per camera lightly
+        cache_key = f"_prox_boxes_{camera_id}"
+        store: dict[str, Any] = getattr(self, cache_key, {})
+        store[event_id] = {"label": label, "box": box, "ts": time.monotonic()}
+        # prune
+        now = time.monotonic()
+        store = {k: v for k, v in store.items() if now - float(v.get("ts") or 0) < 3.0}
+        setattr(self, cache_key, store)
+        persons = [v for v in store.values() if v.get("label") in _PERSON_LABELS]
+        vehicles = [v for v in store.values() if v.get("label") in _VEHICLE_LABELS_GEOM]
+        if not persons or not vehicles:
+            return
+
+        def _center(b: dict[str, Any]) -> tuple[float, float]:
+            return (float(b["x"]) + float(b["width"]) / 2.0, float(b["y"]) + float(b["height"]) / 2.0)
+
+        for p in persons:
+            pc = _center(p["box"])
+            for v in vehicles:
+                vc = _center(v["box"])
+                dist = ((pc[0] - vc[0]) ** 2 + (pc[1] - vc[1]) ** 2) ** 0.5
+                if dist > 0.12:
+                    continue
+                pkey = f"prox:{camera_id}:{round(pc[0],2)}:{round(vc[0],2)}"
+                if self._dedupe(pkey, ttl=20.0):
+                    continue
+                if self._emit is None:
+                    continue
+                try:
+                    self._emit({
+                        "event_id": str(uuid.uuid4()),
+                        "camera_id": camera_id,
+                        "event_type": "person_vehicle_proximity",
+                        "event": "person_vehicle_proximity",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "frigate_event_id": event_id,
+                        "severity": "medium",
+                        "bbox": p["box"],
+                        "metadata": {
+                            "detection_method": "frigate_geometry",
+                            "bridge_source": "frigate",
+                            "distance_norm": round(dist, 4),
+                            "vehicle_bbox": v["box"],
+                        },
+                    })
+                    # multi-person one vehicle
+                    near_persons = sum(
+                        1 for pp in persons
+                        if (( _center(pp["box"])[0] - vc[0]) ** 2 + (_center(pp["box"])[1] - vc[1]) ** 2) ** 0.5 < 0.15
+                    )
+                    if near_persons >= 2 and not self._dedupe(f"mpv:{camera_id}:{round(vc[0],2)}", ttl=30.0):
+                        self._emit({
+                            "event_id": str(uuid.uuid4()),
+                            "camera_id": camera_id,
+                            "event_type": "multiple_persons_one_vehicle",
+                            "event": "multiple_persons_one_vehicle",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "severity": "high",
+                            "metadata": {
+                                "detection_method": "frigate_geometry",
+                                "bridge_source": "frigate",
+                                "person_count": near_persons,
+                            },
+                        })
+                    with self._stats_lock:
+                        self._stats["proximity_emitted"] = int(self._stats.get("proximity_emitted") or 0) + 1
+                except Exception:
+                    logger.exception("proximity emit failed")
+                return
+
+    def _maybe_pedestrian_in_traffic(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zinfo: dict[str, Any],
+        behavior: str,
+        label: str,
+    ) -> None:
+        """Person entering a vehicle/traffic zone → pedestrian_in_vehicle_zone."""
+        if label not in _PERSON_LABELS:
+            return
+        if behavior not in _TRAFFIC_ZONE_BEHAVIORS:
+            return
+        entered = set(self._zone_list(after.get("entered_zones")))
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        fz_ids = {f"cv_zone_{zone_key}", zone_key}
+        if not (entered & fz_ids) and not any(zone_key in str(x) for x in entered):
+            return
+        if self._dedupe(f"geom:{event_id}:pedestrian:{zone_key}", ttl=60.0):
+            return
+        self._emit_geometry(
+            camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+            event_type="pedestrian_in_vehicle_zone", severity="medium",
+            extra_meta={"traffic_behavior": behavior},
+        )
+
+    def _maybe_abandoned_active(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zinfo: dict[str, Any],
+        behavior: str,
+        label: str,
+    ) -> None:
+        """Immobile object-like track dwell → abandoned_object (no Gemini by default)."""
+        if behavior != "abandoned_object":
+            return
+        if label in _PERSON_LABELS or label in _VEHICLE_LABELS_GEOM:
+            # Still allow suitcase/backpack; skip people/cars unless labeled object-like
+            if label not in _OBJECT_LIKE_LABELS:
+                return
+        elif label and label not in _OBJECT_LIKE_LABELS and label not in ("", "unknown"):
+            # Frigate may track generic stationary blobs — allow empty/unknown
+            if label not in ("dog", "cat"):  # noise
+                pass
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        dur = self._duration_sec(zinfo, 45.0)
+        dkey = f"abandoned:{event_id}:{zone_key}"
+        now = time.monotonic()
+        first = self._dwell_since.get(dkey)
+        if first is None:
+            self._dwell_since[dkey] = now
+            return
+        if now - first < dur:
+            return
+        if self._dedupe(f"geom:{dkey}", ttl=max(90.0, dur)):
+            return
+        self._emit_geometry(
+            camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+            event_type="abandoned_object", severity="high",
+            extra_meta={
+                "dwell_sec": round(now - first, 1),
+                "duration_threshold_sec": dur,
+                "object_label": label,
+                "vlm_role": "anti_fp_optional",
+            },
+        )
+
+    def _maybe_object_removed(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zinfo: dict[str, Any],
+        behavior: str,
+        label: str,
+    ) -> None:
+        if behavior not in ("abandoned_object", "presence"):
+            return
+        if label in _PERSON_LABELS or label in _VEHICLE_LABELS_GEOM:
+            if label not in _OBJECT_LIKE_LABELS:
+                return
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        if self._dedupe(f"geom:{event_id}:object_removed:{zone_key}", ttl=60.0):
+            return
+        self._emit_geometry(
+            camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+            event_type="object_removed", severity="medium",
+            extra_meta={"object_label": label},
+        )
+        if not self._dedupe(f"geom:{event_id}:object_disappeared:{zone_key}", ttl=60.0):
+            self._emit_geometry(
+                camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+                event_type="object_disappeared", severity="medium",
+                extra_meta={"object_label": label},
+            )
+
+    def _maybe_slow_vehicle(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        before: dict[str, Any],
+        zinfo: dict[str, Any],
+    ) -> None:
+        cfg = self._behavior_cfg(zinfo)
+        try:
+            min_kmh = float(cfg.get("min_speed_kmh") or cfg.get("speed_min_kmh") or 0)
+        except (TypeError, ValueError):
+            min_kmh = 0.0
+        if min_kmh <= 0:
+            return
+        speed = self._read_speed_kmh(after, before, average_only=True)
+        if speed is None or speed >= min_kmh:
+            return
+        if self._dedupe(f"speed_slow:{event_id}:{zinfo.get('id')}"):
+            return
+        if self._emit is None:
+            return
+        try:
+            self._emit({
+                "event_id": str(uuid.uuid4()),
+                "camera_id": camera_id,
+                "event_type": "speed_below_minimum",
+                "event": "speed_below_minimum",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "zone_id": str(zinfo.get("zone_id") or zinfo.get("name") or ""),
+                "frigate_event_id": event_id,
+                "speed_kmh": round(float(speed), 1),
+                "bbox": self._geom_box(after),
+                "severity": "medium",
+                "metadata": {
+                    "detection_method": "frigate_speed",
+                    "bridge_source": "frigate",
+                    "min_speed_kmh": min_kmh,
+                    "speed_emit_mode": self._speed_emit_mode(),
+                    "zone_entry_exit": "exit",
+                },
+            })
+            with self._stats_lock:
+                self._stats["slow_emitted"] = int(self._stats.get("slow_emitted") or 0) + 1
+        except Exception:
+            logger.exception("slow vehicle emit failed")
+
+    def _maybe_sudden_stop(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        before: dict[str, Any],
+        zinfo: dict[str, Any],
+    ) -> None:
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        peak = self._speed_peak.get(f"{event_id}:{zone_key}")
+        avg = self._read_speed_kmh(after, before, average_only=True)
+        if peak is None or avg is None:
+            return
+        # Sudden stop: peak was moving and average collapsed near stop at exit
+        if float(peak) < 15.0 or float(avg) > 5.0:
+            return
+        if float(peak) - float(avg) < 10.0:
+            return
+        if self._dedupe(f"speed_stop:{event_id}:{zone_key}"):
+            return
+        if self._emit is None:
+            return
+        try:
+            self._emit({
+                "event_id": str(uuid.uuid4()),
+                "camera_id": camera_id,
+                "event_type": "sudden_stop",
+                "event": "sudden_stop",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "zone_id": str(zinfo.get("zone_id") or zinfo.get("name") or ""),
+                "frigate_event_id": event_id,
+                "speed_kmh": round(float(avg), 1),
+                "bbox": self._geom_box(after),
+                "severity": "high",
+                "metadata": {
+                    "detection_method": "frigate_speed",
+                    "bridge_source": "frigate",
+                    "speed_peak_kmh": round(float(peak), 1),
+                    "speed_est_kmh": round(float(avg), 1),
+                    "zone_entry_exit": "exit",
+                },
+            })
+            with self._stats_lock:
+                self._stats["sudden_stop_emitted"] = int(self._stats.get("sudden_stop_emitted") or 0) + 1
+        except Exception:
+            logger.exception("sudden_stop emit failed")
 
     def _read_speed_kmh(
         self,

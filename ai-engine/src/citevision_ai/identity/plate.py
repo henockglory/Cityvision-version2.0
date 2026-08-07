@@ -139,6 +139,9 @@ class PlateIdentityEngine:
         self._gemini_enabled = False
         self._vlm_queue: Any = None
         self._frigate_bridge_active = False
+        # plate_text → last monotonic sighting for plate_repeat (no re-OCR)
+        self._plate_sightings: dict[tuple[str, str], float] = {}
+        self._repeat_ttl_sec = 300.0
 
     def configure_gemini(self, enabled: bool, vlm_queue: Any = None) -> None:
         self._gemini_enabled = bool(enabled) and vlm_queue is not None
@@ -147,11 +150,12 @@ class PlateIdentityEngine:
             logger.info("PlateIdentityEngine: Gemini OCR primary (Paddle short-circuited)")
 
     def set_frigate_bridge_active(self, active: bool) -> None:
-        """Frigate bridge enqueues Gemini OCR; Paddle stays active on live frames."""
+        """Frigate bridge owns plate OCR factory (XOR vs local Paddle/Gemini frame path)."""
         self._frigate_bridge_active = bool(active)
         if self._frigate_bridge_active:
             logger.info(
-                "PlateIdentityEngine: Frigate bridge ON — Paddle live + Gemini bridge fusion",
+                "PlateIdentityEngine: Frigate bridge ON — local frame OCR disabled; "
+                "lists match on plate_detected only",
             )
 
     def load(self) -> None:
@@ -215,10 +219,13 @@ class PlateIdentityEngine:
         tracks: list[dict],
         timestamp: str,
     ) -> list[dict[str, Any]]:
+        # XOR: single OCR factory via Frigate bridge (plate_ocr + speeding fusion).
+        if self._frigate_bridge_active:
+            return []
         self._frame_counter += 1
         if self._frame_counter % self._process_every_n != 0:
             return []
-        if self._gemini_enabled and self._vlm_queue is not None and not self._frigate_bridge_active:
+        if self._gemini_enabled and self._vlm_queue is not None:
             self._enqueue_gemini_plates(camera_id, frame, tracks, timestamp)
             return []
         if not getattr(self._backend, "is_loaded", False):
@@ -397,3 +404,15 @@ class PlateIdentityEngine:
                 meta = entry.get("metadata", {})
                 return meta.get("status", "blocked")
         return "unknown"
+
+    def is_repeat_sighting(self, camera_id: str, plate: str) -> bool:
+        key = (camera_id, plate.upper())
+        prev = self._plate_sightings.get(key)
+        if prev is None:
+            return False
+        return (time.monotonic() - prev) <= self._repeat_ttl_sec
+
+    def remember_sighting(self, camera_id: str, plate: str) -> None:
+        if not plate:
+            return
+        self._plate_sightings[(camera_id, plate.upper())] = time.monotonic()

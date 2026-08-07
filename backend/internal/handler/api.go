@@ -438,6 +438,8 @@ func (a *API) ListRuleCatalog(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	enriched := rules.EnrichCatalogWithHealth(templates, reg, health)
+	orch, _ := rules.LoadOrchestration(shared)
+	enriched = rules.EnrichCatalogWithOrchestration(enriched, orch)
 	writeJSON(w, http.StatusOK, enriched)
 }
 

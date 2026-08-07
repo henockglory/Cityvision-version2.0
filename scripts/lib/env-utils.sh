@@ -121,6 +121,7 @@ ensure_demo_validation_env() {
   _upsert_env_kv_file "$env_path" GEMINI_ENABLED 1
   _upsert_env_kv_file "$env_path" FRIGATE_VLM_BRIDGE 1
   _upsert_env_kv_file "$env_path" FRIGATE_SPEED_BRIDGE 1
+  _upsert_env_kv_file "$env_path" FRIGATE_GEOMETRY_BRIDGE 1
   _upsert_env_kv_file "$env_path" FRIGATE_VLM_BRIDGE_CROP_MODE vehicle_bbox
   _upsert_env_kv_file "$env_path" FRIGATE_CABIN_DEDUPE_SEC 15
   _upsert_env_kv_file "$env_path" FRIGATE_CABIN_SIZE_GATE 0
@@ -131,7 +132,7 @@ ensure_demo_validation_env() {
   if [[ -x "$root/scripts/ensure-rules-sync-env.sh" ]]; then
     bash "$root/scripts/ensure-rules-sync-env.sh" --resolve-org 2>/dev/null || true
   fi
-  echo "[INFO] Demo validation env: Gemini queue=24 cabin_gate=0 bridges=on" >&2
+  echo "[INFO] Demo validation env: Gemini queue=24 cabin_gate=0 bridges=vlm+speed+geometry" >&2
 }
 
 ensure_frigate_paths_env() {

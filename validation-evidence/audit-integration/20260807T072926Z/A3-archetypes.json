@@ -1,0 +1,190 @@
+{
+  "phase": "A3",
+  "families": [
+    {
+      "family": "geometry_enter_exit",
+      "events": [
+        "zone_enter",
+        "zone_exit",
+        "perimeter_breach",
+        "unauthorized_exit"
+      ],
+      "methods": [
+        "_maybe_geometry_active",
+        "_maybe_geometry_exit"
+      ],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "dwell",
+      "events": [
+        "zone_presence",
+        "loitering",
+        "vehicle_stopped",
+        "person_stopped"
+      ],
+      "methods": [
+        "_maybe_geometry_active"
+      ],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "absence_counts",
+      "events": [
+        "zone_absence",
+        "crowd_count_threshold",
+        "vehicle_count_threshold"
+      ],
+      "methods": [
+        "_maybe_zone_absence",
+        "_maybe_zone_counts"
+      ],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "lines",
+      "events": [
+        "line_cross"
+      ],
+      "methods": [],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "face",
+      "events": [
+        "face_detected",
+        "face_unknown",
+        "face_watchlist_match"
+      ],
+      "methods": [
+        "_maybe_face"
+      ],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "plate",
+      "events": [
+        "plate_detected",
+        "plate_blocked",
+        "plate_repeat"
+      ],
+      "methods": [
+        "_maybe_plate"
+      ],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "route_variants",
+      "events": [
+        "speed_below_minimum",
+        "sudden_stop",
+        "pedestrian_in_vehicle_zone",
+        "person_vehicle_proximity"
+      ],
+      "methods": [
+        "_maybe_slow_vehicle",
+        "_maybe_sudden_stop",
+        "_maybe_pedestrian_in_traffic",
+        "_maybe_proximity"
+      ],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "abandoned",
+      "events": [
+        "abandoned_object",
+        "object_removed",
+        "object_disappeared"
+      ],
+      "methods": [
+        "_maybe_abandoned_active",
+        "_maybe_object_removed"
+      ],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "quality_local",
+      "events": [
+        "video_blur",
+        "video_darkness"
+      ],
+      "methods": [],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "composites",
+      "events": [
+        "sequence"
+      ],
+      "methods": [],
+      "defined": true,
+      "called": true,
+      "verdict": "DOCUMENTED_PARTIAL",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    },
+    {
+      "family": "validated_four",
+      "events": [
+        "speeding",
+        "red_light_violation",
+        "seatbelt_violation",
+        "phone_use_violation"
+      ],
+      "methods": [
+        "_maybe_speed",
+        "_maybe_red_light",
+        "_maybe_cabin"
+      ],
+      "defined": true,
+      "called": true,
+      "verdict": "WIRED",
+      "live_smoke": "SKIPPED_STACK_OR_NO_ZONE_SEED"
+    }
+  ],
+  "scaffold_validate": {
+    "perimeter": {
+      "exit": 1,
+      "tail": "{\"result\": \"PARTIAL\", \"out_dir\": \"/home/gheno/citevision-v2/validation-evidence/perimeter/20260807T073704Z\"}\nRESULT: perimeter: PARTIAL\nARTEFACT: /home/gheno/citevision-v2/validation-evidence/perimeter/20260807T073704Z\n",
+      "expected": "PARTIAL scaffold"
+    },
+    "face-detected": {
+      "exit": 1,
+      "tail": "{\"result\": \"PARTIAL\", \"out_dir\": \"/home/gheno/citevision-v2/validation-evidence/face-detected/20260807T073704Z\"}\nRESULT: face-detected: PARTIAL\nARTEFACT: /home/gheno/citevision-v2/validation-evidence/face-detected/20260807T073704Z\n",
+      "expected": "PARTIAL scaffold"
+    },
+    "plate-detected": {
+      "exit": 1,
+      "tail": "{\"result\": \"PARTIAL\", \"out_dir\": \"/home/gheno/citevision-v2/validation-evidence/plate-detected/20260807T073704Z\"}\nRESULT: plate-detected: PARTIAL\nARTEFACT: /home/gheno/citevision-v2/validation-evidence/plate-detected/20260807T073704Z\n",
+      "expected": "PARTIAL scaffold"
+    }
+  },
+  "verdict_a3": "WIRED_STATIC",
+  "note": "No live zone smoke (A.1 \u2014 no DB geometry writes). Scaffold PARTIAL expected."
+}

@@ -53,6 +53,10 @@ function hasConfigSchema(tpl: RuleCatalogTemplate): boolean {
 }
 
 function isFullyOperational(tpl: RuleCatalogTemplate): boolean {
+  // A.4 / orchestration contract: real only when DoD verified.
+  if (tpl.dod_verified === true && tpl.catalog_badge === 'real') return true;
+  if (tpl.catalog_badge === 'partial' || tpl.catalog_badge === 'beta') return false;
+  if (tpl.dod_verified === false) return false;
   const ps = tpl.partial_status;
   return !ps || ps === 'full';
 }
@@ -117,12 +121,48 @@ function StatusChip({ tpl, subtle = false }: { tpl: RuleCatalogTemplate; subtle?
     );
   }
 
-  if (!ps || ps === 'full') {
+  if (tpl.catalog_badge === 'partial' || (tpl.dod_verified === false && tpl.signal_owner)) {
+    return (
+      <span
+        title={
+          tpl.partial_reason_fr ||
+          `Orchestration ${tpl.signal_owner || '?'} / ${tpl.judgment_owner || '?'} — DoD: ${tpl.dod_alias || tpl.id}`
+        }
+        className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-amber-400/30 text-amber-400 bg-amber-400/8"
+      >
+        <FlaskConical className="w-3 h-3 shrink-0" />
+        {t('rules.status.partialOrchestration', {
+          defaultValue: `Partiel · ${tpl.signal_owner || 'bridge'}`,
+        })}
+      </span>
+    );
+  }
+
+  // A.4 / honesty: never show "operational" without DoD artefact + real badge.
+  if (tpl.dod_verified && tpl.catalog_badge === 'real') {
     if (subtle) return null;
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-metric-rules/40 text-metric-rules bg-metric-rules/10">
         <CheckCircle2 className="w-3 h-3 shrink-0" />
         {t('rules.status.operational')}
+      </span>
+    );
+  }
+
+  if (!ps || ps === 'full') {
+    if (subtle) return null;
+    return (
+      <span
+        title={
+          tpl.partial_reason_fr ||
+          `DoD requis (${tpl.dod_alias || tpl.id}) avant badge real`
+        }
+        className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-amber-400/30 text-amber-400 bg-amber-400/8"
+      >
+        <FlaskConical className="w-3 h-3 shrink-0" />
+        {t('rules.status.partialOrchestration', {
+          defaultValue: `Partiel · ${tpl.signal_owner || 'pending DoD'}`,
+        })}
       </span>
     );
   }

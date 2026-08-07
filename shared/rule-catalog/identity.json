@@ -220,13 +220,13 @@
         }
       ]
     },
-    "role_summary_fr": "Corrèle détections faciales et plaques pour identifier un profil combiné.",
+    "role_summary_fr": "Corrèle détections faciales et plaques pour identifier un profil combiné (composite rules-engine sur atomes DoD).",
     "deployment_scopes": [
       "national",
       "enterprise",
       "domestic"
     ],
-    "partial_status": "requires_face_ai",
-    "partial_reason_fr": "Corrélation visage↔plaque : nécessite les modules InsightFace et PaddleOCR actifs simultanément."
+    "partial_status": "requires_external",
+    "partial_reason_fr": "Composite Phase 6 — badge real seulement après DoD face + plaque (docs/COMPOSITES-ORCHESTRATION.md)."
   }
 ]

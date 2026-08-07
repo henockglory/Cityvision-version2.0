@@ -8,6 +8,7 @@
 .NOTES
   Doit etre execute en tant qu'Administrateur pour activer WSL2.
   Appele automatiquement par setup.bat si necessaire.
+  Runtime stack: WSL ~/citevision-v2 only (never /mnt/c mirrors). Use launcher\Start-CiteVision.ps1.
 #>
 
 Set-StrictMode -Version Latest
