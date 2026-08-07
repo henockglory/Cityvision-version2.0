@@ -115,8 +115,12 @@ ensure_demo_validation_env() {
 
   _upsert_env_kv_file "$env_path" RED_LIGHT_GATE_MODE or
   _upsert_env_kv_file "$env_path" RED_LIGHT_POST_RED_GRACE_SEC 2.5
-  _upsert_env_kv_file "$env_path" GEMINI_QUEUE_SIZE 24
-  _upsert_env_kv_file "$env_path" GEMINI_MIN_INTERVAL_SEC 3
+  # Permanent Gemini/VLM profile (WSL live lessons — never overwrites GEMINI_API_KEY).
+  _upsert_env_kv_file "$env_path" GEMINI_QUEUE_SIZE 16
+  _upsert_env_kv_file "$env_path" GEMINI_MIN_INTERVAL_SEC 5
+  _upsert_env_kv_file "$env_path" GEMINI_TIMEOUT 90
+  _upsert_env_kv_file "$env_path" GEMINI_FORCE_IPV4 1
+  _upsert_env_kv_file "$env_path" GEMINI_MAX_AGE_SEC 120
   _upsert_env_kv_file "$env_path" GEMINI_MODEL "$gemini_model"
   _upsert_env_kv_file "$env_path" GEMINI_ENABLED 1
   _upsert_env_kv_file "$env_path" FRIGATE_VLM_BRIDGE 1
@@ -132,7 +136,9 @@ ensure_demo_validation_env() {
   if [[ -x "$root/scripts/ensure-rules-sync-env.sh" ]]; then
     bash "$root/scripts/ensure-rules-sync-env.sh" --resolve-org 2>/dev/null || true
   fi
-  echo "[INFO] Demo validation env: Gemini queue=24 cabin_gate=0 bridges=vlm+speed+geometry" >&2
+  # Restore API key from ~/.citevision_gemini_key.tmp when .env key is empty.
+  ensure_gemini_key_env "$root" "$env_path" 2>/dev/null || true
+  echo "[INFO] Demo validation env: Gemini queue=16 timeout=90 ipv4=1 bridges=vlm+speed+geometry" >&2
 }
 
 ensure_frigate_paths_env() {

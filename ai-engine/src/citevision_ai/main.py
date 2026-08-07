@@ -292,6 +292,8 @@ def health(response: Response) -> dict[str, str]:
         stats = pipeline._vlm_queue.stats()
         result["vlm_queue_enqueued"] = str(stats.get("enqueued", 0))
         result["vlm_queue_dropped_full"] = str(stats.get("dropped_full", 0))
+        result["vlm_queue_dropped_stale"] = str(stats.get("dropped_stale", 0))
+        result["vlm_queue_completed"] = str(stats.get("completed", 0))
         result["vlm_queue_emitted"] = str(stats.get("emitted", 0))
         result["vlm_queue_rate_limited"] = str(stats.get("rate_limited", 0))
         result["vlm_queue_rejected"] = str(stats.get("rejected", 0))

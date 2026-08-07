@@ -2,18 +2,116 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import logging
+import os
 import re
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+
+# WSL stub DNS + broken IPv6 routes cause intermittent "Temporary failure in name
+# resolution" / handshake hangs under load. Prefer cached IPv4 + SNI.
+_IPV4_CACHE: dict[str, tuple[str, float]] = {}
+_IPV4_CACHE_TTL_SEC = 300.0
+
+
+def _resolve_ipv4(host: str) -> str:
+    now = time.time()
+    cached = _IPV4_CACHE.get(host)
+    if cached and (now - cached[1]) < _IPV4_CACHE_TTL_SEC:
+        return cached[0]
+    infos = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)
+    if not infos:
+        raise OSError(f"no_ipv4_for_host:{host}")
+    ip = str(infos[0][4][0])
+    _IPV4_CACHE[host] = (ip, now)
+    return ip
+
+
+def _http_open(req: urllib.request.Request, timeout: float):
+    """Open HTTPS preferring IPv4 (WSL-safe). Falls back to urllib if disabled."""
+    force = str(os.environ.get("GEMINI_FORCE_IPV4", "1") or "1").strip().lower()
+    if force in ("0", "false", "no", "off"):
+        return urllib.request.urlopen(req, timeout=timeout)
+
+    parsed = urlparse(req.full_url)
+    host = parsed.hostname or ""
+    if not host:
+        return urllib.request.urlopen(req, timeout=timeout)
+    port = int(parsed.port or 443)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    method = (req.get_method() or "GET").upper()
+    body = req.data if isinstance(req.data, (bytes, bytearray)) else None
+    headers = {k: v for k, v in req.header_items()}
+    headers.setdefault("Host", host)
+
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            if attempt:
+                _IPV4_CACHE.pop(host, None)
+            ip = _resolve_ipv4(host)
+            ctx = ssl.create_default_context()
+            conn = http.client.HTTPSConnection(
+                ip, port=port, timeout=timeout, context=ctx,
+            )
+            sock = socket.create_connection((ip, port), timeout=timeout)
+            # SNI must use hostname, not the literal IP we connected to.
+            conn.sock = ctx.wrap_socket(sock, server_hostname=host)
+            conn.request(method, path, body=body, headers=headers)
+            resp = conn.getresponse()
+
+            class _Resp:
+                def __init__(self, r: http.client.HTTPResponse, c: http.client.HTTPSConnection):
+                    self._r = r
+                    self._c = c
+                    self.status = int(r.status)
+                    self.headers = r.headers
+
+                def read(self, *a: Any, **k: Any) -> bytes:
+                    return self._r.read(*a, **k)
+
+                def __enter__(self) -> "_Resp":
+                    return self
+
+                def __exit__(self, *a: Any) -> None:
+                    try:
+                        self._r.close()
+                    finally:
+                        self._c.close()
+
+            if resp.status >= 400:
+                try:
+                    resp.read()
+                finally:
+                    conn.close()
+                raise urllib.error.HTTPError(
+                    req.full_url, resp.status, resp.reason, resp.headers, None,
+                )
+            return _Resp(resp, conn)
+        except urllib.error.HTTPError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — retry DNS/connect once
+            last_exc = exc
+            if attempt == 0:
+                logger.warning("gemini ipv4 open retry host=%s err=%s", host, exc)
+                continue
+            break
+    assert last_exc is not None
+    raise last_exc
 
 
 @dataclass(frozen=True)
@@ -205,9 +303,9 @@ class GeminiClient:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={self._api_key}"
         req = urllib.request.Request(url, method="GET")
         try:
-            with urllib.request.urlopen(req, timeout=min(8.0, self._timeout)) as resp:
+            with _http_open(req, timeout=min(8.0, self._timeout)) as resp:
                 return int(getattr(resp, "status", 200) or 200) < 400
-        except (urllib.error.URLError, TimeoutError, OSError):
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException):
             return False
 
     def judge_jpeg(
@@ -268,7 +366,7 @@ class GeminiClient:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            with _http_open(req, timeout=self._timeout) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             ms = (time.perf_counter() - t0) * 1000.0
@@ -278,7 +376,13 @@ class GeminiClient:
             return GeminiVerdict(
                 False, rule, 0.0, False, "", [], ms, False, error=err,
             )
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            ValueError,
+            http.client.HTTPException,
+        ) as exc:
             ms = (time.perf_counter() - t0) * 1000.0
             logger.warning("gemini request failed rule=%s: %s", rule, exc)
             return GeminiVerdict(

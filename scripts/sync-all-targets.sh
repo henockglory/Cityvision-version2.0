@@ -30,6 +30,11 @@ RSYNC_EXCLUDES=(
   --exclude HTTP
   --exclude 'backend/qc'
   --exclude 'backend/query'
+  --exclude 'infra/frigate-config/.jwt_secret'
+  --exclude 'infra/frigate-config/.exports'
+  --exclude 'infra/frigate-config/.timeline'
+  --exclude 'infra/frigate-config/.vacuum'
+  --exclude 'infra/frigate-config/.search_stats.json'
 )
 
 if [[ ! -d "$SRC" ]]; then

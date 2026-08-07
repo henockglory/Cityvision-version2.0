@@ -188,18 +188,26 @@ class PipelineService:
         from citevision_ai.vlm.gemini_client import GeminiClient
         from citevision_ai.vlm.queue import init_vlm_queue
 
+        gemini_timeout = float(settings.gemini_timeout or 20.0)
+        min_interval = float(
+            os.environ.get("GEMINI_MIN_INTERVAL_SEC", "8.0") or 8.0
+        )
+        # Stale window must exceed one slow Gemini call + pacing, else every
+        # timeout drains the queue as vlm_subject_stale with zero emits.
+        max_age = float(
+            os.environ.get("GEMINI_MAX_AGE_SEC", "") or 0.0
+        ) or max(60.0, gemini_timeout + min_interval + 15.0)
         client = GeminiClient(
             key,
             model=settings.gemini_model or "gemini-3.1-flash-lite",
-            timeout=float(settings.gemini_timeout or 20.0),
+            timeout=gemini_timeout,
         )
         self._vlm_queue = init_vlm_queue(
             client,
-            maxsize=min(8, int(settings.gemini_queue_size or 8)),
-            min_interval_sec=float(
-                os.environ.get("GEMINI_MIN_INTERVAL_SEC", "8.0") or 8.0
-            ),
-            max_age_sec=20.0,
+            # Honor GEMINI_QUEUE_SIZE (was hard-capped at 8 → chronic vlm_queue_full).
+            maxsize=max(4, min(32, int(settings.gemini_queue_size or 16))),
+            min_interval_sec=min_interval,
+            max_age_sec=max_age,
         )
         self._vlm_queue.set_emit_callback(self._on_vlm_event)
         # Cabin Gemini crops: Frigate bbox only when bridge ON (no local YOLO→Gemini).

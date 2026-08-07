@@ -100,10 +100,59 @@ def _dump_cabin_vlm(
         index_path = root / "index.jsonl"
         with index_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        try:
+            _refresh_cabin_dump_index_html(root)
+        except Exception:
+            logger.debug("vlm cabin index.html refresh failed", exc_info=True)
         return str(crop_path)
     except Exception:
         logger.exception("vlm cabin dump failed rule=%s", job.rule)
         return None
+
+
+def _refresh_cabin_dump_index_html(root: Path) -> None:
+    """Lightweight gallery for live VLM_CABIN_DUMP_DIR (YES/NO/ERR)."""
+    import html as _html
+
+    items: list[dict[str, Any]] = []
+    index_path = root / "index.jsonl"
+    if index_path.is_file():
+        for line in index_path.read_text(encoding="utf-8").splitlines()[-200:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                items.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    cards: list[str] = [
+        "<!doctype html><html><head><meta charset='utf-8'>",
+        "<title>VLM cabin dumps</title>",
+        "<style>body{font-family:Segoe UI,system-ui,sans-serif;margin:20px;background:#0f1115;color:#e8eaed}",
+        ".card{border:1px solid #2a2f3a;border-radius:10px;padding:12px;margin:0 0 14px;background:#171a21}",
+        "img{max-width:420px;max-height:320px;background:#000;border-radius:8px}",
+        ".tag{display:inline-block;padding:2px 8px;border-radius:999px;background:#2a3140;margin-right:6px;font-size:12px}",
+        "pre{font-size:12px;white-space:pre-wrap;background:#0a0c10;padding:8px;border-radius:8px}</style></head><body>",
+        f"<h1>VLM cabin dumps ({len(items)})</h1>",
+        "<p>Crops exacts envoyés à Gemini (live bridge). YES / NO / ERR.</p>",
+    ]
+    for i, it in enumerate(reversed(items), 1):
+        crop = str(it.get("crop_file") or "")
+        outcome = str(it.get("outcome") or "")
+        cards.append("<div class='card'>")
+        cards.append(
+            f"<div><span class='tag'>#{i}</span><span class='tag'>{_html.escape(outcome)}</span>"
+            f"<span class='tag'>{_html.escape(str(it.get('rule') or ''))}</span>"
+            f"<span class='tag'>viol={it.get('violation')}</span></div>"
+        )
+        if crop:
+            cards.append(f"<p><img src='{_html.escape(crop)}' alt='crop'></p>")
+        cards.append(
+            f"<pre>{_html.escape(json.dumps({k: it.get(k) for k in ('reason_short','error','confidence','frigate_event_id','zone_id','bbox')}, indent=2, ensure_ascii=False))}</pre>"
+        )
+        cards.append("</div>")
+    cards.append("</body></html>")
+    (root / "index.html").write_text("\n".join(cards), encoding="utf-8")
 
 
 class VlmQueue:

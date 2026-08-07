@@ -1066,9 +1066,14 @@ class FrigateEventBridge:
             dedupe_ttl = 60.0
 
         # Enqueue ALL rules for the zone (driver_cabin → seatbelt AND phone).
+        # Also pace per camera+rule so distant traffic doesn't flood Gemini.
+        cam_pace_ttl = max(8.0, min(dedupe_ttl, 30.0))
         for rule in rules:
             dedupe_key = f"cabin:{event_id}:{rule}"
             if self._dedupe(dedupe_key, ttl=max(1.0, dedupe_ttl)):
+                continue
+            cam_key = f"cabin_cam:{camera_id}:{rule}"
+            if self._dedupe(cam_key, ttl=cam_pace_ttl):
                 continue
             skeleton = {
                 "event_id": str(uuid.uuid4()),

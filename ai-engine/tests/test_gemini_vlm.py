@@ -132,7 +132,7 @@ def test_judge_jpeg_parses_mock_response():
         def __exit__(self, *a):
             return False
 
-    with patch("urllib.request.urlopen", return_value=_Resp()):
+    with patch("citevision_ai.vlm.gemini_client._http_open", return_value=_Resp()):
         v = client.judge_jpeg(b"\xff\xd8fakejpeg", rule="seatbelt_violation")
     assert v.raw_ok
     assert v.violation is True
@@ -142,7 +142,10 @@ def test_judge_jpeg_parses_mock_response():
 
 def test_judge_jpeg_http_error_fail_closed():
     client = GeminiClient("fake-key")
-    with patch("urllib.request.urlopen", side_effect=TimeoutError("boom")):
+    with patch(
+        "citevision_ai.vlm.gemini_client._http_open",
+        side_effect=TimeoutError("boom"),
+    ):
         v = client.judge_jpeg(b"jpeg", rule="phone_use_violation")
     assert not v.raw_ok
     assert not should_emit(v, min_confidence=0.1)
