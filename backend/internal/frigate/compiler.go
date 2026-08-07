@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -174,6 +175,7 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 	}
 	entry.Objects.Track = []string{"car", "truck", "motorcycle", "bus", "van"}
 	needPerson := false
+	trackExtra := map[string]struct{}{}
 	entry.Record.Enabled = agg.RecordEnabled
 	entry.Snapshots.Enabled = agg.SnapshotsEnabled
 	entry.LPR.Enabled = agg.LPREnabled
@@ -236,11 +238,23 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 			if behaviorNeedsPerson(behavior) {
 				needPerson = true
 			}
+			for _, lab := range trackObjectsFromCfg(cfgMap) {
+				trackExtra[lab] = struct{}{}
+				if lab == "person" {
+					needPerson = true
+				}
+			}
 			if behavior == "speed_measurement" {
 				if dists, ok := speedDistancesCSV(z.Polygon, cfgMap); ok {
 					ze.Distances = dists
-					// Optional Frigate filter (min speed to count in zone) — NOT legal limit.
-					if st, ok := cfgMap["frigate_speed_threshold"].(float64); ok && st > 0 {
+					// Frigate speed_threshold is a zone-membership filter (minimum
+					// speed to be considered in the zone), NOT the legal limit.
+					// Setting it to the limit would hide below-limit vehicles from
+					// the zone and bias average_estimated_speed. Keep it low to
+					// drop stationary/parked objects only; the legal verdict is
+					// bridge-side (average_estimated_speed vs speed_limit_kmh).
+					ze.SpeedThreshold = 1
+					if st := floatFromCfg(cfgMap, "frigate_speed_threshold"); st > 0 {
 						ze.SpeedThreshold = st
 					}
 				}
@@ -249,7 +263,20 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 		}
 	}
 	if needPerson {
-		entry.Objects.Track = append(entry.Objects.Track, "person")
+		trackExtra["person"] = struct{}{}
+	}
+	if len(trackExtra) > 0 {
+		seen := map[string]struct{}{}
+		for _, lab := range entry.Objects.Track {
+			seen[lab] = struct{}{}
+		}
+		for lab := range trackExtra {
+			if _, ok := seen[lab]; ok {
+				continue
+			}
+			entry.Objects.Track = append(entry.Objects.Track, lab)
+			seen[lab] = struct{}{}
+		}
 	}
 	return CompiledCamera{
 		FrigateID:   fid,
@@ -371,6 +398,83 @@ func behaviorNeedsPerson(behavior string) bool {
 	default:
 		return false
 	}
+}
+
+func floatFromCfg(cfg map[string]interface{}, key string) float64 {
+	if cfg == nil {
+		return 0
+	}
+	raw, ok := cfg[key]
+	if !ok || raw == nil {
+		return 0
+	}
+	switch v := raw.(type) {
+	case float64:
+		return v
+	case json.Number:
+		f, err := v.Float64()
+		if err != nil {
+			return 0
+		}
+		return f
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	default:
+		return 0
+	}
+}
+
+// trackObjectsFromCfg reads optional behavior_config.config.track_objects
+// (e.g. ["car","motorcycle","bus","person"]) for Frigate objects.track union.
+func trackObjectsFromCfg(cfg map[string]interface{}) []string {
+	if cfg == nil {
+		return nil
+	}
+	raw, ok := cfg["track_objects"]
+	if !ok || raw == nil {
+		return nil
+	}
+	var out []string
+	seen := map[string]struct{}{}
+	add := func(s string) {
+		lab := strings.ToLower(strings.TrimSpace(s))
+		if lab == "" {
+			return
+		}
+		if lab == "motorbike" {
+			lab = "motorcycle"
+		}
+		if _, ok := seen[lab]; ok {
+			return
+		}
+		seen[lab] = struct{}{}
+		out = append(out, lab)
+	}
+	switch v := raw.(type) {
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				add(s)
+			}
+		}
+	case []string:
+		for _, s := range v {
+			add(s)
+		}
+	case string:
+		for _, part := range strings.Split(v, ",") {
+			add(part)
+		}
+	}
+	return out
 }
 
 // speedDistancesCSV returns Frigate distances CSV when polygon has exactly 4 points

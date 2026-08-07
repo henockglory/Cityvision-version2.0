@@ -90,22 +90,40 @@ _CABIN_RULES = frozenset({"seatbelt_violation", "phone_use_violation"})
 
 CABIN_PROMPTS: dict[str, str] = {
     "seatbelt_violation": (
-        "You analyze a vehicle_bbox crop from a traffic camera (full vehicle bounding box). "
-        "Answer yes or no: is the driver NOT wearing a seatbelt? "
+        "You analyze a FULL-VEHICLE bounding-box crop from a roadside/cabin camera "
+        "(Frigate track crop — may be blurry, distant, low light, or partially occluded). "
+        "Answer ONE yes/no question only: is the driver NOT wearing a seatbelt?\n"
+        "Be lucid despite poor quality: look for shoulder-belt diagonal across the torso, "
+        "or a clear absence of any belt. If you cannot tell with reasonable confidence, "
+        "answer NO (violation=false) — do not invent a violation.\n"
         "Reply with ONLY one JSON object, no markdown:\n"
         '{"violation":bool,"rule":"seatbelt_violation","confidence":0.0-1.0,'
         '"reason_short":"<=120 chars"}\n'
-        "violation=true means YES (seatbelt not worn). violation=false means NO."
+        "violation=true means YES (seatbelt not worn). violation=false means NO "
+        "(belt worn OR unclear/uncertain)."
     ),
     "phone_use_violation": (
-        "You analyze a vehicle_bbox crop from a traffic camera (full vehicle bounding box). "
-        "Answer yes or no: is the driver using a phone while driving? "
+        "You analyze a FULL-VEHICLE bounding-box crop from a roadside/cabin camera "
+        "(Frigate track crop — may be blurry, distant, low light, or partially occluded). "
+        "Answer ONE yes/no question only: is the driver using a phone while driving?\n"
+        "Be lucid despite poor quality: look for a phone held to the ear or in front of the face, "
+        "or hands clearly manipulating a handheld device. If you cannot tell with reasonable "
+        "confidence, answer NO (violation=false) — do not invent a violation.\n"
         "Reply with ONLY one JSON object, no markdown:\n"
         '{"violation":bool,"rule":"phone_use_violation","confidence":0.0-1.0,'
         '"reason_short":"<=120 chars"}\n'
-        "violation=true means YES (phone use detected). violation=false means NO."
+        "violation=true means YES (phone use). violation=false means NO "
+        "(no phone OR unclear/uncertain)."
     ),
 }
+
+
+def cabin_prompt_text(rule: str, *, extra_context: str = "") -> str:
+    """Exact prompt text sent (or that would be sent) for cabin gallery dumps."""
+    prompt = CABIN_PROMPTS.get(rule) or ""
+    if extra_context and prompt:
+        prompt = f"{prompt}\nContext: {extra_context[:500]}"
+    return prompt
 
 PLATE_PROMPTS: dict[str, str] = {
     "plate_ocr": (

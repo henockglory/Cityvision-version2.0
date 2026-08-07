@@ -1620,6 +1620,17 @@ function SpatialList({
 
 }
 
+/** Frigate object labels selectable per zone (track_objects / class_filter). */
+const FRIGATE_TRACK_LABELS = ['car', 'truck', 'bus', 'motorcycle', 'van', 'bicycle', 'person'] as const;
+
+function trackObjectsToList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((v) => String(v).trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    return value.split(',').map((v) => v.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 /** Renders the description, capability badge, prerequisites and config fields of a zone behavior. */
 function BehaviorDetail({
   behavior,
@@ -1659,10 +1670,56 @@ function BehaviorDetail({
             const value = config[f.key] ?? f.default ?? '';
             const label = lang === 'fr' ? f.label_fr : f.label_en;
             const hint = lang === 'fr' ? f.hint_fr : f.hint_en;
+            if (f.type === 'track_objects') {
+              const selected = trackObjectsToList(config[f.key] ?? f.default);
+              const toggle = (lab: string) => {
+                const next = selected.includes(lab)
+                  ? selected.filter((v) => v !== lab)
+                  : [...selected, lab];
+                onConfigChange(f.key, next);
+              };
+              return (
+                <div key={f.key} className="space-y-1">
+                  <label className="text-[11px] text-cv-muted">{label}</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {FRIGATE_TRACK_LABELS.map((lab) => (
+                      <button
+                        key={lab}
+                        type="button"
+                        onClick={() => toggle(lab)}
+                        className={
+                          selected.includes(lab)
+                            ? 'rounded-full border border-cv-accent bg-cv-accent/20 px-2 py-0.5 text-[11px] text-cv-accent'
+                            : 'rounded-full border border-cv-border/60 bg-cv-bg/60 px-2 py-0.5 text-[11px] text-cv-muted hover:border-cv-accent/50'
+                        }
+                      >
+                        {lab}
+                      </button>
+                    ))}
+                  </div>
+                  {hint && <p className="text-[10px] text-cv-muted/70 leading-relaxed">{hint}</p>}
+                </div>
+              );
+            }
             return (
               <div key={f.key} className="space-y-1">
                 <label className="text-[11px] text-cv-muted">{label}</label>
-                {f.type === 'class_filter' || f.type === 'enum' ? (
+                {f.type === 'class_filter' ? (
+                  <select
+                    className="cv-input w-full text-sm"
+                    value={String(value)}
+                    onChange={(e) => onConfigChange(f.key, e.target.value)}
+                  >
+                    {!FRIGATE_TRACK_LABELS.includes(String(value) as (typeof FRIGATE_TRACK_LABELS)[number]) && (
+                      <option value={String(value)}>{String(value)}</option>
+                    )}
+                    {FRIGATE_TRACK_LABELS.map((lab) => (
+                      <option key={lab} value={lab}>
+                        {lab}
+                      </option>
+                    ))}
+                  </select>
+                ) : f.type === 'enum' || f.type === 'text' ? (
                   <input
                     className="cv-input w-full text-sm"
                     value={String(value)}

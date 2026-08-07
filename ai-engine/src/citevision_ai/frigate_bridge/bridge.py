@@ -15,7 +15,6 @@ import paho.mqtt.client as mqtt
 
 from citevision_ai.frigate_bridge.ids import parse_camera_uuid, parse_zone_uuid
 from citevision_ai.frigate_bridge.snapshot import (
-    cabin_bbox_too_small,
     classify_snapshot_light_state,
     download_snapshot_jpeg,
     fetch_cabin_jpeg,
@@ -362,10 +361,10 @@ class FrigateEventBridge:
             if (
                 self._vlm_enabled
                 and behavior in _CABIN_BEHAVIORS
-                and (label in _VEHICLE_LABELS or label == "person")
+                and self._label_allowed(label, zinfo, allow_person_default=True)
             ):
                 self._maybe_cabin(camera_id, event_id, after, zinfo, behavior)
-            if self._vlm_enabled and label in _VEHICLE_LABELS and behavior == "red_light_observation":
+            if self._vlm_enabled and self._label_allowed(label, zinfo) and behavior == "red_light_observation":
                 # Only cache this track as a red-light candidate when the gate is
                 # already red at detection time (see _poll_red_light_camera for why).
                 if self._red_light_gate_is_red(camera_id):
@@ -373,11 +372,13 @@ class FrigateEventBridge:
                 self._maybe_red_light(camera_id, event_id, after, zinfo, zone_by_uuid)
             if self._face_enabled and label == "person" and behavior not in _FACE_SKIP_BEHAVIORS:
                 self._maybe_face(camera_id, event_id, after, zinfo)
-            if self._plate_enabled and label in _VEHICLE_LABELS and behavior == "plate_ocr":
+            if self._plate_enabled and self._label_allowed(label, zinfo) and behavior == "plate_ocr":
                 self._maybe_plate(camera_id, event_id, after, zinfo)
 
-        # Speed: also track max while inside zone (campaign shadow / max_in_zone modes).
-        if self._speed_enabled and label in _VEHICLE_LABELS:
+        # Speed: peak tracking in-zone (shadow / diagnostics only when exit mode).
+        # Label filtering is per-zone via _label_allowed (track_objects config,
+        # vehicle default) so speed zones can watch any Frigate label.
+        if self._speed_enabled:
             in_speed_zones = active_zone_ids | entered | current
             for fz in in_speed_zones:
                 zuuid = parse_zone_uuid(fz)
@@ -386,16 +387,20 @@ class FrigateEventBridge:
                 zinfo = zone_by_uuid.get(zuuid)
                 if not zinfo or str(zinfo.get("behavior") or "") != "speed_measurement":
                     continue
+                if not self._label_allowed(label, zinfo):
+                    continue
                 self._maybe_speed_in_zone(camera_id, event_id, after, before, zinfo)
 
-        # Speed: vehicle left a speed_measurement zone with estimate
-        if self._speed_enabled and label in _VEHICLE_LABELS:
+        # Speed: tracked object left a speed_measurement zone with estimate
+        if self._speed_enabled:
             for fz in exited:
                 zuuid = parse_zone_uuid(fz)
                 if not zuuid:
                     continue
                 zinfo = zone_by_uuid.get(zuuid)
                 if not zinfo or str(zinfo.get("behavior") or "") != "speed_measurement":
+                    continue
+                if not self._label_allowed(label, zinfo):
                     continue
                 self._maybe_speed(camera_id, event_id, after, before, zinfo)
 
@@ -903,6 +908,42 @@ class FrigateEventBridge:
         except (TypeError, ValueError):
             return 0.0
 
+    def _track_labels_for_zone(self, zinfo: dict[str, Any]) -> frozenset[str] | None:
+        """Optional zone behavior_config.track_objects; None = default vehicle set."""
+        cfg = zinfo.get("behavior_config") or {}
+        if not isinstance(cfg, dict):
+            return None
+        raw = cfg.get("track_objects")
+        if raw is None:
+            return None
+        labels: set[str] = set()
+        items: list[Any]
+        if isinstance(raw, str):
+            items = [p.strip() for p in raw.split(",") if p.strip()]
+        elif isinstance(raw, (list, tuple)):
+            items = list(raw)
+        else:
+            return None
+        for item in items:
+            lab = str(item or "").strip().lower()
+            if not lab:
+                continue
+            if lab == "motorbike":
+                lab = "motorcycle"
+            labels.add(lab)
+        return frozenset(labels) if labels else None
+
+    def _label_allowed(self, label: str, zinfo: dict[str, Any], *, allow_person_default: bool = False) -> bool:
+        lab = (label or "").strip().lower()
+        allowed = self._track_labels_for_zone(zinfo)
+        if allowed is not None:
+            if lab == "motorbike" and "motorcycle" in allowed:
+                return True
+            return lab in allowed
+        if lab in _VEHICLE_LABELS:
+            return True
+        return bool(allow_person_default and lab == "person")
+
     def _maybe_cabin(
         self,
         camera_id: str,
@@ -914,29 +955,8 @@ class FrigateEventBridge:
         rules = _BEHAVIOR_TO_RULES.get(behavior) or []
         if not rules:
             return
-        # Prefer seatbelt first under free-tier (same as YOLO path)
-        rule = rules[0]
-        # Re-sample ~25s — shorter TTLs flooded Gemini (dropped_full) with distant crops.
-        dedupe_key = f"cabin:{event_id}:{rule}"
-        try:
-            dedupe_ttl = float(os.environ.get("FRIGATE_CABIN_DEDUPE_SEC", "60") or 60)
-        except (TypeError, ValueError):
-            dedupe_ttl = 60.0
-        if self._dedupe(dedupe_key, ttl=max(1.0, dedupe_ttl)):
-            return
-        # Size gate before snapshot download (Frigate box is xywh, often normalized).
-        box_probe = after.get("box") or (after.get("data") or {}).get("box")
-        if isinstance(box_probe, (list, tuple)) and len(box_probe) >= 4:
-            try:
-                _x, _y, w, h = (float(box_probe[i]) for i in range(4))
-                if cabin_bbox_too_small(w * h, h):
-                    with self._stats_lock:
-                        self._stats["cabin_skipped_too_small"] = int(
-                            self._stats.get("cabin_skipped_too_small") or 0
-                        ) + 1
-                    return
-            except (TypeError, ValueError):
-                pass
+        # No size gate: every tracked vehicle in the zone is cropped and sent
+        # to Gemini (zone + allowed label + per-event dedupe are the only gates).
         jpeg, box, _ev = fetch_cabin_jpeg(
             self._frigate_url,
             event_id,
@@ -946,7 +966,6 @@ class FrigateEventBridge:
         )
         if not jpeg:
             with self._stats_lock:
-                # Distinguishes empty jpeg (too small / decode) from HTTP snapshot miss.
                 if box is not None:
                     self._stats["cabin_skipped_too_small"] = int(
                         self._stats.get("cabin_skipped_too_small") or 0
@@ -964,43 +983,53 @@ class FrigateEventBridge:
         from citevision_ai.vlm.queue import VlmJob
 
         meta_crop_mode = "frigate_vehicle_bbox"
-
         zone_name = str(zinfo.get("zone_id") or zinfo.get("name") or "")
-        skeleton = {
-            "event_id": str(uuid.uuid4()),
-            "camera_id": camera_id,
-            "event_type": rule,
-            "event": rule,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "zone_id": zone_name,
-            "frigate_event_id": event_id,
-            "bbox": box,
-            "severity": "medium",
-            "metadata": {
-                "detection_method": "gemini_vlm",
-                "bridge_source": "frigate",
+        try:
+            dedupe_ttl = float(os.environ.get("FRIGATE_CABIN_DEDUPE_SEC", "60") or 60)
+        except (TypeError, ValueError):
+            dedupe_ttl = 60.0
+
+        # Enqueue ALL rules for the zone (driver_cabin → seatbelt AND phone).
+        for rule in rules:
+            dedupe_key = f"cabin:{event_id}:{rule}"
+            if self._dedupe(dedupe_key, ttl=max(1.0, dedupe_ttl)):
+                continue
+            skeleton = {
+                "event_id": str(uuid.uuid4()),
+                "camera_id": camera_id,
+                "event_type": rule,
+                "event": rule,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "zone_id": zone_name,
                 "frigate_event_id": event_id,
-                "frigate_label": after.get("label"),
-                "zone_behavior": behavior,
-                "crop_mode": meta_crop_mode,
-            },
-        }
-        ok = self._vlm_queue.try_enqueue(
-            VlmJob(
-                jpeg=jpeg,
-                rule=rule,
-                min_confidence=self._zone_conf(zinfo),
-                event_skeleton=skeleton,
-                extra_context=f"frigate_event={event_id} zone={zone_name}",
+                "bbox": box,
+                "severity": "medium",
+                "metadata": {
+                    "detection_method": "gemini_vlm",
+                    "bridge_source": "frigate",
+                    "frigate_event_id": event_id,
+                    "frigate_label": after.get("label"),
+                    "zone_behavior": behavior,
+                    "crop_mode": meta_crop_mode,
+                    "vlm_prompt_rule": rule,
+                },
+            }
+            ok = self._vlm_queue.try_enqueue(
+                VlmJob(
+                    jpeg=jpeg,
+                    rule=rule,
+                    min_confidence=self._zone_conf(zinfo),
+                    event_skeleton=skeleton,
+                    extra_context=f"frigate_event={event_id} zone={zone_name}",
+                )
             )
-        )
-        if ok:
-            with self._stats_lock:
-                self._stats["cabin_enqueued"] += 1
-            logger.info(
-                "frigate_bridge cabin enqueue rule=%s camera=%s event=%s",
-                rule, camera_id[:8], event_id[:12],
-            )
+            if ok:
+                with self._stats_lock:
+                    self._stats["cabin_enqueued"] += 1
+                logger.info(
+                    "frigate_bridge cabin_enqueued camera=%s event=%s rule=%s",
+                    camera_id[:8], event_id[:12], rule,
+                )
 
     def _maybe_red_light(
         self,
@@ -1516,19 +1545,36 @@ class FrigateEventBridge:
         self,
         after: dict[str, Any],
         before: dict[str, Any],
+        *,
+        average_only: bool = False,
     ) -> float | None:
+        """Read Frigate speed estimate.
+
+        average_only=True restricts to ``average_estimated_speed`` (Frigate's
+        mean over the full zone traversal) — the only estimate allowed to
+        decide a violation. Instantaneous keys stay available for in-zone
+        peak diagnostics.
+        """
+        keys = (
+            ("average_estimated_speed",)
+            if average_only
+            else ("average_estimated_speed", "current_estimated_speed", "estimated_speed")
+        )
         data = after.get("data") if isinstance(after.get("data"), dict) else {}
         before_data = before.get("data") if isinstance(before.get("data"), dict) else {}
         for src in (data, before_data, after, before):
             if not isinstance(src, dict):
                 continue
-            for key in ("average_estimated_speed", "current_estimated_speed", "estimated_speed"):
+            for key in keys:
                 if src.get(key) is not None:
                     try:
                         return float(src[key])
                     except (TypeError, ValueError):
                         continue
         return None
+
+    def _speed_emit_mode(self) -> str:
+        return str(os.environ.get("FRIGATE_SPEED_EMIT_MODE", "exit") or "exit").strip().lower()
 
     def _maybe_speed_in_zone(
         self,
@@ -1538,7 +1584,7 @@ class FrigateEventBridge:
         before: dict[str, Any],
         zinfo: dict[str, Any],
     ) -> None:
-        """Track peak speed in-zone; optional emit on max (FRIGATE_SPEED_EMIT_MODE)."""
+        """Track peak speed in-zone; emit mid-zone only if FRIGATE_SPEED_EMIT_MODE=max_in_zone."""
         limit = self._speed_limit(zinfo)
         if limit <= 0:
             return
@@ -1550,7 +1596,7 @@ class FrigateEventBridge:
         prev = self._speed_peak.get(peak_key, 0.0)
         if speed > prev:
             self._speed_peak[peak_key] = speed
-        mode = str(os.environ.get("FRIGATE_SPEED_EMIT_MODE", "exit") or "exit").strip().lower()
+        mode = self._speed_emit_mode()
         peak = self._speed_peak.get(peak_key, speed)
         if peak < limit:
             return
@@ -1562,6 +1608,7 @@ class FrigateEventBridge:
                 camera_id[:8], peak, limit, event_id[:12], mode,
             )
             return
+        # Default / validation: exit-only — never emit while still inside the zone.
         if mode != "max_in_zone":
             return
         if self._dedupe(f"speed_max:{event_id}:{zone_key}"):
@@ -1589,8 +1636,15 @@ class FrigateEventBridge:
                 "y": float(data_box[1]),
                 "width": float(data_box[2]),
                 "height": float(data_box[3]),
+                "norm": True,
             }
-        emit_mode = str(os.environ.get("FRIGATE_SPEED_EMIT_MODE", "exit") or "exit")
+        emit_mode = self._speed_emit_mode()
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        peak = self._speed_peak.pop(f"{event_id}:{zone_key}", speed)
+        start_time = after.get("start_time") or data.get("start_time")
+        end_time = after.get("end_time") or data.get("end_time") or after.get("frame_time")
+        entered = after.get("entered_zones") or data.get("entered_zones") or []
+        current = after.get("current_zones") or data.get("current_zones") or []
         evt = {
             "event_id": str(uuid.uuid4()),
             "camera_id": camera_id,
@@ -1607,9 +1661,17 @@ class FrigateEventBridge:
                 "detection_method": "frigate_speed",
                 "bridge_source": "frigate",
                 "frigate_event_id": event_id,
+                "frigate_label": after.get("label"),
+                "bbox_source": "frigate",
                 "speed_est_kmh": round(speed, 1),
+                "speed_peak_kmh": round(float(peak), 1),
                 "speed_limit_kmh": limit,
                 "speed_emit_mode": emit_mode,
+                "zone_entry_exit": "exit" if emit_mode == "exit" else emit_mode,
+                "frigate_start_time": start_time,
+                "frigate_end_time": end_time,
+                "entered_zones": list(entered) if isinstance(entered, (list, tuple)) else [],
+                "current_zones": list(current) if isinstance(current, (list, tuple)) else [],
             },
         }
         try:
@@ -1631,26 +1693,49 @@ class FrigateEventBridge:
         before: dict[str, Any],
         zinfo: dict[str, Any],
     ) -> None:
+        """Emit speeding only after the vehicle exits the speed_measurement zone."""
+        mode = self._speed_emit_mode()
+        if mode == "max_in_zone":
+            # Mid-zone path owns emits when explicitly requested.
+            return
         limit = self._speed_limit(zinfo)
         if limit <= 0:
             return
-        speed = self._read_speed_kmh(after, before)
+        # Verdict speed = Frigate's average over the FULL zone traversal only.
+        # Instantaneous/peak estimates are diagnostics; judging on them would
+        # sanction a vehicle before it finished crossing the measured zone.
+        speed = self._read_speed_kmh(after, before, average_only=True)
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        peak_key = f"{event_id}:{zone_key}"
+        peak = self._speed_peak.get(peak_key)
         if speed is None:
             with self._stats_lock:
                 self._stats["speed_no_estimate"] = int(self._stats.get("speed_no_estimate") or 0) + 1
             logger.info(
-                "speed_bridge_reject reason=no_estimate camera=%s event=%s",
-                camera_id[:8], event_id[:12],
+                "speed_bridge_reject reason=no_average_speed camera=%s event=%s peak=%s",
+                camera_id[:8], event_id[:12], peak,
             )
+            self._speed_peak.pop(peak_key, None)
             return
-        if speed < limit:
+        use_speed = float(speed)
+        if mode in ("shadow_max", "shadow"):
+            with self._stats_lock:
+                self._stats["speed_shadow_max"] = int(self._stats.get("speed_shadow_max") or 0) + 1
+            logger.info(
+                "speed_shadow_exit camera=%s speed=%.1f peak=%s limit=%.1f event=%s",
+                camera_id[:8], use_speed, peak, limit, event_id[:12],
+            )
+            self._speed_peak.pop(peak_key, None)
+            return
+        if use_speed < limit:
             with self._stats_lock:
                 self._stats["speed_below_limit"] = int(self._stats.get("speed_below_limit") or 0) + 1
             logger.info(
                 "speed_bridge_reject reason=below_limit camera=%s speed=%.1f limit=%.1f event=%s",
-                camera_id[:8], speed, limit, event_id[:12],
+                camera_id[:8], use_speed, limit, event_id[:12],
             )
+            self._speed_peak.pop(peak_key, None)
             return
         if self._dedupe(f"speed:{event_id}:{zinfo.get('id')}"):
             return
-        self._emit_speeding(camera_id, event_id, after, zinfo, speed, limit)
+        self._emit_speeding(camera_id, event_id, after, zinfo, use_speed, limit)

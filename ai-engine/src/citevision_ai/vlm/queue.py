@@ -1,15 +1,22 @@
 """Async bounded queue for Gemini VLM jobs — never blocks RTSP infer thread."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
-from citevision_ai.vlm.gemini_client import GeminiClient, _CABIN_RULES, should_emit
+from citevision_ai.vlm.gemini_client import (
+    GeminiClient,
+    _CABIN_RULES,
+    cabin_prompt_text,
+    should_emit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +34,76 @@ class VlmJob:
     shadow_only: bool = False
     paddle_plate_text: str = ""
     paddle_plate_confidence: float = 0.0
+
+
+def _cabin_dump_root() -> Path | None:
+    """Directory for always-on cabin crop+prompt dumps (YES and NO)."""
+    raw = str(os.environ.get("VLM_CABIN_DUMP_DIR") or "").strip()
+    if not raw:
+        run = str(os.environ.get("VLM_CABIN_RUN") or os.environ.get("HIT1_TS") or "").strip()
+        if not run:
+            return None
+        root = Path(os.environ.get("MICROTEST_ROOT", Path.home() / "citevision-v2"))
+        raw = str(root / "validation-evidence" / f"vlm-cabin-{run}")
+    path = Path(raw)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except OSError:
+        logger.exception("vlm cabin dump dir create failed path=%s", path)
+        return None
+
+
+def _dump_cabin_vlm(
+    job: VlmJob,
+    verdict: Any,
+    *,
+    emit_ok: bool,
+    outcome: str,
+) -> str | None:
+    """Persist exact Gemini crop + prompt + verdict for gallery (YES and NO)."""
+    if job.rule not in _CABIN_RULES:
+        return None
+    root = _cabin_dump_root()
+    if root is None:
+        return None
+    evt = job.event_skeleton if isinstance(job.event_skeleton, dict) else {}
+    fe = str(evt.get("frigate_event_id") or "unknown")[:16]
+    eid = str(evt.get("event_id") or "noid")[:12]
+    stamp = time.strftime("%H%M%S")
+    base = f"{stamp}_{job.rule}_{fe}_{eid}_{outcome}"
+    try:
+        crop_path = root / f"{base}_crop.jpg"
+        crop_path.write_bytes(job.jpeg)
+        prompt = cabin_prompt_text(job.rule, extra_context=job.extra_context)
+        (root / f"{base}_prompt.txt").write_text(prompt, encoding="utf-8")
+        payload = {
+            "rule": job.rule,
+            "outcome": outcome,
+            "emit_ok": bool(emit_ok),
+            "violation": bool(getattr(verdict, "violation", False)),
+            "confidence": float(getattr(verdict, "confidence", 0.0) or 0.0),
+            "reason_short": (getattr(verdict, "reason_short", "") or "")[:200],
+            "error": getattr(verdict, "error", "") or "",
+            "frigate_event_id": evt.get("frigate_event_id"),
+            "event_id": evt.get("event_id"),
+            "camera_id": evt.get("camera_id"),
+            "zone_id": evt.get("zone_id"),
+            "bbox": evt.get("bbox"),
+            "crop_file": crop_path.name,
+            "prompt_file": f"{base}_prompt.txt",
+        }
+        (root / f"{base}_verdict.json").write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        index_path = root / "index.jsonl"
+        with index_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        return str(crop_path)
+    except Exception:
+        logger.exception("vlm cabin dump failed rule=%s", job.rule)
+        return None
 
 
 class VlmQueue:
@@ -53,6 +130,7 @@ class VlmQueue:
             "emitted": 0,
             "rejected": 0,
             "cabin_ignored": 0,
+            "cabin_dumped": 0,
             "unclear": 0,
             "rate_limited": 0,
             "shadow_logged": 0,
@@ -137,11 +215,9 @@ class VlmQueue:
         with self._lock:
             self._stats["completed"] += 1
         if verdict.error == "rate_limited":
-            # Free-tier recovery: longer pause, drain queue pressure.
             self._backoff_until = time.time() + 60.0
             with self._lock:
                 self._stats["rate_limited"] += 1
-            # Drop queued jobs so stale crops don't burn the next quota window.
             drained = 0
             while True:
                 try:
@@ -197,22 +273,41 @@ class VlmQueue:
                     (getattr(verdict, "reason_short", "") or "")[:120],
                 )
 
+        cabin_no = (
+            job.rule in _CABIN_RULES
+            and not bool(getattr(verdict, "violation", False))
+            and not getattr(verdict, "error", "")
+        )
+        if job.rule in _CABIN_RULES:
+            if emit_ok:
+                cabin_outcome = "yes"
+            elif cabin_no:
+                cabin_outcome = "no"
+            else:
+                cabin_outcome = "error"
+        else:
+            cabin_outcome = "n/a"
+        dump_path = None
+        if job.rule in _CABIN_RULES:
+            dump_path = _dump_cabin_vlm(
+                job, verdict, emit_ok=emit_ok, outcome=cabin_outcome,
+            )
+            if dump_path:
+                with self._lock:
+                    self._stats["cabin_dumped"] = int(self._stats.get("cabin_dumped") or 0) + 1
+
         if not emit_ok:
             reason = (getattr(verdict, "reason_short", "") or "")[:120]
             reject_reason = "low_confidence"
-            cabin_no = (
-                job.rule in _CABIN_RULES
-                and not bool(getattr(verdict, "violation", False))
-                and not getattr(verdict, "error", "")
-            )
             if cabin_no:
                 with self._lock:
                     self._stats["cabin_ignored"] += 1
                 logger.info(
-                    "vlm_cabin_no rule=%s conf=%.2f reason_short=%s",
+                    "vlm_cabin_no rule=%s conf=%.2f reason_short=%s dump=%s",
                     job.rule,
                     float(getattr(verdict, "confidence", 0.0) or 0.0),
                     reason,
+                    bool(dump_path),
                 )
                 return
             with self._lock:
@@ -231,7 +326,7 @@ class VlmQueue:
                 reject_reason = "unclear"
             logger.info(
                 "vlm_reject rule=%s reason=%s violation=%s visible=%s conf=%.2f min=%.2f "
-                "reason_short=%s signals=%s err=%s fusion=%s",
+                "reason_short=%s signals=%s err=%s fusion=%s dump=%s",
                 job.rule,
                 reject_reason,
                 bool(getattr(verdict, "violation", False)),
@@ -242,6 +337,7 @@ class VlmQueue:
                 list(getattr(verdict, "signals", None) or [])[:6],
                 getattr(verdict, "error", "") or "",
                 plate_fusion_meta if job.rule == "plate_ocr" else "",
+                bool(dump_path),
             )
             try:
                 from citevision_ai.observability.rule_blockers import blockers
@@ -321,6 +417,11 @@ class VlmQueue:
                 "confidence": round(float(verdict.confidence), 3),
             }
         )
+        if job.rule in _CABIN_RULES:
+            meta["vlm_prompt"] = cabin_prompt_text(
+                job.rule, extra_context=job.extra_context,
+            )[:2000]
+            meta["vlm_crop_path"] = dump_path
         if red_light_hsv_override:
             meta["vlm_hsv_override"] = True
             meta["vlm_original_violation"] = bool(getattr(verdict, "violation", False))

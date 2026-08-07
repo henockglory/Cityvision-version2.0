@@ -252,8 +252,10 @@ class Settings(BaseSettings):
             "frigate_vlm_bridge", "FRIGATE_VLM_BRIDGE", "CITEVISION_FRIGATE_VLM_BRIDGE",
         ),
     )
+    # Frigate owns speed: average_estimated_speed over the full zone traversal.
+    # The local homography/zone-distance engines never emit speed events when on.
     frigate_speed_bridge: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices(
             "frigate_speed_bridge", "FRIGATE_SPEED_BRIDGE", "CITEVISION_FRIGATE_SPEED_BRIDGE",
         ),

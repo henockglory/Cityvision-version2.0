@@ -246,6 +246,15 @@
           "label_fr": "Objet surveillé",
           "label_en": "Watched object",
           "default": "car"
+        },
+        {
+          "key": "track_objects",
+          "type": "track_objects",
+          "label_fr": "Objets suivis par Frigate",
+          "label_en": "Objects tracked by Frigate",
+          "default": "car",
+          "hint_fr": "Types d'objets que Frigate suit et mesure dans cette zone (voiture, moto, bus…).",
+          "hint_en": "Object types Frigate tracks and measures in this zone (car, motorcycle, bus…)."
         }
       ]
     },
@@ -276,6 +285,15 @@
           "min": 0.05,
           "max": 0.99,
           "step": 0.05
+        },
+        {
+          "key": "track_objects",
+          "type": "track_objects",
+          "label_fr": "Objets suivis par Frigate",
+          "label_en": "Objects tracked by Frigate",
+          "default": "car",
+          "hint_fr": "Types d'objets dont le crop Frigate est envoyé à Gemini (voiture, moto, bus…).",
+          "hint_en": "Object types whose Frigate crop is sent to Gemini (car, motorcycle, bus…)."
         }
       ]
     },
@@ -305,6 +323,15 @@
           "min": 0.05,
           "max": 0.99,
           "step": 0.05
+        },
+        {
+          "key": "track_objects",
+          "type": "track_objects",
+          "label_fr": "Objets suivis par Frigate",
+          "label_en": "Objects tracked by Frigate",
+          "default": "car",
+          "hint_fr": "Types d'objets dont le crop Frigate est envoyé à Gemini (voiture, moto, bus…).",
+          "hint_en": "Object types whose Frigate crop is sent to Gemini (car, motorcycle, bus…)."
         }
       ]
     },
@@ -334,6 +361,15 @@
           "min": 0.05,
           "max": 0.99,
           "step": 0.05
+        },
+        {
+          "key": "track_objects",
+          "type": "track_objects",
+          "label_fr": "Objets suivis par Frigate",
+          "label_en": "Objects tracked by Frigate",
+          "default": "car",
+          "hint_fr": "Types d'objets dont le crop Frigate est envoyé à Gemini (voiture, moto, bus…).",
+          "hint_en": "Object types whose Frigate crop is sent to Gemini (car, motorcycle, bus…)."
         }
       ]
     },

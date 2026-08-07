@@ -788,10 +788,12 @@ class FrigateTrackEvidence:
         meta_evt = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
         bridge_sourced = str(meta_evt.get("bridge_source") or "").lower() == "frigate"
 
-        # Sprint 1 — wait for Frigate end_time BEFORE align gates or clip download.
+        # Wait for Frigate end_time BEFORE align gates or clip download.
         # Active events often lack path_data/end_time; min_time_delta() then returns
         # 1e18 and demo_loop_guard aborts with align_too_wide instead of deferring.
-        if is_red:
+        # Speeding also needs a sealed track (entry→exit) so average_estimated_speed
+        # and the clip cover the full zone traversal.
+        if is_red or is_speed:
             sealed = self._wait_until_end_time(event_id)
             if not sealed or sealed.get("end_time") in (None, "", False):
                 return self._missing(
@@ -799,7 +801,10 @@ class FrigateTrackEvidence:
                     camera_id=camera_id,
                     evt=evt,
                     event_id=event_id,
-                    extra={"waited_sec": RED_LIGHT_END_TIME_WAIT_SEC},
+                    extra={
+                        "waited_sec": RED_LIGHT_END_TIME_WAIT_SEC,
+                        "reason": "speed_wait_end_time" if is_speed else "red_wait_end_time",
+                    },
                 )
             matched = {
                 **matched,
@@ -826,6 +831,7 @@ class FrigateTrackEvidence:
                     },
                 }
             meta = self._wait_for_event_media(event_id)
+            align_delta = min_time_delta(anchor, matched)
 
         # §3.1 demo_loop_guard — absolute align for every demo rule (not only red_light).
         # Bridge-sourced events already carry Frigate-native bbox_ts; skip loop guard.
@@ -869,12 +875,13 @@ class FrigateTrackEvidence:
 
         clip_bytes = self._download_event_clip(event_id, meta)
         raw_clip_bytes = clip_bytes
-        if is_red and not clip_bytes:
+        if (is_red or is_speed) and not clip_bytes:
             return self._missing(
                 abort_stats.ABORT_NO_CLIP,
                 camera_id=camera_id,
                 evt=evt,
                 event_id=event_id,
+                extra={"reason": "speed_needs_clip" if is_speed else "red_needs_clip"},
             )
 
         target_clip_sec = float(policy.get("clip_seconds") or CLIP_DURATION_SEC)
@@ -1052,7 +1059,7 @@ class FrigateTrackEvidence:
                     },
                 )
 
-        plate_jpeg, plate_number, plate_confidence = self._ocr_plate(plate_crop, evt)
+        plate_jpeg, plate_number, plate_confidence, plate_source = self._ocr_plate(plate_crop, evt)
         images_spec = policy.get("images") or default_evidence_policy()["images"]
         want_plate = any(s.get("role") == "plate" for s in images_spec)
         # Sprint 4 / A.4 / R.2: never fabricate a plate from the subject crop.
@@ -1086,7 +1093,7 @@ class FrigateTrackEvidence:
                 "align_delta_ms": int(round(align_delta * 1000)),
                 "capture_frame_ts": capture_frame_ts,
                 "capture_frame_pts": capture_frame_pts,
-                "plate_ocr_source": settings.ocr_url and "fast_alpr" or "none",
+                "plate_ocr_source": plate_source,
                 "confidence": evt.get("confidence"),
                 "class_name": evt.get("class_name"),
                 "zone_id": evt.get("zone_id"),
@@ -1099,6 +1106,16 @@ class FrigateTrackEvidence:
                 "evidence_status": status,
             }
         meta_in = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        if is_speed:
+            meta_out["detection_method"] = str(meta_in.get("detection_method") or "frigate_speed")
+            meta_out["speed_kmh"] = evt.get("speed_kmh") or meta_in.get("speed_est_kmh")
+            meta_out["speed_limit_kmh"] = evt.get("speed_limit_kmh") or meta_in.get("speed_limit_kmh")
+            meta_out["speed_emit_mode"] = meta_in.get("speed_emit_mode") or "exit"
+            meta_out["zone_entry_exit"] = meta_in.get("zone_entry_exit") or "exit"
+            meta_out["frigate_start_time"] = matched.get("start_time") or meta_in.get("frigate_start_time")
+            meta_out["frigate_end_time"] = matched.get("end_time") or meta_in.get("frigate_end_time")
+            if bridge_sourced:
+                meta_out["bbox_source"] = "frigate_mqtt"
         light_poly = meta_in.get("light_zone_polygon")
         if isinstance(light_poly, list) and light_poly:
             meta_out["light_zone_polygon"] = light_poly
@@ -2539,22 +2556,68 @@ class FrigateTrackEvidence:
         self,
         plate_crop: bytes | None,
         evt: dict[str, Any],
-    ) -> tuple[bytes | None, str | None, float | None]:
-        """Return plate JPEG for the evidence slot.
+    ) -> tuple[bytes | None, str | None, float | None, str]:
+        """Return plate JPEG + best OCR reading for the evidence slot.
 
-        OCR text is best-effort. When OCR is down or low-confidence, still attach
-        the crop so road-rule completeness (scene+subject+plate) can pass with a
-        visual plate proof — matching « plaque si disponible ».
+        Readings are fused from Gemini + PaddleOCR (and Fast-ALPR when its
+        service is configured); the highest-confidence valid text wins. Text is
+        best-effort: when nothing readable, still attach the crop as visual
+        plate proof — never fabricate a plate (R.2).
         """
         if not plate_crop:
-            return None, evt.get("plate_number"), evt.get("plate_confidence")
+            return None, evt.get("plate_number"), evt.get("plate_confidence"), "none"
+        readings: list[tuple[str, float, str]] = []
+        # PaddleOCR (local, always available when models loaded).
+        try:
+            from citevision_ai.identity.plate_fusion import run_paddle_on_jpeg
+            paddle = run_paddle_on_jpeg(plate_crop)
+            if paddle:
+                readings.append((paddle.text, float(paddle.confidence), "paddle"))
+        except Exception:
+            logger.debug("plate paddle read failed", exc_info=True)
+        # Gemini one-shot OCR (one call per violation event — events are rare).
+        if settings.gemini_enabled and (settings.gemini_api_key or "").strip():
+            try:
+                from citevision_ai.identity.plate_fusion import reading_from_gemini_verdict
+                from citevision_ai.vlm.gemini_client import GeminiClient
+                client = GeminiClient(
+                    settings.gemini_api_key,
+                    model=settings.gemini_model,
+                    timeout=min(float(settings.gemini_timeout or 20.0), 20.0),
+                )
+                verdict = client.judge_jpeg(plate_crop, rule="plate_ocr")
+                gem = reading_from_gemini_verdict(verdict)
+                if gem:
+                    readings.append((gem.text, float(gem.confidence), "gemini"))
+            except Exception:
+                logger.debug("plate gemini read failed", exc_info=True)
+        # Fast-ALPR HTTP service (legacy slot reader) as extra candidate.
         if settings.ocr_url:
-            plate, conf, _src = recognize_plate_jpeg(
-                plate_crop, settings.ocr_url, timeout=settings.ocr_timeout,
+            try:
+                plate, conf, _src = recognize_plate_jpeg(
+                    plate_crop, settings.ocr_url, timeout=settings.ocr_timeout,
+                )
+                if plate and conf >= settings.plate_min_conf:
+                    readings.append((plate, float(conf), "fast_alpr"))
+            except Exception:
+                logger.debug("plate fast_alpr read failed", exc_info=True)
+        if readings:
+            # Agreement between two engines boosts confidence over either alone.
+            by_text: dict[str, list[tuple[str, float, str]]] = {}
+            for r in readings:
+                by_text.setdefault(r[0], []).append(r)
+            best_text, group = max(
+                by_text.items(),
+                key=lambda kv: (len(kv[1]), max(r[1] for r in kv[1])),
             )
-            if plate and conf >= settings.plate_min_conf:
-                return plate_crop, plate, conf
-        return plate_crop, evt.get("plate_number"), evt.get("plate_confidence")
+            conf = max(r[1] for r in group)
+            source = "+".join(sorted({r[2] for r in group}))
+            logger.info(
+                "plate_fusion text=%s conf=%.2f source=%s candidates=%d",
+                best_text, conf, source, len(readings),
+            )
+            return plate_crop, best_text, conf, source
+        return plate_crop, evt.get("plate_number"), evt.get("plate_confidence"), "unreadable"
 
     def _probe_duration(self, path: str) -> float | None:
         ffprobe = shutil.which("ffprobe")

@@ -157,7 +157,84 @@ def test_bridge_speed_emits_when_over_limit(monkeypatch):
     assert emitted[0]["event_type"] == "speeding"
     assert emitted[0]["speed_kmh"] == 45.5
     assert emitted[0]["metadata"]["detection_method"] == "frigate_speed"
+    assert emitted[0]["metadata"]["speed_emit_mode"] == "exit"
+    assert emitted[0]["metadata"]["bbox_source"] == "frigate"
     assert emitted[0]["frigate_event_id"] == "evt-1"
+
+
+def test_bridge_speed_no_midzone_emit_when_exit_mode(monkeypatch):
+    monkeypatch.setenv("FRIGATE_SPEED_EMIT_MODE", "exit")
+    emitted: list[dict] = []
+    zone_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    cam_uuid = "d2eb7076-c3b3-40fd-9b2c-0d119bb975c9"
+    spatial = {
+        "zones": [
+            {
+                "id": zone_uuid,
+                "zone_id": "SpeedZone",
+                "behavior": "speed_measurement",
+                "behavior_config": {"speed_limit_kmh": 20},
+            }
+        ]
+    }
+    bridge = FrigateEventBridge(
+        frigate_url="http://127.0.0.1:5000",
+        mqtt_host="127.0.0.1",
+        mqtt_port=1884,
+        spatial_resolver=lambda _c: spatial,
+        emit_event=lambda e: emitted.append(e),
+        speed_enabled=True,
+    )
+    # Still inside zone — must NOT emit under exit mode.
+    after = {
+        "id": "evt-in",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "current_zones": [f"cv_zone_{zone_uuid}"],
+        "entered_zones": [f"cv_zone_{zone_uuid}"],
+        "data": {"average_estimated_speed": 55.0, "box": [0.1, 0.1, 0.2, 0.2]},
+    }
+    before = {"current_zones": [f"cv_zone_{zone_uuid}"], "data": {"average_estimated_speed": 40.0}}
+    bridge._handle_event(after, before)
+    assert emitted == []
+
+
+def test_bridge_speed_respects_track_objects_filter(monkeypatch):
+    monkeypatch.setenv("FRIGATE_SPEED_EMIT_MODE", "exit")
+    emitted: list[dict] = []
+    zone_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    cam_uuid = "d2eb7076-c3b3-40fd-9b2c-0d119bb975c9"
+    spatial = {
+        "zones": [
+            {
+                "id": zone_uuid,
+                "zone_id": "SpeedZone",
+                "behavior": "speed_measurement",
+                "behavior_config": {"speed_limit_kmh": 20, "track_objects": ["motorcycle"]},
+            }
+        ]
+    }
+    bridge = FrigateEventBridge(
+        frigate_url="http://127.0.0.1:5000",
+        mqtt_host="127.0.0.1",
+        mqtt_port=1884,
+        spatial_resolver=lambda _c: spatial,
+        emit_event=lambda e: emitted.append(e),
+        speed_enabled=True,
+    )
+    after = {
+        "id": "evt-car",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "current_zones": [],
+        "data": {"average_estimated_speed": 90.0, "box": [0.1, 0.1, 0.2, 0.2]},
+    }
+    before = {
+        "current_zones": [f"cv_zone_{zone_uuid}"],
+        "data": {"average_estimated_speed": 90.0},
+    }
+    bridge._handle_event(after, before)
+    assert emitted == []
 
 
 def test_bridge_speed_no_emit_under_limit():

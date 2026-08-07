@@ -135,6 +135,48 @@ func TestUpsertCameraSpeedDistancesFourPoints(t *testing.T) {
 	if ze.Distances != "10.000,12.000,11.000,13.000" {
 		t.Fatalf("distances: got %q", ze.Distances)
 	}
+	// speed_threshold is a low motion filter (drop stationary objects), never
+	// the legal limit: the violation verdict stays bridge-side.
+	if ze.SpeedThreshold != 1 {
+		t.Fatalf("speed_threshold default motion filter: got %v want 1", ze.SpeedThreshold)
+	}
+}
+
+func TestUpsertCameraSpeedThresholdOverride(t *testing.T) {
+	poly := json.RawMessage(`[{"x":0.1,"y":0.1},{"x":0.5,"y":0.1},{"x":0.5,"y":0.5},{"x":0.1,"y":0.5}]`)
+	camID := uuid.New()
+	cam := &models.Camera{ID: camID}
+	zoneID := uuid.New()
+	bcfg := json.RawMessage(`{"behavior":"speed_measurement","config":{"speed_limit_kmh":50,"frigate_speed_threshold":5,"edge_distances_m":[10,12,11,13]}}`)
+	zones := []models.Zone{{
+		ID: zoneID, CameraID: &camID, Polygon: poly, BehaviorConfig: bcfg,
+	}}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{}, zones)
+	ze := cc.Entry.Zones[ZoneID(zoneID.String())]
+	if ze.SpeedThreshold != 5 {
+		t.Fatalf("frigate_speed_threshold override: got %v want 5", ze.SpeedThreshold)
+	}
+}
+
+func TestUpsertCameraTrackObjectsFromZone(t *testing.T) {
+	poly := json.RawMessage(`[{"x":0.1,"y":0.2},{"x":0.5,"y":0.2},{"x":0.5,"y":0.6}]`)
+	camID := uuid.New()
+	cam := &models.Camera{ID: camID}
+	zoneID := uuid.New()
+	bcfg := json.RawMessage(`{"behavior":"seatbelt","config":{"track_objects":["car","motorcycle"]}}`)
+	zones := []models.Zone{{
+		ID: zoneID, CameraID: &camID, Polygon: poly, BehaviorConfig: bcfg,
+	}}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{}, zones)
+	found := map[string]bool{}
+	for _, lab := range cc.Entry.Objects.Track {
+		found[lab] = true
+	}
+	for _, want := range []string{"car", "motorcycle", "person"} {
+		if !found[want] {
+			t.Fatalf("expected %s in objects.track, got %v", want, cc.Entry.Objects.Track)
+		}
+	}
 }
 
 func TestUpsertCameraSpeedNoDistancesWhenNotFourPoints(t *testing.T) {

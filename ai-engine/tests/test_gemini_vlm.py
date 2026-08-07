@@ -236,7 +236,8 @@ def test_vlm_queue_plate_fusion_emits_paddle_winner():
     assert emitted[0]["metadata"]["ocr_winner"] == "paddle"
 
 
-def test_vlm_queue_cabin_no_increments_ignored_not_rejected():
+def test_vlm_queue_cabin_no_increments_ignored_not_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("VLM_CABIN_DUMP_DIR", str(tmp_path))
     client = MagicMock()
     client.configured = True
     client.model = "gemini-3.6-flash"
@@ -247,10 +248,17 @@ def test_vlm_queue_cabin_no_increments_ignored_not_rejected():
     q.start()
     ok = q.try_enqueue(
         VlmJob(
-            jpeg=b"abc",
+            jpeg=b"abc123jpeg",
             rule="seatbelt_violation",
             min_confidence=0.45,
-            event_skeleton={"metadata": {}},
+            event_skeleton={
+                "event_id": "e1",
+                "frigate_event_id": "fe1",
+                "camera_id": "c1",
+                "zone_id": "z1",
+                "bbox": {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+                "metadata": {},
+            },
         )
     )
     assert ok
@@ -260,6 +268,47 @@ def test_vlm_queue_cabin_no_increments_ignored_not_rejected():
     assert st["cabin_ignored"] >= 1
     assert st["rejected"] == 0
     assert st["emitted"] == 0
+    assert st.get("cabin_dumped", 0) >= 1
+    crops = list(tmp_path.glob("*_crop.jpg"))
+    prompts = list(tmp_path.glob("*_prompt.txt"))
+    verdicts = list(tmp_path.glob("*_verdict.json"))
+    assert crops and prompts and verdicts
+    assert (tmp_path / "index.jsonl").is_file()
+
+
+def test_vlm_queue_cabin_yes_dumps_and_emits(tmp_path, monkeypatch):
+    monkeypatch.setenv("VLM_CABIN_DUMP_DIR", str(tmp_path))
+    client = MagicMock()
+    client.configured = True
+    client.model = "gemini-3.6-flash"
+    client.judge_jpeg.return_value = GeminiVerdict(
+        True, "phone_use_violation", 0.88, False, "phone at ear", [], 11.0, True,
+    )
+    emitted: list[dict] = []
+    q = VlmQueue(client, maxsize=8, max_age_sec=30.0, min_interval_sec=0.0)
+    q.set_emit_callback(emitted.append)
+    q.start()
+    ok = q.try_enqueue(
+        VlmJob(
+            jpeg=b"phonejpeg",
+            rule="phone_use_violation",
+            min_confidence=0.45,
+            event_skeleton={
+                "event_id": "e2",
+                "frigate_event_id": "fe2",
+                "metadata": {},
+            },
+            extra_context="frigate_event=fe2",
+        )
+    )
+    assert ok
+    time.sleep(0.3)
+    q.stop()
+    assert q.stats().get("cabin_dumped", 0) >= 1
+    assert q.stats()["emitted"] >= 1
+    assert emitted and emitted[0]["metadata"].get("vlm_crop_path")
+    assert "phone" in (emitted[0]["metadata"].get("vlm_prompt") or "").lower() or \
+        "Phone" in (emitted[0]["metadata"].get("vlm_prompt") or "")
 
 
 def test_vlm_queue_drops_when_full():

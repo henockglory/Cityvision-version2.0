@@ -1045,24 +1045,30 @@ class PipelineService:
                 if t.get("class_name") in ("car", "truck", "bus", "motorcycle")
             ])
 
-            for t in track_dicts_inframe:
-                calib_result = calib.update_track(
-                    camera_id, t["track_id"],
-                    t["bbox"]["x"] + t["bbox"]["width"] / 2,
-                    t["bbox"]["y"] + t["bbox"]["height"] / 2,
-                    now_ts, t["class_name"],
-                )
-                speed_evt = calib_result.get("speed_event")
-                if speed_evt:
-                    meta: dict[str, Any] = {"speed_kmh": t.get("metadata", {}).get("speed_kmh", 0)}
-                    if speed_evt == "sudden_stop":
-                        meta["vehicle_count"] = vehicle_count
-                        if calib_result.get("prior_speed_kmh") is not None:
-                            meta["prior_speed_kmh"] = calib_result["prior_speed_kmh"]
-                    all_events.append(self.event_generator.emit_behavior_event(
-                        camera_id, t["track_id"], speed_evt, 0.8,
-                        meta, ts, "warning",
-                    ))
+            # Local homography speed events (speeding / speed_below_minimum /
+            # sudden_stop) are owned by Frigate when FRIGATE_SPEED_BRIDGE is on:
+            # the local estimate is frame-to-frame and unreliable, Frigate's
+            # average_estimated_speed over the full zone traversal is the only
+            # speed source allowed to emit.
+            if not bool(settings.frigate_speed_bridge):
+                for t in track_dicts_inframe:
+                    calib_result = calib.update_track(
+                        camera_id, t["track_id"],
+                        t["bbox"]["x"] + t["bbox"]["width"] / 2,
+                        t["bbox"]["y"] + t["bbox"]["height"] / 2,
+                        now_ts, t["class_name"],
+                    )
+                    speed_evt = calib_result.get("speed_event")
+                    if speed_evt:
+                        meta: dict[str, Any] = {"speed_kmh": t.get("metadata", {}).get("speed_kmh", 0)}
+                        if speed_evt == "sudden_stop":
+                            meta["vehicle_count"] = vehicle_count
+                            if calib_result.get("prior_speed_kmh") is not None:
+                                meta["prior_speed_kmh"] = calib_result["prior_speed_kmh"]
+                        all_events.append(self.event_generator.emit_behavior_event(
+                            camera_id, t["track_id"], speed_evt, 0.8,
+                            meta, ts, "warning",
+                        ))
 
             persons = [t for t in track_dicts_inframe if t.get("class_name") == "person"]
             all_events.extend(self.abandoned.process(camera_id, track_dicts_inframe, persons, ts))
@@ -1118,9 +1124,14 @@ class PipelineService:
         # Cabin cameras (phone_use / seatbelt) are mutually exclusive with
         # speed-measurement: running zone_speed on a driver-cabin feed wastes
         # GPU/CPU cycles and can be caused by a misconfigured zone in the DB.
-        if (
+        if bool(settings.frigate_speed_bridge):
+            if self.zone_speed.camera_has_behavior(zones_cfg) and not cabin_active:
+                logger.debug(
+                    "speed_local_disabled camera=%s reason=frigate_speed_bridge",
+                    camera_id[:8],
+                )
+        elif (
             not cabin_active
-            and not bool(settings.frigate_speed_bridge)
             and self.zone_speed.camera_has_behavior(zones_cfg)
         ):
             all_events.extend(

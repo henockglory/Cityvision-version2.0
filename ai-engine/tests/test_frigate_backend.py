@@ -467,17 +467,24 @@ class FrigateTrackEvidenceTests(unittest.TestCase):
         mock_settings.ocr_url = "http://127.0.0.1:8181/ocr"
         mock_settings.ocr_timeout = 2.0
         mock_settings.plate_min_conf = 0.5
+        mock_settings.gemini_enabled = False
+        mock_settings.gemini_api_key = ""
         engine = FrigateTrackEvidence()
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         norm_bbox = {"x": 0.2, "y": 0.3, "width": 0.4, "height": 0.3}
         crop = engine._plate_rear_crop_jpeg(frame, norm_bbox, default_evidence_policy()["images"])
         self.assertIsNotNone(crop)
         mock_ocr.return_value = ("AB123CD", 0.9, "rear")
-        plate_jpeg, plate, conf = engine._ocr_plate(crop, {})
+        with patch(
+            "citevision_ai.identity.plate_fusion.run_paddle_on_jpeg",
+            return_value=None,
+        ):
+            plate_jpeg, plate, conf, source = engine._ocr_plate(crop, {})
         mock_ocr.assert_called_once()
         self.assertEqual(plate, "AB123CD")
         self.assertEqual(conf, 0.9)
         self.assertEqual(plate_jpeg, crop)
+        self.assertEqual(source, "fast_alpr")
 
     @patch("citevision_ai.evidence.frigate_track_evidence.recognize_plate_jpeg")
     @patch("citevision_ai.evidence.frigate_track_evidence.settings")
@@ -486,9 +493,10 @@ class FrigateTrackEvidenceTests(unittest.TestCase):
     ) -> None:
         mock_settings.ocr_url = "http://127.0.0.1:8181/ocr"
         engine = FrigateTrackEvidence()
-        plate_jpeg, plate, conf = engine._ocr_plate(None, {})
+        plate_jpeg, plate, conf, source = engine._ocr_plate(None, {})
         mock_ocr.assert_not_called()
         self.assertIsNone(plate_jpeg)
+        self.assertEqual(source, "none")
 
     @patch("citevision_ai.evidence.frigate_track_evidence.settings")
     def test_accept_correlation_rejects_high_align_delta(
