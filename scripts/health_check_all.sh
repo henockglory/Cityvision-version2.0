@@ -182,7 +182,20 @@ echo
 echo "--- go2rtc ---"
 STREAMS_JSON="$(curl -sf --max-time 5 "$GO2RTC_URL/api/streams" || true)"
 if [[ -z "$STREAMS_JSON" ]]; then
-  fail "go2rtc API unreachable at $GO2RTC_URL"
+  warn "go2rtc API unreachable — free ports 1984/8554/8555 + recreate"
+  # shellcheck source=scripts/lib/env-utils.sh
+  source "$ROOT/scripts/lib/env-utils.sh" 2>/dev/null || true
+  docker rm -f citevision-v2-go2rtc 2>/dev/null || true
+  free_port 1984 8554 8555 2>/dev/null || true
+  fuser -k 8555/udp 2>/dev/null || true
+  sleep 1
+  ENV_FILE="${ENV_FILE:-$ROOT/.env}"
+  (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" up -d go2rtc) >/dev/null 2>&1 || true
+  sleep 5
+  STREAMS_JSON="$(curl -sf --max-time 5 "$GO2RTC_URL/api/streams" || true)"
+fi
+if [[ -z "$STREAMS_JSON" ]]; then
+  fail "go2rtc API unreachable at $GO2RTC_URL after heal"
 else
   STREAMS="$(printf '%s' "$STREAMS_JSON" | json_len)"
   if [[ "$STREAMS" == "0" ]]; then

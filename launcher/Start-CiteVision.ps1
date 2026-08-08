@@ -13,7 +13,7 @@ $Distro = "Ubuntu-24.04"
 # Native WSL tree only (R.1). Never start from /mnt/c Windows mirrors.
 $WslRoot = "/home/gheno/citevision-v2"
 if ($WslRoot -match '^/mnt/[a-z]/') {
-  Write-Host "[FAIL] Refuse WSL root under /mnt/* — use ~/citevision-v2" -ForegroundColor Red
+  Write-Host "[FAIL] Refuse WSL root under /mnt/* - use ~/citevision-v2" -ForegroundColor Red
   exit 1
 }
 
@@ -31,20 +31,16 @@ if ($LASTEXITCODE -ne 0) {
 }
 $ErrorActionPreference = $prev
 
-# Refuse accidental /mnt/c runtime; require native ~/citevision-v2 tree.
-$probe = "test -f '{0}/scripts/lib/start-full-stack.sh' && case '{0}' in /mnt/*) exit 2;; *) exit 0;; esac" -f $WslRoot
+# PS 5.1-safe probe: no && and no bash case *) inside the PowerShell source line.
+$probe = ('test -f "{0}/scripts/lib/start-full-stack.sh"' -f $WslRoot)
 wsl -d $Distro -- bash -lc $probe
-if ($LASTEXITCODE -eq 2) {
-  Write-Host "[FAIL] Runtime under /mnt/* forbidden — sync to ~/citevision-v2" -ForegroundColor Red
-  exit 1
-}
 if ($LASTEXITCODE -ne 0) {
-  Write-Host ("[FAIL] Missing start-full-stack at {0}" -f $WslRoot) -ForegroundColor Red
+  Write-Host ("[FAIL] Missing start-full-stack at {0} - sync to ~/citevision-v2" -f $WslRoot) -ForegroundColor Red
   exit 1
 }
 
 # Use ';' not '&&' so Windows PowerShell 5.1 never mis-parses the command line.
-$bashCmd = "cd '{0}'; bash scripts/lib/start-full-stack.sh" -f $WslRoot
+$bashCmd = ("cd '{0}'; bash scripts/lib/start-full-stack.sh" -f $WslRoot)
 wsl -d $Distro -- bash -lc $bashCmd
 $rc = $LASTEXITCODE
 if ($rc -ne 0) {

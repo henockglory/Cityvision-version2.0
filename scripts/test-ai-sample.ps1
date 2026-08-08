@@ -7,4 +7,4 @@ try {
     Write-Host "[SKIP] AI engine not running at $AiUrl"
     exit 0
 }
-Write-Host "[INFO] Use pytest for offline infer tests: cd ai-engine && pytest tests/ -q"
+Write-Host "[INFO] Use pytest for offline infer tests: cd ai-engine ; pytest tests/ -q"

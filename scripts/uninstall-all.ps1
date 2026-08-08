@@ -136,27 +136,31 @@ if ($wslOk) {
     wsl -- sudo bash installer/linux/uninstall-service.sh 2>$null
     if ($LASTEXITCODE -eq 0) { $summary.wsl_svc = 'ok' } else { $summary.wsl_svc = 'warn' }
 
+    $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
     if ($KeepData) {
         Write-Log 'Docker compose down (volumes kept)...'
-        wsl -- bash -lc "cd '$($Root -replace '\\','/')' && docker compose -f infra/docker-compose.yml down" 2>$null
+        $downCmd = ("cd '{0}'; docker compose -f infra/docker-compose.yml down" -f $wslRoot)
+        wsl -- bash -lc $downCmd 2>$null
     } else {
         Write-Log 'Docker compose down -v (removing volumes)...'
-        $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
-        wsl -- bash -lc "cd '$wslRoot' && docker compose -f infra/docker-compose.yml down -v" 2>$null
+        $downCmd = ("cd '{0}'; docker compose -f infra/docker-compose.yml down -v" -f $wslRoot)
+        wsl -- bash -lc $downCmd 2>$null
     }
     if ($LASTEXITCODE -eq 0) { $summary.docker = 'ok' } else { $summary.docker = 'warn' }
 
     Write-Log 'Removing sentinels...'
-    $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
-    wsl -- bash -lc "cd '$wslRoot' && rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode" 2>$null
+    $rmSent = ("cd '{0}'; rm -f ai-engine/.venv/.installed_ok installer/.service_start_mode" -f $wslRoot)
+    wsl -- bash -lc $rmSent 2>$null
     if ($FromScratch -and -not $KeepDeps) {
         Write-Log 'Full purge (venv, node_modules, logs)...'
-        wsl -- bash -lc "cd '$wslRoot' && rm -rf ai-engine/.venv frontend/node_modules && rm -f generated.env && rm -f logs/*.log logs/*.pid && rm -rf ~/.citevision-v2 2>/dev/null || true" 2>$null
+        $purgeCmd = ("cd '{0}'; rm -rf ai-engine/.venv frontend/node_modules; rm -f generated.env; rm -f logs/*.log logs/*.pid; rm -rf ~/.citevision-v2 2>/dev/null; true" -f $wslRoot)
+        wsl -- bash -lc $purgeCmd 2>$null
         $summary.from_scratch = 'ok'
     }
     if ($DeleteUserData) {
         Write-Log 'Removing user data (videos, evidence)...'
-        wsl -- bash -lc "cd '$wslRoot' && rm -rf data/videos data/evidence 2>/dev/null || true" 2>$null
+        $rmData = ("cd '{0}'; rm -rf data/videos data/evidence 2>/dev/null; true" -f $wslRoot)
+        wsl -- bash -lc $rmData 2>$null
         $summary.delete_user_data = 'ok'
     }
 } else {

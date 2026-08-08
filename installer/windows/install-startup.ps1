@@ -132,7 +132,13 @@ function Test-Healthy {
 }
 
 if (-not (Test-Healthy)) {
-    & wsl.exe -- bash -lc "cd '$wslRoot' && bash scripts/start-linux.sh"
+    `$native = '/home/gheno/citevision-v2'
+    `$probe = ('test -f "{0}/scripts/start-linux.sh"' -f `$native)
+    wsl.exe -- bash -lc `$probe 2>`$null | Out-Null
+    if (`$LASTEXITCODE -eq 0) { `$useRoot = `$native } else { `$useRoot = '$wslRoot' }
+    if (`$useRoot -match '^/mnt/') { exit 1 }
+    `$bashCmd = ("cd '{0}'; bash scripts/start-linux.sh" -f `$useRoot)
+    & wsl.exe -- bash -lc `$bashCmd
 }
 
 `$loopScript = Join-Path `$Root 'installer\windows\citevision-watchdog-loop.ps1'
@@ -280,7 +286,7 @@ function Stop-WatchdogLoop {
         if (Test-Path $pidFile) {
             Remove-Item -Force $pidFile -ErrorAction SilentlyContinue
         }
-        # Do not Stop-Process — the loop exits on its own when it reads manual mode.
+        # Do not Stop-Process - the loop exits on its own when it reads manual mode.
     } | Out-Null
 }
 

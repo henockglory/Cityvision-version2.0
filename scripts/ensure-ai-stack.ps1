@@ -1,4 +1,4 @@
-﻿# CitéVision v2 — Ensure AI stack (Windows → WSL required for AI)
+﻿# CiteVision v2 - Ensure AI stack (Windows -> WSL required for AI)
 param(
     [switch]$Fix,
     [switch]$VerifyOnly,
@@ -16,7 +16,8 @@ function Invoke-WslEnsure {
     param([string[]]$Args)
     $wslRoot = Get-WslProjectRoot -WindowsRoot $Root
     $argStr = ($Args | ForEach-Object { "'$_'" }) -join ' '
-    wsl -- bash -lc "cd '$wslRoot' && bash scripts/ensure-ai-stack.sh $argStr"
+    $bashCmd = ("cd '{0}'; bash scripts/ensure-ai-stack.sh {1}" -f $wslRoot, $argStr)
+    wsl -- bash -lc $bashCmd
     return $LASTEXITCODE
 }
 

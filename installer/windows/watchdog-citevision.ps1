@@ -1,7 +1,8 @@
 #Requires -Version 5.1
 <#
-  Watchdog CitéVision (Windows) — relance la stack si le backend ne répond plus.
-  Appelé par la tâche planifiée CiteVision-Watchdog (mode auto uniquement).
+  Watchdog CiteVision (Windows) - restarts the stack if backend is down.
+  Called by scheduled task CiteVision-Watchdog (auto mode only).
+  ASCII-only for Windows PowerShell 5.1.
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Root
@@ -39,7 +40,7 @@ function Get-WslRoot {
     return "/mnt/$drive$rest"
 }
 
-# Respect manual mode — do not restart if configured as manual
+# Respect manual mode - do not restart if configured as manual
 $modeFile = Join-Path $Root 'installer\.service_start_mode'
 if (Test-Path $modeFile) {
     $mode = (Get-Content -Path $modeFile -Raw -Encoding UTF8).Trim().ToLower()
@@ -57,10 +58,22 @@ if (Test-Path $lockFile) {
 
 try {
     Set-Content -Path $lockFile -Value ([string][Environment]::TickCount) -Encoding ASCII
-    Write-WdLog 'Backend down — restarting stack via start-linux.sh'
-    $wslRoot = Get-WslRoot $Root
-    $startScript = "$wslRoot/scripts/start-linux.sh"
-    & wsl.exe -- bash -lc "cd '$wslRoot' && bash scripts/start-linux.sh" 2>&1 | Out-Null
+    Write-WdLog 'Backend down - restarting stack via start-linux.sh'
+    # Prefer native WSL runtime (R.1); Get-WslRoot kept as fallback probe only.
+    $nativeRoot = '/home/gheno/citevision-v2'
+    $probe = ('test -f "{0}/scripts/start-linux.sh"' -f $nativeRoot)
+    wsl.exe -- bash -lc $probe 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        $wslRoot = $nativeRoot
+    } else {
+        $wslRoot = Get-WslRoot $Root
+        if ($wslRoot -match '^/mnt/') {
+            Write-WdLog 'FAIL: runtime under /mnt/* and ~/citevision-v2 missing'
+            exit 1
+        }
+    }
+    $bashCmd = ("cd '{0}'; bash scripts/start-linux.sh" -f $wslRoot)
+    & wsl.exe -- bash -lc $bashCmd 2>&1 | Out-Null
     Start-Sleep -Seconds 5
     if (Test-AppHealthy) {
         Write-WdLog 'Restart OK'

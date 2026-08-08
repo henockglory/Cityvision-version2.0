@@ -50,9 +50,23 @@ fi
 # --- infra + Frigate + OCR ---
 echo "=== [2/10] docker compose (frigate + ocr profiles) ==="
 bash "$ROOT/scripts/ensure-video-storage.sh" 2>/dev/null || true
+
+# Stale docker-proxy / half-recreated go2rtc often holds 8555 and blocks compose.
+heal_go2rtc() {
+  echo "[INFO] heal go2rtc (free 1984/8554/8555 + recreate)"
+  docker rm -f citevision-v2-go2rtc 2>/dev/null || true
+  free_port 1984 8554 8555 2>/dev/null || true
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k 8555/udp 2>/dev/null || true
+  fi
+  sleep 1
+  (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" up -d go2rtc) 2>&1 | tail -15 || true
+}
+
 cd "$ROOT/infra"
+# Core infra first (without go2rtc) so a bind failure on 8555 does not abort siblings.
 docker compose --env-file "$ENV_FILE" --profile frigate --profile ocr up -d \
-  postgres redis mosquitto minio go2rtc mailhog citevision-ocr frigate 2>&1 | tail -25 || true
+  postgres redis mosquitto minio mailhog citevision-ocr frigate 2>&1 | tail -25 || true
 # Named services may still need profile; retry profiles if frigate missing
 if ! docker ps --format '{{.Names}}' | grep -q citevision-v2-frigate; then
   docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate 2>&1 | tail -10 || true
@@ -61,6 +75,15 @@ if ! docker ps --format '{{.Names}}' | grep -q citevision-v2-ocr; then
   docker compose --env-file "$ENV_FILE" --profile ocr up -d citevision-ocr 2>&1 | tail -10 || true
 fi
 cd "$ROOT"
+
+# Bring go2rtc up with port preflight; heal once on failure.
+if curl -sf --max-time 2 "http://127.0.0.1:1984/api" >/dev/null 2>&1 \
+  && docker ps --format '{{.Names}}' | grep -q '^citevision-v2-go2rtc$'; then
+  echo "[OK] go2rtc already healthy"
+else
+  heal_go2rtc
+fi
+
 sleep 5
 
 for i in $(seq 1 45); do
@@ -70,9 +93,9 @@ done
 docker exec citevision-v2-postgres pg_isready -U citevision >/dev/null 2>&1 \
   || { echo "[FAIL] postgres"; exit 1; }
 
-if ! wait_http_ok "http://127.0.0.1:1984/api" 60; then
-  echo "[WARN] go2rtc slow — restart"
-  docker restart citevision-v2-go2rtc >/dev/null 2>&1 || true
+if ! wait_http_ok "http://127.0.0.1:1984/api" 45; then
+  echo "[WARN] go2rtc API down after compose — heal + retry"
+  heal_go2rtc
   sleep 3
   wait_http_ok "http://127.0.0.1:1984/api" 60 || { echo "[FAIL] go2rtc"; exit 1; }
 fi
@@ -80,8 +103,7 @@ echo "[OK] postgres + go2rtc"
 
 if ! docker exec citevision-v2-go2rtc ls /videos >/dev/null 2>&1; then
   echo "[WARN] /videos missing in go2rtc — recreate"
-  docker rm -f citevision-v2-go2rtc 2>/dev/null || true
-  (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" up -d go2rtc)
+  heal_go2rtc
   sleep 3
 fi
 

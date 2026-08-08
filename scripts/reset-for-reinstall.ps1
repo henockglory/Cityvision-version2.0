@@ -45,7 +45,8 @@ Write-Host '[INFO] Arrêt stack WSL (stop-linux.sh)...'
 $drive = $Root.Substring(0, 1).ToLower()
 $rest = $Root.Substring(2).Replace('\', '/')
 $wslRoot = "/mnt/$drive$rest"
-wsl -- bash -lc "cd '$wslRoot' && bash scripts/stop-linux.sh 2>/dev/null || true" 2>$null
+$stopCmd = ("cd '{0}'; bash scripts/stop-linux.sh 2>/dev/null; true" -f $wslRoot)
+wsl -- bash -lc $stopCmd 2>$null
 
 Write-Host '[INFO] Sentinels installateur...'
 @(
@@ -62,15 +63,17 @@ Write-Host '[INFO] Sentinels installateur...'
 $resultJson = Join-Path $env:TEMP 'citevision-svc-result.json'
 if (Test-Path $resultJson) { Remove-Item -Force $resultJson }
 
-Write-Host '[INFO] Remise à zéro base de données (utilisateurs / orgs)…'
-wsl -- bash -lc "cd '$wslRoot' && bash scripts/reset-install-fast.sh" 2>&1
+Write-Host '[INFO] Remise a zero base de donnees (utilisateurs / orgs)...'
+$resetCmd = ("cd '{0}'; bash scripts/reset-install-fast.sh" -f $wslRoot)
+wsl -- bash -lc $resetCmd 2>&1
 
 Write-Host '[INFO] Docker infra down...'
 Push-Location $Root
 try {
-    wsl -- bash -lc "cd '$wslRoot' && docker compose -f infra/docker-compose.yml down 2>/dev/null || true"
+    $downCmd = ("cd '{0}'; docker compose -f infra/docker-compose.yml down 2>/dev/null; true" -f $wslRoot)
+    wsl -- bash -lc $downCmd
 } finally { Pop-Location }
 
 Write-Host ''
-Write-Host '[OK] Prêt pour une nouvelle installation — lancez setup.bat'
+Write-Host '[OK] Pret pour une nouvelle installation - lancez setup.bat'
 Write-Host ''

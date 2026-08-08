@@ -23,13 +23,13 @@ function Write-Log { param([string]$msg, [string]$level = "INFO")
     Write-Host "[$ts][$level] $msg"
 }
 
-# ── Vérifier admin ──────────────────────────────────────────────────────────
+# â"€â"€ VÃ©rifier admin â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]"Administrator")
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # A) Python
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 Write-Log "Verification Python..."
 $pythonCmds = @("python3.12","python3","python","py")
 $pythonFound = $null
@@ -49,7 +49,7 @@ if (-not $pythonFound) {
 
     $installed = $false
 
-    # Méthode 1: winget
+    # MÃ©thode 1: winget
     if (-not $installed) {
         try {
             $wg = Get-Command winget -ErrorAction SilentlyContinue
@@ -69,7 +69,7 @@ if (-not $pythonFound) {
         } catch { Write-Log "winget indisponible: $_" "WARN" }
     }
 
-    # Méthode 2: choco
+    # MÃ©thode 2: choco
     if (-not $installed) {
         try {
             $choco = Get-Command choco -ErrorAction SilentlyContinue
@@ -86,7 +86,7 @@ if (-not $pythonFound) {
         } catch { Write-Log "Chocolatey indisponible: $_" "WARN" }
     }
 
-    # Méthode 3: téléchargement direct python.org
+    # MÃ©thode 3: tÃ©lÃ©chargement direct python.org
     if (-not $installed) {
         try {
             Write-Log "Telechargement Python 3.12 depuis python.org..."
@@ -105,11 +105,11 @@ if (-not $pythonFound) {
         } catch { Write-Log "echec telechargement python.org: $_" "ERROR" }
     }
 
-    # Rafraîchir PATH
+    # RafraÃ®chir PATH
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
                 [System.Environment]::GetEnvironmentVariable("Path","User")
 
-    # Revérifier
+    # RevÃ©rifier
     foreach ($cmd in $pythonCmds) {
         try {
             $v = & $cmd --version 2>&1
@@ -122,7 +122,7 @@ if (-not $pythonFound) {
     }
 
     if ($installed -and -not $pythonFound) {
-        # Besoin d'un redémarrage de session pour le PATH
+        # Besoin d'un redÃ©marrage de session pour le PATH
         Write-Log "Python installe mais necessite redemarrage de session pour PATH" "WARN"
         $RESULT.reboot_required = $true
     }
@@ -130,9 +130,9 @@ if (-not $pythonFound) {
 
 $RESULT.python_ok = ($null -ne $pythonFound)
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # B) WSL2
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 Write-Log "Verification WSL2..."
 
 $wslOk = $false
@@ -142,7 +142,7 @@ try {
         $wslOk = $true
         Write-Log "WSL2 actif" "OK"
     } elseif ($LASTEXITCODE -eq 0) {
-        # WSL installé mais peut être WSL1
+        # WSL installÃ© mais peut Ãªtre WSL1
         Write-Log "WSL present mais version incertaine: $wslStatus" "WARN"
         $wslOk = $true  # On suppose WSL2 si la commande reussit sur Win11
     }
@@ -180,7 +180,7 @@ if (-not $wslOk) {
                 $RESULT.reboot_required = $true
                 $wslOk = $true
             }
-            # Forcer WSL2 par défaut
+            # Forcer WSL2 par dÃ©faut
             & wsl --set-default-version 2 2>&1 | Out-Null
         } catch {
             Write-Log "echec activation WSL: $_" "ERROR"
@@ -190,9 +190,9 @@ if (-not $wslOk) {
 
 $RESULT.wsl_ok = $wslOk
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # C) Ubuntu dans WSL
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 Write-Log "Verification distribution Ubuntu dans WSL..."
 
 $ubuntuOk = $false
@@ -212,7 +212,7 @@ if ($wslOk -and -not $RESULT.reboot_required) {
             }) -join ' '
         }
 
-        # Fallback 2 : tenter d'exécuter bash directement pour prouver que WSL fonctionne
+        # Fallback 2 : tenter d'exÃ©cuter bash directement pour prouver que WSL fonctionne
         if (-not ($cleanList -match 'Ubuntu')) {
             $testRc = (& wsl -- bash -c "echo ok" 2>&1)
             if ($LASTEXITCODE -eq 0 -and ($testRc -join '') -match 'ok') {
@@ -254,9 +254,9 @@ if ($wslOk -and -not $RESULT.reboot_required) {
 
 $RESULT.ubuntu_ok = $ubuntuOk
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Sentinel file — évite de refaire au prochain lancement
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# Sentinel file â€" Ã©vite de refaire au prochain lancement
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 if ($RESULT.python_ok -and $RESULT.wsl_ok -and $RESULT.ubuntu_ok) {
     try {
         $sentinelDir = Split-Path $SENTINEL
@@ -266,6 +266,6 @@ if ($RESULT.python_ok -and $RESULT.wsl_ok -and $RESULT.ubuntu_ok) {
     } catch { Write-Log "Impossible de creer le sentinel: $_" "WARN" }
 }
 
-# ── Sortie JSON ──────────────────────────────────────────────────────────────
+# â"€â"€ Sortie JSON â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 $json = $RESULT | ConvertTo-Json -Compress
 Write-Output $json

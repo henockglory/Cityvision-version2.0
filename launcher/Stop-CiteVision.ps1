@@ -1,40 +1,76 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Arrête proprement toute la stack CitéVision (ordre sûr) pour libérer CPU/GPU/RAM/disque.
+  Stop the full CiteVision stack safely (free CPU/GPU/RAM/disk).
 .NOTES
-  powershell -ExecutionPolicy Bypass -File ops\Stop-CiteVision.ps1
+  Runtime = WSL ~/citevision-v2.
+  powershell -ExecutionPolicy Bypass -File launcher\Stop-CiteVision.ps1
+  ASCII-only strings for Windows PowerShell 5.1 encoding safety.
 #>
 $ErrorActionPreference = "Continue"
 $Distro = "Ubuntu-24.04"
+# Native WSL tree only (R.1). Never stop/start from /mnt/c Windows mirrors.
 $WslRoot = "/home/gheno/citevision-v2"
+if ($WslRoot -match '^/mnt/[a-z]/') {
+  Write-Host "[FAIL] Refuse WSL root under /mnt/* - use ~/citevision-v2" -ForegroundColor Red
+  exit 1
+}
 
+Write-Host ""
+Write-Host ("CiteVision STOP - WSL {0}" -f $WslRoot) -ForegroundColor Cyan
+Write-Host ""
+
+$prev = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+wsl -d $Distro -e true 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  $ErrorActionPreference = $prev
+  Write-Host ("[FAIL] WSL distro '{0}' not available" -f $Distro) -ForegroundColor Red
+  exit 1
+}
+$ErrorActionPreference = $prev
+
+# PS 5.1-safe probe: no && / case *) in the PowerShell source line.
+$probe = ('test -d "{0}" -a -f "{0}/scripts/lib/start-full-stack.sh"' -f $WslRoot)
+wsl -d $Distro -- bash -lc $probe
+if ($LASTEXITCODE -ne 0) {
+  Write-Host ("[FAIL] Missing runtime at {0} - sync to ~/citevision-v2" -f $WslRoot) -ForegroundColor Red
+  exit 1
+}
+
+# Bash body as single-quoted here-string (PS does not expand). ASCII only.
 $bash = @'
 #!/usr/bin/env bash
 set -uo pipefail
-ROOT="${CV_ROOT:-/home/gheno/citevision-v2}"
+ROOT="${CV_ROOT:-$HOME/citevision-v2}"
+case "$ROOT" in
+  /mnt/*)
+    echo "[FAIL] Refuse ROOT under /mnt/* (got $ROOT)"
+    exit 1
+    ;;
+esac
 cd "$ROOT" || { echo "[FAIL] ROOT=$ROOT"; exit 1; }
+# shellcheck source=/dev/null
 source "$ROOT/scripts/lib/env-utils.sh" 2>/dev/null || true
 ENV_FILE="${ROOT}/.env"
 KEY="changeme_internal_service_key"
 if [[ -f "$ENV_FILE" ]]; then
+  set -a
   # shellcheck disable=SC1090
-  set -a; source <(grep -E '^[A-Z0-9_]+=' "$ENV_FILE" | sed 's/\r$//'); set +a
+  source <(grep -E '^[A-Z0-9_]+=' "$ENV_FILE" | sed 's/\r$//')
+  set +a
   KEY="${INTERNAL_API_KEY:-$KEY}"
 fi
 LOGDIR="$ROOT/logs"
 
-echo "╔══════════════════════════════════════════════╗"
-echo "║  CitéVision — STOP ALL ($(date -Is))         ║"
-echo "╚══════════════════════════════════════════════╝"
+echo "=== CiteVision STOP ALL $(date -Is) ==="
+echo "ROOT=$ROOT"
 
-# 1) Couper règles Démo (anti refill Frigate)
 echo "=== [1/6] disable demo rules ==="
 docker exec citevision-v2-postgres psql -U citevision -d citevision -c \
-  "UPDATE rules SET is_enabled=false, updated_at=NOW() WHERE name LIKE 'Démo%';" 2>/dev/null \
-  || echo "[WARN] postgres indisponible pour disable rules"
+  "UPDATE rules SET is_enabled=false, updated_at=NOW() WHERE name LIKE 'Demo%' OR name LIKE 'Démo%';" 2>/dev/null \
+  || echo "[WARN] postgres unavailable for disable rules"
 
-# 2) Watchdogs + process applicatifs
 echo "=== [2/6] stop watchdogs / frontend / AI / rules / backend ==="
 for svc in watch-demo-stack watch-backend watch-ai-ingest frontend ai-engine rules-engine backend; do
   if [[ -f "$LOGDIR/${svc}.pid" ]]; then
@@ -49,24 +85,20 @@ pkill -f 'uvicorn citevision_ai.main' 2>/dev/null || true
 pkill -f 'citevision-ai|run-ai-engine' 2>/dev/null || true
 pkill -f 'rules-engine' 2>/dev/null || true
 pkill -f 'citevision-api' 2>/dev/null || true
-# free ports
 for p in 5174 5175 8081 8001 8010; do
   fuser -k "${p}/tcp" 2>/dev/null || true
 done
 sleep 2
 echo "[OK] app processes stopped"
 
-# 3) Frigate / go2rtc / OCR d'abord (consommateurs média)
 echo "=== [3/6] stop Frigate + go2rtc + OCR ==="
 docker stop citevision-v2-frigate citevision-v2-go2rtc citevision-v2-ocr 2>/dev/null || true
 
-# 4) Reste infra (garder volumes — pas de -v)
 echo "=== [4/6] stop infra containers ==="
 docker stop citevision-v2-mailhog citevision-v2-minio citevision-v2-mosquitto \
   citevision-v2-redis citevision-v2-postgres 2>/dev/null || true
-(cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" stop 2>/dev/null) || true
+(cd "$ROOT/infra" ; docker compose --env-file "$ENV_FILE" stop 2>/dev/null) || true
 
-# 5) Vérif ports libres
 echo "=== [5/6] verify ports ==="
 still=0
 for p in 5174 8081 8001 8010 5000 1984; do
@@ -77,21 +109,29 @@ for p in 5174 8081 8001 8010 5000 1984; do
     still=1
   fi
 done
-[[ "$still" = "0" ]] && echo "[OK] service ports quiet"
+if [[ "$still" = "0" ]]; then
+  echo "[OK] service ports quiet"
+fi
 
-# 6) Résumé ressources (dockerd laissé vivant — redémarrage plus rapide)
 echo "=== [6/6] summary ==="
 docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | head -20 || echo "docker ps n/a"
 echo ""
-echo "╔══════════════════════════════════════════════╗"
-echo "║  STOP DONE — ressources libérées             ║"
-echo "║  dockerd WSL laissé actif (volontaire)       ║"
-echo "║  Relance: launcher\\Start-CiteVision.ps1      ║"
-echo "╚══════════════════════════════════════════════╝"
+echo "=== STOP DONE - dockerd WSL left running ==="
+echo "Restart: launcher\\Start-CiteVision.ps1"
 exit 0
 '@
 
 $tmp = Join-Path $env:TEMP "citevision-stop-all.sh"
-[System.IO.File]::WriteAllText($tmp, ($bash -replace "`r`n","`n" -replace "`r","`n"))
-Get-Content -LiteralPath $tmp -Raw | wsl -d $Distro -- bash -c "cat > /tmp/citevision-stop-all.sh && sed -i 's/\r`$//' /tmp/citevision-stop-all.sh && CV_ROOT=$WslRoot bash /tmp/citevision-stop-all.sh"
-exit $LASTEXITCODE
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($tmp, ($bash -replace "`r`n", "`n" -replace "`r", "`n"), $utf8NoBom)
+
+# PS 5.1-safe: no && in the PowerShell double-quoted argument.
+$remoteCmd = ('cat > /tmp/citevision-stop-all.sh; sed -i "s/\r$//" /tmp/citevision-stop-all.sh; CV_ROOT={0} bash /tmp/citevision-stop-all.sh' -f $WslRoot)
+Get-Content -LiteralPath $tmp -Raw | wsl -d $Distro -- bash -lc $remoteCmd
+$rc = $LASTEXITCODE
+if ($rc -ne 0) {
+  Write-Host ("[FAIL] stop exit={0}" -f $rc) -ForegroundColor Red
+  exit $rc
+}
+Write-Host "[OK] Stack stopped" -ForegroundColor Green
+exit 0
