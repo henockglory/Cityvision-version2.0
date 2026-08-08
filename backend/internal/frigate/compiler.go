@@ -79,6 +79,7 @@ func NewCompiler(cfg Config) *Compiler {
 
 func (c *Compiler) BuildConfig(
 	cameras []CompiledCamera,
+	faceRecognition bool,
 ) ([]byte, error) {
 	base, err := c.loadBase()
 	if err != nil {
@@ -105,6 +106,18 @@ func (c *Compiler) BuildConfig(
 		if entry.LPR.Enabled {
 			base["lpr"] = map[string]interface{}{"enabled": true}
 			break
+		}
+	}
+	// Global face_recognition when CiteVision has face watchlist / face rules.
+	// model_size=large prefers GPU/NPU (A.5); Frigate falls back internally if needed.
+	if faceRecognition {
+		modelSize := "large"
+		if strings.EqualFold(os.Getenv("FRIGATE_FACE_MODEL_SIZE"), "small") {
+			modelSize = "small"
+		}
+		base["face_recognition"] = map[string]interface{}{
+			"enabled":    true,
+			"model_size": modelSize,
 		}
 	}
 	return yaml.Marshal(base)

@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"strings"
+	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var frigateNameCleaner = regexp.MustCompile(`[^0-9A-Za-zÀ-ÿ _'\-]+`)
 
 var ErrNotFound = errors.New("list not found")
 
@@ -127,4 +133,106 @@ func (s *Service) AppendEntry(ctx context.Context, orgID, listID uuid.UUID, entr
 		updated, listID, orgID,
 	).Scan(&out.ID, &out.OrgID, &out.Name, &out.ListType, &out.Entries, &out.IsActive, &out.CreatedAt, &out.UpdatedAt)
 	return &out, err
+}
+
+// OrgHasActiveFaceWatchlist reports whether any active face_watchlist has ≥1 entry.
+func (s *Service) OrgHasActiveFaceWatchlist(ctx context.Context) (bool, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(jsonb_array_length(entries)), 0)::int
+		FROM surveillance_lists
+		WHERE list_type = 'face_watchlist' AND is_active = TRUE`).Scan(&n)
+	return n > 0, err
+}
+
+// SanitizeFrigateName maps a human label to a Frigate Face Library name.
+func SanitizeFrigateName(label string) string {
+	s := strings.TrimSpace(label)
+	if s == "" {
+		return "unknown"
+	}
+	s = frigateNameCleaner.ReplaceAllString(s, "")
+	s = strings.Join(strings.Fields(s), " ")
+	if s == "" {
+		return "unknown"
+	}
+	runes := []rune(s)
+	if len(runes) > 50 {
+		s = string(runes[:50])
+	}
+	return strings.TrimSpace(s)
+}
+
+// NewFaceEntry builds a normalized face_watchlist entry with embedding metadata.
+func NewFaceEntry(identifier, label string, embedding []float64, photoObjectKey, photoURL, frigateSync string) map[string]interface{} {
+	id := strings.TrimSpace(identifier)
+	if id == "" {
+		id = uuid.New().String()
+	}
+	lab := strings.TrimSpace(label)
+	if lab == "" {
+		lab = id
+	}
+	meta := map[string]interface{}{
+		"embedding":         embedding,
+		"photo_object_key":  photoObjectKey,
+		"enrolled_at":       time.Now().UTC().Format(time.RFC3339),
+		"frigate_name":      SanitizeFrigateName(lab),
+		"frigate_sync":      frigateSync,
+		"has_photo":         photoObjectKey != "",
+	}
+	if photoURL != "" {
+		meta["photo_url"] = photoURL
+	}
+	return map[string]interface{}{
+		"identifier": id,
+		"label":      lab,
+		"metadata":   meta,
+	}
+}
+
+// NormalizePlateEntry ensures plate entries carry identifier + plate_number.
+func NormalizePlateEntry(raw map[string]interface{}) map[string]interface{} {
+	plate := firstString(raw, "plate_number", "plate", "identifier", "label")
+	plate = strings.ToUpper(strings.TrimSpace(plate))
+	out := map[string]interface{}{
+		"identifier":   plate,
+		"plate_number": plate,
+		"label":        plate,
+	}
+	for k, v := range raw {
+		if _, skip := out[k]; skip {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func firstString(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			switch t := v.(type) {
+			case string:
+				if strings.TrimSpace(t) != "" {
+					return strings.TrimSpace(t)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// IsPrintableLabel rejects control-only labels.
+func IsPrintableLabel(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
 }

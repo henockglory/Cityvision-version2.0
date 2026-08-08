@@ -7,6 +7,7 @@ import re
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -14,6 +15,25 @@ import numpy as np
 from citevision_ai.face.insightface_stub import FaceRecognizer
 
 logger = logging.getLogger(__name__)
+
+
+def watchlist_photo_dir() -> Path:
+    raw = str(os.environ.get("WATCHLIST_PHOTO_DIR") or "").strip()
+    if raw:
+        return Path(raw)
+    return Path(os.environ.get("VLM_FACE_DUMP_DIR") or "/tmp/citevision-watchlist-photos").parent / "watchlist_photos"
+
+
+def save_watchlist_photo(identifier: str, jpeg: bytes) -> str:
+    """Persist enrollment JPEG for Gemini multimodal compare (local cache)."""
+    if not jpeg or not identifier:
+        return ""
+    root = watchlist_photo_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_.\-]+", "_", identifier.strip())[:80] or "face"
+    path = root / f"{safe}.jpg"
+    path.write_bytes(jpeg)
+    return str(path)
 
 
 class InsightFaceRecognizer(FaceRecognizer):
@@ -129,8 +149,112 @@ class FaceIdentityEngine:
         return bool(self._gemini_enabled)
 
     def set_watchlist(self, entries: list[dict[str, Any]]) -> None:
-        self._watchlist = entries
+        self._watchlist = list(entries or [])
         self._last_refresh = time.monotonic()
+        # Best-effort: if metadata carries photo bytes path already on disk, keep it.
+        logger.info("face watchlist set entries=%d", len(self._watchlist))
+
+    def embed_jpeg(self, jpeg: bytes) -> dict[str, Any]:
+        """Return best face embedding from a still image (enrollment path)."""
+        import cv2
+
+        if not jpeg:
+            return {"embedding": [], "face_count": 0, "error": "empty_jpeg"}
+        if not (hasattr(self.recognizer, "is_loaded") and self.recognizer.is_loaded):
+            return {"embedding": [], "face_count": 0, "error": "insightface_not_loaded"}
+        arr = np.frombuffer(jpeg, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if frame is None:
+            return {"embedding": [], "face_count": 0, "error": "decode_failed"}
+        faces = self.recognizer.detect_faces(frame)
+        if not faces:
+            return {"embedding": [], "face_count": 0, "error": "no_face"}
+        best = max(faces, key=lambda f: float(f.get("confidence") or 0.0))
+        emb = best.get("embedding")
+        if not emb:
+            return {"embedding": [], "face_count": len(faces), "error": "no_embedding"}
+        return {
+            "embedding": list(emb),
+            "face_count": len(faces),
+            "confidence": float(best.get("confidence") or 0.0),
+            "bbox": best.get("bbox"),
+        }
+
+    def match_vote_from_jpeg(self, jpeg: bytes) -> dict[str, Any]:
+        """Single InsightFace vote dict for fusion (not full event emit list)."""
+        events = self.match_jpeg(jpeg)
+        best_score = None
+        best_label = None
+        best_id = None
+        face_seen = False
+        for ev in events:
+            et = str(ev.get("event_type") or "")
+            meta = ev.get("metadata") or {}
+            if et == "face_detected":
+                face_seen = True
+            if et == "face_watchlist_match":
+                score = meta.get("embedding_score", meta.get("confidence"))
+                try:
+                    score_f = float(score) if score is not None else 0.0
+                except (TypeError, ValueError):
+                    score_f = 0.0
+                if best_score is None or score_f > best_score:
+                    best_score = score_f
+                    best_label = meta.get("label")
+                    best_id = meta.get("identifier")
+                    face_seen = True
+            if et == "face_unknown":
+                face_seen = True
+        if best_label:
+            return {
+                "match": True,
+                "label": best_label,
+                "identifier": best_id,
+                "score": best_score,
+                "status": "ok",
+                "source": "insightface_on_frigate_crop",
+                "face_clear": True,
+            }
+        return {
+            "match": False,
+            "label": None,
+            "score": best_score,
+            "status": "ok" if face_seen else "no_face",
+            "source": "insightface_on_frigate_crop",
+            "face_clear": face_seen,
+        }
+
+    def reference_photos(self, max_n: int = 6) -> list[tuple[str, bytes]]:
+        """Load up to max_n local watchlist reference JPEGs for Gemini compare."""
+        out: list[tuple[str, bytes]] = []
+        root = watchlist_photo_dir()
+        for entry in self._watchlist:
+            if len(out) >= max_n:
+                break
+            label = str(entry.get("label") or entry.get("identifier") or "").strip()
+            if not label:
+                continue
+            meta = entry.get("metadata") or {}
+            paths: list[str] = []
+            for key in ("ai_photo_path", "photo_path"):
+                p = str(meta.get(key) or "").strip()
+                if p:
+                    paths.append(p)
+            ident = str(entry.get("identifier") or "").strip()
+            if ident:
+                paths.append(str(root / f"{re.sub(r'[^A-Za-z0-9_.\\-]+', '_', ident)[:80]}.jpg"))
+            # also try label-based filename
+            safe_lab = re.sub(r"[^A-Za-z0-9_.\-]+", "_", label)[:80]
+            paths.append(str(root / f"{safe_lab}.jpg"))
+            for p in paths:
+                try:
+                    data = Path(p).read_bytes()
+                except OSError:
+                    continue
+                if data:
+                    out.append((label, data))
+                    break
+        return out
 
     def process_frame(
         self,

@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -1237,14 +1239,25 @@ func (a *API) AddSurveillanceListEntry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if req["identifier"] == nil && req["plate"] == nil {
-		writeError(w, http.StatusBadRequest, "identifier required")
+	list, err := a.Identity.Get(r.Context(), orgID, listID)
+	if errors.Is(err, identity.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if req["identifier"] == nil {
-		req["identifier"] = req["plate"]
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "lookup failed")
+		return
 	}
-	l, err := a.Identity.AppendEntry(r.Context(), orgID, listID, req)
+	if list.ListType == "face_watchlist" {
+		writeError(w, http.StatusBadRequest, "face entries require photo enroll via /entries/enroll")
+		return
+	}
+	if req["identifier"] == nil && req["plate"] == nil && req["plate_number"] == nil {
+		writeError(w, http.StatusBadRequest, "identifier or plate required")
+		return
+	}
+	entry := identity.NormalizePlateEntry(req)
+	l, err := a.Identity.AppendEntry(r.Context(), orgID, listID, entry)
 	if errors.Is(err, identity.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -1253,7 +1266,125 @@ func (a *API) AddSurveillanceListEntry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "append failed")
 		return
 	}
+	if a.Orchestrator != nil {
+		a.Orchestrator.InvalidateConfigHashes()
+	}
 	writeJSON(w, http.StatusOK, l)
+}
+
+// EnrollSurveillanceListEntry enrolls a face watchlist photo (embedding + Frigate mirror).
+func (a *API) EnrollSurveillanceListEntry(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	listID, err := uuid.Parse(chi.URLParam(r, "listID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	list, err := a.Identity.Get(r.Context(), orgID, listID)
+	if errors.Is(err, identity.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+	if list.ListType != "face_watchlist" {
+		writeError(w, http.StatusBadRequest, "photo enroll only for face_watchlist")
+		return
+	}
+	if err := r.ParseMultipartForm(12 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "multipart required")
+		return
+	}
+	label := strings.TrimSpace(r.FormValue("label"))
+	if !identity.IsPrintableLabel(label) {
+		writeError(w, http.StatusBadRequest, "label required")
+		return
+	}
+	identifier := strings.TrimSpace(r.FormValue("identifier"))
+	if identifier == "" {
+		identifier = uuid.New().String()
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "file required")
+		return
+	}
+	defer file.Close()
+	jpeg, err := io.ReadAll(io.LimitReader(file, 10<<20))
+	if err != nil || len(jpeg) == 0 {
+		writeError(w, http.StatusBadRequest, "empty file")
+		return
+	}
+	ct := header.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "image/jpeg"
+	}
+	if a.AI == nil {
+		writeError(w, http.StatusServiceUnavailable, "ai engine unavailable")
+		return
+	}
+	embed, err := a.AI.EmbedFace(r.Context(), identifier, label, jpeg, ct)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "face embed failed: "+err.Error())
+		return
+	}
+
+	entryID := uuid.New()
+	photoKey := ""
+	photoURL := ""
+	if a.Evidence != nil && a.Evidence.Available() {
+		photoKey = evidence.WatchlistPhotoKey(orgID, listID, entryID)
+		if err := a.Evidence.PutObject(r.Context(), photoKey, bytes.NewReader(jpeg), int64(len(jpeg)), "image/jpeg"); err != nil {
+			slog.Warn("watchlist photo minio upload failed", "error", err)
+			photoKey = ""
+		} else {
+			photoURL = a.Evidence.AssetURL(orgID, photoKey)
+		}
+	}
+
+	frigateSync := "skipped"
+	frigateName := identity.SanitizeFrigateName(label)
+	if a.Frigate != nil && a.Frigate.Enabled() {
+		if err := a.Frigate.RegisterWatchlistFace(r.Context(), frigateName, jpeg); err != nil {
+			frigateSync = "error:" + err.Error()
+			slog.Warn("frigate face register failed", "name", frigateName, "error", err)
+		} else {
+			frigateSync = "ok"
+			// Ensure face_recognition is enabled in generated config.
+			go a.triggerFrigateSync(context.Background(), orgID, nil)
+		}
+	}
+
+	entry := identity.NewFaceEntry(identifier, label, embed.Embedding, photoKey, photoURL, frigateSync)
+	if meta, ok := entry["metadata"].(map[string]interface{}); ok {
+		meta["entry_id"] = entryID.String()
+		if embed.PhotoPath != "" {
+			meta["ai_photo_path"] = embed.PhotoPath
+		}
+	}
+	l, err := a.Identity.AppendEntry(r.Context(), orgID, listID, entry)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "append failed")
+		return
+	}
+
+	if a.Orchestrator != nil {
+		a.Orchestrator.InvalidateConfigHashes()
+		wl := a.Orchestrator.BuildWatchlist(r.Context(), orgID)
+		if a.AI != nil && len(wl) > 0 {
+			_ = a.AI.SetWatchlist(r.Context(), wl)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"list":          l,
+		"entry":         entry,
+		"frigate_sync":  frigateSync,
+		"frigate_name":  frigateName,
+		"embedding_dim": len(embed.Embedding),
+	})
 }
 
 func (a *API) ListUsers(w http.ResponseWriter, r *http.Request) {

@@ -50,6 +50,52 @@ func (s *SyncService) Enabled() bool {
 	return s.cfg.SyncEnabled()
 }
 
+// RegisterWatchlistFace mirrors a CiteVision watchlist photo into Frigate Face Library.
+func (s *SyncService) RegisterWatchlistFace(ctx context.Context, name string, jpeg []byte) error {
+	if s == nil || s.client == nil {
+		return fmt.Errorf("frigate client unavailable")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("face name required")
+	}
+	// create is idempotent enough — ignore "already exists" style failures
+	_ = s.client.CreateFace(ctx, name)
+	return s.client.RegisterFace(ctx, name, jpeg)
+}
+
+// NeedsFaceRecognition is true when any active face watchlist has entries
+// or any enabled rule emits face_watchlist_match.
+func (s *SyncService) NeedsFaceRecognition(ctx context.Context) bool {
+	if s == nil || s.pool == nil {
+		return false
+	}
+	var n int
+	_ = s.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(jsonb_array_length(entries)), 0)::int
+		FROM surveillance_lists
+		WHERE list_type = 'face_watchlist' AND is_active = TRUE`).Scan(&n)
+	if n > 0 {
+		return true
+	}
+	rows, err := s.pool.Query(ctx, `SELECT definition FROM rules WHERE is_enabled = TRUE`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var defRaw []byte
+		if err := rows.Scan(&defRaw); err != nil {
+			continue
+		}
+		raw := strings.ToLower(string(defRaw))
+		if strings.Contains(raw, "face_watchlist_match") {
+			return true
+		}
+	}
+	return false
+}
+
 // RebuildAll regenerates config for every active camera eligible for Frigate
 // (real RTSP cameras + demo virtual cameras fed by go2rtc).
 func (s *SyncService) RebuildAll(ctx context.Context) error {
@@ -94,7 +140,7 @@ func (s *SyncService) RebuildAll(ctx context.Context) error {
 		_ = s.setCameraFrigateOK(ctx, cam.ID, cc.FrigateID)
 	}
 
-	data, err := s.compiler.BuildConfig(compiled)
+	data, err := s.compiler.BuildConfig(compiled, s.NeedsFaceRecognition(ctx))
 	if err != nil {
 		s.lastError = err.Error()
 		return err

@@ -2,6 +2,8 @@ package frigate
 
 import (
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -76,6 +78,30 @@ func TestUpsertCameraDemoModeRespectsAggregateOnly(t *testing.T) {
 	}
 	if !cc.Entry.Snapshots.Enabled {
 		t.Fatal("snapshots should follow aggregate in demo mode")
+	}
+}
+
+func TestBuildConfigEnablesFaceRecognition(t *testing.T) {
+	dir := t.TempDir()
+	base := dir + "/base.yml"
+	if err := os.WriteFile(base, []byte("mqtt:\n  host: mosquitto\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := NewCompiler(Config{BaseYAML: base})
+	data, err := c.BuildConfig(nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(data)
+	if !strings.Contains(s, "face_recognition:") || !strings.Contains(s, "enabled: true") {
+		t.Fatalf("expected face_recognition enabled in:\n%s", s)
+	}
+	dataOff, err := c.BuildConfig(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(dataOff), "face_recognition:") {
+		t.Fatalf("did not expect face_recognition when disabled:\n%s", dataOff)
 	}
 }
 

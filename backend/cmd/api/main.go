@@ -423,6 +423,7 @@ func main() {
 						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/", api.ListSurveillanceLists)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/", api.CreateSurveillanceList)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/{listID}/entries", api.AddSurveillanceListEntry)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/{listID}/entries/enroll", api.EnrollSurveillanceListEntry)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Delete("/{listID}", api.DeleteSurveillanceList)
 					})
 

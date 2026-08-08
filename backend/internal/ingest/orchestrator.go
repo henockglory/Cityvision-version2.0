@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,7 +19,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"log/slog"
 
 	"github.com/citevision/citevision-v2/backend/internal/camera"
 	"github.com/citevision/citevision-v2/backend/internal/config"
@@ -240,6 +241,86 @@ func (c *AIClient) FetchHealth(ctx context.Context) (map[string]string, error) {
 }
 
 // ReloadSecondaryModels asks the AI engine to reload secondary/org ONNX models.
+// FaceEmbedResponse is returned by AI POST /identity/face/embed.
+type FaceEmbedResponse struct {
+	Embedding   []float64 `json:"embedding"`
+	Confidence  float64   `json:"confidence"`
+	PhotoPath   string    `json:"photo_path,omitempty"`
+	FaceCount   int       `json:"face_count"`
+	Error       string    `json:"error,omitempty"`
+}
+
+// EmbedFace uploads a face JPEG to the AI engine and returns an InsightFace embedding.
+func (c *AIClient) EmbedFace(ctx context.Context, identifier, label string, jpeg []byte, contentType string) (*FaceEmbedResponse, error) {
+	if len(jpeg) == 0 {
+		return nil, fmt.Errorf("empty jpeg")
+	}
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	_ = w.WriteField("identifier", identifier)
+	_ = w.WriteField("label", label)
+	part, err := w.CreateFormFile("file", "face.jpg")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := part.Write(jpeg); err != nil {
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/identity/face/embed", c.baseURL)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("ai face embed: %s", string(b))
+	}
+	var out FaceEmbedResponse
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Embedding) == 0 {
+		if out.Error != "" {
+			return nil, fmt.Errorf("ai face embed: %s", out.Error)
+		}
+		return nil, fmt.Errorf("ai face embed: empty embedding")
+	}
+	return &out, nil
+}
+
+// SetWatchlist pushes the org face watchlist to the AI engine without restarting cameras.
+func (c *AIClient) SetWatchlist(ctx context.Context, watchlist []map[string]interface{}) error {
+	body, _ := json.Marshal(map[string]interface{}{"watchlist": watchlist})
+	url := fmt.Sprintf("%s/watchlist", c.baseURL)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ai set watchlist: %s", string(b))
+	}
+	return nil
+}
+
 func (c *AIClient) ReloadSecondaryModels(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/admin/reload-secondary-models", nil)
 	if err != nil {
@@ -1067,6 +1148,11 @@ func (o *Orchestrator) extractCalibration(metadata json.RawMessage) map[string]i
 		}
 	}
 	return map[string]interface{}{}
+}
+
+// BuildWatchlist returns flattened active face_watchlist entries for an org.
+func (o *Orchestrator) BuildWatchlist(ctx context.Context, orgID uuid.UUID) []map[string]interface{} {
+	return o.buildWatchlist(ctx, orgID)
 }
 
 func (o *Orchestrator) buildWatchlist(ctx context.Context, orgID uuid.UUID) []map[string]interface{} {

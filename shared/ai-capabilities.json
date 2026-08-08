@@ -116,17 +116,22 @@
       "label_fr": "Visage reconnu (liste)",
       "required_config": [
         "camera",
-        "watchlist"
+        "watchlist",
+        "watchlist_photo"
       ],
       "proof_fields": [
         "bbox",
         "face_label",
-        "confidence"
+        "confidence",
+        "identity_votes"
       ],
       "models": [
-        "yolo",
-        "insightface"
-      ]
+        "frigate_face",
+        "insightface",
+        "gemini"
+      ],
+      "judgment": "identity_fusion_frigate_gt_insightface_gt_gemini",
+      "catalog_badge": "partial"
     },
     "plate_blocked": {
       "label_fr": "Plaque bloquée",

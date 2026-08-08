@@ -163,6 +163,7 @@ class PipelineService:
         self._latest_frames: dict[str, np.ndarray] = {}
         self._latest_frame_wall: dict[str, float] = {}
         self._vlm_queue: Any | None = None
+        self._gemini_client: Any | None = None
         self._frigate_bridge: Any | None = None
         self._detection_broadcaster: Any | None = None
         self._tracker_lock = threading.RLock()
@@ -202,6 +203,7 @@ class PipelineService:
             model=settings.gemini_model or "gemini-3.1-flash-lite",
             timeout=gemini_timeout,
         )
+        self._gemini_client = client
         self._vlm_queue = init_vlm_queue(
             client,
             # Honor GEMINI_QUEUE_SIZE (was hard-capped at 8 → chronic vlm_queue_full).
@@ -226,9 +228,12 @@ class PipelineService:
     def _init_frigate_bridge(self) -> None:
         """Frigate MQTT → Gemini cabin/face/plate + Frigate speed/geometry."""
         vlm_on = bool(settings.frigate_vlm_bridge) and self._vlm_queue is not None
+        # Face identity fusion (Frigate/IF/Gemini) follows the VLM bridge flag even
+        # if Gemini queue is temporarily unavailable — IF+Frigate still vote.
+        face_on = bool(settings.frigate_vlm_bridge)
         speed_on = bool(settings.frigate_speed_bridge)
         geometry_on = bool(settings.frigate_geometry_bridge)
-        if not vlm_on and not speed_on and not geometry_on:
+        if not vlm_on and not speed_on and not geometry_on and not face_on:
             return
         from citevision_ai.frigate_bridge import FrigateEventBridge
 
@@ -237,6 +242,29 @@ class PipelineService:
 
         def _face_match_jpeg(jpeg: bytes) -> list[dict[str, Any]]:
             return self.face_engine.match_jpeg(jpeg)
+
+        def _face_match_vote(jpeg: bytes) -> dict[str, Any]:
+            return self.face_engine.match_vote_from_jpeg(jpeg)
+
+        def _face_refs() -> list[tuple[str, bytes]]:
+            return self.face_engine.reference_photos(max_n=6)
+
+        def _face_gemini_compare(
+            query_jpeg: bytes,
+            references: list[tuple[str, bytes]],
+            *,
+            min_confidence: float = 0.75,
+            timeout: float | None = None,
+        ) -> dict[str, Any]:
+            client = self._gemini_client
+            if client is None:
+                return {"match": False, "status": "skipped", "error": "no_client"}
+            return client.compare_faces(
+                query_jpeg,
+                references,
+                min_confidence=min_confidence,
+                timeout=timeout,
+            )
 
         self.traffic_light.configure_bridge_gate(
             mode=str(getattr(settings, "red_light_gate_mode", None) or "or"),
@@ -255,7 +283,7 @@ class PipelineService:
             emit_event=self._on_bridge_event,
             vlm_enabled=vlm_on,
             speed_enabled=speed_on,
-            face_enabled=vlm_on,
+            face_enabled=face_on,
             plate_enabled=vlm_on,
             geometry_enabled=geometry_on,
             snapshot_wait_sec=float(settings.frigate_bridge_snapshot_wait_sec or 25.0),
@@ -263,16 +291,20 @@ class PipelineService:
             light_state_resolver=lambda cam: self.traffic_light.bridge_gate_state(cam),
             light_debug_resolver=lambda cam: self.traffic_light.bridge_gate_debug(cam),
             camera_ids_resolver=lambda: list(self._spatial_configs.keys()),
-            face_match_jpeg=_face_match_jpeg if vlm_on else None,
+            face_match_jpeg=_face_match_jpeg if face_on else None,
+            face_match_vote=_face_match_vote if face_on else None,
+            face_reference_photos=_face_refs if face_on else None,
+            face_gemini_compare=_face_gemini_compare if face_on else None,
         )
-        if vlm_on:
+        if vlm_on or face_on:
             self.face_engine.set_frigate_bridge_active(True)
+        if vlm_on:
             self.plate_engine.set_frigate_bridge_active(True)
             self.secondary.set_frigate_bridge_active(True)
         self._frigate_bridge.start()
         logger.info(
-            "Frigate event bridge started vlm=%s speed=%s geometry=%s cabin_source=%s",
-            vlm_on, speed_on, geometry_on, "frigate" if vlm_on else "n/a",
+            "Frigate event bridge started vlm=%s face=%s speed=%s geometry=%s cabin_source=%s",
+            vlm_on, face_on, speed_on, geometry_on, "frigate" if vlm_on else "n/a",
         )
 
     def _on_bridge_event(self, evt: dict[str, Any]) -> None:
@@ -356,13 +388,16 @@ class PipelineService:
             )
             self.plate_engine.remember_sighting(camera_id, plate)
 
-        # Face under Frigate bridge: InsightFace already emitted match/unknown on crop.
-        # Do not fabricate face_unknown from Gemini-text watchlist labels (not biometric).
+        # Face under Frigate bridge: fusion may already have emitted match/unknown.
+        # Never fabricate watchlist match from Gemini-text labels alone (not biometric).
         et = str(evt.get("event_type") or "")
         if et in ("face_watchlist_match", "face_unknown", "face_detected"):
             meta = dict(evt.get("metadata") or {})
             method = str(meta.get("detection_method") or "")
-            if "gemini" in method and "insightface" not in method and et == "face_detected":
+            if meta.get("identity_votes"):
+                meta.setdefault("face_pipeline", "frigate_insightface_gemini_fusion")
+                evt["metadata"] = meta
+            elif "gemini" in method and "insightface" not in method and "fusion" not in method and et == "face_detected":
                 # Clear-face gate only — keep as face_detected audit/emit, no fake watchlist.
                 meta.setdefault("face_pipeline", "gemini_clear_face_gate")
                 evt["metadata"] = meta

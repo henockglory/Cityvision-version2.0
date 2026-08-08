@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -149,6 +152,90 @@ func (c *Client) getJSON(ctx context.Context, path string) (map[string]interface
 	var out map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return map[string]interface{}{"raw": "ok"}, nil
+	}
+	return out, nil
+}
+
+// CreateFace ensures a Frigate Face Library folder exists for name.
+func (c *Client) CreateFace(ctx context.Context, name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("face name required")
+	}
+	_, err := c.postJSON(ctx, "/api/faces/"+url.PathEscape(name)+"/create", map[string]interface{}{})
+	return err
+}
+
+// RegisterFace uploads a face JPEG into Frigate's Face Library for name.
+func (c *Client) RegisterFace(ctx context.Context, name string, jpeg []byte) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("face name required")
+	}
+	if len(jpeg) == 0 {
+		return fmt.Errorf("empty face image")
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("file", "face.jpg")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(jpeg); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/faces/"+url.PathEscape(name)+"/register", &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("register face: %d %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+// RecognizeFace asks Frigate to identify a face JPEG against its Face Library.
+func (c *Client) RecognizeFace(ctx context.Context, jpeg []byte) (map[string]interface{}, error) {
+	if len(jpeg) == 0 {
+		return nil, fmt.Errorf("empty face image")
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("file", "face.jpg")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := part.Write(jpeg); err != nil {
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/faces/recognize", &buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("recognize face: %d %s", resp.StatusCode, string(b))
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return map[string]interface{}{"raw": string(b)}, nil
 	}
 	return out, nil
 }

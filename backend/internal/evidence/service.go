@@ -239,6 +239,31 @@ func (s *Service) assetURL(orgID uuid.UUID, objectKey string) string {
 	return fmt.Sprintf("%s/orgs/%s/evidence/asset?key=%s", s.cfg.APIBase, orgID.String(), url.QueryEscape(objectKey))
 }
 
+// AssetURL exposes the public evidence asset URL for a stored object key.
+func (s *Service) AssetURL(orgID uuid.UUID, objectKey string) string {
+	return s.assetURL(orgID, objectKey)
+}
+
+// PutObject stores an arbitrary object (e.g. watchlist enrollment JPEG).
+func (s *Service) PutObject(ctx context.Context, objectKey string, r io.Reader, size int64, contentType string) error {
+	if !s.Available() {
+		return fmt.Errorf("minio not configured")
+	}
+	if strings.TrimSpace(objectKey) == "" {
+		return fmt.Errorf("object key required")
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	_, err := s.client.PutObject(ctx, s.cfg.Bucket, objectKey, r, size, minio.PutObjectOptions{ContentType: contentType})
+	return err
+}
+
+// WatchlistPhotoKey returns the canonical MinIO key for a face watchlist photo.
+func WatchlistPhotoKey(orgID, listID, entryID uuid.UUID) string {
+	return path.Join("orgs", orgID.String(), "watchlist", listID.String(), entryID.String()+".jpg")
+}
+
 func (s *Service) PresignedGet(ctx context.Context, objectKey string) (string, error) {
 	if !s.Available() {
 		return "", fmt.Errorf("minio not configured")

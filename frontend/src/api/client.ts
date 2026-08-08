@@ -288,6 +288,26 @@ export const identityApi = {
   ) => api.post<SurveillanceList>(`/orgs/${orgId}/surveillance-lists`, body),
   addEntry: (orgId: string, listId: string, entry: Record<string, unknown>) =>
     api.post<SurveillanceList>(`/orgs/${orgId}/surveillance-lists/${listId}/entries`, entry),
+  enrollEntry: (
+    orgId: string,
+    listId: string,
+    body: { label: string; file: File; identifier?: string }
+  ) => {
+    const form = new FormData();
+    form.append('label', body.label);
+    form.append('file', body.file);
+    if (body.identifier) form.append('identifier', body.identifier);
+    return api.post<{
+      list: SurveillanceList;
+      entry: Record<string, unknown>;
+      frigate_sync?: string;
+      frigate_name?: string;
+      embedding_dim?: number;
+    }>(`/orgs/${orgId}/surveillance-lists/${listId}/entries/enroll`, form, {
+      // Let axios set multipart boundary automatically.
+      timeout: 120_000,
+    });
+  },
   delete: (orgId: string, listId: string) =>
     api.delete(`/orgs/${orgId}/surveillance-lists/${listId}`),
 };

@@ -15,7 +15,7 @@ from typing import Any
 import asyncio
 import json
 import numpy as np
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,11 @@ from citevision_ai.budget.resource_budget import ResourceBudgetManager
 from citevision_ai.config import settings
 from citevision_ai.detection.yolo_onnx import YoloOnnxDetector
 from citevision_ai import hardware_profile
-from citevision_ai.identity.face import FaceIdentityEngine, InsightFaceRecognizer
+from citevision_ai.identity.face import (
+    FaceIdentityEngine,
+    InsightFaceRecognizer,
+    save_watchlist_photo,
+)
 from citevision_ai.identity.plate import PlateIdentityEngine
 from citevision_ai.ingest.rtsp_worker import WorkerManager
 from citevision_ai.live.detection_broadcaster import DetectionBroadcaster
@@ -222,6 +226,10 @@ class EvidenceCaptureRequest(BaseModel):
 
 class RulePayload(BaseModel):
     rules: list[dict[str, Any]]
+
+
+class WatchlistPayload(BaseModel):
+    watchlist: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ProcessRequest(BaseModel):
@@ -627,8 +635,7 @@ def start_camera(camera_id: str, body: CameraStartRequest) -> dict[str, Any]:
     pipeline.register_camera(camera_id, spatial)
     if body.org_id:
         pipeline.set_org_id(camera_id, body.org_id)
-    if body.watchlist:
-        pipeline.set_watchlist(body.watchlist)
+    pipeline.set_watchlist(body.watchlist)
     if body.plates:
         pipeline.set_plates(body.plates)
     if body.analytics_thresholds:
@@ -719,6 +726,50 @@ def set_rules(body: RulePayload) -> dict[str, int]:
         raise HTTPException(status_code=503, detail="Pipeline not ready")
     pipeline.set_rules(body.rules)
     return {"rules_loaded": len(body.rules)}
+
+
+@app.post("/watchlist")
+def set_watchlist(body: WatchlistPayload) -> dict[str, Any]:
+    """Hot-refresh org face watchlist without restarting cameras."""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    pipeline.set_watchlist(body.watchlist)
+    return {"status": "ok", "entries": len(body.watchlist)}
+
+
+@app.post("/identity/face/embed")
+async def identity_face_embed(
+    file: UploadFile = File(...),
+    identifier: str = Form(""),
+    label: str = Form(""),
+) -> dict[str, Any]:
+    """Compute InsightFace embedding for watchlist enrollment (fail-closed)."""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not ready")
+    jpeg = await file.read()
+    if not jpeg:
+        raise HTTPException(status_code=400, detail="empty file")
+    result = pipeline.face_engine.embed_jpeg(jpeg)
+    if not result.get("embedding"):
+        raise HTTPException(
+            status_code=400,
+            detail=str(result.get("error") or "no_embedding"),
+        )
+    photo_path = ""
+    ident = (identifier or label or "").strip()
+    if ident:
+        try:
+            photo_path = save_watchlist_photo(ident, jpeg)
+        except OSError as exc:
+            logger.warning("watchlist photo cache write failed: %s", exc)
+    return {
+        "embedding": result["embedding"],
+        "confidence": float(result.get("confidence") or 0.0),
+        "face_count": int(result.get("face_count") or 0),
+        "photo_path": photo_path,
+        "label": label,
+        "identifier": identifier,
+    }
 
 
 @app.post("/process/test")

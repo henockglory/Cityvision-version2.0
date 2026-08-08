@@ -256,6 +256,19 @@ FACE_PROMPTS: dict[str, str] = {
         "Reply ONLY JSON with rule \"face_watchlist_match\". "
         "violation=true only if it is the same person with high confidence."
     ),
+    "face_identity_compare": (
+        "You compare ONE query face crop (first image) to reference watchlist face photos "
+        "(subsequent images, each labeled). "
+        "Reply ONLY JSON:\n"
+        '{"violation":bool,"rule":"face_identity_compare","confidence":0.0-1.0,'
+        '"visible":bool,"same_person":bool,"matched_label":"STRING_OR_EMPTY",'
+        '"reason_short":"<=120 chars","signals":["..."]}\n'
+        "Set same_person=true and violation=true ONLY if the query face is clearly the same "
+        "person as one reference, with high confidence. "
+        "matched_label must be the exact reference label when same_person=true, else empty. "
+        "If unclear, blurry, occluded, or no confident match: same_person=false, violation=false, "
+        "signals must include \"unclear\"."
+    ),
 }
 
 ROAD_PROMPTS: dict[str, str] = {
@@ -407,6 +420,122 @@ class GeminiClient:
                 verdict.reason_short, verdict.signals, ms, True, error="rule_mismatch",
             )
         return verdict
+
+    def compare_faces(
+        self,
+        query_jpeg: bytes,
+        references: list[tuple[str, bytes]],
+        *,
+        min_confidence: float = 0.75,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        """Multimodal same-person vote vs watchlist reference photos (fail-closed)."""
+        t0 = time.perf_counter()
+        if not self.configured:
+            return {"match": False, "status": "skipped", "error": "not_configured"}
+        if not query_jpeg:
+            return {"match": False, "status": "skipped", "error": "empty_jpeg"}
+        if not references:
+            return {"match": False, "status": "skipped", "error": "no_references"}
+
+        prompt = FACE_PROMPTS["face_identity_compare"]
+        labels = [lab for lab, _ in references if lab]
+        if labels:
+            prompt += "\nReference labels in order: " + ", ".join(labels[:12])
+
+        parts: list[dict[str, Any]] = [{"text": prompt}]
+        q = _downscale_jpeg(query_jpeg, max_side=640, quality=80)
+        parts.append({"text": "QUERY_FACE:"})
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": base64.b64encode(q).decode("ascii"),
+            }
+        })
+        for lab, ref in references[:6]:
+            rj = _downscale_jpeg(ref, max_side=512, quality=80)
+            parts.append({"text": f"REFERENCE_LABEL={lab}"})
+            parts.append({
+                "inline_data": {
+                    "mime_type": "image/jpeg",
+                    "data": base64.b64encode(rj).decode("ascii"),
+                }
+            })
+
+        body = {
+            "contents": [{"parts": parts}],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 1024,
+                "responseMimeType": "application/json",
+            },
+        }
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self._model}:generateContent?key={self._api_key}"
+        )
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        to = float(timeout) if timeout and timeout > 0 else min(self._timeout, 15.0)
+        try:
+            with _http_open(req, timeout=to) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            code = int(getattr(exc, "code", 0) or 0)
+            err = "rate_limited" if code == 429 else "http_error"
+            return {
+                "match": False,
+                "status": "error",
+                "error": err,
+                "latency_ms": (time.perf_counter() - t0) * 1000.0,
+            }
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            ValueError,
+            http.client.HTTPException,
+        ) as exc:
+            err = "timeout" if "timed out" in str(exc).lower() or isinstance(exc, TimeoutError) else "http_error"
+            return {
+                "match": False,
+                "status": "timeout" if err == "timeout" else "error",
+                "error": err,
+                "latency_ms": (time.perf_counter() - t0) * 1000.0,
+            }
+
+        text = _candidate_text(payload)
+        data = _extract_json_object(text) or {}
+        same = bool(data.get("same_person") or data.get("violation"))
+        conf = data.get("confidence")
+        try:
+            conf_f = float(conf) if conf is not None else 0.0
+        except (TypeError, ValueError):
+            conf_f = 0.0
+        matched = str(data.get("matched_label") or "").strip()
+        # Fail-closed: require threshold + known label
+        known = {lab.lower(): lab for lab, _ in references if lab}
+        if matched and matched.lower() in known:
+            matched = known[matched.lower()]
+        elif matched:
+            # allow exact case-insensitive contains against reference labels
+            hit = next((lab for lab in known.values() if lab.lower() == matched.lower()), "")
+            matched = hit
+        ok = same and conf_f >= float(min_confidence) and bool(matched)
+        return {
+            "match": ok,
+            "label": matched if ok else None,
+            "score": conf_f,
+            "status": "ok",
+            "source": "gemini_multimodal",
+            "same_person": same,
+            "latency_ms": (time.perf_counter() - t0) * 1000.0,
+            "reason_short": str(data.get("reason_short") or "")[:120],
+        }
 
 
 def _candidate_text(payload: dict[str, Any]) -> str:

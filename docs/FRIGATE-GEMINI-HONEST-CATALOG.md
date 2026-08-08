@@ -13,7 +13,7 @@ Pas de claim « 5/5 validé » ici — intégration catalogue/runtime uniquement
 | Feu rouge | 2× `traffic_light_color` + `red_light_observation` | Frigate véhicule∩observation | Gemini → `red_light_violation` |
 | Vitesse | 1× `speed_measurement` + distances m | Frigate speed estimate | Moteur (`speed_limit_kmh`) — **pas** Gemini |
 | Plaques | 1× `plate_ocr` | Frigate véhicule∩zone | Gemini OCR → `plate_detected` ; listes moteur → `plate_blocked` / `plate_allowed` / `plate_unknown` |
-| Visages | 1× zone person (hors behaviors cabine/feu/plaque) | Frigate person∩zone | Gemini → `face_detected` (+ `face_unknown` / `face_watchlist_match` si watchlist) |
+| Visages | 1× zone person (hors behaviors cabine/feu/plaque) | Frigate person∩zone | Vote identité **Frigate > InsightFace > Gemini** → `face_watchlist_match` / `face_unknown` (+ `face_detected` audit) |
 | Spatial / temps | zones / lignes | Frigate ou générateur spatial | Moteur (`zone_enter`, `line_cross`, `loitering`, …) |
 
 ## Kill-switches
@@ -51,7 +51,18 @@ Voir aussi [ENV-PLATFORM.md](./ENV-PLATFORM.md), [FRIGATE-SYNC-HONESTY.md](./FRI
 | Crop cabine | **`vehicle_bbox` exclusivement** — `driver_roi` retiré du runtime bridge |
 | Emit cabine | **Oui/non** sur `violation` + confiance — **plus de gate `visible=false`** |
 | OCR plaque | **Gemini + PaddleOCR** en parallèle sur le même crop Frigate → `gemini_paddle_fusion` |
-| Visage | **InsightFace + Gemini** en parallèle → dedupe 30s zone/track (`detection_method`: `insightface` \| `gemini_vlm` \| `both`) |
+| Visage | **Fusion Frigate → InsightFace → Gemini** sur crop person Frigate (`identity_votes` + `winner`) ; XOR full-frame InsightFace/Gemini quand bridge ON |
 | Modèle | **`gemini-3.1-flash-lite`** (défaut `config.py`) |
 
-Sous `FRIGATE_VLM_BRIDGE=1` : ONNX cabine local reste coupé ; Paddle live + bridge fusion coexistent pour les plaques ; InsightFace continue sur RTSP.
+Sous `FRIGATE_VLM_BRIDGE=1` : ONNX cabine local reste coupé ; Paddle live + bridge fusion coexistent pour les plaques ; InsightFace tourne **uniquement** sur crops Frigate (pas RTSP full-frame).
+
+## Append 2026-08-08 — face watchlist photo + vote triple
+
+| Décision | Valeur verrouillée |
+|---|---|
+| Source de vérité | CiteVision UI `surveillance_lists` (photo + label) |
+| Embedding | InsightFace via `POST /identity/face/embed` → `metadata.embedding` |
+| Miroir Frigate | Face Library `create` + `register` à l’enrôlement ; `face_recognition.enabled` dans le compiler si watchlist/règle face |
+| Vote live | Frigate (`sub_label` puis `/faces/recognize`) > InsightFace cosine > Gemini multimodal same-person |
+| Badge catalogue | **`partial`** jusqu’à `validate_rule` face — pas de claim `real` / 5/5 |
+| Fail-closed | Timeout/erreur Gemini ou Frigate = abstention, jamais fabrication de match |

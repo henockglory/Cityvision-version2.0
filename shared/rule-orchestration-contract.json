@@ -327,9 +327,14 @@
       "catalog_badge": "partial",
       "dod_verified": false,
       "signal_owner": "frigate",
-      "judgment_owner": "insightface",
-      "vlm_role": "clear_face_gate",
-      "emit_moment": "on_embed_match",
+      "judgment_owner": "identity_fusion",
+      "vlm_role": "multimodal_same_person_vote",
+      "emit_moment": "on_fused_identity_match",
+      "identity_vote_priority": [
+        "frigate",
+        "insightface",
+        "gemini"
+      ],
       "track_objects": [
         "person"
       ],
@@ -721,9 +726,14 @@
       "catalog_badge": "partial",
       "dod_verified": false,
       "signal_owner": "frigate",
-      "judgment_owner": "insightface",
-      "vlm_role": "clear_face_gate",
-      "emit_moment": "on_embed_match",
+      "judgment_owner": "identity_fusion",
+      "vlm_role": "multimodal_same_person_vote",
+      "emit_moment": "on_fused_identity_match",
+      "identity_vote_priority": [
+        "frigate",
+        "insightface",
+        "gemini"
+      ],
       "track_objects": [
         "person"
       ],

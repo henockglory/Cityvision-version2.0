@@ -9,8 +9,8 @@ Every rule template declares:
 | Field | Meaning |
 |-------|---------|
 | `signal_owner` | Who produces the track/signal: `frigate` \| `citevision_local` \| `hybrid` |
-| `judgment_owner` | Who decides the métier event: `geometry` \| `frigate_speed` \| `gemini` \| `insightface` \| `ocr_fusion` \| `rules_composite` |
-| `vlm_role` | Gemini usage: `none` \| `yes_no` \| `clear_face_gate` \| `ocr` \| `anti_fp_optional` |
+| `judgment_owner` | Who decides the métier event: `geometry` \| `frigate_speed` \| `gemini` \| `insightface` \| `identity_fusion` \| `ocr_fusion` \| `rules_composite` |
+| `vlm_role` | Gemini usage: `none` \| `yes_no` \| `clear_face_gate` \| `multimodal_same_person_vote` \| `ocr` \| `anti_fp_optional` |
 | `emit_moment` | When to emit: enter/exit/duration/end_time/vlm/embed |
 | `xor_disables` | Local paths that must stay OFF when the bridge owns the signal |
 | `evidence_policy` | Clip + image roles + fail_closed |
@@ -85,7 +85,7 @@ Scopes **national / enterprise / domestic** are UI navigation only ([catalog-nav
 
 ## Face / plate XOR
 
-- Face: Frigate person crop → Gemini `clear_face_gate` → InsightFace `match_jpeg` only. Full-frame InsightFace/Gemini disabled when bridge ON.
+- Face: Frigate person crop → triple vote (Frigate Face Library / InsightFace / Gemini multimodal) with priority Frigate > InsightFace > Gemini. Full-frame InsightFace/Gemini disabled when bridge ON. Enrollment photos sync to Frigate Face Library; compiler enables `face_recognition` when face watchlist/rules exist.
 - Plate: single OCR factory on Frigate crops (`plate_ocr` + speeding fusion). Local frame Paddle/Gemini disabled. `plate_blocked` / `plate_allowed` / `plate_unknown` / `plate_repeat` = list/TTL match on `plate_detected` (no re-OCR).
 
 ## Composites
