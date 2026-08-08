@@ -9,18 +9,19 @@
 #>
 $ErrorActionPreference = "Continue"
 $Distro = "Ubuntu-24.04"
-$WslRoot = "/home/gheno/citevision-v2"
+. (Join-Path $PSScriptRoot '..\installer\windows\Resolve-CiteVisionWslRoot.ps1')
+try {
+  $WslRoot = Resolve-CiteVisionWslRoot
+} catch {
+  Write-Host ("[FAIL] {0}" -f $_.Exception.Message) -ForegroundColor Red
+  exit 1
+}
 $Log = Join-Path $env:TEMP "citevision-heal-disk-last.log"
 
 function Log([string]$m) {
   $line = "[{0}] {1}" -f (Get-Date -Format o), $m
   Write-Host $line
   Add-Content -Path $Log -Value $line
-}
-
-if ($WslRoot -match '^/mnt/[a-z]/') {
-  Write-Host "[FAIL] Refuse WSL root under /mnt/* - use ~/citevision-v2" -ForegroundColor Red
-  exit 1
 }
 
 "" | Set-Content $Log
@@ -72,7 +73,7 @@ for vol in infra_frigate_recordings infra_frigate_clips infra_frigate_cache infr
 done
 echo "=== disable demo rules ==="
 docker exec citevision-v2-postgres psql -U citevision -d citevision -c \
-  "UPDATE rules SET is_enabled=false, updated_at=NOW() WHERE name LIKE 'Demo%' OR name LIKE 'Démo%';" 2>/dev/null || true
+  "UPDATE rules SET is_enabled=false, updated_at=NOW() WHERE name LIKE 'Demo%';" 2>/dev/null || true
 echo "=== prune images (not containers) ==="
 docker image prune -af 2>/dev/null || true
 echo "=== keep newest 2 artefacts / alias ==="

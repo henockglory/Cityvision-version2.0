@@ -34,9 +34,9 @@ Compte concerne : $account
 4. Suivez l assistant (compte Microsoft en ligne si demande)
 
 Vous gardez votre PIN pour vous connecter au quotidien.
-Le mot de passe sert uniquement au service CitéVision en arriere-plan.
+Le mot de passe sert uniquement au service CiteVision en arriere-plan.
 
-Ensuite : cliquez Reessayer dans l installateur CitéVision.
+Ensuite : cliquez Reessayer dans l installateur CiteVision.
 
 Aide en ligne :
 https://account.microsoft.com/security

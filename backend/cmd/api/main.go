@@ -181,6 +181,12 @@ func main() {
 
 	frigateCfg := frigate.ConfigFromEnv()
 	frigateSync := frigate.NewSyncService(pool, cameraSvc, frigateCfg, log)
+	demoSvc.SetFrigateRebuild(func(ctx context.Context) error {
+		if !frigateSync.Enabled() {
+			return nil
+		}
+		return frigateSync.RebuildAll(ctx)
+	})
 	orch.SetFrigateHooks(ingest.FrigateHooks{
 		Rebuild: func(ctx context.Context) error {
 			return frigateSync.RebuildAll(ctx)

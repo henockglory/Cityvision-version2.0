@@ -27,13 +27,23 @@ After sync:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `FRIGATE_ENABLED` | `0` | Master switch |
-| `FRIGATE_CONFIG_SYNC` | `0` | DB → generated config |
-| `FRIGATE_LIVE` | `0` | Frigate player on `/live` |
-| `FRIGATE_EVIDENCE` | `0` | Evidence via Frigate recordings |
+| `FRIGATE_ENABLED` | `true` (`1`) | Master switch (ConfigFromEnv + `.env.example`) |
+| `FRIGATE_CONFIG_SYNC` | `true` (`1`) | DB → generated config (always-on sync) |
+| `FRIGATE_LIVE` | `true` (`1`) | Frigate player on `/live` |
+| `FRIGATE_EVIDENCE` | `true` (`1`) | Evidence via Frigate recordings |
 | `FRIGATE_EVENTS` | `0` | MQTT adapter (debug only) |
 | `FRIGATE_URL` | `http://127.0.0.1:5000` | API base |
 | `EVIDENCE_BACKEND` | `ring_buffer` | `ring_buffer` \| `frigate` \| `hybrid` |
+
+Override any flag with `=0` to disable. Install/demo launch also forces ENABLED/LIVE/EVIDENCE/CONFIG_SYNC via `ensure_demo_runtime_env`.
+
+## Sync policy (no exclusions)
+
+- Every camera with `is_active=true` is compiled into Frigate (live RTSP, virtual/demo, any host).
+- There is **no** host denylist, no `metadata.frigate_exclude`, no virtual-camera skip.
+- `is_active=false` remains a user disable (SQL filter) — not a policy denylist.
+- `compileCamera` failure: log error, persist `metadata.frigate_error`, continue other cameras (technical isolation, not exclusion).
+- Demo upload: when a demo video becomes `ready`, `demo.Service` syncs the virtual camera then calls `RebuildAll` (no need to wait for PatchSettings). PatchSettings still syncs too.
 
 ## Evidence contract
 

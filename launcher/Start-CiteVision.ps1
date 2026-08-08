@@ -10,10 +10,11 @@
 #>
 $ErrorActionPreference = "Continue"
 $Distro = "Ubuntu-24.04"
-# Native WSL tree only (R.1). Never start from /mnt/c Windows mirrors.
-$WslRoot = "/home/gheno/citevision-v2"
-if ($WslRoot -match '^/mnt/[a-z]/') {
-  Write-Host "[FAIL] Refuse WSL root under /mnt/* - use ~/citevision-v2" -ForegroundColor Red
+. (Join-Path $PSScriptRoot '..\installer\windows\Resolve-CiteVisionWslRoot.ps1')
+try {
+  $WslRoot = Resolve-CiteVisionWslRoot
+} catch {
+  Write-Host ("[FAIL] {0}" -f $_.Exception.Message) -ForegroundColor Red
   exit 1
 }
 

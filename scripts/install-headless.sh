@@ -20,6 +20,17 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# R.1 — refuse /mnt runtime and Docker Desktop mental model.
+if [[ "$ROOT" == /mnt/* ]]; then
+  echo "[ERR] install-headless refuses ROOT under /mnt/* (got $ROOT)." >&2
+  echo "      Sync to native ~/citevision-v2 and re-run from there." >&2
+  exit 1
+fi
+if docker info 2>/dev/null | grep -qi 'Docker Desktop'; then
+  echo "[ERR] Docker Desktop detected — use native WSL/Linux dockerd only." >&2
+  exit 1
+fi
+
 START_MODE="auto"
 SKIP_BOOTSTRAP=false
 SKIP_START=false
@@ -76,6 +87,9 @@ _ok()    { _log "[OK]   $1"; }
 _warn()  { _log "[WARN] $1"; }
 _err()   { _log "[ERR]  $1"; }
 _step()  { _log ""; _log "=== $1 ==="; }
+
+_info "Post-install checklist: Frigate on, Gemini keyfile ~/.citevision_gemini_key.tmp, InsightFace face_loaded, face enroll via UI Settings, health_check_all.sh (see docs/FILL-INSTALL-BOOT-GAPS.md)."
+_info "Docker Desktop forbidden; runtime must not be under /mnt/*."
 
 _run_as_user() {
   local cmd="$1"

@@ -44,6 +44,8 @@ Scopes **national / enterprise / domestic** are UI navigation only ([catalog-nav
 
 ## Synced to Frigate YAML
 
+- **All** `is_active=true` cameras (no host denylist, no `frigate_exclude`, no virtual skip). Compile failure → `frigate_error` on that camera only.
+- Demo virtual camera: rebuilt when upload processing reaches `ready` (and on activate / stream repair), not only on PatchSettings.
 - Camera polygons → `cv_zone_{uuid}` coordinates
 - Record / snapshots / LPR flags from evidence aggregate
 - For `speed_measurement` zones with **exactly 4 vertices** + `edge_distances_m`: Frigate `distances`
@@ -51,6 +53,7 @@ Scopes **national / enterprise / domestic** are UI navigation only ([catalog-nav
 - CiteVision bridge compares Frigate `average_estimated_speed` to `speed_limit_kmh` and emits `speeding` **only on zone exit** (`FRIGATE_SPEED_EMIT_MODE=exit`)
 - Optional `track_objects` in zone `behavior_config.config` unioned into camera `objects.track`
 - `objects.track` includes `person` when cabin/face/presence/perimeter behaviors need it
+- `face_recognition.enabled` when org has face watchlist entries / matching rules (`NeedsFaceRecognition`)
 
 ## Kill-switches (AI engine)
 

@@ -9,10 +9,11 @@
 #>
 $ErrorActionPreference = "Continue"
 $Distro = "Ubuntu-24.04"
-# Native WSL tree only (R.1). Never stop/start from /mnt/c Windows mirrors.
-$WslRoot = "/home/gheno/citevision-v2"
-if ($WslRoot -match '^/mnt/[a-z]/') {
-  Write-Host "[FAIL] Refuse WSL root under /mnt/* - use ~/citevision-v2" -ForegroundColor Red
+. (Join-Path $PSScriptRoot '..\installer\windows\Resolve-CiteVisionWslRoot.ps1')
+try {
+  $WslRoot = Resolve-CiteVisionWslRoot
+} catch {
+  Write-Host ("[FAIL] {0}" -f $_.Exception.Message) -ForegroundColor Red
   exit 1
 }
 
@@ -68,7 +69,7 @@ echo "ROOT=$ROOT"
 
 echo "=== [1/6] disable demo rules ==="
 docker exec citevision-v2-postgres psql -U citevision -d citevision -c \
-  "UPDATE rules SET is_enabled=false, updated_at=NOW() WHERE name LIKE 'Demo%' OR name LIKE 'Démo%';" 2>/dev/null \
+  "UPDATE rules SET is_enabled=false, updated_at=NOW() WHERE name LIKE 'Demo%';" 2>/dev/null \
   || echo "[WARN] postgres unavailable for disable rules"
 
 echo "=== [2/6] stop watchdogs / frontend / AI / rules / backend ==="

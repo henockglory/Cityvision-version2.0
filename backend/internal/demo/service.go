@@ -75,6 +75,9 @@ type PatchSettingsRequest struct {
 	ActiveCameraID *uuid.UUID `json:"active_camera_id"`
 }
 
+// FrigateRebuildFunc rebuilds Frigate config after demo virtual cameras change.
+type FrigateRebuildFunc func(ctx context.Context) error
+
 type Service struct {
 	pool         *pgxpool.Pool
 	cameras      *camera.Service
@@ -85,6 +88,7 @@ type Service struct {
 	transcodeSem chan struct{}
 	diskPurgeMu  sync.RWMutex
 	lastDiskPurge time.Time
+	frigateRebuild FrigateRebuildFunc
 }
 
 func NewService(pool *pgxpool.Pool, cameras *camera.Service, log *slog.Logger) *Service {
@@ -105,6 +109,30 @@ func NewServiceWithEvidence(pool *pgxpool.Pool, cameras *camera.Service, ev *evi
 		log:          log,
 		transcodeSem: make(chan struct{}, 1),
 	}
+}
+
+// SetFrigateRebuild wires Frigate RebuildAll after demo camera create/update (upload ready path).
+func (s *Service) SetFrigateRebuild(fn FrigateRebuildFunc) {
+	s.frigateRebuild = fn
+}
+
+func (s *Service) triggerFrigateRebuild(ctx context.Context, reason string) {
+	if s == nil || s.frigateRebuild == nil {
+		return
+	}
+	log := s.log
+	if log == nil {
+		log = slog.Default()
+	}
+	go func() {
+		cctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := s.frigateRebuild(cctx); err != nil {
+			log.Warn("demo: frigate rebuild failed", "reason", reason, "error", err)
+			return
+		}
+		log.Info("demo: frigate rebuild ok", "reason", reason)
+	}()
 }
 
 func (s *Service) GetSettings(ctx context.Context, orgID uuid.UUID) (*Settings, error) {
@@ -594,6 +622,8 @@ func (s *Service) syncDemoVirtualCamera(ctx context.Context, orgID uuid.UUID, v 
 			return uuid.Nil, err
 		}
 	}
+	// Upload-ready and activate paths bypass HTTP CreateCamera handlers — sync Frigate here.
+	s.triggerFrigateRebuild(ctx, "demo_virtual_camera:"+v.ID.String())
 	return camID, nil
 }
 

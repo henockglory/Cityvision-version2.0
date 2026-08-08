@@ -6,9 +6,9 @@ Référence unifiée pour preflight, démo Frigate et rétention disque.
 
 | Variable | Défaut | Description |
 |----------|--------|-------------|
-| `FRIGATE_ENABLED` | `false` | Active l'intégration Frigate |
-| `FRIGATE_CONFIG_SYNC` | `false` | Sync DB → YAML Frigate |
-| `FRIGATE_EVIDENCE` | `false` | Preuves via clips Frigate |
+| `FRIGATE_ENABLED` | `true` | Active l'intégration Frigate |
+| `FRIGATE_CONFIG_SYNC` | `true` | Sync DB → YAML Frigate (permanent) |
+| `FRIGATE_EVIDENCE` | `true` | Preuves via clips Frigate |
 | `FRIGATE_DEMO_MODE` | `true` | Démo : record event-only, pas continuous 24/7 |
 | `FRIGATE_URL` | `http://127.0.0.1:5000` | API Frigate |
 | `FRIGATE_DEMO_RETENTION_MIN` | `30` | Purge disque Frigate/MinIO (minutes) |

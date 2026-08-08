@@ -92,7 +92,7 @@ function Sync-Tree {
     }
 }
 
-Write-Host "=== CitéVision sync-from-optimized ==="
+Write-Host "=== CiteVision sync-from-optimized ==="
 Write-Host "Source: $Src"
 Write-Host ""
 

@@ -455,7 +455,7 @@ function Wait-AppHealthy {
 }
 
 function Invoke-ServiceHandover {
-    Write-Log "Handover: arret stack installateur, demarrage service Windows..."
+    Write-Log "Handover: stopping installer stack, starting Windows service..."
     try {
         & $wslExe -- bash $wslStopScript 2>$null | Out-Null
     } catch {
@@ -464,9 +464,9 @@ function Invoke-ServiceHandover {
     Start-Sleep -Seconds 4
     Start-ServiceRobust
     if (-not (Wait-AppHealthy -TimeoutSec 120)) {
-        throw "Le service a demarre mais l application ne repond pas sur le port 8081"
+        throw "Service started but application not responding on port 8081"
     }
-    Write-Log "Handover termine - application operationnelle sous le service Windows."
+    Write-Log "Handover complete - application running under Windows service."
 }
 
 function Grant-ServiceControl {
@@ -552,11 +552,11 @@ if (-not $isAdmin) {
 # ============================================================================
 if ($Action -eq "start" -or $Action -eq "stop") {
     if (-not (Test-ServiceRegistered)) {
-        Emit-Result $false $false "Service '$SERVICE_NAME' is not registered - reessayez depuis l installateur." 1
+        Emit-Result $false $false "Service '$SERVICE_NAME' is not registered - retry from installer." 1
     }
     $runAs = Get-ServiceRunAccount
     if (-not (Test-ServiceAccountOk $runAs)) {
-        Emit-Result $false $true "Service runs as '$runAs' (WSL incompatible) - reessayez depuis l installateur." 1
+        Emit-Result $false $true "Service runs as '$runAs' (WSL incompatible) - retry from installer." 1
     }
     try {
         if ($Action -eq "start") {
@@ -768,22 +768,22 @@ function Get-ValidatedServiceCredential {
     }
     $principalSource = Get-LocalAccountPrincipalSource $expectedAccount
     $pwdHint = if ($principalSource -eq 'MicrosoftAccount') {
-        "Compte Microsoft lie a ce PC : saisissez le mot de passe de ce compte (pas le PIN)."
+        "Microsoft account linked to this PC: enter that account password (not PIN)."
     } else {
-        "Saisissez le mot de passe Windows (Parametres - Options de connexion - Mot de passe). Pas le PIN."
+        "Enter your Windows password (Settings - Sign-in options - Password). Not PIN."
     }
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
         [void][System.Windows.Forms.MessageBox]::Show(
-            "CiteVision va s executer sous votre compte $expectedAccount." + [Environment]::NewLine + [Environment]::NewLine + $pwdHint,
-            "CiteVision - Service Windows",
+            "CiteVision will run under your account $expectedAccount." + [Environment]::NewLine + [Environment]::NewLine + $pwdHint,
+            "CiteVision - Windows Service",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information
         )
     } catch { }
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $cred = Get-Credential -UserName $promptUser `
-            -Message "Mot de passe pour le service CiteVision (compte $expectedAccount)"
+            -Message "Password for CiteVision service (account $expectedAccount)"
         if (-not $cred) { return $null }
         $plain = $cred.GetNetworkCredential().Password
         if ([string]::IsNullOrEmpty($plain)) {
@@ -793,7 +793,7 @@ function Get-ValidatedServiceCredential {
         $validateName = $cred.GetNetworkCredential().UserName
         $accepted = Test-ServiceCredentialAccepted -Account $expectedAccount -Password $plain -ValidateName $validateName
         if (-not $accepted.Ok) {
-            Write-Log "Mot de passe refuse (PrincipalSource=$principalSource)." "WARN"
+            Write-Log "Password rejected (PrincipalSource=$principalSource)." "WARN"
             if ($attempt -ge 3) { Invoke-PinPasswordGuide }
             continue
         }
@@ -803,15 +803,21 @@ function Get-ValidatedServiceCredential {
     return $null
 }
 
-# -- Convert Windows path to WSL path --
+# -- Convert Windows path to WSL path (sync/source only; never use for NSSM runtime) --
 function ConvertTo-WslPath { param([string]$winPath)
     $drive = $winPath[0].ToString().ToLower()
     $rest  = $winPath.Substring(2) -replace '\\', '/'
     return "/mnt/$drive$rest"
 }
-$wslRoot        = ConvertTo-WslPath $ROOT
-$wslStartScript = "$wslRoot/scripts/start-linux.sh"
-$wslStopScript  = "$wslRoot/scripts/stop-linux.sh"
+
+. (Join-Path $PSScriptRoot "Resolve-CiteVisionWslRoot.ps1")
+try {
+    $nativeRoot = Resolve-CiteVisionWslRoot
+} catch {
+    Emit-Result $false $false $_.Exception.Message 1
+}
+$wslStartScript = "$nativeRoot/scripts/start-linux.sh"
+$wslStopScript  = "$nativeRoot/scripts/stop-linux.sh"
 
 # -- Find wsl.exe --
 $_wslCmd = Get-Command wsl.exe -ErrorAction SilentlyContinue
@@ -825,7 +831,7 @@ $existingService = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
 if ($existingService) {
     $state = Get-ServiceScState
     if ($state -eq "PAUSED") {
-        Write-Log "Service '$SERVICE_NAME' en etat PAUSED - suppression et re-enregistrement." "WARN"
+        Write-Log "Service '$SERVICE_NAME' in PAUSED state - removing and re-registering." "WARN"
         Remove-ServiceRegistration
         $existingService = $null
     }
@@ -871,18 +877,18 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
 
     $svcCred = Get-ValidatedServiceCredential -DefaultUser $svcAccount
     if (-not $svcCred) {
-        Emit-Result $false $false "Identifiants Windows requis (annule). Reessayez depuis l installateur." 1
+        Emit-Result $false $false "Windows credentials required (cancelled). Retry from installer." 1
     }
 
     Write-Log "Registering Windows service '$SERVICE_NAME' (mode: $StartMode, account: $($svcCred.Account))..."
 
     try {
         & $NSSM_EXE install $SERVICE_NAME $wslExe | Out-Null
-        & $NSSM_EXE set $SERVICE_NAME AppParameters "-- bash `"$wslStartScript`"" | Out-Null
+        & $NSSM_EXE set $SERVICE_NAME AppParameters "-- bash -lc `"cd '$nativeRoot'; exec bash scripts/start-linux.sh`"" | Out-Null
         & $NSSM_EXE set $SERVICE_NAME DisplayName $DISPLAY_NAME | Out-Null
         & $NSSM_EXE set $SERVICE_NAME Description "CiteVision intelligent video surveillance platform. Start/stop via services.msc or sc start/stop citevision." | Out-Null
         Set-ServiceStartMode -Mode $StartMode
-        & $NSSM_EXE set $SERVICE_NAME AppDirectory $ROOT | Out-Null
+        & $NSSM_EXE set $SERVICE_NAME AppDirectory "$env:SystemRoot\System32" | Out-Null
         & $NSSM_EXE set $SERVICE_NAME AppStdout "$LOGS_DIR\service.log" | Out-Null
         & $NSSM_EXE set $SERVICE_NAME AppStderr "$LOGS_DIR\service-error.log" | Out-Null
         & $NSSM_EXE set $SERVICE_NAME AppRotateFiles 1 | Out-Null
@@ -891,11 +897,11 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
         & $NSSM_EXE set $SERVICE_NAME AppStopMethodConsole 5000 | Out-Null
         & $NSSM_EXE set $SERVICE_NAME AppStopMethodWindow 5000 | Out-Null
         & $NSSM_EXE set $SERVICE_NAME AppStopMethodThreads 5000 | Out-Null
-        & $NSSM_EXE set $SERVICE_NAME AppEvents "Stop/Pre" "`"$wslExe`" -- bash `"$wslStopScript`"" | Out-Null
+        & $NSSM_EXE set $SERVICE_NAME AppEvents "Stop/Pre" "`"$wslExe`" -- bash -lc `"cd '$nativeRoot'; exec bash scripts/stop-linux.sh`"" | Out-Null
         & $NSSM_EXE set $SERVICE_NAME AppExit Default Exit | Out-Null
 
         if (-not (Set-ServiceLogonAccount -ServiceName $SERVICE_NAME -Account $svcCred.Account -Password $svcCred.Password)) {
-            throw "Impossible de configurer le compte '$($svcCred.Account)' - verifiez le mot de passe saisi et reessayez."
+            throw "Cannot configure account '$($svcCred.Account)' - verify password and retry."
         }
 
         if (-not (Test-ServiceRegistered)) {
@@ -904,18 +910,18 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
 
         $runAs = Get-ServiceRunAccount
         if (-not (Test-ServiceAccountOk $runAs)) {
-            throw "Service registered as '$runAs' - WSL requires a user account. Reessayez depuis l installateur."
+            throw "Service registered as '$runAs' - WSL requires a user account. Retry from installer."
         }
         Write-Log "Service account verified: $runAs"
 
         $logonTest = Test-ServiceLogonStart
         if (-not $logonTest.Ok) {
             if ($logonTest.Error -eq '1069') {
-                Write-Log "Test demarrage service: erreur 1069 (mot de passe ou droits service)" "WARN"
+                Write-Log "Service start test: error 1069 (password or logon rights)" "WARN"
                 if ($credAttempt -lt 3) { continue }
-                throw "Erreur 1069: le mot de passe saisi ne permet pas de demarrer le service. Utilisez le mot de passe Windows (pas le PIN) puis reessayez depuis l installateur."
+                throw "Error 1069: password cannot start the service. Use Windows password (not PIN) then retry from installer."
             }
-            throw "Test demarrage service echoue: $($logonTest.Message)"
+            throw "Service start test failed: $($logonTest.Message)"
         }
 
         $registrationOk = $true
@@ -931,7 +937,7 @@ for ($credAttempt = 1; $credAttempt -le 3; $credAttempt++) {
 
 if (-not $registrationOk) {
     Remove-ServiceRegistration
-    Emit-Result $false $false "Enregistrement service echoue apres 3 tentatives." 1
+    Emit-Result $false $false "Service registration failed after 3 attempts." 1
 }
 
 try {
@@ -945,9 +951,9 @@ try {
         } catch {
             $runAs = Get-ServiceRunAccount
             if (Test-ServiceAccountOk $runAs) {
-                throw "Handover echoue (service enregistre sous $runAs): $_"
+                throw "Handover failed (service registered as $runAs): $_"
             }
-            throw "Handover echoue: $_"
+            throw "Handover failed: $_"
         }
     } elseif ($StartMode -eq "auto") {
         Write-Log "  Automatic startup with Windows enabled."

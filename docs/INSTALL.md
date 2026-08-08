@@ -10,11 +10,11 @@
 
 Guide complet : [WSL-MIGRATION.md](WSL-MIGRATION.md)
 
-### Windows (alternative)
-- **WSL2 requis** pour la stack IA (InsightFace / PaddleOCR) — `setup.bat` délègue à WSL
-- Docker Desktop (PostgreSQL, Redis, MQTT, MinIO, go2rtc)
-- Go 1.22+, Node 20+, Python 3.12+
-- FFmpeg dans PATH
+### Windows (via WSL2 — seul chemin supporté)
+- **WSL2 + Ubuntu** requis — runtime natif `~/citevision-v2` (jamais `/mnt/c/...` comme runtime)
+- **Docker Engine natif WSL** uniquement — **Docker Desktop interdit** (R.1 / O.129)
+- Go 1.22+, Node 20+, Python 3.12+ dans WSL
+- FFmpeg dans WSL
 
 ### Linux (production)
 - Docker Compose v2
@@ -62,11 +62,24 @@ bash scripts/setup-wsl.sh
 bash scripts/start-linux.sh
 ```
 
-Depuis Windows (première sync) :
+Depuis Windows (première sync miroir → runtime WSL natif) :
 
 ```powershell
-wsl -d Ubuntu-24.04 -- bash /mnt/c/Users/gheno/citevision-v2/scripts/sync-to-wsl.sh
+# Prefer installer bootstrap, or from a Windows mirror of the repo:
+wsl -e bash -lc 'bash /mnt/c/Users/gheno/citevision/scripts/sync-to-wsl.sh'
+# Runtime after sync: ~/citevision-v2 (native ext4) — never run the stack under /mnt/*
 ```
+
+### Checklist post-install (Gemini / Frigate / Face)
+
+1. Runtime = `~/citevision-v2` (native). Refuse Docker Desktop and `/mnt` runtime.
+2. Frigate on in `.env`: `FRIGATE_ENABLED=1`, `FRIGATE_CONFIG_SYNC=1`, `FRIGATE_LIVE=1`, `FRIGATE_EVIDENCE=1`.
+3. Gemini keyfile (never git): `~/.citevision_gemini_key.tmp` **or** `GEMINI_API_KEY` in WSL `.env` — restored at boot by `ensure_demo_validation_env`.
+4. InsightFace models via `ensure-ai-stack` / `install-ai-models` — AI `/health` must expose `face_loaded`.
+5. Face enroll = **UI Settings → surveillance / watchlist photo** (not scripts). Catalogue face stays `partial` until `validate_rule`.
+6. `bash scripts/health_check_all.sh` (optional `STRICT_INSTALL_HEALTH=1`).
+
+See [FILL-INSTALL-BOOT-GAPS.md](./FILL-INSTALL-BOOT-GAPS.md).
 
 - Frontend: http://localhost:5174/setup (première visite)
 - Backend: http://localhost:8081/health
@@ -151,18 +164,22 @@ Diagnostic :
 bash scripts/doctor-linux.sh
 ```
 
-## Démarrage rapide Windows (Docker Desktop)
+## Démarrage rapide Windows → WSL natif
+
+Lanceurs (résolvent `$HOME/citevision-v2`, refusent `/mnt`) :
 
 ```powershell
-cd C:\Users\gheno\citevision-v2
-powershell -File scripts\doctor-windows.ps1
-powershell -File scripts\start-windows.ps1
+powershell -ExecutionPolicy Bypass -File launcher\Start-CiteVision.ps1
+# or:
+powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
 ```
 
 Arrêt :
 
 ```powershell
-powershell -File scripts\stop-windows.ps1
+powershell -ExecutionPolicy Bypass -File launcher\Stop-CiteVision.ps1
+# or:
+powershell -ExecutionPolicy Bypass -File scripts\stop-windows.ps1
 ```
 
 ## Configuration

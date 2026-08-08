@@ -10,17 +10,11 @@ Write-Host "=== Citevision v2 Start (Windows -> WSL) ==="
 Write-Host "[INFO] Stack 100% WSL - native Docker Engine, not Docker Desktop."
 Write-Host ""
 
-# Prefer native runtime (R.1). Fall back only if missing.
-$WslRoot = "/home/gheno/citevision-v2"
-if ($WslRoot -match '^/mnt/[a-z]/') {
-    Write-Host "[FAIL] Refuse WSL root under /mnt/* - use ~/citevision-v2" -ForegroundColor Red
-    exit 1
-}
-
-$probe = ('test -f "{0}/scripts/start-linux.sh"' -f $WslRoot)
-wsl -- bash -lc $probe
-if ($LASTEXITCODE -ne 0) {
-    Write-Host ("[FAIL] Missing {0}/scripts/start-linux.sh - run scripts/sync-to-wsl.sh" -f $WslRoot) -ForegroundColor Red
+. (Join-Path $PSScriptRoot '..\installer\windows\Resolve-CiteVisionWslRoot.ps1')
+try {
+    $WslRoot = Resolve-CiteVisionWslRoot
+} catch {
+    Write-Host ("[FAIL] {0}" -f $_.Exception.Message) -ForegroundColor Red
     exit 1
 }
 

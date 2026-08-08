@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Configure CitéVision Windows startup (Task Scheduler + fallbacks).
+  Configure CiteVision Windows startup (Task Scheduler + fallbacks).
 
 .PARAMETER StartMode
   auto   - logon autostart + watchdog every 3 minutes
@@ -85,20 +85,6 @@ function Invoke-Safe {
     }
 }
 
-function Get-WslRoot {
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'SilentlyContinue'
-    try {
-        $out = & wsl.exe wslpath -a $Root 2>$null
-        if ($LASTEXITCODE -eq 0 -and $out) { return $out.Trim() }
-    } catch {} finally {
-        $ErrorActionPreference = $prev
-    }
-    $drive = $Root[0].ToString().ToLower()
-    $rest = $Root.Substring(2) -replace '\\', '/'
-    return "/mnt/$drive$rest"
-}
-
 function Get-WinDir {
     return Join-Path $Root 'installer\windows'
 }
@@ -110,7 +96,6 @@ function Write-PersistentLaunchScripts {
     $autoPs1 = Join-Path $winDir 'citevision-autostart.ps1'
     $autoCmd = Join-Path $winDir 'citevision-autostart.cmd'
     $loopPs1 = Join-Path $winDir 'citevision-watchdog-loop.ps1'
-    $wslRoot = Get-WslRoot
 
     @"
 param([string]`$Root = '$Root')
@@ -132,10 +117,12 @@ function Test-Healthy {
 }
 
 if (-not (Test-Healthy)) {
-    `$native = '/home/gheno/citevision-v2'
-    `$probe = ('test -f "{0}/scripts/start-linux.sh"' -f `$native)
-    wsl.exe -- bash -lc `$probe 2>`$null | Out-Null
-    if (`$LASTEXITCODE -eq 0) { `$useRoot = `$native } else { `$useRoot = '$wslRoot' }
+    . (Join-Path `$Root 'installer\windows\Resolve-CiteVisionWslRoot.ps1')
+    try {
+        `$useRoot = Resolve-CiteVisionWslRoot
+    } catch {
+        exit 1
+    }
     if (`$useRoot -match '^/mnt/') { exit 1 }
     `$bashCmd = ("cd '{0}'; bash scripts/start-linux.sh" -f `$useRoot)
     & wsl.exe -- bash -lc `$bashCmd

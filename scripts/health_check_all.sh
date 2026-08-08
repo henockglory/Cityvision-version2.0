@@ -319,7 +319,71 @@ print(",".join(missing) if missing else "ok")
         fail "Frigate bridge flags still missing after heal ($BRIDGE_PROBE2) — see docs/LIVE-RTSP-CHECKLIST.md"
       fi
     fi
+
+    # Install gaps: face / Gemini honesty (STRICT_INSTALL_HEALTH=1 upgrades WARN→FAIL).
+    FACE_LOADED="$(printf '%s' "$BODY" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+v=d.get("face_loaded")
+print("1" if v in (True,1,"1","true","True") else "0")
+' 2>/dev/null || echo 0)"
+    if [[ "$FACE_LOADED" == "1" ]]; then
+      ok "AI face_loaded=true"
+    else
+      if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+        fail "AI face_loaded missing/false (InsightFace stack)"
+      else
+        warn "AI face_loaded missing/false — run ensure-ai-stack / install-ai-models"
+      fi
+    fi
+
+    GEMINI_CFG="$(printf '%s' "$BODY" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+v=d.get("gemini_configured", d.get("gemini_enabled"))
+print("1" if v in (True,1,"1","true","True") else "0")
+' 2>/dev/null || echo 0)"
+    if [[ "$GEMINI_CFG" == "1" ]]; then
+      ok "AI gemini_configured=true"
+    else
+      if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+        fail "gemini_configured missing — set GEMINI_API_KEY or ~/.citevision_gemini_key.tmp"
+      else
+        warn "gemini_configured missing — cabin/face VLM needs GEMINI_API_KEY (keyfile ~/.citevision_gemini_key.tmp)"
+      fi
+    fi
   fi
+fi
+
+# Parasitic ghost module must never ship beside the real identity package.
+if [[ -f "$ROOT/ai-engine/src/citevision_ai/face.py" ]]; then
+  fail "ghost ai-engine/src/citevision_ai/face.py present — remove; use identity/ InsightFace package"
+else
+  ok "no ghost citevision_ai/face.py"
+fi
+
+# When face watchlist entries exist, Frigate YAML should enable face_recognition.
+WATCH_N="$(docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d citevision -tAc \
+  "SELECT COALESCE(SUM(jsonb_array_length(entries)),0)::int FROM surveillance_lists WHERE list_type='face_watchlist' AND is_active=TRUE;" \
+  2>/dev/null | tr -d '[:space:]' || echo 0)"
+WATCH_N="${WATCH_N:-0}"
+YAML_CANDIDATES=(
+  "$ROOT/infra/frigate-config/frigate.generated.yml"
+  "$ROOT/infra/frigate-config/config.yml"
+)
+if [[ "$WATCH_N" =~ ^[1-9][0-9]*$ ]]; then
+  FACE_REC_OK=0
+  for y in "${YAML_CANDIDATES[@]}"; do
+    if [[ -f "$y" ]] && grep -A8 -E 'face_recognition:' "$y" 2>/dev/null | grep -qE 'enabled:[[:space:]]*true'; then
+      FACE_REC_OK=1
+      break
+    fi
+  done
+  if [[ "$FACE_REC_OK" == "1" ]]; then
+    ok "Frigate face_recognition.enabled with watchlist entries ($WATCH_N)"
+  else
+    warn "watchlist entries=$WATCH_N but face_recognition.enabled not found in generated Frigate YAML — enroll/sync may be pending"
+  fi
+else
+  ok "face watchlist empty (face_recognition optional until enroll via UI Settings)"
 fi
 echo
 

@@ -29,16 +29,7 @@ function Test-AppHealthy {
     } catch { return $false }
 }
 
-function Get-WslRoot {
-    param([string]$WinRoot)
-    try {
-        $out = & wsl.exe wslpath -a $WinRoot 2>$null
-        if ($LASTEXITCODE -eq 0 -and $out) { return $out.Trim() }
-    } catch {}
-    $drive = $WinRoot[0].ToString().ToLower()
-    $rest = $WinRoot.Substring(2) -replace '\\', '/'
-    return "/mnt/$drive$rest"
-}
+$resolverPath = Join-Path $Root 'installer\windows\Resolve-CiteVisionWslRoot.ps1'
 
 # Respect manual mode - do not restart if configured as manual
 $modeFile = Join-Path $Root 'installer\.service_start_mode'
@@ -59,18 +50,16 @@ if (Test-Path $lockFile) {
 try {
     Set-Content -Path $lockFile -Value ([string][Environment]::TickCount) -Encoding ASCII
     Write-WdLog 'Backend down - restarting stack via start-linux.sh'
-    # Prefer native WSL runtime (R.1); Get-WslRoot kept as fallback probe only.
-    $nativeRoot = '/home/gheno/citevision-v2'
-    $probe = ('test -f "{0}/scripts/start-linux.sh"' -f $nativeRoot)
-    wsl.exe -- bash -lc $probe 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        $wslRoot = $nativeRoot
-    } else {
-        $wslRoot = Get-WslRoot $Root
-        if ($wslRoot -match '^/mnt/') {
-            Write-WdLog 'FAIL: runtime under /mnt/* and ~/citevision-v2 missing'
-            exit 1
-        }
+    . $resolverPath
+    try {
+        $wslRoot = Resolve-CiteVisionWslRoot
+    } catch {
+        Write-WdLog ("FAIL: {0}" -f $_.Exception.Message)
+        exit 1
+    }
+    if ($wslRoot -match '^/mnt/') {
+        Write-WdLog 'FAIL: runtime under /mnt/* refused'
+        exit 1
     }
     $bashCmd = ("cd '{0}'; bash scripts/start-linux.sh" -f $wslRoot)
     & wsl.exe -- bash -lc $bashCmd 2>&1 | Out-Null

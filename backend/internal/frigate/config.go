@@ -5,7 +5,8 @@ import (
 	"strconv"
 )
 
-// Config holds Frigate integration feature flags (all off by default).
+// Config holds Frigate integration feature flags.
+// Sync is on by default (FRIGATE_ENABLED + FRIGATE_CONFIG_SYNC); override with =0 to disable.
 type Config struct {
 	Enabled      bool
 	ConfigSync   bool
@@ -24,10 +25,10 @@ type Config struct {
 
 func ConfigFromEnv() Config {
 	return Config{
-		Enabled:        envBool("FRIGATE_ENABLED", false),
-		ConfigSync:     envBool("FRIGATE_CONFIG_SYNC", false),
-		Live:           envBool("FRIGATE_LIVE", false),
-		Evidence:       envBool("FRIGATE_EVIDENCE", false),
+		Enabled:        envBool("FRIGATE_ENABLED", true),
+		ConfigSync:     envBool("FRIGATE_CONFIG_SYNC", true),
+		Live:           envBool("FRIGATE_LIVE", true),
+		Evidence:       envBool("FRIGATE_EVIDENCE", true),
 		Events:         envBool("FRIGATE_EVENTS", false),
 		DemoMode:       envBool("FRIGATE_DEMO_MODE", true),
 		URL:            envStr("FRIGATE_URL", "http://127.0.0.1:5000"),
