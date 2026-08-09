@@ -38,6 +38,110 @@ func (a *API) ListIntegrationPresets(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// SampleIntegrationWebhook returns the exact JSON body CiteVision would POST
+// for a given preset/kind (rule action vs alert routing). No HTTP delivery.
+func (a *API) SampleIntegrationWebhook(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	preset := r.URL.Query().Get("preset")
+	kind := r.URL.Query().Get("kind")
+	if kind == "" {
+		kind = "rule"
+	}
+	if kind != "rule" && kind != "routing" {
+		writeError(w, http.StatusBadRequest, "kind must be rule or routing")
+		return
+	}
+	payload := sampleWebhookPayload(orgID.String(), kind, preset)
+	body, cloudEvents := routing.BuildWebhookBody(preset, payload)
+	headers := []string{
+		"Content-Type: application/json",
+		"X-CiteVision-Delivery-Id: <uuid>",
+	}
+	if cloudEvents {
+		headers = append(headers,
+			"Ce-Specversion: 1.0",
+			"Ce-Type: com.citevision.alert.v1",
+		)
+	}
+	if routing.SigningEnabled() {
+		headers = append(headers, "X-CiteVision-Signature: sha256=<hmac>")
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"preset":       preset,
+		"kind":         kind,
+		"content_type": "application/json",
+		"headers_hint": headers,
+		"cloud_events": cloudEvents,
+		"body":         body,
+		"note_fr":      "Exemple fictif. Les preuves voyagent via les champs url dans evidence_snapshot (pas en binaire). n8n/Make/Zapier doivent GET ces URL ensuite.",
+		"note_en":      "Fictional sample. Evidence travels as url fields inside evidence_snapshot (not binary). n8n/Make/Zapier should GET those URLs next.",
+	})
+}
+
+func sampleWebhookPayload(orgID, kind, preset string) map[string]interface{} {
+	ts := time.Now().UTC().Format(time.RFC3339)
+	evSnap := map[string]interface{}{
+		"camera_id":  "cam-demo-entrance",
+		"zone_id":    "zone-entry",
+		"class_name": "person",
+		"event_type": "zone_enter",
+		"confidence": 0.92,
+		"package": map[string]interface{}{
+			"images": []map[string]interface{}{
+				{
+					"role": "scene",
+					"url":  "https://citevision.example/api/v1/orgs/" + orgID + "/evidence/asset?key=scene.jpg",
+				},
+				{
+					"role": "subject",
+					"url":  "https://citevision.example/api/v1/orgs/" + orgID + "/evidence/asset?key=subject.jpg",
+				},
+			},
+			"clip": map[string]interface{}{
+				"url":          "https://citevision.example/api/v1/orgs/" + orgID + "/evidence/asset?key=clip.mp4",
+				"duration_sec": 6,
+			},
+			"metadata": map[string]interface{}{
+				"evidence_status": "complete",
+				"capture_source":  "segment",
+			},
+		},
+	}
+	base := map[string]interface{}{
+		"org_id":              orgID,
+		"timestamp":           ts,
+		"camera_id":           "cam-demo-entrance",
+		"zone_id":             "zone-entry",
+		"class_name":          "person",
+		"event_type":          "zone_enter",
+		"evidence_snapshot":   evSnap,
+		"integration_preset":  preset,
+		"rule_name":           "Intrusion zone entrée",
+	}
+	if kind == "routing" {
+		base["alert_id"] = "00000000-0000-4000-8000-000000000001"
+		base["title"] = "Intrusion détectée — zone entrée"
+		base["severity"] = "high"
+		base["plate_number"] = ""
+		base["face_label"] = ""
+		base["routing_rule"] = "Critique → webhook"
+		return base
+	}
+	base["rule_id"] = "00000000-0000-4000-8000-0000000000aa"
+	base["event"] = map[string]interface{}{
+		"event_type": "zone_enter",
+		"camera_id":  "cam-demo-entrance",
+		"zone_id":    "zone-entry",
+		"class_name": "person",
+		"track_id":   "track-42",
+		"confidence": 0.92,
+		"metadata": map[string]interface{}{
+			"frigate_label": "person",
+		},
+	}
+	return base
+}
+
 // TestIntegrationWebhook sends a sample alert payload to a URL/preset so the
 // operator can verify connectivity before saving a routing rule.
 func (a *API) TestIntegrationWebhook(w http.ResponseWriter, r *http.Request) {

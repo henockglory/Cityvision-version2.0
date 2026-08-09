@@ -180,11 +180,32 @@ export interface DeliveryLogEntry {
   [k: string]: unknown;
 }
 
+export interface WebhookSampleResponse {
+  preset: string;
+  kind: 'rule' | 'routing' | string;
+  content_type: string;
+  headers_hint: string[];
+  cloud_events: boolean;
+  body: Record<string, unknown>;
+  note_fr?: string;
+  note_en?: string;
+}
+
 export const integrationsApi = {
   presets: (orgId: string) =>
     api.get<{ presets: IntegrationPreset[]; signing_enabled: boolean }>(
       `/orgs/${orgId}/integrations/presets`,
     ),
+  webhookSample: (
+    orgId: string,
+    params: { preset?: string; kind?: 'rule' | 'routing' },
+  ) =>
+    api.get<WebhookSampleResponse>(`/orgs/${orgId}/integrations/webhook/sample`, {
+      params: {
+        preset: params.preset ?? '',
+        kind: params.kind ?? 'rule',
+      },
+    }),
   testWebhook: (orgId: string, body: { url: string; preset?: string }) =>
     api.post<{ ok: boolean; error?: string }>(
       `/orgs/${orgId}/integrations/webhook/test`,

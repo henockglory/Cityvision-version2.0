@@ -8,6 +8,49 @@ import (
 	"testing"
 )
 
+func TestBuildWebhookBody_N8NCloudEvents(t *testing.T) {
+	t.Setenv("WEBHOOK_CLOUDEVENTS", "1")
+	body, wrapped := BuildWebhookBody(PresetN8N, map[string]interface{}{
+		"org_id":     "org-1",
+		"alert_id":   "alert-1",
+		"rule_name":  "Demo",
+		"event_type": "zone_enter",
+		"timestamp":  "2026-08-09T12:00:00Z",
+	})
+	if !wrapped {
+		t.Fatal("expected CloudEvents wrap for n8n")
+	}
+	if body["specversion"] != "1.0" {
+		t.Fatalf("specversion=%v", body["specversion"])
+	}
+	if body["type"] != "com.citevision.alert.v1" {
+		t.Fatalf("type=%v", body["type"])
+	}
+	data, _ := body["data"].(map[string]interface{})
+	if data == nil || data["rule_name"] != "Demo" {
+		t.Fatalf("data missing rule_name: %v", body["data"])
+	}
+}
+
+func TestBuildWebhookBody_SlackNoCloudEvents(t *testing.T) {
+	t.Setenv("WEBHOOK_CLOUDEVENTS", "1")
+	body, wrapped := BuildWebhookBody(PresetSlack, map[string]interface{}{
+		"org_id":    "org-1",
+		"title":     "Alert",
+		"severity":  "high",
+		"rule_name": "Demo",
+	})
+	if wrapped {
+		t.Fatal("slack must not use CloudEvents envelope")
+	}
+	if _, ok := body["specversion"]; ok {
+		t.Fatal("unexpected CloudEvents on slack body")
+	}
+	if body["text"] == nil && body["blocks"] == nil {
+		t.Fatalf("expected slack text/blocks, got %v", body)
+	}
+}
+
 func TestPostWebhook_CloudEventsRetry(t *testing.T) {
 	attempts := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

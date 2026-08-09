@@ -8,6 +8,7 @@ import {
 } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { WEBHOOK_PRESETS } from '@/lib/evidencePolicy';
+import WebhookPayloadPreview from '@/components/integrations/WebhookPayloadPreview';
 
 const MATCH_TYPES = [
   { id: 'any', label: 'Toute alerte' },
@@ -265,6 +266,14 @@ export default function AlertRoutingPanel() {
                         channels: { ...channels, webhook_url: e.target.value },
                       } : r))}
                     />
+                    {String(channels.webhook_preset ?? '') !== 'gmail' && (
+                      <WebhookPayloadPreview
+                        className="mt-2"
+                        preset={String(channels.webhook_preset ?? '')}
+                        kind="routing"
+                        active
+                      />
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">

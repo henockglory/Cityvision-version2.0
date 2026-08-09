@@ -419,6 +419,7 @@
       "enableWebhook": "Also send to an automation webhook",
       "webhookPreset": "Integration type",
       "webhookUrl": "Webhook URL",
+      "webhookSampleHint": "Preview of the JSON body sent to this URL (sample).",
       "scheduleLabel": "Active time window",
       "scheduleFrom": "From",
       "scheduleTo": "To",
@@ -1177,5 +1178,19 @@
     "degradedBody": "Some models are not loaded. Dependent rules may be disabled.",
     "degradedContinue": "Continue in degraded mode",
     "openHealth": "View system health"
+  },
+  "integrations": {
+    "webhookSample": {
+      "title": "JSON body sent (sample)",
+      "subtitle": "CiteVision → webhook POST shape (n8n, Make, Zapier…)",
+      "cloudEvents": "CloudEvents envelope",
+      "chatShape": "Chat payload",
+      "generic": "Custom URL",
+      "headers": "Typical headers",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFail": "Could not copy",
+      "error": "Could not load sample"
+    }
   }
 }

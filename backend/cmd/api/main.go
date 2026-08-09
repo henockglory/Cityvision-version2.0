@@ -364,6 +364,7 @@ func main() {
 					r.Patch("/", api.UpdateOrganization)
 					r.Post("/integrations/smtp/test", api.TestSMTP)
 					r.Get("/integrations/presets", api.ListIntegrationPresets)
+					r.With(middleware.RequirePermission(rbacSvc, "alerts:read")).Get("/integrations/webhook/sample", api.SampleIntegrationWebhook)
 					r.With(heavyLimiter.Middleware, middleware.RequirePermission(rbacSvc, "rules:write")).Post("/integrations/webhook/test", api.TestIntegrationWebhook)
 					r.With(middleware.RequirePermission(rbacSvc, "alerts:read")).Get("/integrations/delivery-log", api.ListDeliveryLog)
 					r.With(middleware.RequirePermission(rbacSvc, "system:health")).Post("/demo/reset", api.ResetDemoWorkspace)

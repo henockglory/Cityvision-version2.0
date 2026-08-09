@@ -35,7 +35,14 @@ for rel in \
   shared \
   docs/COMPOSITES-ORCHESTRATION.md \
   docs/CATALOG-VALIDATE-MATRIX.md \
-  frontend/src/i18n/generated
+  frontend/src/i18n \
+  frontend/src/components/integrations \
+  frontend/src/components/rules/OutputChannelsPanel.tsx \
+  frontend/src/components/settings/AlertRoutingPanel.tsx \
+  frontend/src/api/client.ts \
+  backend/internal/routing \
+  backend/internal/handler/integrations.go \
+  backend/cmd/api/main.go
 do
   if [[ -d "$SRC/$rel" ]]; then
     mkdir -p "$DST/$rel"
@@ -54,9 +61,9 @@ sed -i 's/\r$//' \
   "$DST/scripts/lib/start-full-stack.sh" \
   "$DST/scripts/lib/sync-runtime-no-env.sh" \
   "$DST/scripts/health_check_all.sh" 2>/dev/null || true
-test -f "$DST/launcher/Set-CiteVisionGeminiKey.ps1"
-test -f "$DST/scripts/lib/probe-gemini.sh"
-if grep -q 'tpl-theft-composite' "$DST/shared/rule-orchestration-contract.json"; then
+test -f "$DST/frontend/src/components/integrations/WebhookPayloadPreview.tsx"
+test -f "$DST/backend/internal/handler/integrations.go"
+if grep -q 'tpl-theft-composite' "$DST/shared/rule-orchestration-contract.json" 2>/dev/null; then
   echo "[FAIL] theft composite still present in WSL orchestration" >&2
   exit 1
 fi
@@ -76,7 +83,14 @@ do
     shared \
     docs/COMPOSITES-ORCHESTRATION.md \
     docs/CATALOG-VALIDATE-MATRIX.md \
-    frontend/src/i18n/generated
+    frontend/src/i18n \
+    frontend/src/components/integrations \
+    frontend/src/components/rules/OutputChannelsPanel.tsx \
+    frontend/src/components/settings/AlertRoutingPanel.tsx \
+    frontend/src/api/client.ts \
+    backend/internal/routing \
+    backend/internal/handler/integrations.go \
+    backend/cmd/api/main.go
   do
     if [[ -d "$DST/$rel" ]]; then
       mkdir -p "$m/$rel"

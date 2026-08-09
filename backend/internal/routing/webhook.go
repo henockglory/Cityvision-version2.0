@@ -126,6 +126,19 @@ func appendDLQ(path string, entry map[string]interface{}) {
 	_, _ = f.Write(append(b, '\n'))
 }
 
+// BuildWebhookBody returns the exact JSON object that would be POSTed for preset
+// (CloudEvents envelope for automation platforms; chat reshape for Slack/Teams/Discord).
+// Does not validate URL or send HTTP — used by the UI sample preview.
+func BuildWebhookBody(preset string, payload map[string]interface{}) (map[string]interface{}, bool) {
+	opts := defaultWebhookOptions()
+	bodyPayload, useCloudEvents := transformForPreset(preset, payload)
+	wrapped := useCloudEvents && opts.CloudEvents
+	if wrapped {
+		bodyPayload = wrapCloudEvents(bodyPayload)
+	}
+	return bodyPayload, wrapped
+}
+
 // PostWebhook delivers payload with retries, optional CloudEvents envelope, DLQ on failure.
 func PostWebhook(url string, payload map[string]interface{}) error {
 	return PostWebhookPreset(url, PresetGeneric, payload)
@@ -138,11 +151,7 @@ func PostWebhookPreset(url, preset string, payload map[string]interface{}) error
 	if err := ValidateWebhookURL(url); err != nil {
 		return err
 	}
-	opts := defaultWebhookOptions()
-	bodyPayload, useCloudEvents := transformForPreset(preset, payload)
-	if useCloudEvents && opts.CloudEvents {
-		bodyPayload = wrapCloudEvents(bodyPayload)
-	}
+	bodyPayload, _ := BuildWebhookBody(preset, payload)
 	body, err := json.Marshal(bodyPayload)
 	if err != nil {
 		return err

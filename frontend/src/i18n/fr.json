@@ -422,6 +422,7 @@
       "enableWebhook": "Envoyer aussi vers une automatisation (webhook)",
       "webhookPreset": "Type d'intégration",
       "webhookUrl": "URL du webhook",
+      "webhookSampleHint": "Aperçu du corps JSON envoyé à cette URL (exemple).",
       "scheduleLabel": "Fenêtre horaire d'activation",
       "scheduleFrom": "De",
       "scheduleTo": "À",
@@ -1210,5 +1211,19 @@
     "degradedBody": "Certains modèles ne sont pas chargés. Les règles dépendantes peuvent être désactivées.",
     "degradedContinue": "Continuer en mode dégradé",
     "openHealth": "Voir la santé système"
+  },
+  "integrations": {
+    "webhookSample": {
+      "title": "Corps JSON envoyé (exemple)",
+      "subtitle": "Modèle du POST CiteVision → webhook (n8n, Make, Zapier…)",
+      "cloudEvents": "Enveloppe CloudEvents",
+      "chatShape": "Format chat",
+      "generic": "URL personnalisée",
+      "headers": "En-têtes typiques",
+      "copy": "Copier",
+      "copied": "Copié",
+      "copyFail": "Impossible de copier",
+      "error": "Impossible de charger l'exemple"
+    }
   }
 }

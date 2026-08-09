@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Send } from 'lucide-react';
 import InfoTip from '@/components/ui/InfoTip';
 import ExplanatorySelect from '@/components/ui/ExplanatorySelect';
+import WebhookPayloadPreview from '@/components/integrations/WebhookPayloadPreview';
 import { buildWebhookPresetOptions } from '@/lib/conditionValueOptions';
 import { WEBHOOK_PRESETS } from '@/lib/evidencePolicy';
 
@@ -81,6 +82,14 @@ export default function OutputChannelsPanel({
                 onChange={(e) => onWebhookUrl(e.target.value)}
               />
             </div>
+          )}
+          {webhookPreset !== 'gmail' && (
+            <WebhookPayloadPreview
+              preset={webhookPreset}
+              kind="rule"
+              active={enableWebhook}
+              className="mt-1"
+            />
           )}
         </>
       )}
