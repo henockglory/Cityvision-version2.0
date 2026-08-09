@@ -1,0 +1,12 @@
+---
+description: Hygiene machine Cursor/WSL — index léger, runtime WSL, pas de saturation RAM
+alwaysApply: true
+---
+
+# Cursor / machine — hygiene permanente
+
+- **[R.1bis] Ouvrir le workspace en Remote WSL** : `~/citevision-v2` (pas `C:\Users\gheno\citevision` comme runtime). Le miroir Windows reste un fallback de sync, jamais le chemin d’exécution des smokes.
+- **[R.4] Index léger.** Respecter `.cursorignore` + `.vscode/settings.json` (exclure `data/`, `logs/`, `validation-evidence/`, `*.mp4`, `.venv`, models). Ne pas retirer ces excludes « pour chercher une vidéo ».
+- **[R.5] WSL équilibré.** Profil actif via `~/.wslconfig` / `scripts/apply-wsl-balanced-resources.ps1` (20GB / 14 CPU). Suffisant pour Frigate+AI+smoke ; laisse de la RAM à Cursor. Ne pas remettre 28GB+/18CPU sans besoin campagne GPU saturée.
+- **[R.6] Logs rotatés.** `scripts/demo-retention-purge.sh` tronque `ai-engine.log` / backend et prune les vieux `chain-smoke-*`. Ne pas laisser `ai-engine.log` grossir sans borne.
+- **[R.7] Un agent lourd à la fois** pendant un smoke WSL (évite crash MCP / OOM ressenti). Les tests habituels (`health_check_all`, `validate_rule`, chain-smoke) restent le chemin ops — pas de nouveaux `_diag_*` ad hoc.

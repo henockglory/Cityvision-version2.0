@@ -1,0 +1,38 @@
+---
+description: CitéVision — Socle (constitution non-négociable). Garde-fous permanents zone→IA→règle→preuve.
+alwaysApply: true
+---
+
+# Socle CitéVision — à vérifier à CHAQUE session (jamais périmé)
+
+Architecture de vérité : **zone → IA → règle → preuve**. Ces règles priment sur toute demande de raccourci.
+
+- **[A.1] Zones jamais codées en dur.** Polygones/lignes/distances vivent uniquement via ZoneEditor / DB (`zones`, `lines`). Interdits comme mode de fonctionnement : scripts `_fix_zone_*` ou seeds qui réécrivent la géométrie sans accord explicite.
+- **[A.2] Pas de boucle « vitesse seule ».** Feu, comptage, téléphone, ceinture ont la même exigence que la vitesse. Rapport final = 5/5, jamais 1/5.
+- **[A.3] « Validé » = preuves complètes**, pas des logs MQTT : événement → preuves (clip 6 s, 2 images, plaque si routier) → alerte persistée → mail premium si configuré. Preuve exigée = capture alerte + fichiers preuve + mail Mailhog.
+- **[A.4] Catalogue véridique.** Chaque option UI = événement réellement émis, avec badge `real`/`partial`/`beta`. Pas de `supported: true` sur une heuristique fragile sans badge.
+- **[A.5] GPU prioritaire, CPU dernier recours.** Tout composant CUDA/ONNX capable doit tourner GPU. `/health` doit exposer les providers réels.
+- **[A.6] Pas de code superflu.** Chaque changement sert la chaîne zone→IA→règle→preuve. Les scripts `_diag_*` restent hors du chemin runtime critique.
+- **[A.7] Une règle validée = mécanisme validé pour toutes.** Même pipeline pour toutes les règles ; la 1re règle bout-en-bout prouve l'architecture, les suivantes la rebranchent.
+- **[A.8] Continuité tant que règle active.** Tant que `is_enabled` et caméra démo sélectionnée, pas d'arrêt silencieux (pause, gate, cooldown excessif).
+- **[A.9] Attendre les preuves avant alerte « finale ».** Si la politique exige des preuves, pas d'alerte présentée comme définitive sans clip/images/plaque.
+- **[A.10] Phasage obligatoire, pas big-bang.** Phase A (démo 5 règles) achevée avant tout refactor catalogue/installateur (Phases B–F). Une seule phase à la fois.
+
+## Remédiation Sprint 0 — trois décisions structurantes (2026-07-18)
+
+- **[R.1] Un seul filesystem / un seul runtime.** Éditer et exécuter exclusivement depuis WSL `~/citevision-v2` (Cursor Remote WSL / `\\wsl.localhost\...\citevision-v2`). Ne plus traiter `C:\Users\gheno\citevision` comme runtime à synchroniser manuellement. Docker Desktop **interdit** — dockerd natif WSL uniquement (`scripts/_start_dockerd_wsl.sh`). Avant chaque session : `bash scripts/health_check_all.sh`.
+- **[R.2] Preuve différée — jamais fabriquer.** Séparer détection (rapide) et composition de preuve (async jusqu'à clip Frigate prêt / `end_time`). Alerte « finale » uniquement si `evidence_status=complete`, sinon `missing` explicite avec cause loguée (`scene_green`, `align_too_large`, `subject_empty`, `clip_not_ready`, `timeout`). Interdit : fallback qui fabrique une preuve (ex. plaque = subject JPEG).
+- **[R.3] Validé infalsifiable.** Un PASS de règle exige l'artefact `bash scripts/validate_rule.sh <alias>` (DoD points 1–6 + capture UI `:5174` dans `validation-evidence/`). Pas de claim 5/5 sans 5 artefacts individuels récents. Interdit : PASS script-only sans ouverture UI.
+
+## [O.129] Interdictions
+Pas de hardcode de zones · pas de refactor installateur hors Phase E · pas d'affirmation « tout validé » sans preuves · pas de boucle vitesse seule · pas de nouveaux scripts `_fix_*`/`_diag_*` ad hoc (ops via health_check / validate_rule uniquement) · pas Docker Desktop.
+
+## [P.135] Scripts `_fix_*` / `_diag_*` gelés
+Historique déplacé sous `ops/diagnostics/` (Sprint 4). Diagnostic en **lecture seule** uniquement. Toute correction passe par l'UI utilisateur ou un seed explicite validé humainement — jamais une écriture DB automatique non validée, à aucun moment. (`ALLOW_DB_WRITE=1` requis si un script d'écriture exceptionnel est explicitement autorisé.)
+Pas de nouveaux `_fix_*`/`_diag_*` sous `scripts/` — ops via `health_check_all.sh` / `validate_rule.sh` uniquement.
+
+## Environnement (rappels durables)
+- Source de vérité : **WSL `~/citevision-v2`** uniquement pour édition + runtime. [P.138 / R.1]
+- IDs org/caméra **jamais** codés en dur : résolus live via API/DB. [P.131]
+- EOL LF (`.gitattributes`) ; strip CRLF si un fichier Windows fuit encore dans le dépôt.
+- **[R.4–R.7] Hygiene Cursor/WSL** : workspace Remote WSL ; `.cursorignore` + excludes VS Code ; `.wslconfig` équilibré (20GB/14CPU via `scripts/apply-wsl-balanced-resources.ps1`) ; rotation logs dans `demo-retention-purge.sh`. Voir aussi `.cursor/rules/cursor-machine-hygiene.mdc`.

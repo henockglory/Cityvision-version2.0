@@ -428,9 +428,13 @@ func main() {
 					r.Route("/surveillance-lists", func(r chi.Router) {
 						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/", api.ListSurveillanceLists)
 						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/", api.CreateSurveillanceList)
-						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/{listID}/entries", api.AddSurveillanceListEntry)
-						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/{listID}/entries/enroll", api.EnrollSurveillanceListEntry)
-						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Delete("/{listID}", api.DeleteSurveillanceList)
+						r.Route("/{listID}", func(r chi.Router) {
+							r.Route("/entries", func(r chi.Router) {
+								r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/enroll", api.EnrollSurveillanceListEntry)
+								r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/", api.AddSurveillanceListEntry)
+							})
+							r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Delete("/", api.DeleteSurveillanceList)
+						})
 					})
 
 					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Post("/events/ingest", api.IngestEvent)

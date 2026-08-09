@@ -74,6 +74,15 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (orgId && config.headers) {
     config.headers['X-Org-ID'] = orgId;
   }
+  // FormData must not keep the default application/json Content-Type
+  // (browser/axios need to set multipart boundary automatically).
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+    if (typeof config.headers.delete === 'function') {
+      config.headers.delete('Content-Type');
+    } else {
+      delete (config.headers as Record<string, unknown>)['Content-Type'];
+    }
+  }
   return config;
 });
 
@@ -304,8 +313,20 @@ export const identityApi = {
       frigate_name?: string;
       embedding_dim?: number;
     }>(`/orgs/${orgId}/surveillance-lists/${listId}/entries/enroll`, form, {
-      // Let axios set multipart boundary automatically.
       timeout: 120_000,
+      // Force browser multipart boundary (never send application/json).
+      transformRequest: [
+        (data, headers) => {
+          if (typeof FormData !== 'undefined' && data instanceof FormData) {
+            if (headers && typeof (headers as { delete?: (k: string) => void }).delete === 'function') {
+              (headers as { delete: (k: string) => void }).delete('Content-Type');
+            } else if (headers) {
+              delete (headers as Record<string, unknown>)['Content-Type'];
+            }
+          }
+          return data;
+        },
+      ],
     });
   },
   delete: (orgId: string, listId: string) =>

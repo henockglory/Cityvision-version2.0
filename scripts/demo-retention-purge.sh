@@ -49,6 +49,44 @@ freed_after=$(du_bytes "$RECORDINGS")
 freed_mb=$(( (freed_before - freed_after) / 1024 / 1024 ))
 log "  recordings size delta: ~${freed_mb} MB"
 
+# Rotate bulky app logs so Cursor/WSL stay light (tests keep recent tails).
+rotate_log() {
+  local f="$1"
+  local max_mb="${2:-80}"
+  [[ -f "$f" ]] || return 0
+  local sz_mb
+  sz_mb=$(du -m "$f" 2>/dev/null | awk '{print $1}')
+  [[ "${sz_mb:-0}" -ge "$max_mb" ]] || return 0
+  local bak="${f}.$(date -u +%Y%m%dT%H%M%SZ).bak"
+  mv -f "$f" "$bak" 2>/dev/null || return 0
+  : >"$f"
+  # keep last 3 rotated copies of this basename
+  local dir base
+  dir="$(dirname "$f")"
+  base="$(basename "$f")"
+  ls -1t "$dir"/"${base}".*.bak 2>/dev/null | tail -n +4 | xargs -r rm -f --
+  log "  rotated $(basename "$f") (~${sz_mb}MB) -> $(basename "$bak")"
+}
+
+rotate_log "$LOGDIR/ai-engine.log" 64
+rotate_log "$LOGDIR/backend.log" 32
+rotate_log "$LOGDIR/rules-engine.log" 32
+# Drop stale chain-smoke nohup / campaign logs older than 3 days
+if [[ -d "$LOGDIR" ]]; then
+  n=$(find "$LOGDIR" -maxdepth 1 -type f \( -name 'chain-smoke-*.log' -o -name 'chain-smoke-*.md' \) -mtime +3 -print -delete 2>/dev/null | wc -l || echo 0)
+  log "  chain-smoke logs deleted (age>3d): ${n}"
+fi
+# Cap validation-evidence chain-smoke dirs (keep 8 newest)
+if [[ -d "$ROOT/validation-evidence" ]]; then
+  mapfile -t _cs < <(ls -1dt "$ROOT"/validation-evidence/chain-smoke-* 2>/dev/null || true)
+  if [[ ${#_cs[@]} -gt 8 ]]; then
+    for d in "${_cs[@]:8}"; do
+      rm -rf "$d" 2>/dev/null || true
+      log "  pruned old evidence $(basename "$d")"
+    done
+  fi
+fi
+
 if command -v fstrim >/dev/null 2>&1; then
   sudo fstrim -av >>"$LOG" 2>&1 || true
 fi

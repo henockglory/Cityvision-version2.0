@@ -307,6 +307,7 @@ def _pipeline_snapshot(blockers: dict) -> dict[str, int]:
         "vlm_completed": int(vq.get("completed") or 0),
         "vlm_emitted": int(vq.get("emitted") or 0),
         "vlm_rejected": int(vq.get("rejected") or 0),
+        "vlm_unclear": int(vq.get("unclear") or 0),
     }
 
 
@@ -328,6 +329,22 @@ def count_since(rule_id: str, event_types: list[str], since: str, rule_name: str
         f"AND {src_ok};"
     )
     return int(evt or 0), int(alerts or 0), int(frigate or 0)
+
+
+def count_distinct_speed_alerts(rule_id: str, since: str) -> tuple[int, list[str]]:
+    """Count distinct frigate_event_id on speeding alerts since timestamp."""
+    raw = psql(
+        "SELECT DISTINCT coalesce("
+        "a.evidence_snapshot->'package'->'metadata'->>'frigate_event_id', "
+        "a.evidence_snapshot->'package'->'metadata'->>'frigate_id', "
+        "a.id::text) "
+        f"FROM alerts a WHERE a.org_id='{ORG}'::uuid "
+        f"AND a.rule_id='{rule_id}'::uuid AND a.created_at>='{since}'::timestamptz "
+        "AND coalesce(a.evidence_snapshot->'package'->'metadata'->>'capture_source','') "
+        "IN ('frigate_track','frigate');"
+    )
+    ids = [x.strip() for x in (raw or "").splitlines() if x.strip()]
+    return len(ids), ids
 
 
 def print_bbox_audit(rule_id: str, since: str) -> tuple[bool, str]:
@@ -476,8 +493,17 @@ def main() -> int:
     count_target = max(1, int(os.environ.get("COUNT_TARGET", "1") or "1"))
 
     if pipeline_only:
+        pipeline_target = max(
+            1,
+            int(
+                os.environ.get("PIPELINE_TARGET")
+                or os.environ.get("CEINTURE_PIPELINE_TARGET")
+                or "1"
+            ),
+        )
         print(
-            f"pipeline mode — Gemini response sufficient (max {MAX_WAIT_SEC}s, no alert required)",
+            f"pipeline mode — need {pipeline_target} Gemini cycle(s) "
+            f"(max {MAX_WAIT_SEC}s, verdict ignored)",
             flush=True,
         )
         base = _pipeline_snapshot(_fetch_blockers())
@@ -486,20 +512,28 @@ def main() -> int:
         while time.time() < deadline:
             time.sleep(POLL_SEC)
             snap = _pipeline_snapshot(_fetch_blockers())
+            # AI restart resets counters — re-baseline so deltas stay meaningful.
+            if any(snap[k] < base[k] for k in base):
+                print("  AI counters reset — re-baseline pipeline snapshot", flush=True)
+                base = snap
+                continue
             d_cabin = snap["cabin_enqueued"] - base["cabin_enqueued"]
             d_enq = snap["vlm_enqueued"] - base["vlm_enqueued"]
             d_done = snap["vlm_completed"] - base["vlm_completed"]
             d_emit = snap["vlm_emitted"] - base["vlm_emitted"]
             d_rej = snap["vlm_rejected"] - base["vlm_rejected"]
+            d_unc = snap["vlm_unclear"] - base["vlm_unclear"]
             print(
-                f"  poll cabin_enq+={d_cabin} vlm_enq+={d_enq} completed+={d_done} "
-                f"emitted+={d_emit} rejected+={d_rej}",
+                f"  poll cabin_enq+={d_cabin} vlm_enq+={d_enq} completed+={d_done}/{pipeline_target} "
+                f"emitted+={d_emit} rejected+={d_rej} unclear+={d_unc}",
                 flush=True,
             )
-            queued = d_cabin >= 1 or d_enq >= 1
-            responded = d_done >= 1 and (d_emit >= 1 or d_rej >= 1)
-            if queued and responded:
-                print("[HIT] pipeline Gemini cycle complete (emit or reject)", flush=True)
+            # Finished cycles count regardless of emit/reject/unclear split.
+            if d_done >= pipeline_target:
+                print(
+                    f"[HIT] pipeline Gemini cycles complete target={pipeline_target}",
+                    flush=True,
+                )
                 hit = True
                 break
             if not ai_health():
@@ -594,21 +628,50 @@ def main() -> int:
         print(f"RESULT: {rule_name}: {status}", flush=True)
         return 0 if status == "PASS" else 1
 
-    print(f"rule enabled — stop at 1 alert+frigate (max {MAX_WAIT_SEC}s)", flush=True)
+    alert_target = max(1, int(os.environ.get("ALERT_TARGET", "1") or "1"))
+    distinct_speed = str(os.environ.get("DISTINCT_SPEED", "")).strip().lower() in (
+        "1", "true", "yes",
+    )
+    speed_rule = rule_name in ("Démo · Excès de vitesse",)
+    print(
+        f"rule enabled — stop at {alert_target} alert(s)"
+        f"{' distinct frigate_event' if distinct_speed and speed_rule else ''}"
+        f"+evidence (max {MAX_WAIT_SEC}s)",
+        flush=True,
+    )
 
     deadline = time.time() + MAX_WAIT_SEC
+    distinct_n = 0
+    distinct_ids: list[str] = []
     while time.time() < deadline:
         time.sleep(POLL_SEC)
         evt, alerts, evidence_ok = count_since(rule["id"], event_types, since, rule_name)
         label = "evidence_ok" if rule_name in _CABIN_RULE_NAMES else "frigate_track"
-        print(f"  poll events={evt} alerts={alerts} {label}={evidence_ok}", flush=True)
-        if alerts >= 1 and evidence_ok >= 1:
-            print(f"[HIT] 1 alert with {label}", flush=True)
-            break
+        if distinct_speed and speed_rule:
+            distinct_n, distinct_ids = count_distinct_speed_alerts(rule["id"], since)
+            print(
+                f"  poll events={evt} alerts={alerts} {label}={evidence_ok} "
+                f"distinct_frigate={distinct_n}/{alert_target}",
+                flush=True,
+            )
+            if distinct_n >= alert_target and evidence_ok >= 1:
+                print(
+                    f"[HIT] {distinct_n} distinct speeding alerts "
+                    f"ids={distinct_ids[:alert_target]}",
+                    flush=True,
+                )
+                break
+        else:
+            print(f"  poll events={evt} alerts={alerts} {label}={evidence_ok}", flush=True)
+            if alerts >= alert_target and evidence_ok >= 1:
+                print(f"[HIT] {alert_target} alert(s) with {label}", flush=True)
+                break
         if not ai_health():
             print("  WARN AI unhealthy", flush=True)
 
     evt, alerts, evidence_ok = count_since(rule["id"], event_types, since, rule_name)
+    if distinct_speed and speed_rule:
+        distinct_n, distinct_ids = count_distinct_speed_alerts(rule["id"], since)
     req("PATCH", f"{API}/api/v1/orgs/{ORG}/rules/{rule['id']}", tok, {"is_enabled": False})
     sync_ok, align_val = print_bbox_audit(rule["id"], since)
     cabin = rule_name in _CABIN_RULE_NAMES
@@ -617,10 +680,19 @@ def main() -> int:
         sync_ok = True
 
     label = "evidence_ok" if cabin else "frigate_track"
-    print(f"FINAL events={evt} alerts={alerts} {label}={evidence_ok}", flush=True)
-    if alerts >= 1 and evidence_ok >= 1 and sync_ok:
+    if distinct_speed and speed_rule:
+        print(
+            f"FINAL events={evt} alerts={alerts} {label}={evidence_ok} "
+            f"distinct_frigate={distinct_n} ids={distinct_ids[:8]}",
+            flush=True,
+        )
+        hit_ok = distinct_n >= alert_target and evidence_ok >= 1
+    else:
+        print(f"FINAL events={evt} alerts={alerts} {label}={evidence_ok}", flush=True)
+        hit_ok = alerts >= alert_target and evidence_ok >= 1
+    if hit_ok and sync_ok:
         status = "PASS"
-    elif alerts >= 1 and evidence_ok >= 1:
+    elif hit_ok:
         status = "PARTIAL"
         print(f"[PARTIAL] sync check failed align={align_val}", flush=True)
     elif evt >= 1:

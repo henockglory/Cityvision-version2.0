@@ -24,15 +24,32 @@ def _load_dotenv(path: str) -> dict[str, str]:
     return out
 
 
-# Stop
+# Stop — kill pidfile process AND any leftover citevision-api (including
+# replaced binaries still bound to :8081 as "(deleted)").
 try:
     with open(PID_FILE) as f:
         pid = int(f.read().strip())
     subprocess.run(["kill", str(pid)], capture_output=True)
     print(f"Backend stopped (pid={pid})")
-    time.sleep(3)
 except Exception as e:
-    print(f"Stop: {e}")
+    print(f"Stop pidfile: {e}")
+subprocess.run(["pkill", "-f", "backend/bin/citevision-api"], capture_output=True)
+# Free :8081 if a zombie still holds it
+try:
+    out = subprocess.check_output(["ss", "-tlnp"], text=True, stderr=subprocess.DEVNULL)
+    for line in out.splitlines():
+        if ":8081" not in line or "pid=" not in line:
+            continue
+        for part in line.split("pid="):
+            if part is line:
+                continue
+            zpid = part.split(",")[0].split(")")[0].strip()
+            if zpid.isdigit():
+                subprocess.run(["kill", "-9", zpid], capture_output=True)
+                print(f"Killed :8081 holder pid={zpid}")
+except Exception:
+    pass
+time.sleep(1)
 
 # Start — must inject .env; citevision-api refuses to boot without secrets.
 env = os.environ.copy()

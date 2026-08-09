@@ -1,0 +1,30 @@
+{
+  "folders": [
+    {
+      "name": "citevision-v2 (WSL)",
+      "uri": "vscode-remote://wsl%2BUbuntu-24.04/home/gheno/citevision-v2"
+    }
+  ],
+  "settings": {
+    "files.watcherExclude": {
+      "**/data/**": true,
+      "**/logs/**": true,
+      "**/validation-evidence/**": true,
+      "**/.venv/**": true,
+      "**/node_modules/**": true,
+      "**/ai-engine/models/**": true,
+      "**/*.mp4": true
+    },
+    "search.exclude": {
+      "**/data/**": true,
+      "**/logs/**": true,
+      "**/validation-evidence/**": true,
+      "**/*.mp4": true,
+      "**/node_modules/**": true
+    },
+    "git.ignoreLimitWarning": true
+  },
+  "extensions": {
+    "recommendations": ["ms-vscode-remote.remote-wsl"]
+  }
+}

@@ -1,0 +1,43 @@
+﻿# Cursor index / Grep — keep the IDE fast. Runtime tests (WSL smoke/validate) are unaffected.
+# Videos & bulky demo assets
+data/
+**/*.mp4
+**/*.mkv
+**/*.avi
+**/*.mov
+**/*.webm
+
+# Runtime logs & evidence galleries (open index.html manually if needed)
+logs/
+**/logs/
+validation-evidence/
+**/validation-evidence/
+
+# Python / Node heavy trees
+**/.venv/
+**/venv/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/dist/
+**/build/
+
+# AI model weights (not needed for editor search)
+ai-engine/models/
+**/insightface/
+**/*.onnx
+**/*.pt
+**/*.pth
+**/*.engine
+
+# Docker / Frigate generated
+infra/frigate-config/
+**/frigate-config/
+vendor/
+
+# Ops noise
+ops/diagnostics/
+**/*.log
+**/*.dmp
+**/CrashDumps/

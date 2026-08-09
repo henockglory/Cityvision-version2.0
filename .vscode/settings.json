@@ -1,0 +1,36 @@
+{
+  "files.watcherExclude": {
+    "**/data/**": true,
+    "**/logs/**": true,
+    "**/validation-evidence/**": true,
+    "**/.venv/**": true,
+    "**/venv/**": true,
+    "**/node_modules/**": true,
+    "**/ai-engine/models/**": true,
+    "**/*.mp4": true,
+    "**/*.onnx": true,
+    "**/infra/frigate-config/**": true,
+    "**/vendor/**": true,
+    "**/ops/diagnostics/**": true
+  },
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  },
+  "search.exclude": {
+    "**/data/**": true,
+    "**/logs/**": true,
+    "**/validation-evidence/**": true,
+    "**/.venv/**": true,
+    "**/node_modules/**": true,
+    "**/ai-engine/models/**": true,
+    "**/*.mp4": true,
+    "**/vendor/**": true,
+    "**/ops/diagnostics/**": true
+  },
+  "search.followSymlinks": false,
+  "git.autoRepositoryDetection": "openEditors",
+  "git.ignoreLimitWarning": true,
+  "typescript.tsserver.maxTsServerMemory": 2048,
+  "files.maxMemoryForLargeFilesMB": 64
+}
