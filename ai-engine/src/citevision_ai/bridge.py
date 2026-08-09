@@ -97,9 +97,6 @@ class FrigateEventBridge:
         light_debug_resolver: LightDebugResolver | None = None,
         camera_ids_resolver: CameraIdsResolver | None = None,
         face_match_jpeg: Callable[[bytes], list[dict[str, Any]]] | None = None,
-        face_match_vote: Callable[[bytes], dict[str, Any]] | None = None,
-        face_reference_photos: Callable[[], list[tuple[str, bytes]]] | None = None,
-        face_gemini_compare: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         self._frigate_url = (frigate_url or "http://127.0.0.1:5000").rstrip("/")
         self._mqtt_host = mqtt_host
@@ -111,12 +108,7 @@ class FrigateEventBridge:
         self._emit = emit_event
         self._vlm_enabled = bool(vlm_enabled) and vlm_queue is not None
         self._speed_enabled = bool(speed_enabled)
-        # Face fusion can run with InsightFace/Frigate alone; Gemini queue optional.
-        self._face_enabled = bool(face_enabled) and (
-            face_match_vote is not None
-            or face_match_jpeg is not None
-            or vlm_queue is not None
-        )
+        self._face_enabled = bool(face_enabled) and vlm_queue is not None
         self._plate_enabled = bool(plate_enabled) and vlm_queue is not None
         self._geometry_enabled = bool(geometry_enabled)
         self._snapshot_wait = float(snapshot_wait_sec)
@@ -125,9 +117,6 @@ class FrigateEventBridge:
         self._light_debug = light_debug_resolver
         self._camera_ids = camera_ids_resolver
         self._face_match_jpeg = face_match_jpeg
-        self._face_match_vote = face_match_vote
-        self._face_reference_photos = face_reference_photos
-        self._face_gemini_compare = face_gemini_compare
         self._client: mqtt.Client | None = None
         self._stop = threading.Event()
         self._seen: dict[str, float] = {}
@@ -1499,7 +1488,10 @@ class FrigateEventBridge:
         after: dict[str, Any],
         zinfo: dict[str, Any],
     ) -> None:
-        """Frigate person crop → triple identity vote (Frigate > InsightFace > Gemini)."""
+        """Frigate person crop → Gemini clear-face gate → InsightFace on crop.
+
+        Production watchlist match is InsightFace embeddings only (not Gemini text).
+        """
         if self._dedupe(f"face:{event_id}"):
             return
         jpeg, box, _ev = fetch_subject_jpeg(
@@ -1509,8 +1501,16 @@ class FrigateEventBridge:
             with self._stats_lock:
                 self._stats["snapshot_fail"] += 1
             return
+        from citevision_ai.vlm.queue import VlmJob
 
         zone_name = str(zinfo.get("zone_id") or zinfo.get("name") or "")
+        base_meta = {
+            "detection_method": "gemini_clear_face_gate",
+            "bridge_source": "frigate",
+            "frigate_event_id": event_id,
+            "face_pipeline": "frigate_crop_gate_insightface",
+        }
+        # Persist audit dump root for face (YES and NO).
         dump_dir = str(os.environ.get("VLM_FACE_DUMP_DIR") or "").strip()
         if dump_dir:
             try:
@@ -1521,144 +1521,47 @@ class FrigateEventBridge:
             except OSError:
                 pass
 
-        from citevision_ai.identity.fuse import fuse_identity_votes
-        from citevision_ai.identity.votes import collect_frigate_vote, gemini_identity_vote
-
-        watchlist = self._watchlist_entries()
-        frigate_v = collect_frigate_vote(self._frigate_url, jpeg, after, watchlist)
-
-        insight_v: dict[str, Any] = {"match": False, "status": "skipped", "source": "insightface"}
-        face_clear = False
-        if self._face_match_vote is not None:
-            try:
-                insight_v = self._face_match_vote(jpeg) or insight_v
-                face_clear = bool(insight_v.get("face_clear")) or bool(insight_v.get("match"))
-            except Exception:
-                logger.exception("face_match_vote failed")
-                insight_v = {"match": False, "status": "error", "error": "insightface_failed", "source": "insightface"}
-        elif self._face_match_jpeg is not None:
-            # Backward-compatible path if only event-list callback is wired.
+        # Prefer InsightFace on the Frigate crop when available (biometric truth).
+        if self._face_match_jpeg is not None:
             try:
                 matches = self._face_match_jpeg(jpeg) or []
-                face_clear = any(
-                    str(m.get("event_type")) in ("face_detected", "face_unknown", "face_watchlist_match")
-                    for m in matches
-                )
-                for m in matches:
-                    if str(m.get("event_type")) == "face_watchlist_match":
-                        meta = m.get("metadata") or {}
-                        insight_v = {
-                            "match": True,
-                            "label": meta.get("label"),
-                            "identifier": meta.get("identifier"),
-                            "score": meta.get("embedding_score", meta.get("confidence")),
-                            "status": "ok",
-                            "source": "insightface_on_frigate_crop",
-                            "face_clear": True,
-                        }
-                        break
-                else:
-                    insight_v = {
-                        "match": False,
-                        "status": "ok" if face_clear else "no_face",
-                        "source": "insightface_on_frigate_crop",
-                        "face_clear": face_clear,
-                    }
             except Exception:
                 logger.exception("face_match_jpeg failed")
-                insight_v = {"match": False, "status": "error", "source": "insightface"}
-
-        refs: list[tuple[str, bytes]] = []
-        if self._face_reference_photos is not None:
-            try:
-                refs = list(self._face_reference_photos() or [])
-            except Exception:
-                logger.exception("face_reference_photos failed")
-                refs = []
-        gemini_v = gemini_identity_vote(self._face_gemini_compare, jpeg, refs)
-
-        # If neither IF nor Gemini saw a face, still treat Frigate match as face_clear.
-        if frigate_v.get("match"):
-            face_clear = True
-        if gemini_v.get("match") or str(gemini_v.get("status")) == "ok":
-            # Gemini ran; if it returned ok with no match, still counts as clear attempt
-            if gemini_v.get("same_person") is not None or gemini_v.get("score") is not None:
-                face_clear = face_clear or True
-
-        fused = fuse_identity_votes(
-            frigate=frigate_v,
-            insightface=insight_v,
-            gemini=gemini_v,
-            face_clear=face_clear or bool(frigate_v.get("match")),
-        )
-        et = str(fused.get("event_type") or "face_detected")
-        if self._dedupe(f"face:{event_id}:{et}", ttl=90.0):
-            return
-
-        winner = fused.get("winner")
-        method = f"identity_fusion:{winner}" if winner else "identity_fusion:none"
-        base_meta = {
-            "detection_method": method,
-            "bridge_source": "frigate",
-            "frigate_event_id": event_id,
-            "face_pipeline": "frigate_insightface_gemini_fusion",
-            "identity_votes": fused.get("identity_votes") or {},
-            "identity_winner": winner,
-        }
-        if fused.get("label"):
-            base_meta["label"] = fused.get("label")
-        if fused.get("identifier"):
-            base_meta["identifier"] = fused.get("identifier")
-        if fused.get("score") is not None:
-            base_meta["confidence"] = fused.get("score")
-
-        # Always emit face_detected audit when any voter saw a face / match attempt.
-        if face_clear or et in ("face_watchlist_match", "face_unknown"):
-            if not self._dedupe(f"face:{event_id}:face_detected", ttl=90.0):
-                det_evt = {
+                matches = []
+            for m in matches:
+                et = str(m.get("event_type") or "")
+                if et not in ("face_detected", "face_unknown", "face_watchlist_match"):
+                    continue
+                if self._dedupe(f"face:{event_id}:{et}", ttl=90.0):
+                    continue
+                evt = {
                     "event_id": str(uuid.uuid4()),
                     "camera_id": camera_id,
-                    "event_type": "face_detected",
-                    "event": "face_detected",
+                    "event_type": et,
+                    "event": et,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "zone_id": zone_name,
                     "frigate_event_id": event_id,
                     "bbox": box,
-                    "severity": "info",
-                    "metadata": {**base_meta, "detection_method": method},
+                    "severity": "critical" if et == "face_watchlist_match" else (
+                        "warning" if et == "face_unknown" else "info"
+                    ),
+                    "metadata": {
+                        **base_meta,
+                        **(m.get("metadata") or {}),
+                        "detection_method": "insightface_on_frigate_crop",
+                    },
                 }
                 if self._emit:
                     try:
-                        self._emit(det_evt)
+                        self._emit(evt)
+                        with self._stats_lock:
+                            self._stats["face_enqueued"] += 1
                     except Exception:
-                        logger.exception("face_detected emit failed")
-
-        if et in ("face_watchlist_match", "face_unknown"):
-            evt = {
-                "event_id": str(uuid.uuid4()),
-                "camera_id": camera_id,
-                "event_type": et,
-                "event": et,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "zone_id": zone_name,
-                "frigate_event_id": event_id,
-                "bbox": box,
-                "severity": "critical" if et == "face_watchlist_match" else "warning",
-                "metadata": dict(base_meta),
-            }
-            if self._emit:
-                try:
-                    self._emit(evt)
-                    with self._stats_lock:
-                        self._stats["face_enqueued"] += 1
-                except Exception:
-                    logger.exception("face identity emit failed")
-            return
-
-        # No clear face from fusion voters — optional Gemini clear-face gate (audit only).
-        if self._vlm_queue is None:
-            return
-        from citevision_ai.vlm.queue import VlmJob
+                        logger.exception("face emit failed")
+            # Still enqueue Gemini gate for audit / face_detected when no IF faces.
+            if matches:
+                return
 
         ok_det = self._vlm_queue.try_enqueue(
             VlmJob(
@@ -1675,13 +1578,7 @@ class FrigateEventBridge:
                     "frigate_event_id": event_id,
                     "bbox": box,
                     "severity": "info",
-                    "metadata": {
-                        "detection_method": "gemini_clear_face_gate",
-                        "bridge_source": "frigate",
-                        "frigate_event_id": event_id,
-                        "face_pipeline": "frigate_crop_gate_fallback",
-                        "identity_votes": fused.get("identity_votes") or {},
-                    },
+                    "metadata": dict(base_meta),
                 },
             )
         )

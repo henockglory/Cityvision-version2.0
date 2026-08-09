@@ -305,7 +305,9 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 		"condition":        condition,
 		"bindings":         bindings,
 		"actions":          actions,
-		"dedup_key_fields": []string{"camera_id", "zone_id", "track_id"},
+		// Per-event only (A.8 continuity): never collapse distinct detections onto
+		// camera+zone when track_id is missing (that silenced feu/cabin for the TTL).
+		"dedup_key_fields": []string{"event_id"},
 	}
 	if spec.withClip && !spec.observation {
 		def["evidence"] = map[string]interface{}{

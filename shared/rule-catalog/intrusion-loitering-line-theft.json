@@ -208,8 +208,7 @@
         }
       ],
       "dedup_key_fields": [
-        "camera_id",
-        "track_id"
+        "event_id"
       ]
     },
     "role_summary_fr": "Composite rules-engine: zone_enter puis loitering (atomes Frigate geometry) — pas de détecteur dédié.",

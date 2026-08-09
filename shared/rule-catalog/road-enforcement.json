@@ -100,9 +100,7 @@
         }
       ],
       "dedup_key_fields": [
-        "camera_id",
-        "zone_id",
-        "track_id"
+        "event_id"
       ]
     },
     "role_summary_fr": "Alerte vitesse via estimation Frigate (distances syncées) si FRIGATE_SPEED_BRIDGE, sinon zone_speed CiteVision. Limite = speed_limit_kmh métier.",

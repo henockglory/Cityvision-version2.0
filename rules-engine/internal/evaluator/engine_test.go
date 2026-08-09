@@ -93,6 +93,43 @@ func TestDedupKey(t *testing.T) {
 	}
 }
 
+func TestDedupKeyEmptyTrackFallsBackToFrigateEvent(t *testing.T) {
+	// Legacy camera|zone|track keys must not collapse when track_id is missing.
+	def := RuleDefinition{DedupKeyFields: []string{"camera_id", "zone_id", "track_id"}}
+	payload := map[string]interface{}{
+		"camera_id": "cam-1",
+		"zone_id":   "zone-obs",
+		"metadata": map[string]interface{}{
+			"frigate_event_id": "frigate-abc",
+		},
+	}
+	key := DedupKey(def, payload)
+	if key != "cam-1|zone-obs|frigate-abc" {
+		t.Fatalf("expected frigate_event_id fallback, got %s", key)
+	}
+}
+
+func TestDedupKeyEventIDOnly(t *testing.T) {
+	def := RuleDefinition{DedupKeyFields: []string{"event_id"}}
+	payload := map[string]interface{}{
+		"camera_id": "cam-1",
+		"zone_id":   "zone-obs",
+		"event_id":  "evt-1",
+	}
+	key := DedupKey(def, payload)
+	if key != "evt-1" {
+		t.Fatalf("expected event_id-only key, got %s", key)
+	}
+	key2 := DedupKey(def, map[string]interface{}{
+		"camera_id": "cam-1",
+		"zone_id":   "zone-obs",
+		"event_id":  "evt-2",
+	})
+	if key == key2 {
+		t.Fatal("distinct event_ids must produce distinct dedup keys")
+	}
+}
+
 func TestMatchesClassVehicleGroup(t *testing.T) {
 	def := RuleDefinition{
 		Enabled: true,

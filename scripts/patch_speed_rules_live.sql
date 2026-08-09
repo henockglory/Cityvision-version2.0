@@ -9,7 +9,7 @@ SET definition = jsonb_set(
         jsonb_set(
           definition,
           '{dedup_key_fields}',
-          '["camera_id", "zone_id", "track_id"]'::jsonb,
+          '["event_id"]'::jsonb,
           true
         ),
         '{evidence}',

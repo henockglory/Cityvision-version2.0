@@ -274,8 +274,27 @@ func DedupKey(def RuleDefinition, payload map[string]interface{}) string {
 	}
 	parts := make([]string, 0, len(fields))
 	for _, f := range fields {
-		if v, ok := payload[f]; ok {
+		v, ok := payload[f]
+		// Continuity (A.8): empty track_id used to collapse many detections onto
+		// camera|zone for the whole TTL. Fall back to a per-detection id.
+		if (!ok || v == nil || fmt.Sprintf("%v", v) == "") && f == "track_id" {
+			if alt, aok := payload["frigate_event_id"]; aok && alt != nil && fmt.Sprintf("%v", alt) != "" {
+				v, ok = alt, true
+			} else if alt, aok := payload["event_id"]; aok && alt != nil && fmt.Sprintf("%v", alt) != "" {
+				v, ok = alt, true
+			}
+		}
+		if ok && v != nil && fmt.Sprintf("%v", v) != "" {
 			parts = append(parts, fmt.Sprintf("%v", v))
+		}
+	}
+	// Last resort: never return a bare camera|zone key that silences a rule.
+	if len(parts) == 0 {
+		if eid, ok := payload["event_id"]; ok && eid != nil {
+			return fmt.Sprintf("%v", eid)
+		}
+		if fe, ok := payload["frigate_event_id"]; ok && fe != nil {
+			return fmt.Sprintf("%v", fe)
 		}
 	}
 	return strings.Join(parts, "|")
@@ -299,7 +318,10 @@ func normalizePayload(payload map[string]interface{}) map[string]interface{} {
 	// Hoist key fields from nested metadata to the root so conditions can
 	// reference them uniformly (the AI sometimes nests plate/speed in metadata).
 	if meta, ok := out["metadata"].(map[string]interface{}); ok {
-		for _, k := range []string{"plate_number", "speed_kmh", "state", "detected_class", "confidence"} {
+		for _, k := range []string{
+			"plate_number", "speed_kmh", "state", "detected_class", "confidence",
+			"frigate_event_id", "track_id",
+		} {
 			if _, present := out[k]; !present {
 				if v, has := meta[k]; has && v != nil {
 					out[k] = v
