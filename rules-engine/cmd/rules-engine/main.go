@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -79,34 +80,7 @@ func main() {
 	executor := actions.New(publisher, backendURL, apiKey)
 	defaultOrg := orgID
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		rulesMu.RLock()
-		n := len(activeRules)
-		rulesMu.RUnlock()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf(
-			`{"status":"ok","service":"citevision-rules-engine","active_rules":%d,"dedup_ttl_sec":%d}`,
-			n, dedupTTL,
-		)))
-	})
-	mux.HandleFunc("/internal/sync-rules", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		syncNow()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
-
-	go func() {
-		addr := fmt.Sprintf("%s:%s", host, port)
-		log.Printf("Rules engine HTTP listening on %s", addr)
-		if err := http.ListenAndServe(addr, mux); err != nil {
-			log.Fatal(err)
-		}
-	}()
+	var sub *mqttsub.Subscriber
 
 	handleEvent := func(topic string, payload map[string]interface{}) {
 		now := time.Now()
@@ -164,6 +138,9 @@ func main() {
 				continue
 			}
 			log.Printf("rule %s matched on %s actions=%d", m.rule.RuleID, topic, len(m.actions))
+			if sub != nil {
+				sub.RecordMatch()
+			}
 
 			alertOrg := defaultOrg
 			if o, ok := payload["org_id"].(string); ok && o != "" {
@@ -185,9 +162,49 @@ func main() {
 		}
 	}
 
-	sub := mqttsub.New(broker, 0, handleEvent)
+	sub = mqttsub.New(broker, 0, handleEvent)
 	mqttTopics := []string{"cv/events/#", "cv/detections/#", "cv/rules/trigger/#"}
 	sub.RegisterTopics(mqttTopics...)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		rulesMu.RLock()
+		n := len(activeRules)
+		rulesMu.RUnlock()
+		snap := sub.Snapshot()
+		body := map[string]interface{}{
+			"status":                "ok",
+			"service":               "citevision-rules-engine",
+			"active_rules":          n,
+			"dedup_ttl_sec":         dedupTTL,
+			"mqtt_connected":        snap.Connected,
+			"mqtt_messages_total":   snap.MessagesTotal,
+			"last_mqtt_msg_unix":    snap.LastMsgUnix,
+			"last_mqtt_msg_age_sec": snap.LastMsgAgeSec,
+			"matches_total":         snap.MatchesTotal,
+			"last_match_unix":       snap.LastMatchUnix,
+			"last_match_age_sec":    snap.LastMatchAgeSec,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	})
+	mux.HandleFunc("/internal/sync-rules", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		syncNow()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	go func() {
+		addr := fmt.Sprintf("%s:%s", host, port)
+		log.Printf("Rules engine HTTP listening on %s", addr)
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	go func() {
 		for {

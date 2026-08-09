@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -89,6 +90,10 @@ func (r *Runner) Repair(ctx context.Context, issues []string) error {
 		switch {
 		case strings.Contains(issue, "rules_engine"):
 			r.deps.Orchestrator.TriggerRulesSyncNow(ctx)
+			// MQTT zombie / unreachable: ask watch-rules-engine.sh to restart immediately.
+			if strings.Contains(issue, "mqtt_stale") || strings.Contains(issue, "unreachable") {
+				r.requestRulesEngineRestart(issue)
+			}
 		case strings.Contains(issue, "ai_engine"):
 			r.postInternal(ctx, "/api/v1/internal/ingest/resync-spatial", nil)
 		case strings.Contains(issue, "frigate"):
@@ -120,4 +125,30 @@ func (r *Runner) postInternal(ctx context.Context, path string, body io.Reader) 
 // InternalKeyFromEnv reads the internal API key.
 func InternalKeyFromEnv() string {
 	return os.Getenv("INTERNAL_API_KEY")
+}
+
+// requestRulesEngineRestart drops a flag file consumed by scripts/watch-rules-engine.sh.
+func (r *Runner) requestRulesEngineRestart(reason string) {
+	root := os.Getenv("PROJECT_ROOT")
+	if root == "" {
+		if wd, err := os.Getwd(); err == nil {
+			root = wd
+		}
+	}
+	if root == "" {
+		r.deps.Log.Warn("rules-engine restart-request skipped: no PROJECT_ROOT/cwd")
+		return
+	}
+	path := filepath.Join(root, "logs", "rules-engine.restart-request")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		r.deps.Log.Warn("rules-engine restart-request mkdir failed", "error", err)
+		return
+	}
+	body := []byte(reason + "\n" + time.Now().UTC().Format(time.RFC3339) + "\n")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		r.deps.Log.Warn("rules-engine restart-request write failed", "error", err, "path", path)
+		return
+	}
+	r.deps.Log.Warn("rules_engine mqtt_stale/unreachable — wrote restart-request for watch-rules-engine",
+		"path", path, "reason", reason)
 }

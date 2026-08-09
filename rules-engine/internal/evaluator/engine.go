@@ -196,16 +196,43 @@ func evalCondition(node ConditionNode, payload map[string]interface{}) bool {
 		_ = json.Unmarshal(node.Value, &expected)
 		return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", expected)
 	case "MATCHES_CLASS":
-		v, ok := fieldValue(payload, node.Field)
+		var expected string
+		_ = json.Unmarshal(node.Value, &expected)
+		expected = strings.TrimSpace(strings.ToLower(expected))
+		// "any" / empty must never desert a rule when class_name is omitted
+		// (Frigate bridge historically put the label only in metadata).
+		if expected == "" || expected == "any" {
+			return true
+		}
+		actual, ok := resolveDetectedClass(payload, node.Field)
 		if !ok {
 			return false
 		}
-		var expected string
-		_ = json.Unmarshal(node.Value, &expected)
-		return matchesClass(fmt.Sprintf("%v", v), expected)
+		return matchesClass(strings.ToLower(actual), expected)
 	default:
 		return false
 	}
+}
+
+// resolveDetectedClass returns the YOLO/Frigate class for MATCHES_CLASS.
+// Field "class_filter" is a UI binding name — never treat it as the detected class.
+func resolveDetectedClass(payload map[string]interface{}, field string) (string, bool) {
+	field = strings.TrimSpace(field)
+	if field != "" && !strings.EqualFold(field, "class_filter") {
+		if v, ok := fieldValue(payload, field); ok && v != nil {
+			s := strings.TrimSpace(fmt.Sprintf("%v", v))
+			if s != "" {
+				return s, true
+			}
+		}
+	}
+	if v, ok := fieldValue(payload, "class_name"); ok && v != nil {
+		s := strings.TrimSpace(fmt.Sprintf("%v", v))
+		if s != "" {
+			return s, true
+		}
+	}
+	return "", false
 }
 
 func fieldValue(payload map[string]interface{}, field string) (interface{}, bool) {
@@ -301,7 +328,7 @@ func DedupKey(def RuleDefinition, payload map[string]interface{}) string {
 }
 
 func normalizePayload(payload map[string]interface{}) map[string]interface{} {
-	out := make(map[string]interface{}, len(payload)+2)
+	out := make(map[string]interface{}, len(payload)+4)
 	for k, v := range payload {
 		out[k] = v
 	}
@@ -317,10 +344,12 @@ func normalizePayload(payload map[string]interface{}) map[string]interface{} {
 	}
 	// Hoist key fields from nested metadata to the root so conditions can
 	// reference them uniformly (the AI sometimes nests plate/speed in metadata).
-	if meta, ok := out["metadata"].(map[string]interface{}); ok {
+	var meta map[string]interface{}
+	if m, ok := out["metadata"].(map[string]interface{}); ok {
+		meta = m
 		for _, k := range []string{
 			"plate_number", "speed_kmh", "state", "detected_class", "confidence",
-			"frigate_event_id", "track_id",
+			"frigate_event_id", "track_id", "frigate_label", "label",
 		} {
 			if _, present := out[k]; !present {
 				if v, has := meta[k]; has && v != nil {
@@ -329,5 +358,33 @@ func normalizePayload(payload map[string]interface{}) map[string]interface{} {
 			}
 		}
 	}
+	// Always synthesize class_name when emitters only nested the Frigate label.
+	if !nonEmptyString(out["class_name"]) {
+		for _, candidate := range []interface{}{
+			out["detected_class"],
+			out["label"],
+			out["frigate_label"],
+		} {
+			if nonEmptyString(candidate) {
+				out["class_name"] = strings.TrimSpace(fmt.Sprintf("%v", candidate))
+				break
+			}
+		}
+		if !nonEmptyString(out["class_name"]) && meta != nil {
+			for _, k := range []string{"frigate_label", "detected_class", "label"} {
+				if v, has := meta[k]; has && nonEmptyString(v) {
+					out["class_name"] = strings.TrimSpace(fmt.Sprintf("%v", v))
+					break
+				}
+			}
+		}
+	}
 	return out
+}
+
+func nonEmptyString(v interface{}) bool {
+	if v == nil {
+		return false
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", v)) != ""
 }

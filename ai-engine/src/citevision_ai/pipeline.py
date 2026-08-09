@@ -307,8 +307,27 @@ class PipelineService:
             vlm_on, face_on, speed_on, geometry_on, "frigate" if vlm_on else "n/a",
         )
 
+    @staticmethod
+    def _ensure_event_class_name(evt: dict[str, Any]) -> None:
+        """Guarantee top-level class_name so rules matches_class never deserts."""
+        cur = evt.get("class_name")
+        if cur is not None and str(cur).strip():
+            return
+        meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        for candidate in (
+            evt.get("detected_class"),
+            evt.get("label"),
+            meta.get("frigate_label"),
+            meta.get("detected_class"),
+            meta.get("label"),
+        ):
+            if candidate is not None and str(candidate).strip():
+                evt["class_name"] = str(candidate).strip()
+                return
+
     def _on_bridge_event(self, evt: dict[str, Any]) -> None:
         """Publish Frigate-bridge events (speed, etc.) on the MQTT evidence path."""
+        self._ensure_event_class_name(evt)
         self._on_vlm_event(evt)
 
     def _identity_emit_dedupe(self, evt: dict[str, Any]) -> bool:

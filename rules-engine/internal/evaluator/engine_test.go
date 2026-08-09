@@ -166,6 +166,90 @@ func TestMatchesClassAny(t *testing.T) {
 	}
 }
 
+func TestMatchesClassAnyMissingClassName(t *testing.T) {
+	def := RuleDefinition{
+		Enabled: true,
+		Condition: ConditionNode{
+			Op:    "matches_class",
+			Field: "class_name",
+			Value: json.RawMessage(`"any"`),
+		},
+		Actions: []Action{{Type: "alert"}},
+	}
+	ok, _ := Evaluate(def, map[string]interface{}{"event_type": "speeding"}, time.Now(), nil)
+	if !ok {
+		t.Fatal("expected any to match when class_name is absent")
+	}
+}
+
+func TestMatchesClassVehicleFromFrigateLabel(t *testing.T) {
+	def := RuleDefinition{
+		Enabled: true,
+		Condition: ConditionNode{
+			Op:    "matches_class",
+			Field: "class_name",
+			Value: json.RawMessage(`"vehicle"`),
+		},
+		Actions: []Action{{Type: "alert"}},
+	}
+	ok, _ := Evaluate(def, map[string]interface{}{
+		"metadata": map[string]interface{}{"frigate_label": "car"},
+	}, time.Now(), nil)
+	if !ok {
+		t.Fatal("expected vehicle to match hoisted metadata.frigate_label=car")
+	}
+}
+
+func TestMatchesClassVehicleMissingAllClassAliases(t *testing.T) {
+	def := RuleDefinition{
+		Enabled: true,
+		Condition: ConditionNode{
+			Op:    "matches_class",
+			Field: "class_name",
+			Value: json.RawMessage(`"vehicle"`),
+		},
+		Actions: []Action{{Type: "alert"}},
+	}
+	ok, _ := Evaluate(def, map[string]interface{}{"event_type": "speeding"}, time.Now(), nil)
+	if ok {
+		t.Fatal("expected vehicle filter to reject when no class alias is present")
+	}
+}
+
+func TestMatchesClassCarFromHoistedFrigateLabel(t *testing.T) {
+	def := RuleDefinition{
+		Enabled: true,
+		Condition: ConditionNode{
+			Op:    "matches_class",
+			Field: "class_name",
+			Value: json.RawMessage(`"car"`),
+		},
+		Actions: []Action{{Type: "alert"}},
+	}
+	ok, _ := Evaluate(def, map[string]interface{}{
+		"frigate_label": "car",
+	}, time.Now(), nil)
+	if !ok {
+		t.Fatal("expected car filter to match after class_name synthesis from frigate_label")
+	}
+}
+
+func TestMatchesClassFilterFieldAny(t *testing.T) {
+	def := RuleDefinition{
+		Enabled: true,
+		Condition: ConditionNode{
+			Op:    "matches_class",
+			Field: "class_filter",
+			Value: json.RawMessage(`"any"`),
+		},
+		Actions: []Action{{Type: "alert"}},
+	}
+	ok, _ := Evaluate(def, map[string]interface{}{"event_type": "zone_intrusion"}, time.Now(), nil)
+	if !ok {
+		t.Fatal("expected class_filter field + any to match without detected class")
+	}
+}
+
 func TestMatchesClassExactCoco(t *testing.T) {
 	def := RuleDefinition{
 		Enabled: true,

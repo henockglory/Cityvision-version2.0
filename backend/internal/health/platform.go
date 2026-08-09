@@ -124,6 +124,33 @@ func CollectPlatformHealth(ctx context.Context, deps PlatformDeps) PlatformHealt
 				degraded++
 			}
 		}
+		// MQTT zombie: HTTP up but bus deaf (watch-rules-engine restarts on this).
+		mqttStaleSec := 120
+		if v := envStr("RULES_MQTT_STALE_SEC", ""); v != "" {
+			if n, ok := toInt(v); ok && n > 0 {
+				mqttStaleSec = n
+			}
+		}
+		connected := true
+		if c, ok := detail["mqtt_connected"]; ok {
+			switch t := c.(type) {
+			case bool:
+				connected = t
+			case string:
+				connected = strings.EqualFold(t, "true") || t == "1"
+			}
+		}
+		ageSec := -1
+		if a, ok := detail["last_mqtt_msg_age_sec"]; ok {
+			if n, ok2 := toInt(a); ok2 {
+				ageSec = n
+			}
+		}
+		if !connected || (ageSec >= 0 && ageSec > mqttStaleSec) {
+			status = "degraded"
+			issues = append(issues, "rules_engine mqtt_stale")
+			degraded++
+		}
 		comps["rules_engine"] = ComponentStatus{Status: status, Detail: st}
 	}
 

@@ -1092,6 +1092,7 @@ class FrigateEventBridge:
                 "zone_id": zone_name,
                 "track_id": event_id,
                 "frigate_event_id": event_id,
+                "class_name": after.get("label") or None,
                 "bbox": box,
                 "severity": "medium",
                 "metadata": {
@@ -1307,6 +1308,7 @@ class FrigateEventBridge:
             "zone_id": zone_name,
             "track_id": event_id,
             "frigate_event_id": event_id,
+            "class_name": after.get("label") or None,
             "bbox": vehicle_box,
             "severity": "high",
             "metadata": {
@@ -1802,6 +1804,7 @@ class FrigateEventBridge:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "zone_id": zone_name,
             "frigate_event_id": event_id,
+            "class_name": after.get("label") or None,
             "bbox": self._geom_box(after),
             "severity": severity,
             "metadata": meta,
@@ -2404,6 +2407,7 @@ class FrigateEventBridge:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "zone_id": zone_name,
             "frigate_event_id": event_id,
+            "class_name": after.get("label") or None,
             "speed_kmh": round(speed, 1),
             "speed_limit_kmh": limit,
             "bbox": box,

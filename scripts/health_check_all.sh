@@ -10,12 +10,14 @@ WARN=0
 DISK_WARN_PCT="${DISK_WARN_PCT:-80}"
 AI_URL="${AI_URL:-http://127.0.0.1:8001}"
 API_URL="${API_URL:-http://127.0.0.1:8081}"
+RULES_URL="${RULES_ENGINE_URL:-http://127.0.0.1:8010}"
 UI_URL="${UI_URL:-http://127.0.0.1:5174}"
 FRIGATE_URL="${FRIGATE_URL:-http://127.0.0.1:5000}"
 GO2RTC_URL="${GO2RTC_URL:-http://127.0.0.1:1984}"
 MAILHOG_URL="${MAILHOG_URL:-http://127.0.0.1:8025}"
 PG_CONTAINER="${PG_CONTAINER:-citevision-v2-postgres}"
 PG_USER="${POSTGRES_USER:-citevision}"
+RULES_MQTT_STALE_SEC="${RULES_MQTT_STALE_SEC:-120}"
 
 # Phase A Tâche 8: health from /mnt/c is misleading (edits ≠ runtime).
 if [[ "$ROOT" == /mnt/c/* ]] || [[ "$ROOT" == /mnt/d/* ]]; then
@@ -402,6 +404,82 @@ else
     fi
   else
     fail "API not responding at $API_URL (missing _restart_backend.sh)"
+  fi
+fi
+echo
+
+echo "--- rules-engine (MQTT liveness) ---"
+RULES_RAW="$(curl -sf --max-time 5 "$RULES_URL/health" 2>/dev/null || true)"
+if [[ -z "$RULES_RAW" ]]; then
+  warn "rules-engine /health unreachable — restarting via _start-rules-engine.sh"
+  if [[ -f "$ROOT/scripts/_start-rules-engine.sh" ]]; then
+    bash "$ROOT/scripts/_start-rules-engine.sh" >/dev/null 2>&1 || true
+    sleep 5
+    RULES_RAW="$(curl -sf --max-time 5 "$RULES_URL/health" 2>/dev/null || true)"
+  fi
+fi
+if [[ -z "$RULES_RAW" ]]; then
+  fail "rules-engine unreachable at $RULES_URL"
+else
+  RULES_EVAL="$(printf '%s' "$RULES_RAW" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+ar=int(d.get('active_rules') or 0)
+conn=d.get('mqtt_connected')
+age=d.get('last_mqtt_msg_age_sec')
+try:
+  age_i=int(age) if age is not None else -1
+except Exception:
+  age_i=-1
+connected=conn in (True,1,'1','true','True')
+stale_lim=int('${RULES_MQTT_STALE_SEC}')
+# Missing mqtt fields = old binary still running — warn, do not hard-fail yet.
+has_mqtt='mqtt_connected' in d
+stale=has_mqtt and ((not connected) or (age_i >= 0 and age_i > stale_lim))
+print('ar='+str(ar))
+print('has_mqtt='+('1' if has_mqtt else '0'))
+print('connected='+('1' if connected else '0'))
+print('age='+str(age_i))
+print('stale='+('1' if stale else '0'))
+print('msgs='+str(d.get('mqtt_messages_total','')))
+" 2>/dev/null || echo 'ar=0
+has_mqtt=0
+connected=0
+age=-1
+stale=1
+msgs=')"
+  R_AR="$(printf '%s\n' "$RULES_EVAL" | awk -F= '/^ar=/{print $2}')"
+  R_HAS="$(printf '%s\n' "$RULES_EVAL" | awk -F= '/^has_mqtt=/{print $2}')"
+  R_CONN="$(printf '%s\n' "$RULES_EVAL" | awk -F= '/^connected=/{print $2}')"
+  R_AGE="$(printf '%s\n' "$RULES_EVAL" | awk -F= '/^age=/{print $2}')"
+  R_STALE="$(printf '%s\n' "$RULES_EVAL" | awk -F= '/^stale=/{print $2}')"
+  if [[ "${R_AR:-0}" =~ ^[0-9]+$ ]] && (( R_AR > 0 )); then
+    ok "rules-engine active_rules=$R_AR"
+  else
+    warn "rules-engine active_rules=${R_AR:-0}"
+  fi
+  if [[ "$R_HAS" != "1" ]]; then
+    warn "rules-engine /health missing mqtt_* fields — rebuild/restart rules-engine for MQTT watchdog"
+  elif [[ "$R_STALE" == "1" ]]; then
+    MOSQ_UP=0
+    if docker inspect -f '{{.State.Status}}' citevision-v2-mosquitto 2>/dev/null | grep -qx running; then
+      MOSQ_UP=1
+    fi
+    if [[ "$MOSQ_UP" == "1" ]]; then
+      fail "rules-engine MQTT stale/disconnected (connected=$R_CONN age=${R_AGE}s lim=${RULES_MQTT_STALE_SEC}s) while mosquitto up — restart rules-engine / ensure watch-rules-engine"
+      # Nudge watchdog if present
+      mkdir -p "$ROOT/logs"
+      echo "health_check_all mqtt_stale $(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$ROOT/logs/rules-engine.restart-request"
+    else
+      fail "rules-engine MQTT stale and mosquitto container not running"
+    fi
+  else
+    ok "rules-engine MQTT live (connected=$R_CONN age=${R_AGE}s)"
+  fi
+  if ! pgrep -af 'watch-rules-engine' >/dev/null 2>&1; then
+    warn "watch-rules-engine not running — start via start-full-stack or: bash scripts/watch-rules-engine.sh &"
+  else
+    ok "watch-rules-engine process present"
   fi
 fi
 echo

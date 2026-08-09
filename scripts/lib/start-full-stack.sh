@@ -226,6 +226,10 @@ if [[ "${WATCH_AI_INGEST:-1}" != "0" ]]; then
   stop_from_pid "$LOGDIR/watch-ai-ingest.pid" 2>/dev/null || true
   start_bg watch-ai-ingest "$ROOT" "bash scripts/watch-ai-ingest.sh" "$LOGDIR" "$ENV_FILE"
 fi
+if [[ "${WATCH_RULES_ENGINE:-1}" != "0" ]]; then
+  stop_from_pid "$LOGDIR/watch-rules-engine.pid" 2>/dev/null || true
+  start_bg watch-rules-engine "$ROOT" "bash scripts/watch-rules-engine.sh" "$LOGDIR" "$ENV_FILE"
+fi
 
 # --- service gate (hard) ---
 echo "=== [8/10] service URL gate ==="
