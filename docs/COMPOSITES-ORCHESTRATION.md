@@ -4,7 +4,6 @@ Composites are **not** new detectors. They are rules-engine sequences / windows 
 
 | Template | Atoms (examples) | Engine |
 |---|---|---|
-| `tpl-theft-composite` | `zone_enter` / `loitering` / `abandoned_object` / `object_removed` | `sequence` evaluator |
 | `tpl-identity-correlation` | `face_watchlist_match` + `plate_detected` / `plate_blocked` | correlation + sequence |
 | `tpl-traffic-pipeline` | `speeding` + `red_light_violation` + plate | pipeline bindings |
 | `tpl-observation-rule-set-n/or` | counting / line_cross observations | observation_mode |
@@ -19,3 +18,5 @@ Composites are **not** new detectors. They are rules-engine sequences / windows 
 ## Honesty
 
 Only four templates are currently `dod_verified`/`real` (speeding, red-light, seatbelt, phone). Composites stay `partial` until atoms are green.
+
+`tpl-theft-composite` (Vol suspect) a été **retiré** du catalogue — préférer les atomes `zone_enter` / `loitering` / `abandoned_object` séparément.

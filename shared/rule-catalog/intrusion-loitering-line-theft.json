@@ -167,55 +167,6 @@
     "partial_status": "full"
   },
   {
-    "id": "tpl-theft-composite",
-    "name": "Vol suspect (composite)",
-    "category": "composite",
-    "severity": "critical",
-    "supported": true,
-    "definition": {
-      "condition": {
-        "op": "SEQUENCE",
-        "window_seconds": 300,
-        "key_fields": [
-          "camera_id",
-          "track_id"
-        ],
-        "children": [
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "zone_enter"
-          },
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "loitering"
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "critical"
-          }
-        },
-        {
-          "type": "record",
-          "config": {
-            "duration_sec": 60
-          }
-        }
-      ],
-      "dedup_key_fields": [
-        "event_id"
-      ]
-    },
-    "role_summary_fr": "Composite rules-engine: zone_enter puis loitering (atomes Frigate geometry) — pas de détecteur dédié.",
-    "partial_status": "requires_external",
-    "_orchestration_note": "See docs/COMPOSITES-ORCHESTRATION.md — evidence = union of atom packages."
-  },
-  {
     "id": "tpl-abandoned-object",
     "name": "Objet abandonné",
     "category": "objects",

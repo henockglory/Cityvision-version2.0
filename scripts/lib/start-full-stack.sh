@@ -256,19 +256,40 @@ for name, url in checks:
 sys.exit(fail)
 PY
 
+# --- Gemini live probe (hard gate when STRICT_INSTALL_HEALTH=1, default for launcher) ---
+echo "=== [9/10] gemini probe ==="
+STRICT_INSTALL_HEALTH="${STRICT_INSTALL_HEALTH:-0}"
+export STRICT_INSTALL_HEALTH
+if [[ "$STRICT_INSTALL_HEALTH" == "1" ]]; then
+  if ! bash "$ROOT/scripts/lib/probe-gemini.sh" "$ROOT" "$ENV_FILE"; then
+    echo "[FAIL] GEMINI_PROBE — cle absente/invalide ou API injoignable" >&2
+    echo "GEMINI_PROBE_FAILED=1" >&2
+    exit 42
+  fi
+  echo "[OK] gemini probe"
+else
+  bash "$ROOT/scripts/lib/probe-gemini.sh" "$ROOT" "$ENV_FILE" \
+    && echo "[OK] gemini probe (non-strict)" \
+    || echo "[WARN] gemini probe failed (non-strict; set STRICT_INSTALL_HEALTH=1 to hard-fail)"
+fi
+
 # --- health_check_all (WARN disk OK; FAIL services abort) ---
-echo "=== [9/10] health_check_all ==="
+echo "=== [10/10] health_check_all ==="
 set +e
 bash "$ROOT/scripts/health_check_all.sh"
 HC=$?
 set -e
 if [[ "$HC" -ne 0 ]]; then
   echo "[FAIL] health_check_all exit=$HC — launch aborted (service FAIL; disk WARN alone is OK)" >&2
+  # Hint for Gemini-related health failures (STRICT).
+  if [[ "$STRICT_INSTALL_HEALTH" == "1" ]]; then
+    echo "GEMINI_PROBE_FAILED=1" >&2
+  fi
   exit 1
 fi
 echo "[OK] health_check_all GREEN/YELLOW (exit 0)"
 
-echo "=== [10/10] READY ==="
+echo "=== READY ==="
 echo "  UI        http://127.0.0.1:5174"
 echo "  API       http://127.0.0.1:${BACKEND_PORT}"
 echo "  AI        http://127.0.0.1:${AI_PORT}"

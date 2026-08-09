@@ -5,8 +5,9 @@
 .NOTES
   Runtime = WSL ~/citevision-v2 (scripts/lib/start-full-stack.sh).
   powershell -ExecutionPolicy Bypass -File launcher\Start-CiteVision.ps1
-  Exit 0 only when health_check_all is green (disk WARN allowed).
-  ASCII-only strings for Windows PowerShell 5.1 encoding safety.
+  Exit 0 only when service gate + STRICT health + Gemini probe pass.
+  ASCII-only strings for Windows PowerShell 5.1 encoding safety
+  (except the user-facing API key placeholder which must match the plan literally).
 #>
 $ErrorActionPreference = "Continue"
 $Distro = "Ubuntu-24.04"
@@ -19,7 +20,7 @@ try {
 }
 
 Write-Host ""
-Write-Host ("CiteVision START - WSL {0} (start-full-stack.sh)" -f $WslRoot) -ForegroundColor Cyan
+Write-Host ("CiteVision START - WSL {0} (start-full-stack.sh STRICT)" -f $WslRoot) -ForegroundColor Cyan
 Write-Host ""
 
 $prev = $ErrorActionPreference
@@ -40,13 +41,28 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
-# Use ';' not '&&' so Windows PowerShell 5.1 never mis-parses the command line.
-$bashCmd = ("cd '{0}'; bash scripts/lib/start-full-stack.sh" -f $WslRoot)
-wsl -d $Distro -- bash -lc $bashCmd
+# STRICT: face + Gemini configured/reachable are hard FAIL. Use ';' not '&&' for PS 5.1.
+$bashCmd = ("cd '{0}'; export STRICT_INSTALL_HEALTH=1; bash scripts/lib/start-full-stack.sh" -f $WslRoot)
+$startOut = wsl -d $Distro -- bash -lc $bashCmd 2>&1
 $rc = $LASTEXITCODE
+Write-Host ($startOut | Out-String)
+
 if ($rc -ne 0) {
   Write-Host ""
   Write-Host ("[FAIL] start-full-stack exit={0} - see WSL logs {1}/logs" -f $rc, $WslRoot) -ForegroundColor Red
+  $joined = ($startOut | Out-String)
+  if ($joined -match 'GEMINI_PROBE_FAILED|gemini_probe FAILED|gemini_configured missing|GEMINI_PROBE') {
+    Write-Host ""
+    Write-Host "[FAIL] Gemini indisponible (cle absente/invalide ou API injoignable)." -ForegroundColor Red
+    Write-Host "Remplacez le placeholder puis executez:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  powershell -ExecutionPolicy Bypass -File launcher\Set-CiteVisionGeminiKey.ps1 -ApiKey 'saisissez votre nouvelle clé API'" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Puis relancez:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  powershell -ExecutionPolicy Bypass -File launcher\Start-CiteVision.ps1" -ForegroundColor Cyan
+    Write-Host ""
+  }
   exit $rc
 }
 Write-Host ""

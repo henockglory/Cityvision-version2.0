@@ -116,16 +116,6 @@
     "partial_status": "full"
   },
   {
-    "id": "tpl-theft-composite",
-    "redirect_to": "tpl-theft-composite",
-    "role_summary_fr": "Détecte un scénario vol en deux temps : présence prolongée puis sortie rapide — SEQUENCE rules-engine.",
-    "deployment_scopes": [
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "full"
-  },
-  {
     "id": "tpl-video-blur",
     "name": "Vidéo floue",
     "category": "quality",

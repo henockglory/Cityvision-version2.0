@@ -52,15 +52,6 @@
       "event_type": "vehicle_stopped"
     },
     {
-      "id": "tpl-theft-composite",
-      "name": "Vol suspect (composite)",
-      "category": "composite",
-      "status": "real",
-      "requirement": null,
-      "reason": "",
-      "event_type": null
-    },
-    {
       "id": "tpl-identity-correlation",
       "name": "Corrélation identité",
       "category": "identity",

@@ -46,7 +46,6 @@ Generated: `2026-08-07T07:02:04.846224+00:00`
 | `tpl-slow-vehicle` | `slow-vehicle` | `frigate` | `frigate_speed` | `partial` | `False` |
 | `tpl-speeding-premium` | `vitesse` | `frigate` | `frigate_speed` | `real` | `True` |
 | `tpl-sudden-stop` | `sudden-stop` | `frigate` | `frigate_speed` | `partial` | `False` |
-| `tpl-theft-composite` | `theft-composite` | `frigate` | `rules_composite` | `partial` | `False` |
 | `tpl-traffic-pipeline` | `traffic-pipeline` | `frigate` | `rules_composite` | `partial` | `False` |
 | `tpl-unauthorized-exit` | `unauthorized-exit` | `frigate` | `geometry` | `partial` | `False` |
 | `tpl-unknown-face` | `face-unknown` | `frigate` | `insightface` | `partial` | `False` |

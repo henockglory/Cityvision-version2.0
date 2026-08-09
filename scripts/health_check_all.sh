@@ -352,6 +352,31 @@ print("1" if v in (True,1,"1","true","True") else "0")
         warn "gemini_configured missing — cabin/face VLM needs GEMINI_API_KEY (keyfile ~/.citevision_gemini_key.tmp)"
       fi
     fi
+
+    # Live Gemini reachability: /health gemini_reachable is lazy unless pinged;
+    # under STRICT, call scripts/lib/probe-gemini.sh (list models, no key echo).
+    if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+      if [[ -x "$ROOT/scripts/lib/probe-gemini.sh" ]] || [[ -f "$ROOT/scripts/lib/probe-gemini.sh" ]]; then
+        if bash "$ROOT/scripts/lib/probe-gemini.sh" "$ROOT" "${ENV_FILE:-$ROOT/.env}"; then
+          ok "gemini_probe reachable (STRICT)"
+        else
+          fail "gemini_probe FAILED — cle invalide/quota/reseau (Set-CiteVisionGeminiKey.ps1)"
+        fi
+      else
+        fail "scripts/lib/probe-gemini.sh missing"
+      fi
+    else
+      GEMINI_REACH="$(printf '%s' "$BODY" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+v=d.get("gemini_reachable")
+print("1" if v in (True,1,"1","true","True") else "0")
+' 2>/dev/null || echo 0)"
+      if [[ "$GEMINI_REACH" == "1" ]]; then
+        ok "AI gemini_reachable=true"
+      else
+        warn "AI gemini_reachable=false (lazy until VLM job or GEMINI_HEALTH_PING=1)"
+      fi
+    fi
   fi
 fi
 

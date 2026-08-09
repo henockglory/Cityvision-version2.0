@@ -241,44 +241,6 @@
       "archetype": "geometry"
     },
     {
-      "id": "tpl-theft-composite",
-      "name": "Vol suspect (composite)",
-      "category": "composite",
-      "event_type": null,
-      "matrix_status": "real",
-      "matrix_requirement": null,
-      "catalog_badge": "partial",
-      "dod_verified": false,
-      "signal_owner": "frigate",
-      "judgment_owner": "rules_composite",
-      "vlm_role": "none",
-      "emit_moment": "after_duration",
-      "track_objects": [
-        "person"
-      ],
-      "dedupe_key": "comp:theft:{window}",
-      "xor_disables": [],
-      "evidence_policy": {
-        "enabled": true,
-        "clip_seconds": 6,
-        "images": [
-          {
-            "role": "scene",
-            "crop": "full"
-          },
-          {
-            "role": "subject",
-            "crop": "bbox"
-          }
-        ],
-        "fail_closed": [
-          "subject"
-        ]
-      },
-      "dod_alias": "theft-composite",
-      "archetype": "composite"
-    },
-    {
       "id": "tpl-identity-correlation",
       "name": "Corrélation identité",
       "category": "identity",

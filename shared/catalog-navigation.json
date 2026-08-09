@@ -425,17 +425,6 @@
         "passage"
       ]
     },
-    "tpl-theft-composite": {
-      "megaId": "objects",
-      "subId": "emergencies",
-      "searchTags": [
-        "urgence",
-        "incident",
-        "vol",
-        "suspect",
-        "composite"
-      ]
-    },
     "tpl-abandoned-object": {
       "megaId": "objects",
       "subId": "objects_scene",

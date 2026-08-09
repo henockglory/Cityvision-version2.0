@@ -1799,40 +1799,6 @@
       },
       "role_summary_fr": "Détecte la disparition d'un objet présent dans la scène — vol ou déplacement suspect."
     },
-    "tpl-theft-composite": {
-      "supported": true,
-      "capability_id": "zone_enter",
-      "human_description": "Séquence entrée zone + présence prolongée (vol suspect).",
-      "tutorial": "Dessinez la zone ; le rules-engine enchaîne zone_enter puis loitering (SEQUENCE).",
-      "prerequisites": [
-        "Zone dessinée",
-        "Rules-engine actif"
-      ],
-      "configSchema": {
-        "fields": [
-          {
-            "key": "camera_id",
-            "type": "camera",
-            "label": "Caméra",
-            "required": true
-          },
-          {
-            "key": "zone_name",
-            "type": "zone",
-            "label": "Zone",
-            "required": true
-          },
-          {
-            "key": "duration_seconds",
-            "type": "number",
-            "label": "Durée suspecte (s)",
-            "required": true,
-            "default": 30
-          }
-        ]
-      },
-      "role_summary_fr": "Détecte un scénario vol en deux temps : présence prolongée puis sortie rapide — SEQUENCE rules-engine."
-    },
     "tpl-accident": {
       "supported": true,
       "capability_id": "sudden_stop",
