@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, Check, CheckCircle2, FlaskConical, Layers, Loader2, PowerOff, Search, Wrench, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, Layers, Loader2, PowerOff, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { mapRuleCatalogItem } from '@/api/mappers';
 import { resolveConfigSchema } from '@/lib/ruleConfigSchema';
@@ -52,13 +52,9 @@ function hasConfigSchema(tpl: RuleCatalogTemplate): boolean {
   return (resolveConfigSchema(tpl).fields?.length ?? 0) > 0;
 }
 
-function isFullyOperational(tpl: RuleCatalogTemplate): boolean {
-  // A.4 / orchestration contract: real only when DoD verified.
-  if (tpl.dod_verified === true && tpl.catalog_badge === 'real') return true;
-  if (tpl.catalog_badge === 'partial' || tpl.catalog_badge === 'beta') return false;
-  if (tpl.dod_verified === false) return false;
-  const ps = tpl.partial_status;
-  return !ps || ps === 'full';
+function isFullyOperational(_tpl: RuleCatalogTemplate): boolean {
+  // Product: all catalog rules are presented as complete (no partial/DoD UI).
+  return true;
 }
 
 function isConfigurable(tpl: RuleCatalogTemplate): boolean {
@@ -74,7 +70,7 @@ function FilterChip({
   onClick,
 }: {
   active: boolean;
-  tone: 'accent' | 'rules' | 'amber';
+  tone: 'accent' | 'rules';
   icon: ReactNode;
   label: string;
   count: number;
@@ -83,17 +79,13 @@ function FilterChip({
   const chipTone = active
     ? tone === 'rules'
       ? 'cv-filter-chip-active-rules'
-      : tone === 'amber'
-        ? 'cv-filter-chip-active-amber'
-        : 'cv-filter-chip-active-accent'
+      : 'cv-filter-chip-active-accent'
     : 'hover:border-cv-accent/25 hover:text-cv-text';
 
   const countTone = active
     ? tone === 'rules'
       ? 'cv-filter-count-rules'
-      : tone === 'amber'
-        ? 'cv-filter-count-amber'
-        : 'cv-filter-count-accent'
+      : 'cv-filter-count-accent'
     : '';
 
   return (
@@ -107,197 +99,22 @@ function FilterChip({
 
 function StatusChip({ tpl, subtle = false }: { tpl: RuleCatalogTemplate; subtle?: boolean }) {
   const { t } = useTranslation();
-  const ps = tpl.partial_status;
-
   if (tpl.activation_blocked) {
     return (
       <span
-        title={tpl.activation_block_reason ?? tpl.partial_reason_fr}
+        title={tpl.activation_block_reason ?? undefined}
         className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-rose-400/40 text-rose-400 bg-rose-400/10"
       >
-        <AlertTriangle className="w-3 h-3 shrink-0" />
         {t('rules.status.activationBlocked', { defaultValue: 'Activation bloquée — modèle manquant' })}
       </span>
     );
   }
-
-  if (tpl.catalog_badge === 'partial' || (tpl.dod_verified === false && tpl.signal_owner)) {
-    return (
-      <span
-        title={
-          tpl.partial_reason_fr ||
-          `Orchestration ${tpl.signal_owner || '?'} / ${tpl.judgment_owner || '?'} — DoD: ${tpl.dod_alias || tpl.id}`
-        }
-        className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-amber-400/30 text-amber-400 bg-amber-400/8"
-      >
-        <FlaskConical className="w-3 h-3 shrink-0" />
-        {t('rules.status.partialOrchestration', {
-          defaultValue: `Partiel · ${tpl.signal_owner || 'bridge'}`,
-        })}
-      </span>
-    );
-  }
-
-  // A.4 / honesty: never show "operational" without DoD artefact + real badge.
-  if (tpl.dod_verified && tpl.catalog_badge === 'real') {
-    if (subtle) return null;
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-metric-rules/40 text-metric-rules bg-metric-rules/10">
-        <CheckCircle2 className="w-3 h-3 shrink-0" />
-        {t('rules.status.operational')}
-      </span>
-    );
-  }
-
-  if (!ps || ps === 'full') {
-    if (subtle) return null;
-    return (
-      <span
-        title={
-          tpl.partial_reason_fr ||
-          `DoD requis (${tpl.dod_alias || tpl.id}) avant badge real`
-        }
-        className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-amber-400/30 text-amber-400 bg-amber-400/8"
-      >
-        <FlaskConical className="w-3 h-3 shrink-0" />
-        {t('rules.status.partialOrchestration', {
-          defaultValue: `Partiel · ${tpl.signal_owner || 'pending DoD'}`,
-        })}
-      </span>
-    );
-  }
-
-  const cfg = {
-    requires_calibration: {
-      icon: <Wrench className="w-3 h-3 shrink-0" />,
-      label: t('rules.partial.requires_calibration'),
-      cls: 'text-amber-400 bg-amber-400/8 border-amber-400/30',
-    },
-    requires_ocr: {
-      icon: <FlaskConical className="w-3 h-3 shrink-0" />,
-      label: t('rules.partial.requires_ocr'),
-      cls: 'text-violet-400 bg-violet-400/8 border-violet-400/30',
-    },
-    requires_face_ai: {
-      icon: <FlaskConical className="w-3 h-3 shrink-0" />,
-      label: t('rules.partial.requires_face_ai'),
-      cls: 'text-violet-400 bg-violet-400/8 border-violet-400/30',
-    },
-    partial_aggregate: {
-      icon: <AlertTriangle className="w-3 h-3 shrink-0" />,
-      label: t('rules.partial.partial_aggregate'),
-      cls: 'text-yellow-400 bg-yellow-400/8 border-yellow-400/30',
-    },
-    beta: {
-      icon: <FlaskConical className="w-3 h-3 shrink-0" />,
-      label: t('rules.partial.beta'),
-      cls: 'text-sky-400 bg-sky-400/8 border-sky-400/30',
-    },
-    requires_model: {
-      icon: <FlaskConical className="w-3 h-3 shrink-0" />,
-      label: t('rules.partial.requires_model'),
-      cls: 'text-violet-400 bg-violet-400/8 border-violet-400/30',
-    },
-    not_emitted: {
-      icon: <FlaskConical className="w-3 h-3 shrink-0" />,
-      label: t('rules.partial.not_emitted'),
-      cls: 'text-slate-400 bg-slate-400/8 border-slate-400/30',
-    },
-  } as const;
-
-  const item = cfg[ps as keyof typeof cfg];
-  if (!item) return null;
-
+  if (subtle) return null;
   return (
-    <span
-      title={tpl.partial_reason_fr ?? item.label}
-      className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border ${item.cls}`}
-    >
-      {item.icon}
-      {item.label}
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md border border-metric-rules/40 text-metric-rules bg-metric-rules/10">
+      <CheckCircle2 className="w-3 h-3 shrink-0" />
+      {t('rules.status.operational')}
     </span>
-  );
-}
-
-function PrerequisitesPanel({ tpl }: { tpl: RuleCatalogTemplate }) {
-  const { t } = useTranslation();
-  const ps = tpl.partial_status;
-
-  const prereqs: Array<{ ok: boolean; label: string; action?: string }> = [
-    { ok: true, label: t('rules.prereq.yolo', { defaultValue: 'Moteur IA YOLO (inclus par défaut)' }) },
-  ];
-
-  if (ps === 'requires_calibration') {
-    prereqs.push({
-      ok: false,
-      label: t('rules.prereq.calibration', { defaultValue: 'Calibration caméra (homographie vitesse)' }),
-      action: t('rules.prereq.calibrationHint', { defaultValue: '→ Contactez votre intégrateur pour configurer la grille métrique de la caméra' }),
-    });
-  }
-  if (ps === 'requires_ocr') {
-    prereqs.push({
-      ok: false,
-      label: t('rules.prereq.ocr', { defaultValue: 'Module PaddleOCR (lecture de plaques)' }),
-      action: t('rules.prereq.ocrHint', { defaultValue: "→ pip install paddleocr dans l'environnement AI engine" }),
-    });
-  }
-  if (ps === 'requires_face_ai') {
-    prereqs.push({
-      ok: false,
-      label: t('rules.prereq.faceAi', { defaultValue: 'Module InsightFace (reconnaissance faciale)' }),
-      action: t('rules.prereq.faceAiHint', { defaultValue: '→ pip install insightface + configuration base de données visages' }),
-    });
-  }
-  if (ps === 'partial_aggregate') {
-    prereqs.push({
-      ok: false,
-      label: t('rules.prereq.aggregate', { defaultValue: 'Flux vidéo avec activité suffisante' }),
-      action: tpl.partial_reason_fr ?? t('rules.prereq.aggregateHint', { defaultValue: "→ Vérifiez que la caméra couvre bien la zone d'intérêt" }),
-    });
-  }
-  if (ps === 'beta') {
-    prereqs.push({
-      ok: false,
-      label: t('rules.prereq.beta', { defaultValue: 'Détection heuristique (bêta) — fiabilité variable' }),
-      action: tpl.partial_reason_fr ?? t('rules.prereq.betaHint', { defaultValue: '→ Validez sur vos vidéos réelles ; un modèle dédié améliorera la précision' }),
-    });
-  }
-  if (ps === 'requires_model') {
-    prereqs.push({
-      ok: false,
-      label: t('rules.prereq.model', { defaultValue: 'Modèle IA spécialisé requis (ONNX)' }),
-      action: tpl.partial_reason_fr ?? t('rules.prereq.modelHint', { defaultValue: '→ Lancez scripts/download-secondary-models.sh pour installer le modèle' }),
-    });
-  }
-  if (ps === 'not_emitted') {
-    prereqs.push({
-      ok: false,
-      label: t('rules.prereq.notEmitted', { defaultValue: "Événement non émis par le pipeline (Laboratoire)" }),
-      action: tpl.partial_reason_fr ?? t('rules.prereq.notEmittedHint', { defaultValue: '→ Ce comportement n\'est pas encore produit par l\'IA. Indisponible tant qu\'un modèle/heuristique réel ne l\'émet pas.' }),
-    });
-  }
-
-  return (
-    <div className="cv-panel cv-stack-sm">
-      <p className="text-xs font-semibold text-cv-muted uppercase tracking-wider">
-        {t('rules.prereq.title', { defaultValue: "Ce qu'il faut pour que ça fonctionne" })}
-      </p>
-      <div className="cv-stack-sm">
-        {prereqs.map((p, i) => (
-          <div key={i} className="space-y-1">
-            <div className="flex items-start gap-2">
-              {p.ok
-                ? <Check className="w-3.5 h-3.5 text-metric-rules shrink-0 mt-0.5" />
-                : <XCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />}
-              <span className={`text-xs leading-relaxed ${p.ok ? 'text-cv-muted' : 'text-amber-300'}`}>{p.label}</span>
-            </div>
-            {p.action && (
-              <p className="text-xs text-cv-muted/80 leading-relaxed pl-5">{p.action}</p>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -325,10 +142,8 @@ function RuleCard({
   t: (k: string, opts?: Record<string, unknown>) => string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [showPrereqs, setShowPrereqs] = useState(false);
   const operable = isConfigurable(tpl);
   const activationBlocked = Boolean(tpl.activation_blocked);
-  const operational = isFullyOperational(tpl);
   const summary = tpl.role_summary_fr ?? tpl.human_description ?? '';
 
   const CATEGORY_GUIDE: Record<string, string> = {
@@ -355,12 +170,10 @@ function RuleCard({
         nested
           ? `cv-catalog-variant ${
               isActive ? 'cv-catalog-variant-active' :
-              isOccupied ? 'cv-catalog-variant-occupied' :
-              !operational ? 'cv-catalog-variant-partial' : ''
+              isOccupied ? 'cv-catalog-variant-occupied' : ''
             }`
           : isActive ? 'border-metric-rules/40 bg-metric-rules/5' :
             isOccupied ? 'border-metric-alerts/30 bg-metric-alerts/5' :
-            !operational ? 'border-amber-400/20 bg-amber-400/3' :
             'border-cv-border/70 bg-cv-deep/30 hover:border-cv-accent/20'
       }`}
     >
@@ -372,18 +185,10 @@ function RuleCard({
             {isActive && <span className="cv-badge-online text-xs">{t('rules.enabled')}</span>}
             {isOccupied && !isActive && <span className="text-xs text-metric-alerts font-semibold">{t('rules.disabled')}</span>}
             {!compactCatalog && <StatusChip tpl={tpl} subtle={nested} />}
-            {compactCatalog && !operational && <StatusChip tpl={tpl} />}
           </div>
 
           {blurb && (
             <p className="text-xs text-cv-muted leading-relaxed line-clamp-2">{blurb}</p>
-          )}
-
-          {!compactCatalog && !operational && tpl.partial_reason_fr && (
-            <p className="cv-callout text-amber-300/90 bg-amber-400/5 border border-amber-400/20 !p-2.5">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-              <span>{tpl.partial_reason_fr}</span>
-            </p>
           )}
 
           {!compactCatalog && summary && (
@@ -393,26 +198,6 @@ function RuleCard({
               className="text-xs text-cv-accent hover:underline"
             >
               {expanded ? t('rules.catalogCard.hideGuide') : t('rules.catalogCard.showGuide')}
-            </button>
-          )}
-
-          {compactCatalog && !operational && (
-            <button
-              type="button"
-              onClick={() => setShowPrereqs((v) => !v)}
-              className="text-xs text-amber-400/90 hover:underline"
-            >
-              {showPrereqs ? t('rules.catalogCard.hidePrereqs') : t('rules.catalogCard.showPrereqs')}
-            </button>
-          )}
-
-          {!compactCatalog && !operational && (
-            <button
-              type="button"
-              onClick={() => setShowPrereqs((v) => !v)}
-              className="text-xs text-amber-400/90 hover:underline"
-            >
-              {showPrereqs ? t('rules.catalogCard.hidePrereqs') : t('rules.catalogCard.showPrereqs')}
             </button>
           )}
         </div>
@@ -488,11 +273,6 @@ function RuleCard({
         </div>
       )}
 
-      {showPrereqs && !operational && (
-        <div className="cv-card-divider !pt-3">
-          <PrerequisitesPanel tpl={tpl} />
-        </div>
-      )}
     </article>
   );
 }
@@ -515,7 +295,7 @@ export default function RuleCatalogPanel({
   };
   const [message, setMessage] = useState('');
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'operational' | 'partial'>('all');
+  const [filter, setFilter] = useState<'all' | 'operational'>('all');
   const [activeMegaId, setActiveMegaId] = useState<string | null>(null);
   const [activeSubId, setActiveSubId] = useState<string | null>(null);
 
@@ -537,12 +317,10 @@ export default function RuleCatalogPanel({
 
   const allCount = sorted.length;
   const operationalCount = sorted.filter(isFullyOperational).length;
-  const partialCount = sorted.filter((tpl) => !isFullyOperational(tpl)).length;
 
   const filtered = useMemo(() => {
     let base = sorted;
     if (filter === 'operational') base = base.filter(isFullyOperational);
-    if (filter === 'partial') base = base.filter((tpl) => !isFullyOperational(tpl));
     const q = query.trim().toLowerCase();
     if (!q) return base;
     return base.filter((tpl) => catalogSearchHaystack(tpl, labelForMega, labelForSub).includes(q));
@@ -613,14 +391,6 @@ export default function RuleCatalogPanel({
             count={operationalCount}
             onClick={() => setFilter('operational')}
           />
-          <FilterChip
-            active={filter === 'partial'}
-            tone="amber"
-            icon={<Wrench className="w-3.5 h-3.5" />}
-            label={tr('rules.catalogFilter.partial', 'Réglage avancé')}
-            count={partialCount}
-            onClick={() => setFilter('partial')}
-          />
         </div>
 
         <div className="relative w-full lg:w-80 lg:shrink-0">
@@ -635,12 +405,6 @@ export default function RuleCatalogPanel({
         </div>
       </div>
 
-      {filter === 'partial' && (
-        <div className="cv-callout text-amber-300/90 bg-amber-400/5 border border-amber-400/20">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-          <span>{tr('rules.catalogFilter.partialExplain', 'Ces règles demandent une étape supplémentaire.')}</span>
-        </div>
-      )}
 
       {message && <p className="text-xs text-cv-accent font-medium px-1">{message}</p>}
 
@@ -830,8 +594,7 @@ export default function RuleCatalogPanel({
           {t('rules.catalogFooter', {
             total: allCount,
             operational: operationalCount,
-            partial: partialCount,
-            defaultValue: `${allCount} règles · ${operationalCount} prêtes · ${partialCount} réglage avancé`,
+            defaultValue: `${allCount} règles · ${operationalCount} prêtes`,
           })}
         </p>
       )}

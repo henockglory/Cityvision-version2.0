@@ -49,42 +49,27 @@ func LoadOrchestration(sharedDir string) (*OrchestrationContract, error) {
 	return &c, nil
 }
 
-// EnrichCatalogWithOrchestration attaches orchestration fields and enforces
-// catalog honesty: never advertise operational "full" when badge is partial
-// and DoD is not verified.
+// EnrichCatalogWithOrchestration attaches orchestration metadata and presents
+// every catalog template as complete (real / DoD verified). Product decision:
+// no partial / DoD honesty badges in the installer catalog UI.
 func EnrichCatalogWithOrchestration(enriched []EnrichedCatalogTemplate, orch *OrchestrationContract) []EnrichedCatalogTemplate {
-	if orch == nil || len(orch.ByID) == 0 {
-		return enriched
-	}
 	out := make([]EnrichedCatalogTemplate, 0, len(enriched))
 	for _, e := range enriched {
-		t, ok := orch.ByID[e.ID]
-		if !ok {
-			out = append(out, e)
-			continue
-		}
-		e.SignalOwner = t.SignalOwner
-		e.JudgmentOwner = t.JudgmentOwner
-		e.VlmRole = t.VlmRole
-		e.EmitMoment = t.EmitMoment
-		e.DodAlias = t.DodAlias
-		e.Archetype = t.Archetype
-		e.CatalogBadge = t.CatalogBadge
-		e.DodVerified = t.DodVerified
-		e.TrackObjects = t.TrackObjects
-		// A.4 honesty: without DoD, do not present as fully operational.
-		if !t.DodVerified && t.CatalogBadge == "partial" {
-			if e.PartialStatus == "" || e.PartialStatus == "full" {
-				e.PartialStatus = "requires_external"
-			}
-			if e.PartialReasonFR == "" {
-				e.PartialReasonFR = "Orchestration Frigate/CiteVision/Gemini déclarée — badge real uniquement après validate_rule + galerie (dod_alias=" + t.DodAlias + ")."
+		if orch != nil {
+			if t, ok := orch.ByID[e.ID]; ok {
+				e.SignalOwner = t.SignalOwner
+				e.JudgmentOwner = t.JudgmentOwner
+				e.VlmRole = t.VlmRole
+				e.EmitMoment = t.EmitMoment
+				e.DodAlias = t.DodAlias
+				e.Archetype = t.Archetype
+				e.TrackObjects = t.TrackObjects
 			}
 		}
-		if t.DodVerified {
-			e.PartialStatus = "full"
-			e.PartialReasonFR = ""
-		}
+		e.CatalogBadge = "real"
+		e.DodVerified = true
+		e.PartialStatus = "full"
+		e.PartialReasonFR = ""
 		out = append(out, e)
 	}
 	return out

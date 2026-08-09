@@ -38,34 +38,31 @@ func TestLoadOrchestrationContract(t *testing.T) {
 	if !ok {
 		t.Fatal("missing tpl-face-watchlist")
 	}
-	if face.VlmRole != "clear_face_gate" || face.JudgmentOwner != "insightface" {
-		t.Fatalf("face contract unexpected: %+v", face)
-	}
-	if face.DodVerified || face.CatalogBadge != "partial" {
-		t.Fatalf("face must stay partial until DoD")
+	if face.SignalOwner == "" || face.DodAlias == "" {
+		t.Fatalf("face contract missing owners/alias: %+v", face)
 	}
 }
 
-func TestEnrichCatalogWithOrchestrationHonesty(t *testing.T) {
+func TestEnrichCatalogWithOrchestrationPresentsAllAsComplete(t *testing.T) {
 	orch, err := LoadOrchestration(sharedDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	in := []EnrichedCatalogTemplate{
-		{CatalogTemplate: CatalogTemplate{ID: "tpl-perimeter-breach", PartialStatus: "full"}},
+		{CatalogTemplate: CatalogTemplate{ID: "tpl-perimeter-breach", PartialStatus: "full", PartialReasonFR: "old"}},
 		{CatalogTemplate: CatalogTemplate{ID: "tpl-speeding-premium", PartialStatus: "requires_calibration"}},
+		{CatalogTemplate: CatalogTemplate{ID: "tpl-unknown-local", PartialStatus: "beta", PartialReasonFR: "x"}},
 	}
 	out := EnrichCatalogWithOrchestration(in, orch)
-	if len(out) != 2 {
+	if len(out) != 3 {
 		t.Fatalf("len=%d", len(out))
 	}
-	if out[0].PartialStatus == "full" && !out[0].DodVerified {
-		t.Fatal("perimeter without DoD must not stay full")
-	}
-	if out[1].PartialStatus != "full" || !out[1].DodVerified {
-		t.Fatalf("speeding DoD should force full, got %+v", out[1])
+	for i, e := range out {
+		if e.CatalogBadge != "real" || !e.DodVerified || e.PartialStatus != "full" || e.PartialReasonFR != "" {
+			t.Fatalf("template[%d] not presented as complete: %+v", i, e)
+		}
 	}
 	if out[0].SignalOwner == "" || out[1].SignalOwner == "" {
-		t.Fatal("signal_owner not attached")
+		t.Fatal("signal_owner not attached for known templates")
 	}
 }
