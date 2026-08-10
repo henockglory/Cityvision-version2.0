@@ -558,6 +558,26 @@ else
 fi
 echo
 
+echo "--- business readiness ---"
+# shellcheck source=scripts/lib/business-readiness.sh
+source "$ROOT/scripts/lib/business-readiness.sh" 2>/dev/null || true
+if declare -F ensure_business_readiness >/dev/null 2>&1; then
+  export KEY="${INTERNAL_API_KEY:-changeme_internal_service_key}"
+  export INTERNAL_API_KEY="$KEY"
+  if ensure_business_readiness; then
+    ok "business readiness (spatial/rules/Frigate zones/go2rtc)"
+  else
+    if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+      fail "business readiness incomplete after heal (STRICT)"
+    else
+      warn "business readiness incomplete after heal"
+    fi
+  fi
+else
+  warn "business-readiness.sh not loaded"
+fi
+echo
+
 echo "=== summary FAIL=$FAIL WARN=$WARN ==="
 if (( FAIL > 0 )); then
   echo "RESULT: RED — fix FAIL items before validation"

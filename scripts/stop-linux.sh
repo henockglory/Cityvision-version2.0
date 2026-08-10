@@ -10,7 +10,7 @@ LOGDIR="$ROOT/logs"
 
 echo "=== Citevision v2 Stop (Linux/WSL) ==="
 
-for svc in frontend ai-engine rules-engine backend watch-backend watch-ai-ingest watch-demo-stack watch-rules-engine watch-infra-ports; do
+for svc in frontend ai-engine rules-engine backend watch-backend watch-ai-ingest watch-demo-stack watch-rules-engine watch-infra-ports watch-business-readiness; do
   stop_from_pid "$LOGDIR/${svc}.pid"
 done
 

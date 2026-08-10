@@ -33,6 +33,7 @@ for rel in \
   scripts/lib \
   scripts/health_check_all.sh \
   scripts/watch-infra-ports.sh \
+  scripts/watch-business-readiness.sh \
   scripts/stop-linux.sh \
   shared \
   docs/COMPOSITES-ORCHESTRATION.md \
@@ -44,6 +45,7 @@ for rel in \
   frontend/src/components/live/LiveStreamPlayer.tsx \
   frontend/src/components/demo/DemoVideoPanel.tsx \
   scripts/lib/sync-live-preview-ui.sh \
+  scripts/lib/business-readiness.sh \
   frontend/src/components/integrations \
   frontend/src/components/rules/OutputChannelsPanel.tsx \
   frontend/src/components/settings/AlertRoutingPanel.tsx \
@@ -67,21 +69,28 @@ chmod +x \
   "$DST/scripts/lib/probe-gemini.sh" \
   "$DST/scripts/lib/set-gemini-key.sh" \
   "$DST/scripts/lib/service-heal.sh" \
+  "$DST/scripts/lib/business-readiness.sh" \
   "$DST/scripts/watch-infra-ports.sh" \
+  "$DST/scripts/watch-business-readiness.sh" \
   "$DST/scripts/health_check_all.sh" \
   "$DST/scripts/stop-linux.sh" 2>/dev/null || true
 sed -i 's/\r$//' \
   "$DST/scripts/lib/probe-gemini.sh" \
   "$DST/scripts/lib/set-gemini-key.sh" \
   "$DST/scripts/lib/service-heal.sh" \
+  "$DST/scripts/lib/business-readiness.sh" \
   "$DST/scripts/lib/start-full-stack.sh" \
   "$DST/scripts/lib/sync-runtime-no-env.sh" \
   "$DST/scripts/watch-infra-ports.sh" \
+  "$DST/scripts/watch-business-readiness.sh" \
   "$DST/scripts/health_check_all.sh" \
   "$DST/scripts/stop-linux.sh" 2>/dev/null || true
 test -f "$DST/scripts/watch-infra-ports.sh"
+test -f "$DST/scripts/watch-business-readiness.sh"
 test -f "$DST/scripts/lib/service-heal.sh"
+test -f "$DST/scripts/lib/business-readiness.sh"
 grep -q 'ensure_infra_host_ports' "$DST/scripts/lib/service-heal.sh"
+grep -q 'ensure_business_readiness' "$DST/scripts/lib/business-readiness.sh"
 grep -q 'ErrSessionStore' "$DST/backend/internal/auth/service.go"
 if grep -q 'tpl-theft-composite' "$DST/shared/rule-orchestration-contract.json" 2>/dev/null; then
   echo "[FAIL] theft composite still present in WSL orchestration" >&2
@@ -101,6 +110,7 @@ do
     scripts/lib \
     scripts/health_check_all.sh \
     scripts/watch-infra-ports.sh \
+    scripts/watch-business-readiness.sh \
     scripts/stop-linux.sh \
     shared \
     docs/COMPOSITES-ORCHESTRATION.md \

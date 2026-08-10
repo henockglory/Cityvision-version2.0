@@ -11,6 +11,8 @@ export PATH="${PATH:-}:/usr/local/go/bin:/home/gheno/go/bin"
 source "$ROOT/scripts/lib/env-utils.sh"
 # shellcheck source=scripts/lib/service-heal.sh
 source "$ROOT/scripts/lib/service-heal.sh"
+# shellcheck source=scripts/lib/business-readiness.sh
+source "$ROOT/scripts/lib/business-readiness.sh"
 # shellcheck source=scripts/lib/cuda-utils.sh
 source "$ROOT/scripts/lib/cuda-utils.sh"
 
@@ -208,16 +210,18 @@ export SKIP_FRIGATE_EVENTS_WAIT=1
 bash "$ROOT/scripts/_heal_frigate_now.sh" 2>&1 | tail -20 || true
 echo "[OK] Frigate $(curl -sf http://127.0.0.1:5000/api/version 2>/dev/null || echo up)"
 
-# Ingest / demo pipeline is best-effort at launch — NOT a hard gate.
-# Cameras may be offline; rules may be disabled; frames advance later via watchdog.
-echo "=== [6/10] demo pipeline (best-effort, no ingest gate) ==="
+# Ingest / demo pipeline + business readiness (spatial AI / rules / Frigate zones / go2rtc).
+echo "=== [6/10] demo pipeline + business readiness ==="
 export SKIP_AI_INGEST_VERIFY=1
 bash "$ROOT/scripts/ensure-demo-pipeline.sh" 2>&1 | tail -20 || true
-curl -sf -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/internal/ingest/resync-spatial" \
-  -H "X-Internal-Key: $KEY" >/dev/null || true
+if ! ensure_business_readiness; then
+  echo "[FAIL] business readiness — spatial/rules/Frigate zones/go2rtc not hot after heal" >&2
+  exit 1
+fi
 n=$(curl -sf "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \
   | python3 -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for x in (d.get('cameras') or []) if x.get('running')))" 2>/dev/null || echo 0)
 echo "[INFO] AI cameras running=${n:-0} (ingest not required for launch OK)"
+echo "[OK] business readiness"
 
 # --- frontend ---
 echo "=== [7/10] frontend :5174 ==="
@@ -242,6 +246,10 @@ fi
 if [[ "${WATCH_INFRA_PORTS:-1}" != "0" ]]; then
   stop_from_pid "$LOGDIR/watch-infra-ports.pid" 2>/dev/null || true
   start_bg watch-infra-ports "$ROOT" "bash scripts/watch-infra-ports.sh" "$LOGDIR" "$ENV_FILE"
+fi
+if [[ "${WATCH_BUSINESS_READINESS:-1}" != "0" ]]; then
+  stop_from_pid "$LOGDIR/watch-business-readiness.pid" 2>/dev/null || true
+  start_bg watch-business-readiness "$ROOT" "bash scripts/watch-business-readiness.sh" "$LOGDIR" "$ENV_FILE"
 fi
 
 # --- service gate (hard) ---
