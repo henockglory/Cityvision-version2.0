@@ -1,9 +1,8 @@
 import { useRef } from 'react';
 import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
-import FrigateLivePlayer from '@/components/live/FrigateLivePlayer';
 import LiveDetectionOverlay from '@/components/live/LiveDetectionOverlay';
 import { useLiveDetections } from '@/hooks/useLiveDetections';
-import { isVirtualCamera, shouldUseFrigateLive } from '@/config/streams';
+import { go2rtcStreamSrc } from '@/config/streams';
 
 interface LiveStreamPlayerProps {
   src?: string;
@@ -14,13 +13,18 @@ interface LiveStreamPlayerProps {
   camera?: {
     id?: string;
     name?: string;
+    streamKey?: string;
+    streamUrl?: string;
     metadata?: Record<string, unknown>;
   } | null;
-  /** HTML overlay synced via SSE (go2rtc path only — not used for Frigate live). */
+  /** SSE YOLO overlay (CitéVision) — works for demo + IP via go2rtc. */
   showOverlay?: boolean;
 }
 
-/** Routes live preview: Frigate (native bbox) or go2rtc + optional SSE overlay. */
+/**
+ * Live preview — always CiteVision go2rtc video player (never Frigate SPA iframe).
+ * Frigate stays the ingest/evidence backend; embedding /live embeds the full UI and regresses UX.
+ */
 export default function LiveStreamPlayer({
   src,
   label,
@@ -31,28 +35,15 @@ export default function LiveStreamPlayer({
   showOverlay = false,
 }: LiveStreamPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const useFrigate = shouldUseFrigateLive(camera ?? { id: cameraId });
-  const overlayOn = showOverlay && Boolean(cameraId) && !useFrigate;
+  const overlayOn = showOverlay && Boolean(cameraId);
   const { tracks, stale, resolution } = useLiveDetections(cameraId, overlayOn);
-
-  if (useFrigate) {
-    return (
-      <FrigateLivePlayer
-        className={className}
-        cameraId={cameraId}
-        label={label}
-        showBBox={showOverlay}
-      />
-    );
-  }
-
-  const virtual = isVirtualCamera(camera ?? undefined);
+  const stream = src ?? go2rtcStreamSrc(camera ?? { id: cameraId });
 
   return (
     <div ref={containerRef} className={`relative bg-black overflow-hidden ${className}`}>
       <Go2RtcPlayer
         className="absolute inset-0 w-full h-full"
-        src={src}
+        src={stream}
         label={label}
         orgId={orgId}
         cameraId={cameraId}
@@ -65,7 +56,6 @@ export default function LiveStreamPlayer({
           stale={stale}
         />
       ) : null}
-      {virtual ? null : null}
     </div>
   );
 }

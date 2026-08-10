@@ -1,5 +1,7 @@
-/** go2rtc — WebRTC direct port 1984 (WebSocket ne passe pas toujours via proxy Vite). */
+/** go2rtc — WebRTC/MSE direct port 1984 (live preview for demo + IP cameras). */
 const GO2RTC_PORT = 1984;
+/** Frigate UI (external link / admin only — never embed /live in CiteVision players). */
+const FRIGATE_PORT = 5000;
 
 function envFlag(name: string): boolean {
   const v = (import.meta.env[name] as string | undefined)?.trim();
@@ -17,13 +19,6 @@ function resolveDirectOrigin(port: number): string {
   return `http://localhost:${port}`;
 }
 
-function resolveProxiedOrigin(pathPrefix: string): string {
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}${pathPrefix}`;
-  }
-  return pathPrefix;
-}
-
 export const GO2RTC_ORIGIN = (() => {
   const fromEnv = import.meta.env.VITE_GO2RTC_ORIGIN as string | undefined;
   if (fromEnv?.trim()) return fromEnv.trim().replace(/\/$/, '');
@@ -33,31 +28,38 @@ export const GO2RTC_ORIGIN = (() => {
 export const FRIGATE_ORIGIN = (() => {
   const fromEnv = import.meta.env.VITE_FRIGATE_ORIGIN as string | undefined;
   if (fromEnv?.trim()) return fromEnv.trim().replace(/\/$/, '');
-  return resolveProxiedOrigin('/frigate');
+  return resolveDirectOrigin(FRIGATE_PORT);
 })();
 
-/** Frigate embedded go2rtc (WebRTC) — proxied in dev via Vite. */
+/** @deprecated live preview uses CiteVision go2rtc :1984 — kept for IntegrationsStatusPanel. */
 export const FRIGATE_GO2RTC_ORIGIN = (() => {
   const fromEnv = import.meta.env.VITE_FRIGATE_GO2RTC_ORIGIN as string | undefined;
   if (fromEnv?.trim()) return fromEnv.trim().replace(/\/$/, '');
-  return resolveProxiedOrigin('/frigate-go2rtc');
+  return `${FRIGATE_ORIGIN}/api/go2rtc`;
 })();
 
 export function frigateCameraId(cameraUuid: string): string {
   return `cv_${cameraUuid}`;
 }
 
+/** External Frigate UI link only — do not use as CiteVision player iframe src. */
 export function frigateLiveIframeUrl(frigateId: string, bbox: boolean): string {
   const bboxParam = bbox ? '1' : '0';
   return `${FRIGATE_ORIGIN}/live?camera=${encodeURIComponent(frigateId)}&bbox=${bboxParam}`;
 }
 
-export function shouldUseFrigateLive(camera?: {
+/**
+ * Live preview never embeds Frigate SPA (full UI regression).
+ * Always false — LiveStreamPlayer uses go2rtc video-only for demo + IP.
+ * Frigate remains enabled for ingest/evidence when FRIGATE_* backend flags are on.
+ */
+export function shouldUseFrigateLive(_camera?: {
   name?: string;
   metadata?: Record<string, unknown>;
 } | null): boolean {
-  if (!FRIGATE_LIVE_ENABLED) return false;
-  return !isVirtualCamera(camera);
+  void _camera;
+  void FRIGATE_LIVE_ENABLED;
+  return false;
 }
 /** @deprecated legacy demo stream name — use metadata.go2rtc_src from uploaded videos. */
 export const DEFAULT_STREAM = 'benedicte';

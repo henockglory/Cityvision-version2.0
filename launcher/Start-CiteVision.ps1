@@ -41,6 +41,16 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
+# Sync live-preview UI (go2rtc video-only; never embed Frigate SPA) into WSL runtime.
+# Additive — does not weaken STRICT health / Gemini gate.
+# Prefer Windows mirror script so first sync works even if WSL copy is stale.
+$syncPreview = ('bash /mnt/c/Users/gheno/citevision/scripts/lib/sync-live-preview-ui.sh /mnt/c/Users/gheno/citevision "{0}"' -f $WslRoot)
+Write-Host "[INFO] Sync live-preview UI -> WSL" -ForegroundColor DarkCyan
+wsl -d $Distro -- bash -lc $syncPreview
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "[WARN] live-preview sync failed — continuing with runtime copy" -ForegroundColor Yellow
+}
+
 # STRICT: face + Gemini configured/reachable are hard FAIL. Use ';' not '&&' for PS 5.1.
 $bashCmd = ("cd '{0}'; export STRICT_INSTALL_HEALTH=1; bash scripts/lib/start-full-stack.sh" -f $WslRoot)
 $startOut = wsl -d $Distro -- bash -lc $bashCmd 2>&1

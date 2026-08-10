@@ -69,6 +69,7 @@ heal_published_container() {
         citevision-v2-minio) svc=minio ;;
         citevision-v2-ocr|citevision-ocr) svc=citevision-ocr ;;
         citevision-v2-mailhog) svc=mailhog ;;
+        citevision-v2-go2rtc) svc=go2rtc ;;
         *) svc="" ;;
       esac
     fi
@@ -176,6 +177,20 @@ ensure_infra_host_ports() {
       echo "[OK] mailhog host :${mailhog_ui} after heal"
     else
       echo "[FAIL] mailhog host :${mailhog_ui} still dead"
+      rc=1
+    fi
+  fi
+
+  # go2rtc — live preview for ALL cameras (demo + IP). Dead :1984 = black players everywhere.
+  if curl -sf --max-time 3 "http://127.0.0.1:1984/api" >/dev/null 2>&1; then
+    echo "[OK] go2rtc host :1984"
+  else
+    echo "[WARN] go2rtc host :1984 dead — heal"
+    if heal_published_container citevision-v2-go2rtc go2rtc 1984 8554 8555 \
+      && curl -sf --max-time 5 "http://127.0.0.1:1984/api" >/dev/null 2>&1; then
+      echo "[OK] go2rtc host :1984 after heal"
+    else
+      echo "[FAIL] go2rtc host :1984 still dead"
       rc=1
     fi
   fi

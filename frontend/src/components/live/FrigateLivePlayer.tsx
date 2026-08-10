@@ -1,45 +1,45 @@
-import { useTranslation } from 'react-i18next';
-
-import { FRIGATE_ORIGIN, frigateCameraId, frigateLiveIframeUrl } from '@/config/streams';
+import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
+import { go2rtcStreamSrc } from '@/config/streams';
 
 interface FrigateLivePlayerProps {
   cameraId: string;
   className?: string;
   label?: string;
-  /** Native Frigate detection overlay (not SSE from ai-engine). */
+  /** Kept for API compat — bbox uses LiveStreamPlayer SSE overlay, not Frigate SPA. */
   showBBox?: boolean;
+  orgId?: string;
+  src?: string;
+  camera?: {
+    id?: string;
+    name?: string;
+    streamKey?: string;
+    metadata?: Record<string, unknown>;
+  } | null;
 }
 
 /**
- * Live player via Frigate UI iframe (WebRTC + optional native bbox).
- * Avoids broken direct go2rtc WS — Frigate exposes streams only through its UI/API plane.
+ * Compat wrapper: video-only via CiteVision go2rtc (cam-{uuid}).
+ * Do not iframe Frigate /live — that injects the full Frigate UI into Vue directe.
+ * Detection/evidence still run through Frigate backend independently.
  */
 export default function FrigateLivePlayer({
   cameraId,
   className = 'aspect-video w-full',
   label,
-  showBBox = false,
+  orgId,
+  src,
+  camera,
 }: FrigateLivePlayerProps) {
-  const { t } = useTranslation();
-  const frigateId = frigateCameraId(cameraId);
-  const iframeSrc = frigateLiveIframeUrl(frigateId, showBBox);
-
+  const stream = src ?? go2rtcStreamSrc(camera ?? { id: cameraId });
   return (
     <div className={`relative bg-black overflow-hidden ${className}`}>
-      <iframe
-        title={label ?? t('liveView.frigateLive', 'Live Frigate')}
-        src={iframeSrc}
-        className="absolute inset-0 w-full h-full border-0"
-        allow="autoplay; fullscreen"
+      <Go2RtcPlayer
+        className="absolute inset-0 w-full h-full"
+        src={stream}
+        label={label}
+        orgId={orgId}
+        cameraId={cameraId}
       />
-      <a
-        href={`${FRIGATE_ORIGIN}/live?camera=${encodeURIComponent(frigateId)}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="absolute bottom-2 right-2 text-[10px] text-white/50 hover:text-white/80 bg-black/40 px-2 py-0.5 rounded"
-      >
-        Frigate
-      </a>
     </div>
   );
 }

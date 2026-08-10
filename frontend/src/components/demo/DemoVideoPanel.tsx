@@ -12,7 +12,7 @@ import { demoApi, type DemoSettings, type DemoVideo } from '@/api/client';
 import { queryKeys } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useCameras } from '@/hooks/api/queries';
-import { go2rtcStreamSrc, shouldUseFrigateLive } from '@/config/streams';
+import { go2rtcStreamSrc } from '@/config/streams';
 
 interface DemoVideoPanelProps {
   settings?: DemoSettings | null;
@@ -93,8 +93,6 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
     settings?.source_mode === 'camera' && settings.active_camera_id
       ? cameras.find((c) => c.id === settings.active_camera_id) ?? null
       : null;
-  const useFrigateLive = Boolean(activeCamera && shouldUseFrigateLive(activeCamera));
-
   const realCameras = cameras.filter((c) => {
     const meta = c.metadata as Record<string, unknown> | undefined;
     return meta?.demo !== true && meta?.virtual !== true;
@@ -275,13 +273,14 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
     <div id="demo-video" className="space-y-4">
       {/* Main player area */}
       <div className="cv-card overflow-hidden p-0 relative cv-demo-player-shell">
-        {hasStream ? (
-          useFrigateLive && activeCamera ? (
+        {hasStream || (sourceTab === 'camera' && activeCamera) ? (
+          sourceTab === 'camera' && activeCamera ? (
             <LiveStreamPlayer
               className="aspect-video w-full min-h-[280px]"
               src={go2rtcStreamSrc(activeCamera) ?? streamSrc}
               label={activeCamera.name ?? t('demoCenter.tabRealCameras')}
               cameraId={activeCamera.id}
+              orgId={orgId ?? undefined}
               camera={activeCamera}
               showOverlay
             />
@@ -290,7 +289,7 @@ export default function DemoVideoPanel({ settings, isLoading = false, onExplicit
               className="aspect-video w-full min-h-[280px]"
               src={streamSrc}
               friendlyErrors
-              label={settings?.source_mode === 'camera' ? t('demoCenter.tabRealCameras') : t('demoCenter.tabTestVideos')}
+              label={t('demoCenter.tabTestVideos')}
             />
           )
         ) : (
