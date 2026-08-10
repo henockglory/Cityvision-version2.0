@@ -84,6 +84,8 @@ ensure_demo_runtime_env() {
   _upsert_env_kv_file "$env_path" VIDEOS_PATH "$videos"
   _upsert_env_kv_file "$env_path" RULE_CATALOG_PATH "$catalog"
   _upsert_env_kv_file "$env_path" SHARED_PATH "$shared"
+  # Always allow live IP-cam ingest (RTSP/mp4/demo). Lab gate name is historical.
+  _upsert_env_kv_file "$env_path" LIVE_108_ENABLED 1
   _upsert_env_kv_file "$env_path" FRIGATE_ENABLED 1
   _upsert_env_kv_file "$env_path" FRIGATE_LIVE 1
   _upsert_env_kv_file "$env_path" FRIGATE_EVIDENCE 1
@@ -95,7 +97,7 @@ ensure_demo_runtime_env() {
   grep -q '^ALERT_EMAIL_TO=' "$env_path" 2>/dev/null \
     || echo 'ALERT_EMAIL_TO=demo@citevision.local' >>"$env_path"
   ensure_demo_validation_env "$root" "$env_path" || true
-  echo "[INFO] Demo runtime env: DEMO_MODE=1 Frigate=on VIDEOS_PATH=$videos" >&2
+  echo "[INFO] Demo runtime env: DEMO_MODE=1 LIVE_108=1 Frigate=on VIDEOS_PATH=$videos" >&2
 }
 
 # Gemini + Frigate cabin bridges — permanent Demo5 profile (never overwrites GEMINI_API_KEY).
