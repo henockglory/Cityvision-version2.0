@@ -6,8 +6,7 @@
   Runtime = WSL ~/citevision-v2 (scripts/lib/start-full-stack.sh).
   powershell -ExecutionPolicy Bypass -File launcher\Start-CiteVision.ps1
   Exit 0 only when service gate + STRICT health + Gemini probe pass.
-  ASCII-only strings for Windows PowerShell 5.1 encoding safety
-  (except the user-facing API key placeholder which must match the plan literally).
+  ASCII-only body for Windows PowerShell 5.1 (no em-dash / smart quotes).
 #>
 $ErrorActionPreference = "Continue"
 $Distro = "Ubuntu-24.04"
@@ -42,13 +41,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Sync live-preview UI (go2rtc video-only; never embed Frigate SPA) into WSL runtime.
-# Additive — does not weaken STRICT health / Gemini gate.
+# Additive - does not weaken STRICT health / Gemini gate.
 # Prefer Windows mirror script so first sync works even if WSL copy is stale.
 $syncPreview = ('bash /mnt/c/Users/gheno/citevision/scripts/lib/sync-live-preview-ui.sh /mnt/c/Users/gheno/citevision "{0}"' -f $WslRoot)
 Write-Host "[INFO] Sync live-preview UI -> WSL" -ForegroundColor DarkCyan
 wsl -d $Distro -- bash -lc $syncPreview
 if ($LASTEXITCODE -ne 0) {
-  Write-Host "[WARN] live-preview sync failed — continuing with runtime copy" -ForegroundColor Yellow
+  Write-Host "[WARN] live-preview sync failed - continuing with runtime copy" -ForegroundColor Yellow
 }
 
 # STRICT: face + Gemini configured/reachable are hard FAIL. Use ';' not '&&' for PS 5.1.
@@ -66,7 +65,7 @@ if ($rc -ne 0) {
     Write-Host "[FAIL] Gemini indisponible (cle absente/invalide ou API injoignable)." -ForegroundColor Red
     Write-Host "Remplacez le placeholder puis executez:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  powershell -ExecutionPolicy Bypass -File launcher\Set-CiteVisionGeminiKey.ps1 -ApiKey 'saisissez votre nouvelle clé API'" -ForegroundColor Cyan
+    Write-Host "  powershell -ExecutionPolicy Bypass -File launcher\Set-CiteVisionGeminiKey.ps1 -ApiKey 'saisissez votre nouvelle cle API'" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Puis relancez:" -ForegroundColor Yellow
     Write-Host ""

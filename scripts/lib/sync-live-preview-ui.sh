@@ -30,9 +30,20 @@ rsync -a --no-owner --no-group --no-perms \
 rsync -a --no-owner --no-group --no-perms \
   "$SRC/scripts/lib/sync-live-preview-ui.sh" \
   "$DST/scripts/lib/sync-live-preview-ui.sh" 2>/dev/null || true
-rsync -a --no-owner --no-group --no-perms \
-  "$SRC/launcher/Start-CiteVision.ps1" \
-  "$DST/launcher/Start-CiteVision.ps1"
+# Copy Start PS1 as ASCII-only (em-dash/smart-quotes break Windows PowerShell 5.1).
+if [[ -f "$SRC/launcher/Start-CiteVision.ps1" ]]; then
+  mkdir -p "$DST/launcher"
+  if command -v iconv >/dev/null 2>&1; then
+    iconv -f UTF-8 -t ASCII//TRANSLIT "$SRC/launcher/Start-CiteVision.ps1" > "$DST/launcher/Start-CiteVision.ps1" \
+      || rsync -a --no-owner --no-group --no-perms "$SRC/launcher/Start-CiteVision.ps1" "$DST/launcher/Start-CiteVision.ps1"
+  else
+    rsync -a --no-owner --no-group --no-perms "$SRC/launcher/Start-CiteVision.ps1" "$DST/launcher/Start-CiteVision.ps1"
+  fi
+  # Also refresh Windows launch mirror used by user shortcut C:\Citevision
+  if [[ -d /mnt/c/Citevision/launcher ]]; then
+    cp -f "$DST/launcher/Start-CiteVision.ps1" /mnt/c/Citevision/launcher/Start-CiteVision.ps1 2>/dev/null || true
+  fi
+fi
 
 # Frontend Vite flags (preview = go2rtc; Frigate backend unchanged).
 fe_env="$DST/frontend/.env"
