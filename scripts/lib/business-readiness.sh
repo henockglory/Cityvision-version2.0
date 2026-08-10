@@ -23,7 +23,20 @@ if ! declare -F ensure_infra_host_ports >/dev/null 2>&1; then
   source "$ROOT/scripts/lib/service-heal.sh" 2>/dev/null || true
 fi
 
+_br_ensure_env() {
+  if [[ -z "${INTERNAL_API_KEY:-${KEY:-}}" ]] && declare -F load_dotenv >/dev/null 2>&1; then
+    load_dotenv "${ENV_FILE:-$ROOT/.env}"
+  fi
+  if [[ -z "${INTERNAL_API_KEY:-}" && -n "${KEY:-}" ]]; then
+    export INTERNAL_API_KEY="$KEY"
+  fi
+  if [[ -z "${KEY:-}" && -n "${INTERNAL_API_KEY:-}" ]]; then
+    export KEY="$INTERNAL_API_KEY"
+  fi
+}
+
 _br_internal_key() {
+  _br_ensure_env
   echo "${INTERNAL_API_KEY:-${KEY:-changeme_internal_service_key}}"
 }
 
@@ -33,10 +46,16 @@ _br_api_port() {
 
 _br_post_internal() {
   local path="$1"
-  local key
+  local key code
   key="$(_br_internal_key)"
-  curl -sf --max-time 60 -X POST "http://127.0.0.1:$(_br_api_port)${path}" \
-    -H "X-Internal-Key: $key" >/dev/null 2>&1
+  code="$(curl -sS -o /tmp/citevision-br-post.json -w '%{http_code}' --max-time 60 -X POST \
+    "http://127.0.0.1:$(_br_api_port)${path}" \
+    -H "X-Internal-Key: $key" 2>/dev/null || echo 000)"
+  if [[ "$code" != "200" && "$code" != "204" && "$code" != "202" ]]; then
+    echo "[WARN] POST ${path} http=${code} (key_len=${#key})" >&2
+    return 1
+  fi
+  return 0
 }
 
 _br_psql() {
@@ -61,6 +80,87 @@ ORDER BY c.id, z.id;
 "
 }
 
+# Zones on cameras the ingest orchestrator is expected to push to AI:
+# - demo cams that are the org active demo selection (or no selection)
+# - live/non-virtual cams when LIVE_108_ENABLED is truthy
+# Columns: cam_id, zone_id, behavior, is_demo (0/1), is_live (0/1)
+_br_list_ingest_guaranteed_zones() {
+  local live_on=0
+  local v
+  v="$(grep -E '^LIVE_108_ENABLED=' "${ENV_FILE:-$ROOT/.env}" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+  v="${LIVE_108_ENABLED:-$v}"
+  if [[ "$v" == "1" || "$(echo "$v" | tr '[:upper:]' '[:lower:]')" == "true" ]]; then
+    live_on=1
+  fi
+  _br_psql "
+WITH demo_active AS (
+  SELECT org_id,
+    CASE
+      WHEN source_mode = 'camera' AND active_camera_id IS NOT NULL THEN active_camera_id
+      ELSE (
+        SELECT c2.id FROM cameras c2
+        WHERE c2.org_id = ods.org_id AND c2.is_active = true
+          AND c2.metadata->>'demo_video_id' = ods.active_video_id::text
+        LIMIT 1
+      )
+    END AS active_cam
+  FROM org_demo_settings ods
+)
+SELECT c.id::text, z.id::text,
+  COALESCE(NULLIF(z.behavior_config->>'behavior',''), NULLIF(z.zone_kind,''), ''),
+  CASE WHEN COALESCE(c.metadata->>'demo','') IN ('true','1') THEN 1 ELSE 0 END,
+  CASE
+    WHEN COALESCE(c.metadata->>'demo','') IN ('true','1') THEN 0
+    WHEN COALESCE(c.metadata->>'virtual','') IN ('true','1') THEN 0
+    ELSE 1
+  END
+FROM zones z
+JOIN cameras c ON c.id = z.camera_id
+LEFT JOIN demo_active da ON da.org_id = c.org_id
+WHERE z.is_active = true
+  AND z.camera_id IS NOT NULL
+  AND (
+    COALESCE(z.behavior_config->>'behavior','') <> ''
+    OR COALESCE(z.zone_kind,'') <> ''
+  )
+  AND (
+    -- Demo cams: only the org active demo selection (orchestrator skipInactiveDemoCamera).
+    (
+      COALESCE(c.metadata->>'demo','') IN ('true','1')
+      AND (da.active_cam IS NULL OR da.active_cam = c.id)
+    )
+    -- Live IP cams when LIVE_108_ENABLED (orchestrator skipNonDemoLiveCamera).
+    OR (
+      COALESCE(c.metadata->>'demo','') NOT IN ('true','1')
+      AND COALESCE(c.metadata->>'virtual','') NOT IN ('true','1')
+      AND ${live_on} = 1
+    )
+    -- Virtual non-demo cams are not gated by LIVE_108.
+    OR (
+      COALESCE(c.metadata->>'demo','') NOT IN ('true','1')
+      AND COALESCE(c.metadata->>'virtual','') IN ('true','1')
+    )
+  )
+ORDER BY c.id, z.id;
+"
+}
+
+_br_live_cams_with_zones_count() {
+  _br_psql "
+SELECT COUNT(DISTINCT c.id)::text
+FROM zones z
+JOIN cameras c ON c.id = z.camera_id
+WHERE z.is_active = true
+  AND z.camera_id IS NOT NULL
+  AND (
+    COALESCE(z.behavior_config->>'behavior','') <> ''
+    OR COALESCE(z.zone_kind,'') <> ''
+  )
+  AND COALESCE(c.metadata->>'demo','') NOT IN ('true','1')
+  AND COALESCE(c.metadata->>'virtual','') NOT IN ('true','1');
+" | head -1 | tr -d '[:space:]'
+}
+
 _br_enabled_rules_count() {
   _br_psql "SELECT COUNT(*)::text FROM rules WHERE is_enabled = true;" | head -1 | tr -d '[:space:]'
 }
@@ -81,6 +181,56 @@ heal_resync_spatial() {
   echo "[INFO] heal: POST /api/v1/internal/ingest/resync-spatial"
   _br_post_internal "/api/v1/internal/ingest/resync-spatial" || return 1
   sleep 2
+  return 0
+}
+
+# Enable live IP-cam ingest when active behavior zones exist on non-demo cameras.
+heal_live_108_ingest() {
+  local n envf v
+  n="$(_br_live_cams_with_zones_count)"
+  n="${n:-0}"
+  if [[ ! "$n" =~ ^[0-9]+$ ]] || [[ "$n" -eq 0 ]]; then
+    return 0
+  fi
+  envf="${ENV_FILE:-$ROOT/.env}"
+  v="$(grep -E '^LIVE_108_ENABLED=' "$envf" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+  v="${LIVE_108_ENABLED:-$v}"
+  if [[ "$v" == "1" || "$(echo "$v" | tr '[:upper:]' '[:lower:]')" == "true" ]]; then
+    return 0
+  fi
+  echo "[INFO] heal: LIVE_108_ENABLED=1 (live cams with active zones: $n)"
+  if declare -F _upsert_env_kv_file >/dev/null 2>&1; then
+    _upsert_env_kv_file "$envf" LIVE_108_ENABLED 1
+  else
+    if grep -q '^LIVE_108_ENABLED=' "$envf" 2>/dev/null; then
+      sed -i 's/^LIVE_108_ENABLED=.*/LIVE_108_ENABLED=1/' "$envf"
+    else
+      echo 'LIVE_108_ENABLED=1' >>"$envf"
+    fi
+  fi
+  export LIVE_108_ENABLED=1
+  # Backend requires Redis (and other infra publishes) before restart can succeed.
+  if declare -F ensure_infra_host_ports >/dev/null 2>&1; then
+    ensure_infra_host_ports || true
+  else
+    (cd "$ROOT/infra" && docker compose --env-file "${ENV_FILE:-$ROOT/.env}" up -d redis mosquitto 2>/dev/null) || true
+  fi
+  if [[ -f "$ROOT/scripts/_restart_backend.sh" ]]; then
+    echo "[INFO] heal: restart backend to pick up LIVE_108_ENABLED"
+    bash "$ROOT/scripts/_restart_backend.sh" >/dev/null 2>&1 || true
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+      if curl -sf --max-time 3 "http://127.0.0.1:$(_br_api_port)/health" >/dev/null 2>&1; then
+        echo "[OK] backend healthy after LIVE_108 heal"
+        break
+      fi
+      sleep 2
+    done
+    if ! curl -sf --max-time 3 "http://127.0.0.1:$(_br_api_port)/health" >/dev/null 2>&1; then
+      echo "[WARN] backend still down after LIVE_108 heal" >&2
+      return 1
+    fi
+  fi
   return 0
 }
 
@@ -123,12 +273,12 @@ heal_rules_engine() {
   return 0
 }
 
-# Returns 0 if AI spatial matches DB for every camera that has active behavior zones.
+# Returns 0 if AI spatial matches DB for cameras the orchestrator must ingest.
 probe_spatial_ai_hot() {
   local rows
-  rows="$(_br_list_active_behavior_zones)"
+  rows="$(_br_list_ingest_guaranteed_zones)"
   if [[ -z "$(echo "$rows" | tr -d '[:space:]')" ]]; then
-    echo "[OK] spatial AI: no active behavior zones in DB (nothing to guarantee)"
+    echo "[OK] spatial AI: no ingest-guaranteed behavior zones (nothing to guarantee)"
     return 0
   fi
   printf '%s\n' "$rows" | AI_URL="$AI" python3 -c '
@@ -168,6 +318,8 @@ sys.exit(fail)
 }
 
 ensure_spatial_ai_hot() {
+  # Enable live ingest BEFORE probe so cam108 zones become guaranteed when present.
+  heal_live_108_ingest || true
   if probe_spatial_ai_hot; then
     return 0
   fi
@@ -333,6 +485,7 @@ ensure_business_readiness() {
   local soft="${1:-0}"
   local rc=0
   echo "=== business readiness ==="
+  _br_ensure_env
 
   if ! ensure_spatial_ai_hot; then
     rc=1

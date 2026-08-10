@@ -559,6 +559,11 @@ fi
 echo
 
 echo "--- business readiness ---"
+# shellcheck source=scripts/lib/env-utils.sh
+source "$ROOT/scripts/lib/env-utils.sh" 2>/dev/null || true
+if declare -F load_dotenv >/dev/null 2>&1; then
+  load_dotenv "${ENV_FILE:-$ROOT/.env}"
+fi
 # shellcheck source=scripts/lib/business-readiness.sh
 source "$ROOT/scripts/lib/business-readiness.sh" 2>/dev/null || true
 if declare -F ensure_business_readiness >/dev/null 2>&1; then
