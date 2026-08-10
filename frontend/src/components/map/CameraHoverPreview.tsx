@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Go2RtcPlayer from '@/components/camera/Go2RtcPlayer';
 import { go2rtcStreamSrc } from '@/config/streams';
 import type { Camera } from '@/types';
@@ -27,10 +28,16 @@ export default function CameraHoverPreview({ camera, position }: CameraHoverPrev
 
   const stream = go2rtcStreamSrc(camera);
 
-  return (
+  // Portal to <body>: the map lives inside a .cv-card (backdrop-blur creates a
+  // stacking context) which would otherwise trap this fixed overlay under the
+  // sibling right-hand panels.
+  const left = Math.min(position.x + 12, window.innerWidth - 196);
+  const top = Math.max(8, Math.min(position.y - 8, window.innerHeight - 180));
+
+  return createPortal(
     <div
-      className="fixed z-[500] pointer-events-none animate-fade-in"
-      style={{ left: position.x + 12, top: position.y - 8 }}
+      className="fixed z-[1200] pointer-events-none animate-fade-in"
+      style={{ left, top }}
     >
       <div className="cv-card p-2 shadow-glow border-metric-cameras/30 w-[180px]">
         <p className="text-[10px] font-semibold truncate mb-1">{camera.name}</p>
@@ -39,6 +46,7 @@ export default function CameraHoverPreview({ camera, position }: CameraHoverPrev
         </div>
         <p className="text-[9px] text-cv-muted mt-1">Aperçu live</p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

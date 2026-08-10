@@ -260,7 +260,7 @@
       "lead": "What do you want to watch?",
       "maintenance": "Camera care"
     },
-    "catalogFooter": "{{total}} rules · {{operational}} ready now · {{partial}} need extra setup",
+    "catalogFooter": "{{total}} rules · {{operational}} ready now",
     "status": {
       "operational": "Ready",
       "ready": "Ready to enable"

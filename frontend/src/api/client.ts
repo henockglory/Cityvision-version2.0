@@ -777,6 +777,8 @@ export const aiHealthApi = {
       gemini_configured?: string;
       gemini_model?: string;
       gemini_reachable?: string;
+      frigate_vlm_bridge?: string;
+      frigate_speed_bridge?: string;
     }>('/ai-engine/health', { baseURL: '' }),
 };
 

@@ -34,7 +34,9 @@ export const navGroups: NavGroup[] = [
     items: [
       { path: '/users', labelKey: 'nav.users', icon: 'Users', roles: ['admin'] },
       { path: '/audit', labelKey: 'nav.audit', icon: 'FileText', roles: ['admin'] },
-      { path: '/health', labelKey: 'nav.systemHealth', icon: 'Activity', roles: ['admin', 'operator'] },
+      // /system-health (not /health): the Vite dev proxy forwards /health to the
+      // backend, so a hard refresh on /health would show raw JSON instead of the SPA.
+      { path: '/system-health', labelKey: 'nav.systemHealth', icon: 'Activity', roles: ['admin', 'operator'] },
     ],
   },
   {
@@ -46,8 +48,9 @@ export const navGroups: NavGroup[] = [
   },
   {
     id: 'demo',
+    // No 'demo' badge here: the group title already reads "Démo" and the badge
+    // rendered a redundant "Démo démo" in the sidebar.
     labelKey: 'nav.groups.demo',
-    badge: 'demo',
     items: [
       { path: '/demo', labelKey: 'nav.demo', icon: 'Sparkles', roles: ['admin', 'operator'] },
     ],

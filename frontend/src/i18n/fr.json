@@ -256,7 +256,7 @@
       "lead": "Que souhaitez-vous surveiller ?",
       "maintenance": "Entretien caméra"
     },
-    "catalogFooter": "{{total}} règles · {{operational}} prêtes immédiatement · {{partial}} avec réglage avancé",
+    "catalogFooter": "{{total}} règles · {{operational}} prêtes immédiatement",
     "status": {
       "operational": "Prête",
       "ready": "Prête à activer"

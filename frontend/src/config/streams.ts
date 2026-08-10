@@ -1,7 +1,5 @@
 /** go2rtc — WebRTC direct port 1984 (WebSocket ne passe pas toujours via proxy Vite). */
 const GO2RTC_PORT = 1984;
-const FRIGATE_PORT = 5000;
-const FRIGATE_GO2RTC_PORT = 8557;
 
 function envFlag(name: string): boolean {
   const v = (import.meta.env[name] as string | undefined)?.trim();

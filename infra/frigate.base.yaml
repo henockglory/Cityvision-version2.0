@@ -46,11 +46,13 @@ lpr:
   enabled: false
 
 # Frigate embarque go2rtc sur l'hôte (network_mode: host). Ports dédiés pour ne pas
-# bloquer le conteneur citevision-v2-go2rtc (1984/8554) qui sert les boucles démo.
+# bloquer le conteneur citevision-v2-go2rtc (1984/8554/8555) qui sert les boucles démo.
 go2rtc:
   api:
     listen: ":1985"
   rtsp:
     listen: ":8557"
+  webrtc:
+    listen: ":8556"
 
 cameras: {}

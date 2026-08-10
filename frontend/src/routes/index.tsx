@@ -117,13 +117,16 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'health',
+        path: 'system-health',
         element: (
           <ProtectedRoute roles={['admin', 'operator']}>
             <LazyPage><SystemHealth /></LazyPage>
           </ProtectedRoute>
         ),
       },
+      // Legacy client-side alias — hard loads on /health hit the Vite proxy (backend
+      // JSON), but in-app navigations to the old path still land on the page.
+      { path: 'health', element: <Navigate to="/system-health" replace /> },
       { path: 'settings', element: <Settings /> },
     ],
   },

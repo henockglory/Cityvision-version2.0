@@ -974,7 +974,7 @@ export default function RuleStudioDialog({
             </p>
             <p className="text-xs text-cv-muted font-mono">{missingModelHealthKeys.join(', ')}</p>
             <Link
-              to="/health?wizard=import-model"
+              to="/system-health?wizard=import-model"
               className="inline-flex text-xs font-medium text-cv-accent underline underline-offset-2"
             >
               {t('rules.studio.importModelWizard', { defaultValue: 'Assistant d\'import de modèle →' })}

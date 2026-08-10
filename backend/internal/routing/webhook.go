@@ -151,6 +151,7 @@ func PostWebhookPreset(url, preset string, payload map[string]interface{}) error
 	if err := ValidateWebhookURL(url); err != nil {
 		return err
 	}
+	opts := defaultWebhookOptions()
 	bodyPayload, _ := BuildWebhookBody(preset, payload)
 	body, err := json.Marshal(bodyPayload)
 	if err != nil {
