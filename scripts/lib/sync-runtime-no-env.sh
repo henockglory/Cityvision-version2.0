@@ -106,7 +106,11 @@ do
     docs/COMPOSITES-ORCHESTRATION.md \
     docs/CATALOG-VALIDATE-MATRIX.md \
     frontend/src/i18n \
+    frontend/src/config/streams.ts \
     frontend/src/pages/Login.tsx \
+    frontend/src/components/live/FrigateLivePlayer.tsx \
+    frontend/src/components/live/LiveStreamPlayer.tsx \
+    frontend/src/components/demo/DemoVideoPanel.tsx \
     frontend/src/components/integrations \
     frontend/src/components/rules/OutputChannelsPanel.tsx \
     frontend/src/components/settings/AlertRoutingPanel.tsx \
