@@ -32,16 +32,20 @@ for rel in \
   launcher \
   scripts/lib \
   scripts/health_check_all.sh \
+  scripts/watch-infra-ports.sh \
+  scripts/stop-linux.sh \
   shared \
   docs/COMPOSITES-ORCHESTRATION.md \
   docs/CATALOG-VALIDATE-MATRIX.md \
   frontend/src/i18n \
+  frontend/src/pages/Login.tsx \
   frontend/src/components/integrations \
   frontend/src/components/rules/OutputChannelsPanel.tsx \
   frontend/src/components/settings/AlertRoutingPanel.tsx \
   frontend/src/api/client.ts \
   backend/internal/routing \
-  backend/internal/handler/integrations.go \
+  backend/internal/auth \
+  backend/internal/handler \
   backend/cmd/api/main.go
 do
   if [[ -d "$SRC/$rel" ]]; then
@@ -54,15 +58,26 @@ do
     echo "skip missing $rel"
   fi
 done
-chmod +x "$DST/scripts/lib/probe-gemini.sh" "$DST/scripts/lib/set-gemini-key.sh" 2>/dev/null || true
+chmod +x \
+  "$DST/scripts/lib/probe-gemini.sh" \
+  "$DST/scripts/lib/set-gemini-key.sh" \
+  "$DST/scripts/lib/service-heal.sh" \
+  "$DST/scripts/watch-infra-ports.sh" \
+  "$DST/scripts/health_check_all.sh" \
+  "$DST/scripts/stop-linux.sh" 2>/dev/null || true
 sed -i 's/\r$//' \
   "$DST/scripts/lib/probe-gemini.sh" \
   "$DST/scripts/lib/set-gemini-key.sh" \
+  "$DST/scripts/lib/service-heal.sh" \
   "$DST/scripts/lib/start-full-stack.sh" \
   "$DST/scripts/lib/sync-runtime-no-env.sh" \
-  "$DST/scripts/health_check_all.sh" 2>/dev/null || true
-test -f "$DST/frontend/src/components/integrations/WebhookPayloadPreview.tsx"
-test -f "$DST/backend/internal/handler/integrations.go"
+  "$DST/scripts/watch-infra-ports.sh" \
+  "$DST/scripts/health_check_all.sh" \
+  "$DST/scripts/stop-linux.sh" 2>/dev/null || true
+test -f "$DST/scripts/watch-infra-ports.sh"
+test -f "$DST/scripts/lib/service-heal.sh"
+grep -q 'ensure_infra_host_ports' "$DST/scripts/lib/service-heal.sh"
+grep -q 'ErrSessionStore' "$DST/backend/internal/auth/service.go"
 if grep -q 'tpl-theft-composite' "$DST/shared/rule-orchestration-contract.json" 2>/dev/null; then
   echo "[FAIL] theft composite still present in WSL orchestration" >&2
   exit 1
@@ -80,16 +95,20 @@ do
     launcher \
     scripts/lib \
     scripts/health_check_all.sh \
+    scripts/watch-infra-ports.sh \
+    scripts/stop-linux.sh \
     shared \
     docs/COMPOSITES-ORCHESTRATION.md \
     docs/CATALOG-VALIDATE-MATRIX.md \
     frontend/src/i18n \
+    frontend/src/pages/Login.tsx \
     frontend/src/components/integrations \
     frontend/src/components/rules/OutputChannelsPanel.tsx \
     frontend/src/components/settings/AlertRoutingPanel.tsx \
     frontend/src/api/client.ts \
     backend/internal/routing \
-    backend/internal/handler/integrations.go \
+    backend/internal/auth \
+    backend/internal/handler \
     backend/cmd/api/main.go
   do
     if [[ -d "$DST/$rel" ]]; then

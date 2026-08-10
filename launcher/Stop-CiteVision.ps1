@@ -73,14 +73,14 @@ docker exec citevision-v2-postgres psql -U citevision -d citevision -c \
   || echo "[WARN] postgres unavailable for disable rules"
 
 echo "=== [2/6] stop watchdogs / frontend / AI / rules / backend ==="
-for svc in watch-demo-stack watch-backend watch-ai-ingest frontend ai-engine rules-engine backend; do
+for svc in watch-demo-stack watch-backend watch-ai-ingest watch-rules-engine watch-infra-ports frontend ai-engine rules-engine backend; do
   if [[ -f "$LOGDIR/${svc}.pid" ]]; then
     pid=$(cat "$LOGDIR/${svc}.pid" 2>/dev/null || true)
     if [[ -n "${pid:-}" ]]; then kill "$pid" 2>/dev/null || true; fi
     rm -f "$LOGDIR/${svc}.pid"
   fi
 done
-pkill -f 'watch-backend|watch-ai-ingest|watch-demo-stack' 2>/dev/null || true
+pkill -f 'watch-backend|watch-ai-ingest|watch-demo-stack|watch-rules-engine|watch-infra-ports' 2>/dev/null || true
 pkill -f 'vite|ensure-frontend' 2>/dev/null || true
 pkill -f 'uvicorn citevision_ai.main' 2>/dev/null || true
 pkill -f 'citevision-ai|run-ai-engine' 2>/dev/null || true

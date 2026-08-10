@@ -41,6 +41,13 @@ export default function Login() {
       if (isAxiosError(err)) {
         if (!err.response) {
           setError(t('login.errorBackend', 'Impossible de joindre le serveur. Lancez scripts/start-linux.sh'));
+        } else if (err.response.status === 503) {
+          setError(
+            t(
+              'login.errorSessionStore',
+              'Session indisponible (Redis). Relancez Start-CiteVision.ps1 ou attendez le heal automatique.',
+            ),
+          );
         } else if (err.response.status === 401) {
           setError(t('login.error'));
         } else {

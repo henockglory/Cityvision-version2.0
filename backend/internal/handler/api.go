@@ -149,6 +149,10 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "totp_required", "totp_required": true})
 		return
 	}
+	if errors.Is(err, auth.ErrSessionStore) {
+		writeError(w, http.StatusServiceUnavailable, "session_store_unavailable")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return

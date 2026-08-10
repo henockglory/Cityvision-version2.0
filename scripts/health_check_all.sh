@@ -91,18 +91,26 @@ else
 fi
 echo
 
+# shellcheck source=scripts/lib/service-heal.sh
+source "$ROOT/scripts/lib/service-heal.sh" 2>/dev/null || true
+
 echo "--- postgres ---"
 if docker exec "$PG_CONTAINER" pg_isready -U "$PG_USER" >/dev/null 2>&1; then
   ok "pg_isready inside $PG_CONTAINER"
-elif command -v pg_isready >/dev/null 2>&1 && pg_isready -h 127.0.0.1 -p "${POSTGRES_PORT:-5433}" -U "$PG_USER" >/dev/null 2>&1; then
-  ok "pg_isready on host :${POSTGRES_PORT:-5433}"
 else
-  fail "Postgres unreachable ($PG_CONTAINER / :${POSTGRES_PORT:-5433})"
+  warn "pg_isready inside container failed — will rely on host publish check"
+fi
+if command -v pg_isready >/dev/null 2>&1 && pg_isready -h 127.0.0.1 -p "${POSTGRES_PORT:-5433}" -U "$PG_USER" >/dev/null 2>&1; then
+  ok "pg_isready on host :${POSTGRES_PORT:-5433}"
+elif declare -F tcp_ok >/dev/null 2>&1 && tcp_ok 127.0.0.1 "${POSTGRES_PORT:-5433}"; then
+  ok "postgres host TCP :${POSTGRES_PORT:-5433}"
+else
+  fail "Postgres host unreachable (:${POSTGRES_PORT:-5433})"
 fi
 echo
 
 echo "--- containers ---"
-for name in citevision-v2-postgres citevision-v2-redis citevision-v2-mosquitto citevision-v2-minio citevision-v2-mailhog citevision-v2-go2rtc; do
+for name in citevision-v2-postgres citevision-v2-redis citevision-v2-mosquitto citevision-v2-minio citevision-v2-mailhog citevision-v2-go2rtc citevision-v2-ocr; do
   st="$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo missing)"
   if [[ "$st" == "running" ]]; then
     ok "$name running"
@@ -131,6 +139,27 @@ else
   else
     fail "citevision-v2-frigate status=$FRIGATE_ST after heal"
   fi
+fi
+echo
+
+echo "--- host published ports (container running ≠ port alive) ---"
+if declare -F ensure_infra_host_ports >/dev/null 2>&1; then
+  set +e
+  INFRA_OUT="$(ensure_infra_host_ports 2>&1)"
+  INFRA_RC=$?
+  set -e
+  printf '%s\n' "$INFRA_OUT"
+  # Count heals/warns for summary; hard FAIL only if still dead after heal.
+  if printf '%s\n' "$INFRA_OUT" | grep -q '\[WARN\]'; then
+    WARN=$((WARN + 1))
+  fi
+  if [[ "$INFRA_RC" -ne 0 ]]; then
+    fail "infra host ports still unhealthy after heal (redis/mqtt/postgres/minio/ocr/mailhog)"
+  else
+    ok "infra host ports reachable"
+  fi
+else
+  fail "scripts/lib/service-heal.sh missing ensure_infra_host_ports"
 fi
 echo
 
@@ -513,7 +542,11 @@ echo "--- ui ---"
 if curl -sf --max-time 5 "$UI_URL/" >/dev/null 2>&1 || curl -sf --max-time 5 "$UI_URL/index.html" >/dev/null 2>&1; then
   ok "UI reachable at $UI_URL"
 else
-  warn "UI $UI_URL down — start Vite before visual validation"
+  if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+    fail "UI $UI_URL down — Start/STRICT requires Vite"
+  else
+    warn "UI $UI_URL down — start Vite before visual validation"
+  fi
 fi
 echo
 

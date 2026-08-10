@@ -9,6 +9,8 @@ export PATH="${PATH:-}:/usr/local/go/bin:/home/gheno/go/bin"
 
 # shellcheck source=scripts/lib/env-utils.sh
 source "$ROOT/scripts/lib/env-utils.sh"
+# shellcheck source=scripts/lib/service-heal.sh
+source "$ROOT/scripts/lib/service-heal.sh"
 # shellcheck source=scripts/lib/cuda-utils.sh
 source "$ROOT/scripts/lib/cuda-utils.sh"
 
@@ -106,6 +108,13 @@ if ! docker exec citevision-v2-go2rtc ls /videos >/dev/null 2>&1; then
   heal_go2rtc
   sleep 3
 fi
+
+echo "=== [2b/10] infra host ports (redis/mqtt/postgres/minio/ocr) ==="
+if ! ensure_infra_host_ports; then
+  echo "[FAIL] infra host ports unreachable after heal — abort before backend" >&2
+  exit 1
+fi
+echo "[OK] infra host ports"
 
 # --- AI stack (venv + models) ---
 echo "=== [3/10] AI stack (ensure-ai-stack) ==="
@@ -230,12 +239,31 @@ if [[ "${WATCH_RULES_ENGINE:-1}" != "0" ]]; then
   stop_from_pid "$LOGDIR/watch-rules-engine.pid" 2>/dev/null || true
   start_bg watch-rules-engine "$ROOT" "bash scripts/watch-rules-engine.sh" "$LOGDIR" "$ENV_FILE"
 fi
+if [[ "${WATCH_INFRA_PORTS:-1}" != "0" ]]; then
+  stop_from_pid "$LOGDIR/watch-infra-ports.pid" 2>/dev/null || true
+  start_bg watch-infra-ports "$ROOT" "bash scripts/watch-infra-ports.sh" "$LOGDIR" "$ENV_FILE"
+fi
 
 # --- service gate (hard) ---
 echo "=== [8/10] service URL gate ==="
-python3 - <<'PY'
-import urllib.request, sys
-checks = [
+# Re-heal infra publishes right before gate (catch races during AI/backend boot).
+ensure_infra_host_ports || { echo "[FAIL] infra host ports at gate"; exit 1; }
+REDIS_PORT="${REDIS_PORT:-6380}" MQTT_PORT="${MQTT_PORT:-1884}" POSTGRES_PORT="${POSTGRES_PORT:-5433}" \
+MINIO_API_PORT="${MINIO_API_PORT:-9003}" python3 - <<'PY'
+import os, socket, sys, urllib.request
+
+def tcp(port, host="127.0.0.1", timeout=2.0):
+    s = socket.socket()
+    s.settimeout(timeout)
+    try:
+        s.connect((host, int(port)))
+        return True
+    except OSError as e:
+        return False
+    finally:
+        s.close()
+
+http_checks = [
   ("API", "http://127.0.0.1:8081/health"),
   ("AI", "http://127.0.0.1:8001/health"),
   ("RULES", "http://127.0.0.1:8010/health"),
@@ -244,14 +272,26 @@ checks = [
   ("GO2RTC", "http://127.0.0.1:1984/api"),
   ("MAILHOG", "http://127.0.0.1:8025/"),
   ("OCR", "http://127.0.0.1:8181/healthz"),
+  ("MINIO", f"http://127.0.0.1:{os.environ.get('MINIO_API_PORT','9003')}/minio/health/live"),
+]
+tcp_checks = [
+  ("REDIS_TCP", os.environ.get("REDIS_PORT", "6380")),
+  ("MQTT_TCP", os.environ.get("MQTT_PORT", "1884")),
+  ("POSTGRES_TCP", os.environ.get("POSTGRES_PORT", "5433")),
 ]
 fail = 0
-for name, url in checks:
+for name, url in http_checks:
   try:
     urllib.request.urlopen(url, timeout=5).read(64)
     print(f"[GATE OK] {name}")
   except Exception as e:
     print(f"[GATE FAIL] {name}: {e}")
+    fail = 1
+for name, port in tcp_checks:
+  if tcp(port):
+    print(f"[GATE OK] {name}:{port}")
+  else:
+    print(f"[GATE FAIL] {name}:{port} connection refused")
     fail = 1
 sys.exit(fail)
 PY

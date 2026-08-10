@@ -25,6 +25,8 @@ var (
 	ErrTOTPRequired       = errors.New("totp required")
 	ErrInvalidTOTP        = errors.New("invalid totp code")
 	ErrSessionNotFound    = errors.New("session not found")
+	// ErrSessionStore: Redis/session backend unavailable after credentials verified.
+	ErrSessionStore = errors.New("session store unavailable")
 )
 
 type TokenPair struct {
@@ -149,7 +151,7 @@ func (s *Service) issueTokens(ctx context.Context, u models.User, orgID *uuid.UU
 		CreatedAt: time.Now().UTC(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create session: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrSessionStore, err)
 	}
 
 	now := time.Now()
