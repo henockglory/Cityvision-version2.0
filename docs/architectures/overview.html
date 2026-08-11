@@ -207,15 +207,29 @@ footer {
   to { opacity: 1; transform: none; }
 }
 
-/* PDF / print — no clip, no sticky, full rule content, tables wrap */
+/* PDF / print — full-bleed pages, no white frame */
 @page {
   size: A4 landscape;
-  margin: 9mm 10mm;
+  margin: 0;
 }
 @media print {
   html, body {
     background: #0b1012 !important;
     color: var(--ink) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100% !important;
+  }
+  /* paint dark canvas edge-to-edge (avoids white paper gutters) */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: #0b1012 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -229,7 +243,7 @@ footer {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    padding: 0 0 8mm !important;
+    padding: 8mm 10mm 10mm !important;
   }
   .toc, .toolbar { display: none !important; }
   .hero { padding: 0 0 8mm !important; margin-bottom: 6mm !important; break-after: avoid; }

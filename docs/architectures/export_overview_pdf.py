@@ -55,6 +55,7 @@ def main() -> None:
         "--virtual-time-budget=15000",
         "--run-all-compositor-stages-before-draw",
         "--no-pdf-header-footer",
+        "--no-margins",
         f"--print-to-pdf={out_pdf}",
         url,
     ]
