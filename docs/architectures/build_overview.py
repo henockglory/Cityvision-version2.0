@@ -318,7 +318,7 @@ def render_tech_rows() -> str:
     return "\n".join(rows)
 
 
-def render_rules() -> str:
+def render_rules(*, open_all: bool = False) -> str:
     blocks = []
     for i, rule in enumerate(RULES, 1):
         rid = rule.get("id") or f"rule-{i}"
@@ -328,7 +328,7 @@ def render_rules() -> str:
         lis = "".join(f"<li>{esc(c)}</li>" for c in cases_for(rule))
         blocks.append(
             f"""
-<details class="rule" id="{esc(rid)}">
+<details class="rule" id="{esc(rid)}"{' open' if open_all else ''}>
   <summary>
     <span class="rn">{i:02d}. {esc(name)}</span>
     <span class="rmeta"><span class="chip">{esc(arch)}</span><code>{esc(et)}</code></span>
@@ -552,6 +552,113 @@ footer {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }
 }
+
+/* PDF / print — no clip, no sticky, full rule content, tables wrap */
+@page {
+  size: A4 landscape;
+  margin: 9mm 10mm;
+}
+@media print {
+  html, body {
+    background: #0b1012 !important;
+    color: var(--ink) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  * {
+    box-shadow: none !important;
+    animation: none !important;
+    transition: none !important;
+    backdrop-filter: none !important;
+  }
+  .shell {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 0 8mm !important;
+  }
+  .toc, .toolbar { display: none !important; }
+  .hero { padding: 0 0 8mm !important; margin-bottom: 6mm !important; break-after: avoid; }
+  .brand {
+    -webkit-background-clip: border-box !important;
+    background: none !important;
+    color: #e8c9a8 !important;
+    font-size: 22pt !important;
+  }
+  .hero h1 { font-size: 13pt !important; max-width: none !important; }
+  .hero-lead { font-size: 9.5pt !important; max-width: none !important; }
+  .section-head { margin: 7mm 0 3mm !important; break-after: avoid; }
+  .section-head h2 { font-size: 14pt !important; }
+  .section-head p { font-size: 9pt !important; max-width: none !important; }
+  .principle { gap: 3mm !important; margin: 3mm 0 5mm !important; }
+  .principle article { break-inside: avoid; padding: 3mm !important; }
+  .table-wrap {
+    overflow: visible !important;
+    box-shadow: none !important;
+    margin-bottom: 5mm !important;
+    border-radius: 6px !important;
+  }
+  table.rich {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    font-size: 7.4pt !important;
+  }
+  table.rich th, table.rich td {
+    padding: 2.2mm 2mm !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    hyphens: auto;
+    vertical-align: top !important;
+    position: static !important;
+  }
+  table.rich th { font-size: 6.6pt !important; }
+  table.rich .sub { font-size: 6.5pt !important; }
+  table.rich td.note { font-size: 7pt !important; }
+  table.rich code {
+    white-space: normal !important;
+    word-break: break-all !important;
+    font-size: 6.8pt !important;
+  }
+  /* column weights — tech table (5) & comparison (5) */
+  #tech table.rich th:nth-child(1), #tech table.rich td:nth-child(1) { width: 16%; }
+  #tech table.rich th:nth-child(2), #tech table.rich td:nth-child(2) { width: 18%; }
+  #tech table.rich th:nth-child(3), #tech table.rich td:nth-child(3) { width: 14%; }
+  #tech table.rich th:nth-child(4), #tech table.rich td:nth-child(4) { width: 26%; }
+  #tech table.rich th:nth-child(5), #tech table.rich td:nth-child(5) { width: 26%; }
+  #compare table.rich th:nth-child(1), #compare table.rich td:nth-child(1) { width: 16%; }
+  #compare table.rich th:nth-child(2), #compare table.rich td:nth-child(2) { width: 12%; }
+  #compare table.rich th:nth-child(3), #compare table.rich td:nth-child(3) { width: 12%; }
+  #compare table.rich th:nth-child(4), #compare table.rich td:nth-child(4) { width: 14%; }
+  #compare table.rich th:nth-child(5), #compare table.rich td:nth-child(5) { width: 46%; }
+  table.rich tr { break-inside: avoid; page-break-inside: avoid; }
+  .rule {
+    break-inside: auto;
+    page-break-inside: auto;
+    margin-bottom: 2.5mm !important;
+    border-radius: 6px !important;
+    overflow: visible !important;
+  }
+  .rule summary {
+    display: block !important;
+    padding: 2.5mm 3mm !important;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .rn { font-size: 9pt !important; }
+  .usecases {
+    padding: 0 3mm 2.5mm 7mm !important;
+    font-size: 8pt !important;
+  }
+  .usecases li { margin: 1mm 0 !important; }
+  .about { grid-template-columns: 1fr 1fr !important; gap: 4mm !important; }
+  .about-card { break-inside: avoid; padding: 4mm !important; box-shadow: none !important; }
+  .about-card h3 { font-size: 12pt !important; }
+  .about-card p { font-size: 8.5pt !important; }
+  .legend { margin-bottom: 3mm !important; }
+  footer { font-size: 8pt !important; margin-top: 6mm !important; }
+  a { text-decoration: none !important; }
+}
 """
 
 JS = r"""
@@ -611,10 +718,10 @@ JS = r"""
 """
 
 
-def main() -> None:
+def build_html(*, open_all: bool = False) -> str:
     n_rules = len(RULES)
     n_tech = len(TECH)
-    doc = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
@@ -643,6 +750,7 @@ def main() -> None:
         <span class="pill"><strong>{n_rules}</strong> règles × 7 cas</span>
         <span class="pill">Comparaison Genetec · Smart City</span>
         <span class="pill"><a href="index.html">Architectures →</a></span>
+        <span class="pill"><a href="CiteVision-Overview.pdf">PDF →</a></span>
       </div>
     </header>
 
@@ -662,6 +770,7 @@ def main() -> None:
           <span class="grp">Pages</span>
           <a href="index.html">Architectures (diagrammes)</a>
           <a href="overview.html">Cette vue d’ensemble</a>
+          <a href="CiteVision-Overview.pdf">Version PDF</a>
           <span class="grp">Sections</span>
           <a href="#intro">Lire d’abord</a>
           <a href="#tech">Technologies</a>
@@ -732,7 +841,7 @@ def main() -> None:
         <button type="button" id="openAllRules">Tout ouvrir</button>
         <button type="button" id="closeAllRules">Tout fermer</button>
       </div>
-{render_rules()}
+{render_rules(open_all=open_all)}
     </section>
 
     <section id="compare">
@@ -811,8 +920,9 @@ def main() -> None:
     <footer>
       <p>
         CitéVision — vue d’ensemble produit ({n_tech} technologies, {n_rules} règles).
-        Voir aussi <a href="index.html">Architectures métier &amp; produit</a>
-        et <a href="CiteVision-Architectures.pptx">le deck PowerPoint</a>.
+        Voir aussi <a href="index.html">Architectures métier &amp; produit</a>,
+        <a href="CiteVision-Architectures.pptx">le deck PowerPoint</a>
+        et <a href="CiteVision-Overview.pdf">la version PDF</a>.
         Généré via <code>build_overview.py</code> à partir du contrat d’orchestration.
       </p>
     </footer>
@@ -823,8 +933,11 @@ def main() -> None:
 </body>
 </html>
 """
+
+
+def main() -> None:
     out = ROOT / "overview.html"
-    out.write_text(doc, encoding="utf-8", newline="\n")
+    out.write_text(build_html(open_all=False), encoding="utf-8", newline="\n")
     print(f"Wrote {out} ({out.stat().st_size} bytes)")
 
 
