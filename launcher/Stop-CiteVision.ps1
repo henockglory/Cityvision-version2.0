@@ -126,10 +126,23 @@ $tmp = Join-Path $env:TEMP "citevision-stop-all.sh"
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($tmp, ($bash -replace "`r`n", "`n" -replace "`r", "`n"), $utf8NoBom)
 
-# PS 5.1-safe: no && in the PowerShell double-quoted argument.
-$remoteCmd = ('cat > /tmp/citevision-stop-all.sh; sed -i "s/\r$//" /tmp/citevision-stop-all.sh; CV_ROOT={0} bash /tmp/citevision-stop-all.sh' -f $WslRoot)
-Get-Content -LiteralPath $tmp -Raw | wsl -d $Distro -- bash -lc $remoteCmd
+function ConvertTo-WslPathLocal {
+  param([Parameter(Mandatory = $true)][string]$WinPath)
+  $full = [System.IO.Path]::GetFullPath($WinPath)
+  if ($full -match '^([A-Za-z]):\\?(.*)$') {
+    $drive = $Matches[1].ToLowerInvariant()
+    $rest = ($Matches[2] -replace '\\', '/')
+    return ("/mnt/{0}/{1}" -f $drive, $rest).TrimEnd('/')
+  }
+  return ($full -replace '\\', '/')
+}
+
+# Direct path (no stdin pipe) so LASTEXITCODE is reliable and logs scroll live.
+$stopWsl = ConvertTo-WslPathLocal $tmp
+$remoteCmd = ('sed "s/\r$//" "{0}" > /tmp/citevision-stop-all.sh; chmod +x /tmp/citevision-stop-all.sh; CV_ROOT={1} bash /tmp/citevision-stop-all.sh; ec=$?; echo __CV_STOP_EXIT__=$ec; exit $ec' -f $stopWsl, $WslRoot)
+& wsl.exe -d $Distro -- bash -lc $remoteCmd
 $rc = $LASTEXITCODE
+if ($null -eq $rc) { $rc = 1 }
 if ($rc -ne 0) {
   Write-Host ("[FAIL] stop exit={0}" -f $rc) -ForegroundColor Red
   exit $rc
