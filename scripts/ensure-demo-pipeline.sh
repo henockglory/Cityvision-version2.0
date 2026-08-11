@@ -22,7 +22,22 @@ VENV_PY="${ROOT}/ai-engine/.venv/bin/python3"
 echo "==> ensure-demo-pipeline (rules-engine + AI + resync)"
 
 if ! curl -sf "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
-  echo "[FAIL] Backend not running on :${API_PORT} — start backend first" >&2
+  echo "[WARN] Backend not running on :${API_PORT} - attempting restart"
+  if [[ -f "$ROOT/scripts/_restart_backend.py" ]]; then
+    python3 "$ROOT/scripts/_restart_backend.py" || true
+  elif [[ -f "$ROOT/scripts/_restart_backend.sh" ]]; then
+    bash "$ROOT/scripts/_restart_backend.sh" || true
+  fi
+  _i=0
+  for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if curl -sf --max-time 3 "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+fi
+if ! curl -sf "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
+  echo "[FAIL] Backend not running on :${API_PORT} - start backend first" >&2
   exit 1
 fi
 

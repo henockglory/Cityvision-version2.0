@@ -25,7 +25,7 @@ LOGDIR="$ROOT/logs"
 mkdir -p "$LOGDIR" "$ROOT/backend/bin" "$ROOT/data/videos"
 export CITEVISION_LOGDIR="$LOGDIR"
 
-echo "=== CitéVision START FULL STACK $(date -Is) ==="
+echo "=== CiteVision START FULL STACK $(date -Is) ==="
 echo "ROOT=$ROOT"
 
 ENV_FILE="$(ensure_env_file "$ROOT")"
@@ -187,8 +187,18 @@ if ! wait_http_ok "http://127.0.0.1:${AI_PORT}/health" 180; then
   echo "[FAIL] AI health" >&2
   exit 1
 fi
-bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --restart-ai \
-  --health-url="http://127.0.0.1:${AI_PORT}/health" --max-attempts=3 || true
+# Skip second ensure-ai-stack --restart-ai when health already reports models OK (faster, fewer flaps).
+_ai_models_ok=0
+if curl -sf --max-time 5 "http://127.0.0.1:${AI_PORT}/health" 2>/dev/null \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin);sys.exit(0 if d.get("models_all_ok") is True or (d.get("yolo_loaded") and d.get("face_loaded") and d.get("plate_loaded")) else 1)' 2>/dev/null; then
+  _ai_models_ok=1
+fi
+if [[ "$_ai_models_ok" == "1" ]]; then
+  echo "[OK] AI models already healthy - skip redundant restart"
+else
+  bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --restart-ai \
+    --health-url="http://127.0.0.1:${AI_PORT}/health" --max-attempts=3 || true
+fi
 echo "[OK] AI :${AI_PORT}"
 
 # --- Frigate heal + demo pipeline ---
@@ -202,7 +212,7 @@ curl -sf -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/internal/ingest/frigat
   -H "X-Internal-Key: $KEY" || true
 
 if ! wait_http_ok "http://127.0.0.1:5000/api/version" 90; then
-  echo "[WARN] Frigate down — recreate"
+  echo "[WARN] Frigate down - recreate"
   (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate)
   wait_http_ok "http://127.0.0.1:5000/api/version" 120 || { echo "[FAIL] Frigate"; exit 1; }
 fi
@@ -212,10 +222,40 @@ echo "[OK] Frigate $(curl -sf http://127.0.0.1:5000/api/version 2>/dev/null || e
 
 # Ingest / demo pipeline + business readiness (spatial AI / rules / Frigate zones / go2rtc).
 echo "=== [6/10] demo pipeline + business readiness ==="
+# Backend often flaps after AI/Frigate heal; re-assert before readiness POSTs.
+ensure_backend_http_for_readiness() {
+  local port="${BACKEND_PORT:-8081}"
+  local i
+  if curl -sf --max-time 3 "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+    echo "[OK] backend :${port} (pre-readiness)"
+    return 0
+  fi
+  echo "[WARN] backend down before readiness - restarting"
+  if declare -F ensure_infra_host_ports >/dev/null 2>&1; then
+    ensure_infra_host_ports || true
+  fi
+  if [[ -x "$ROOT/backend/bin/citevision-api" ]] && [[ -f "$ROOT/scripts/_restart_backend.py" ]]; then
+    python3 "$ROOT/scripts/_restart_backend.py" || true
+  elif [[ -f "$ROOT/scripts/_restart_backend.sh" ]]; then
+    bash "$ROOT/scripts/_restart_backend.sh" || true
+  else
+    start_bg backend "$ROOT/backend" "$GO_BIN run ./cmd/api" "$LOGDIR" "$ENV_FILE" || true
+  fi
+  for i in $(seq 1 40); do
+    if curl -sf --max-time 3 "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+      echo "[OK] backend :${port} after restart"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "[FAIL] backend not healthy on :${port} before readiness" >&2
+  return 1
+}
+ensure_backend_http_for_readiness || exit 1
 export SKIP_AI_INGEST_VERIFY=1
 bash "$ROOT/scripts/ensure-demo-pipeline.sh" 2>&1 | tail -20 || true
 if ! ensure_business_readiness; then
-  echo "[FAIL] business readiness — spatial/rules/Frigate zones/go2rtc not hot after heal" >&2
+  echo "[FAIL] business readiness - spatial/rules/Frigate zones/go2rtc not hot after heal" >&2
   exit 1
 fi
 n=$(curl -sf "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \

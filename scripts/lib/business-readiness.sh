@@ -178,10 +178,51 @@ ORDER BY c.id;
 }
 
 heal_resync_spatial() {
-  echo "[INFO] heal: POST /api/v1/internal/ingest/resync-spatial"
-  _br_post_internal "/api/v1/internal/ingest/resync-spatial" || return 1
-  sleep 2
-  return 0
+  local attempt code key path
+  path="/api/v1/internal/ingest/resync-spatial"
+  for attempt in 1 2; do
+    if ! curl -sf --max-time 3 "http://127.0.0.1:$(_br_api_port)/health" >/dev/null 2>&1; then
+      echo "[WARN] backend down before resync-spatial - restarting (attempt $attempt)"
+      if declare -F ensure_infra_host_ports >/dev/null 2>&1; then
+        ensure_infra_host_ports || true
+      fi
+      if [[ -f "$ROOT/scripts/_restart_backend.py" ]]; then
+        python3 "$ROOT/scripts/_restart_backend.py" >/dev/null 2>&1 || true
+      elif [[ -f "$ROOT/scripts/_restart_backend.sh" ]]; then
+        bash "$ROOT/scripts/_restart_backend.sh" >/dev/null 2>&1 || true
+      fi
+      local i
+      for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        if curl -sf --max-time 3 "http://127.0.0.1:$(_br_api_port)/health" >/dev/null 2>&1; then
+          break
+        fi
+        sleep 2
+      done
+    fi
+    echo "[INFO] heal: POST ${path} (attempt $attempt)"
+    key="$(_br_internal_key)"
+    code="$(curl -sS -o /tmp/citevision-br-post.json -w '%{http_code}' --max-time 60 -X POST \
+      "http://127.0.0.1:$(_br_api_port)${path}" \
+      -H "X-Internal-Key: $key" 2>/dev/null || echo 000)"
+    if [[ "$code" == "200" || "$code" == "204" || "$code" == "202" ]]; then
+      sleep 2
+      return 0
+    fi
+    echo "[WARN] POST ${path} http=${code} (key_len=${#key})" >&2
+    # http=000 / connection failure: restart backend and retry once more
+    if [[ "$code" == "000" || "$code" == "000000" ]] && [[ "$attempt" -eq 1 ]]; then
+      echo "[INFO] heal: backend unreachable - restart then retry resync-spatial"
+      if [[ -f "$ROOT/scripts/_restart_backend.py" ]]; then
+        python3 "$ROOT/scripts/_restart_backend.py" >/dev/null 2>&1 || true
+      elif [[ -f "$ROOT/scripts/_restart_backend.sh" ]]; then
+        bash "$ROOT/scripts/_restart_backend.sh" >/dev/null 2>&1 || true
+      fi
+      sleep 3
+      continue
+    fi
+    return 1
+  done
+  return 1
 }
 
 # Enable live IP-cam ingest when active behavior zones exist on non-demo cameras.
@@ -323,7 +364,7 @@ ensure_spatial_ai_hot() {
   if probe_spatial_ai_hot; then
     return 0
   fi
-  echo "[WARN] spatial AI cold — heal resync-spatial (x3)"
+  echo "[WARN] spatial AI cold - heal resync-spatial (x3)"
   local i
   for i in 1 2 3; do
     heal_resync_spatial || true
