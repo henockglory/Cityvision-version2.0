@@ -1,0 +1,314 @@
+[
+  {
+    "id": "tpl-crowd-density",
+    "name": "Densité foule élevée",
+    "archetype": "aggregate",
+    "event_type": "scene_density_high"
+  },
+  {
+    "id": "tpl-vehicle-count",
+    "name": "Nombre véhicules élevé",
+    "archetype": "aggregate",
+    "event_type": "vehicle_count_threshold"
+  },
+  {
+    "id": "tpl-person-stopped",
+    "name": "Personne immobile prolongée",
+    "archetype": "geometry",
+    "event_type": "person_stopped"
+  },
+  {
+    "id": "tpl-crowd-count",
+    "name": "Seuil foule atteint",
+    "archetype": "aggregate",
+    "event_type": "crowd_count_threshold"
+  },
+  {
+    "id": "tpl-vehicle-stopped",
+    "name": "Véhicule arrêté",
+    "archetype": "geometry",
+    "event_type": "vehicle_stopped"
+  },
+  {
+    "id": "tpl-identity-correlation",
+    "name": "Corrélation identité",
+    "archetype": "composite",
+    "event_type": "correlation_match"
+  },
+  {
+    "id": "tpl-face-watchlist",
+    "name": "Personne liste noire",
+    "archetype": "face",
+    "event_type": "face_watchlist_match"
+  },
+  {
+    "id": "tpl-plate-whitelist",
+    "name": "Plaque autorisée",
+    "archetype": "plate",
+    "event_type": "plate_allowed"
+  },
+  {
+    "id": "tpl-blocked-plate",
+    "name": "Plaque bloquée",
+    "archetype": "plate",
+    "event_type": "plate_blocked"
+  },
+  {
+    "id": "tpl-plate-detected",
+    "name": "Plaque détectée",
+    "archetype": "plate",
+    "event_type": "plate_detected"
+  },
+  {
+    "id": "tpl-unknown-plate",
+    "name": "Plaque inconnue",
+    "archetype": "plate",
+    "event_type": "plate_unknown"
+  },
+  {
+    "id": "tpl-plate-unknown",
+    "name": "Plaque non enregistrée",
+    "archetype": "plate",
+    "event_type": "plate_unknown"
+  },
+  {
+    "id": "tpl-plate-repeat",
+    "name": "Plaque récurrente",
+    "archetype": "plate",
+    "event_type": "plate_detected"
+  },
+  {
+    "id": "tpl-face-detected",
+    "name": "Visage détecté",
+    "archetype": "face",
+    "event_type": "face_detected"
+  },
+  {
+    "id": "tpl-unknown-face",
+    "name": "Visage inconnu",
+    "archetype": "face",
+    "event_type": "face_unknown"
+  },
+  {
+    "id": "tpl-watchlist-match",
+    "name": "Visage liste de surveillance",
+    "archetype": "face",
+    "event_type": "face_watchlist_match"
+  },
+  {
+    "id": "tpl-industrial-intrusion",
+    "name": "Intrusion site industriel",
+    "archetype": "composite",
+    "event_type": null
+  },
+  {
+    "id": "tpl-abandoned-object",
+    "name": "Objet abandonné",
+    "archetype": "objects",
+    "event_type": "object_abandoned"
+  },
+  {
+    "id": "tpl-object-removed",
+    "name": "Objet retiré",
+    "archetype": "objects",
+    "event_type": "object_removed"
+  },
+  {
+    "id": "tpl-zone-absence",
+    "name": "Absence prolongée dans une zone",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-object-disappeared",
+    "name": "Disparition d'objet",
+    "archetype": "objects",
+    "event_type": "object_disappeared"
+  },
+  {
+    "id": "tpl-zone-presence",
+    "name": "Présence dans une zone",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-video-blur",
+    "name": "Vidéo floue",
+    "archetype": "quality",
+    "event_type": "video_blur"
+  },
+  {
+    "id": "tpl-video-darkness",
+    "name": "Vidéo sombre",
+    "archetype": "quality",
+    "event_type": "video_darkness"
+  },
+  {
+    "id": "tpl-seatbelt",
+    "name": "Ceinture de sécurité",
+    "archetype": "cabin",
+    "event_type": "seatbelt_violation"
+  },
+  {
+    "id": "tpl-congestion",
+    "name": "Embouteillage",
+    "archetype": "aggregate",
+    "event_type": "vehicle_count_threshold"
+  },
+  {
+    "id": "tpl-speeding-premium",
+    "name": "Excès de vitesse",
+    "archetype": "measure",
+    "event_type": "speeding"
+  },
+  {
+    "id": "tpl-red-light",
+    "name": "Feu rouge",
+    "archetype": "dual_signal",
+    "event_type": "red_light_violation"
+  },
+  {
+    "id": "tpl-line-cross-forbidden",
+    "name": "Franchissement ligne continue",
+    "archetype": "line",
+    "event_type": "line_cross"
+  },
+  {
+    "id": "tpl-traffic-pipeline",
+    "name": "Pipeline voiture → plaque + vitesse",
+    "archetype": "composite",
+    "event_type": null
+  },
+  {
+    "id": "tpl-plate-pipeline",
+    "name": "Plaque détectée (OCR)",
+    "archetype": "plate",
+    "event_type": "plate_detected"
+  },
+  {
+    "id": "tpl-phone-driving",
+    "name": "Téléphone au volant",
+    "archetype": "cabin",
+    "event_type": "phone_use_violation"
+  },
+  {
+    "id": "tpl-loitering-entrance",
+    "name": "Flânerie près entrée",
+    "archetype": "geometry",
+    "event_type": "loitering_near_entrance"
+  },
+  {
+    "id": "tpl-intrusion-after-hours",
+    "name": "Intrusion hors horaires",
+    "archetype": "composite",
+    "event_type": null
+  },
+  {
+    "id": "tpl-intrusion",
+    "name": "Intrusion zone interdite",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-multi-person-vehicle",
+    "name": "Plusieurs personnes, un véhicule",
+    "archetype": "relational",
+    "event_type": "multiple_persons_one_vehicle"
+  },
+  {
+    "id": "tpl-proximity-alert",
+    "name": "Proximité personne-véhicule",
+    "archetype": "relational",
+    "event_type": "person_vehicle_proximity"
+  },
+  {
+    "id": "tpl-observation-rule-set-n",
+    "name": "Comptage ensemble (N-sur-M)",
+    "archetype": "composite",
+    "event_type": null
+  },
+  {
+    "id": "tpl-observation-rule-set-or",
+    "name": "Comptage ensemble (OU)",
+    "archetype": "composite",
+    "event_type": null
+  },
+  {
+    "id": "tpl-zone-enter",
+    "name": "Entrée dans une zone",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-line-cross-bidir",
+    "name": "Franchissement bidirectionnel",
+    "archetype": "line",
+    "event_type": "line_cross"
+  },
+  {
+    "id": "tpl-line-cross",
+    "name": "Franchissement de ligne",
+    "archetype": "line",
+    "event_type": "entry-line"
+  },
+  {
+    "id": "tpl-perimeter-breach",
+    "name": "Intrusion périmétrique",
+    "archetype": "geometry",
+    "event_type": "perimeter_breach"
+  },
+  {
+    "id": "tpl-multi-zone",
+    "name": "Présence multi-zones",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-zone-exit",
+    "name": "Sortie d'une zone",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-unauthorized-exit",
+    "name": "Sortie non autorisée",
+    "archetype": "geometry",
+    "event_type": "unauthorized_exit"
+  },
+  {
+    "id": "tpl-sudden-stop",
+    "name": "Arrêt brusque",
+    "archetype": "measure",
+    "event_type": "sudden_stop"
+  },
+  {
+    "id": "tpl-dwell-exceeded",
+    "name": "Dépassement temps de présence",
+    "archetype": "geometry",
+    "event_type": "dwell_time_exceeded"
+  },
+  {
+    "id": "tpl-loitering",
+    "name": "Présence prolongée (loitering)",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-pedestrian-zone",
+    "name": "Piéton en zone véhicules",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-illegal-parking",
+    "name": "Stationnement illégal",
+    "archetype": "geometry",
+    "event_type": null
+  },
+  {
+    "id": "tpl-slow-vehicle",
+    "name": "Véhicule trop lent",
+    "archetype": "measure",
+    "event_type": "speed_below_minimum"
+  }
+]

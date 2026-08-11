@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CitéVision — Vue d’ensemble produit, technologies &amp; règles</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+
+:root {
+  --bg0: #0b1012; --bg1: #12181a; --bg2: #1a2226;
+  --ink: #e8efe9; --muted: #9aaba3; --faint: #6a7a74;
+  --accent: #d4a574; --accent-soft: rgba(212,165,116,.14);
+  --teal: #4a9b84; --ok: #7cbc8f; --danger: #c97b6a;
+  --line: rgba(232,239,233,.08); --shadow: 0 24px 60px rgba(0,0,0,.45);
+  --radius: 18px; --font: "Manrope", sans-serif; --display: "Fraunces", Georgia, serif;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; font-family: var(--font); color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 8% -8%, rgba(74,155,132,.2), transparent 55%),
+    radial-gradient(900px 500px at 92% 5%, rgba(212,165,116,.14), transparent 50%),
+    radial-gradient(700px 400px at 50% 100%, rgba(74,155,132,.08), transparent 60%),
+    linear-gradient(180deg, #0d1315 0%, var(--bg0) 40%, #0a0e10 100%);
+  min-height: 100vh; line-height: 1.55;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.shell { width: min(1180px, calc(100% - 2rem)); margin: 0 auto; padding: 0 0 5rem; }
+.hero { padding: 3.5rem 0 2.5rem; border-bottom: 1px solid var(--line); margin-bottom: 2.5rem; animation: rise .7s ease both; }
+.brand {
+  font-family: var(--display); font-size: clamp(2.4rem, 5vw, 3.6rem); font-weight: 700;
+  letter-spacing: -.03em; margin: 0 0 .35rem;
+  background: linear-gradient(120deg, #f3ebe0 10%, var(--accent) 55%, #8fd0b8 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero h1 {
+  font-family: var(--display); font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+  font-weight: 500; margin: 0 0 1rem; color: var(--ink); max-width: 40ch;
+}
+.hero-lead { max-width: 68ch; color: var(--muted); font-size: 1.05rem; margin: 0 0 1.5rem; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: .6rem; }
+.pill {
+  display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .75rem;
+  border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.03);
+  color: var(--muted); font-size: .8rem; font-weight: 600;
+}
+.pill strong { color: var(--accent); font-weight: 700; }
+.toc {
+  position: sticky; top: .65rem; z-index: 40; backdrop-filter: blur(14px);
+  background: rgba(11,16,18,.92); border: 1px solid var(--line); border-radius: 14px;
+  padding: 0; margin-bottom: 1.75rem; box-shadow: var(--shadow);
+  animation: rise .8s .08s ease both; overflow: hidden;
+}
+.toc-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  padding: .55rem .85rem; cursor: pointer; user-select: none; border: 0; width: 100%;
+  background: transparent; color: inherit; font: inherit; text-align: left;
+}
+.toc-bar:hover { background: rgba(255,255,255,.03); }
+.toc-bar:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
+.toc-bar-left { display: flex; align-items: center; gap: .65rem; min-width: 0; }
+.toc-title { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: var(--faint); margin: 0; font-weight: 700; }
+.toc-hint { font-size: .78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toc-toggle {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: .4rem;
+  padding: .28rem .65rem; border-radius: 999px; border: 1px solid rgba(74,155,132,.35);
+  background: rgba(74,155,132,.12); color: #b8e0d0; font-size: .72rem; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.toc-chevron {
+  display: inline-block; width: .55rem; height: .55rem; border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform .2s ease; margin-top: -.15rem;
+}
+.toc:not(.is-collapsed) .toc-chevron { transform: rotate(-135deg); margin-top: .15rem; }
+.toc-panel {
+  padding: 0 1rem .9rem; border-top: 1px solid var(--line);
+  max-height: min(55vh, 420px); overflow: auto;
+  transition: max-height .28s ease, opacity .2s ease, padding .2s ease;
+}
+.toc.is-collapsed .toc-panel {
+  max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0;
+  border-top-color: transparent; overflow: hidden; pointer-events: none;
+}
+.toc-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: .25rem .85rem; padding-top: .65rem;
+}
+.toc a {
+  color: var(--muted); font-size: .84rem; font-weight: 500; text-decoration: none;
+  padding: .15rem 0; border-bottom: 1px solid transparent;
+}
+.toc a:hover { color: var(--ink); border-bottom-color: var(--teal); text-decoration: none; }
+.toc .grp { color: var(--accent); font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; margin-top: .35rem; grid-column: 1 / -1; }
+.section-head { margin: 3rem 0 1.25rem; animation: rise .6s ease both; }
+.section-head .eyebrow {
+  font-size: .75rem; text-transform: uppercase; letter-spacing: .14em;
+  color: var(--teal); font-weight: 700; margin: 0 0 .4rem;
+}
+.section-head h2 {
+  font-family: var(--display); font-size: clamp(1.6rem, 3vw, 2.1rem);
+  margin: 0 0 .6rem; letter-spacing: -.02em;
+}
+.section-head p { margin: 0; color: var(--muted); max-width: 72ch; }
+.table-wrap {
+  background: linear-gradient(145deg, var(--bg2), var(--bg1));
+  border: 1px solid var(--line); border-radius: var(--radius);
+  overflow: auto; margin-bottom: 2rem; box-shadow: var(--shadow);
+}
+table.rich { width: 100%; border-collapse: collapse; font-size: .86rem; min-width: 920px; }
+table.rich th, table.rich td {
+  padding: .75rem .9rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top;
+}
+table.rich th {
+  background: rgba(74,155,132,.14); color: var(--accent); font-size: .7rem;
+  text-transform: uppercase; letter-spacing: .07em; position: sticky; top: 0; z-index: 1;
+}
+table.rich tr:last-child td { border-bottom: 0; }
+table.rich tr:hover td { background: rgba(255,255,255,.02); }
+table.rich .sub { color: var(--faint); font-size: .75rem; font-weight: 600; margin-top: .2rem; }
+table.rich code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8em;
+  color: #b8e0d0; background: rgba(74,155,132,.12); padding: .08rem .3rem; border-radius: 5px;
+}
+table.rich td.note { color: var(--muted); font-size: .82rem; }
+.rule {
+  background: var(--bg1); border: 1px solid var(--line); border-radius: 14px;
+  margin-bottom: .65rem; overflow: hidden; transition: border-color .2s;
+}
+.rule[open] { border-color: rgba(74,155,132,.4); }
+.rule summary {
+  list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; gap: .6rem; padding: .85rem 1.1rem;
+  background: linear-gradient(90deg, var(--accent-soft), transparent 50%);
+}
+.rule summary::-webkit-details-marker { display: none; }
+.rule summary:hover { background: rgba(255,255,255,.03); }
+.rn { font-weight: 700; font-size: .95rem; }
+.rmeta { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.chip {
+  font-size: .72rem; font-weight: 700; padding: .22rem .5rem; border-radius: 8px;
+  background: rgba(74,155,132,.14); color: #b8e0d0; border: 1px solid rgba(74,155,132,.25);
+}
+.usecases {
+  margin: 0; padding: .2rem 1.25rem 1.1rem 2.2rem; color: var(--muted); font-size: .9rem;
+}
+.usecases li { margin: .35rem 0; }
+.usecases li::marker { color: var(--accent); font-weight: 700; }
+.principle {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .85rem; margin: 1.25rem 0 1.75rem;
+}
+.principle article {
+  padding: 1.1rem; border-radius: 14px; border: 1px solid var(--line);
+  background: rgba(255,255,255,.03);
+}
+.principle h3 { margin: 0 0 .4rem; font-size: .95rem; color: var(--accent); }
+.principle p { margin: 0; font-size: .88rem; color: var(--muted); }
+.about {
+  display: grid; grid-template-columns: 1.2fr .8fr; gap: 1.25rem; margin-bottom: 2rem;
+}
+@media (max-width: 820px) { .about { grid-template-columns: 1fr; } }
+.about-card {
+  background: linear-gradient(160deg, rgba(74,155,132,.12), rgba(212,165,116,.08) 55%, var(--bg1));
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 1.5rem 1.6rem;
+  box-shadow: var(--shadow);
+}
+.about-card h3 {
+  font-family: var(--display); font-size: 1.45rem; margin: 0 0 .75rem; letter-spacing: -.02em;
+}
+.about-card p { color: var(--muted); margin: 0 0 .85rem; font-size: .95rem; }
+.about-card p:last-child { margin-bottom: 0; }
+.about-card strong { color: var(--ink); }
+.legend {
+  display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 1rem;
+}
+.legend span {
+  font-size: .75rem; font-weight: 600; padding: .3rem .65rem; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.legend .win { border-color: rgba(124,188,143,.45); color: #b8e0c8; background: rgba(124,188,143,.1); }
+.legend .eq { border-color: rgba(212,165,116,.4); color: #e8c9a8; background: var(--accent-soft); }
+.legend .them { border-color: rgba(201,123,106,.4); color: #e0b4aa; background: rgba(201,123,106,.1); }
+.toolbar {
+  display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin: 0 0 1rem;
+}
+.toolbar button {
+  border: 1px solid rgba(74,155,132,.35); background: rgba(74,155,132,.12);
+  color: #b8e0d0; border-radius: 999px; padding: .4rem .85rem; font: inherit;
+  font-size: .78rem; font-weight: 700; cursor: pointer;
+}
+.toolbar button:hover { background: rgba(74,155,132,.22); }
+.toolbar input {
+  flex: 1; min-width: 180px; border-radius: 999px; border: 1px solid var(--line);
+  background: rgba(255,255,255,.04); color: var(--ink); padding: .45rem 1rem; font: inherit;
+}
+footer {
+  margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+  color: var(--faint); font-size: .85rem;
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <p class="brand">CitéVision</p>
+      <h1>Vue d’ensemble — technologies, règles &amp; positionnement</h1>
+      <p class="hero-lead">
+        Page pratique pour présenter la solution de façon combinée&nbsp;: stack exhaustive,
+        catalogue de règles avec cas d’usage terrain, comparaison honnête face à Genetec et aux
+        plateformes Smart City, et genèse produit 2026. Chaîne de vérité&nbsp;:
+        <em>zone → IA → règle → preuve</em>.
+      </p>
+      <div class="hero-meta">
+        <span class="pill"><strong>34</strong> technologies</span>
+        <span class="pill"><strong>52</strong> règles × 7 cas</span>
+        <span class="pill">Comparaison Genetec · Smart City</span>
+        <span class="pill"><a href="index.html">Architectures →</a></span>
+      </div>
+    </header>
+
+    <nav class="toc is-collapsed" id="toc" aria-label="Sommaire">
+      <button type="button" class="toc-bar" id="tocToggle" aria-expanded="false" aria-controls="tocPanel">
+        <span class="toc-bar-left">
+          <span class="toc-title">Navigation</span>
+          <span class="toc-hint" id="tocHint">Sommaire réduit — cliquer pour ouvrir</span>
+        </span>
+        <span class="toc-toggle">
+          <span id="tocToggleLabel">Ouvrir</span>
+          <span class="toc-chevron" aria-hidden="true"></span>
+        </span>
+      </button>
+      <div class="toc-panel" id="tocPanel" hidden>
+        <div class="toc-grid">
+          <span class="grp">Pages</span>
+          <a href="index.html">Architectures (diagrammes)</a>
+          <a href="overview.html">Cette vue d’ensemble</a>
+          <span class="grp">Sections</span>
+          <a href="#intro">Lire d’abord</a>
+          <a href="#tech">Technologies</a>
+          <a href="#rules">Règles &amp; cas d’usage</a>
+          <a href="#compare">CitéVision vs concurrents</a>
+          <a href="#credits">Glory Henock · Hologram</a>
+        </div>
+      </div>
+    </nav>
+
+    <section id="intro">
+      <div class="section-head">
+        <p class="eyebrow">01 — Intention</p>
+        <h2>Une page pour décider, expliquer, vendre sans bluffer</h2>
+        <p>
+          Destinée aux décideurs, intégrateurs et équipes ops&nbsp;: inventaire technique réel,
+          règles actionnables avec exemples quotidiens, et positionnement concurrentiel
+          où CitéVision est meilleure <em>ou</em> à niveau — sans nier les forces Genetec
+          (échelle enterprise, ACS) ni la largeur IoT des suites Smart City.
+        </p>
+      </div>
+      <div class="principle">
+        <article><h3>Preuve avant « validé »</h3><p>Alerte finale seulement si le package preuve est complet — sinon missing explicite.</p></article>
+        <article><h3>Zones jamais hardcodées</h3><p>Polygones et lignes vivent dans l’éditeur / la DB, pas dans des scripts de secours.</p></article>
+        <article><h3>GPU d’abord</h3><p>CUDA/ONNX prioritaires ; le CPU reste dernier recours, exposé dans /health.</p></article>
+        <article><h3>Catalogue véridique</h3><p>Chaque option UI correspond à un événement réel, avec badge real / partial / beta.</p></article>
+      </div>
+    </section>
+
+    <section id="tech">
+      <div class="section-head">
+        <p class="eyebrow">02 — Stack</p>
+        <h2>Technologies exhaustives de CitéVision</h2>
+        <p>
+          Langages, frameworks, IA, bases, object storage, NVR, messaging et ops.
+          Colonnes enrichies&nbsp;: extensions, lieu d’usage, rôle, motivation du choix.
+        </p>
+      </div>
+      <div class="table-wrap">
+        <table class="rich">
+          <thead>
+            <tr>
+              <th>Technologie</th>
+              <th>Extensions / frameworks</th>
+              <th>Où utilisée</th>
+              <th>Rôle dans la solution</th>
+              <th>Motivation du choix</th>
+            </tr>
+          </thead>
+          <tbody>
+<tr><td><strong>Go (Golang)</strong><div class='sub'>Langage</div></td><td>Gin/Chi routers, sqlc/pgx, MQTT clients, goroutines</td><td><code>backend/</code></td><td>API REST, orchestration règles, persistance alertes, bridge Frigate, jobs preuve</td><td>Concurrence native, binaires uniques, perf réseau pour flux temps réel</td></tr>
+<tr><td><strong>TypeScript</strong><div class='sub'>Langage</div></td><td>strict TS, Zod-like validation patterns</td><td><code>frontend/src</code></td><td>Typage fort UI métier (zones, règles, alertes)</td><td>Moins d&#x27;erreurs runtime côté console opérateur</td></tr>
+<tr><td><strong>JavaScript (ESM)</strong><div class='sub'>Langage</div></td><td>Vite bundling</td><td><code>frontend tooling</code></td><td>Build &amp; modules front</td><td>Écosystème Vite/React mature</td></tr>
+<tr><td><strong>Python 3</strong><div class='sub'>Langage</div></td><td>FastAPI/uvicorn, asyncio, pytest</td><td><code>ai-engine/</code></td><td>Inférence IA, composition preuves, OCR/VLM, health GPU</td><td>Écosystème ML (ONNX, OpenCV, Gemini SDK)</td></tr>
+<tr><td><strong>SQL (PostgreSQL dialect)</strong><div class='sub'>Langage / data</div></td><td>migrations versionnées, JSONB</td><td><code>backend/migrations, queries</code></td><td>Schéma zones/rules/alerts/evidence</td><td>Source de vérité relationnelle + flexibilité JSONB</td></tr>
+<tr><td><strong>Bash / PowerShell</strong><div class='sub'>Ops</div></td><td>WSL scripts, Start-CiteVision.ps1</td><td><code>scripts/, launcher/</code></td><td>Bring-up stack, health, validate_rule, sync miroirs</td><td>Runtime unique WSL + UX Windows propre</td></tr>
+<tr><td><strong>React 18</strong><div class='sub'>Frontend</div></td><td>Vite, React Router, hooks modernes</td><td><code>frontend/</code></td><td>Console opérateur, ZoneEditor, alertes, catalogue</td><td>Composants riches pour cartographie zones + preuves</td></tr>
+<tr><td><strong>Vite</strong><div class='sub'>Frontend tooling</div></td><td>HMR, env inject</td><td><code>frontend/</code></td><td>Dev server :5174 et build prod</td><td>Itération UI rapide pendant validation démo</td></tr>
+<tr><td><strong>HTML / CSS</strong><div class='sub'>UI docs</div></td><td>Fraunces + Manrope, CSS variables</td><td><code>docs/architectures/</code></td><td>Documentation premium offline-friendly</td><td>Présentation métier sans stack front lourde</td></tr>
+<tr><td><strong>Mermaid</strong><div class='sub'>Diagrammes</div></td><td>CDN mermaid@11</td><td><code>docs/architectures/index.html</code></td><td>Schémas architecture interactifs</td><td>Lisibilité ops/produit sans outil propriétaire</td></tr>
+<tr><td><strong>YOLOv8 / Ultralytics</strong><div class='sub'>IA vision</div></td><td>ONNX Runtime CUDA</td><td><code>ai-engine detectors</code></td><td>Détection personnes/véhicules/objets</td><td>État de l&#x27;art détection temps réel + export ONNX GPU</td></tr>
+<tr><td><strong>ONNX Runtime</strong><div class='sub'>IA runtime</div></td><td>CUDA EP, CPU fallback</td><td><code>ai-engine inference</code></td><td>Exécution modèles optimisés</td><td>Portabilité GPU/CPU + perf mesurable via /health</td></tr>
+<tr><td><strong>CUDA / NVIDIA</strong><div class='sub'>IA accélération</div></td><td>drivers WSL, TensorRT-ready path</td><td><code>hôte GPU + containers</code></td><td>Inférence accélérée (priorité GPU)</td><td>Latence démo &amp; débit multi-caméras</td></tr>
+<tr><td><strong>OpenCV</strong><div class='sub'>IA vision</div></td><td>cv2 crops, blur/darkness metrics</td><td><code>ai-engine evidence/quality</code></td><td>Pré-traitement images, qualité flux</td><td>Standard industrie vision</td></tr>
+<tr><td><strong>InsightFace / ArcFace</strong><div class='sub'>IA identité</div></td><td>embeddings visage</td><td><code>pipeline face</code></td><td>Reconnaissance / watchlist</td><td>Embeddings robustes pour matching liste</td></tr>
+<tr><td><strong>Frigate Face / Face API</strong><div class='sub'>IA identité</div></td><td>crops Frigate + fusion</td><td><code>bridge Frigate → AI</code></td><td>Candidats visage depuis NVR</td><td>Réutilise crops déjà produits par le NVR</td></tr>
+<tr><td><strong>PaddleOCR / OCR plaque</strong><div class='sub'>IA OCR</div></td><td>pipeline plaque + validation</td><td><code>ai-engine plate/</code></td><td>Lecture plaques routières</td><td>Bon rapport précision/perf pour LPR terrain</td></tr>
+<tr><td><strong>Google Gemini (VLM)</strong><div class='sub'>IA multimodale</div></td><td>Gemini Flash/Lite API</td><td><code>cabin rules (ceinture, téléphone)</code></td><td>Analyse habitacle quand CV classique est fragile</td><td>Raisonnement scène cabine + refus honnête (no violation)</td></tr>
+<tr><td><strong>Frigate NVR</strong><div class='sub'>Vidéo / NVR</div></td><td>MQTT events, go2rtc, zones Frigate</td><td><code>infra/frigate-config</code></td><td>Ingest RTSP, tracking, clips, events</td><td>NVR open-source GPU-aware, MQTT natif</td></tr>
+<tr><td><strong>go2rtc</strong><div class='sub'>Vidéo streaming</div></td><td>RTSP/WebRTC restream</td><td><code>avec Frigate</code></td><td>Restream caméras démo/live</td><td>Faible latence multi-clients</td></tr>
+<tr><td><strong>FFmpeg</strong><div class='sub'>Vidéo</div></td><td>transcode, subclip 6s</td><td><code>backend demo + evidence</code></td><td>Clips preuve, préparation flux</td><td>Standard encodage/découpe</td></tr>
+<tr><td><strong>MQTT (Eclipse Mosquitto)</strong><div class='sub'>Messaging</div></td><td>topics Frigate/events</td><td><code>infra + bridge</code></td><td>Bus événements détection → règles</td><td>Découplage NVR / AI / rules</td></tr>
+<tr><td><strong>PostgreSQL</strong><div class='sub'>Base de données</div></td><td>JSONB, indexes, migrations</td><td><code>stack Docker/WSL</code></td><td>Org, caméras, zones, rules, alerts, users</td><td>ACID + JSONB pour payloads preuve</td></tr>
+<tr><td><strong>Redis</strong><div class='sub'>Cache / files</div></td><td>queues légères / locks (si activé)</td><td><code>infra</code></td><td>Coordination jobs courts</td><td>Faible latence pour état éphémère</td></tr>
+<tr><td><strong>MinIO</strong><div class='sub'>Object storage S3</div></td><td>buckets evidence clips/images</td><td><code>infra MinIO</code></td><td>Stockage preuves (clip, scene, subject, plate)</td><td>S3-compatible local, coût maîtrisé, pas de lock-in cloud</td></tr>
+<tr><td><strong>Docker / dockerd WSL</strong><div class='sub'>Runtime containers</div></td><td>compose stacks Frigate/MinIO/PG</td><td><code>WSL natif (pas Docker Desktop)</code></td><td>Services infra isolés</td><td>Reproductibilité + GPU pass-through WSL</td></tr>
+<tr><td><strong>Linux (WSL2 Ubuntu)</strong><div class='sub'>OS runtime</div></td><td>systemd/user services scripts</td><td><code>~/citevision-v2</code></td><td>Runtime de vérité unique</td><td>Un filesystem, une vérité ops (R.1)</td></tr>
+<tr><td><strong>Windows 11 + PowerShell</strong><div class='sub'>OS client</div></td><td>Start-CiteVision.ps1 launcher</td><td><code>launcher/</code></td><td>Point d&#x27;entrée opérateur Windows</td><td>UX locale sans exposer chemins lab</td></tr>
+<tr><td><strong>REST / JSON APIs</strong><div class='sub'>Intégration</div></td><td>OpenAPI-ish handlers Go</td><td><code>backend HTTP</code></td><td>Contrat UI ↔ moteur</td><td>Interop simple, debugable</td></tr>
+<tr><td><strong>WebSocket / SSE (UI live)</strong><div class='sub'>Intégration</div></td><td>feeds alertes/status</td><td><code>frontend ↔ backend</code></td><td>Mise à jour console quasi temps réel</td><td>Opérateur voit la chaîne sans refresh</td></tr>
+<tr><td><strong>Mail (SMTP / Mailhog démo)</strong><div class='sub'>Notification</div></td><td>templates mail premium</td><td><code>alerting path</code></td><td>Alerte e-mail avec preuves</td><td>Boucle validation A.3 (Mailhog en lab)</td></tr>
+<tr><td><strong>Git / GitHub</strong><div class='sub'>Qualité</div></td><td>origin + v2 remotes</td><td><code>repos Cityvision-*</code></td><td>Versioning dual-mirror</td><td>Continuité produit + archive v2</td></tr>
+<tr><td><strong>pytest / Go test</strong><div class='sub'>Qualité</div></td><td>unit + integration evidence</td><td><code>ai-engine/tests, backend/*_test.go</code></td><td>Non-régression binders/OCR/transcode</td><td>Preuves de comportement avant smoke</td></tr>
+<tr><td><strong>validate_rule.sh / health_check</strong><div class='sub'>Qualité ops</div></td><td>DoD 1–6 + artefacts UI</td><td><code>scripts/</code></td><td>Validation infalsifiable par règle</td><td>PASS = artefact, pas claim verbal</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="rules">
+      <div class="section-head">
+        <p class="eyebrow">03 — Catalogue</p>
+        <h2>52 règles — 7 cas d’usage chacune</h2>
+        <p>
+          Cas quotidiens, pratiques et critiques (sécurité, mobilité, sites sensibles).
+          Ouvrir une règle pour afficher sa palette d’exemples. Filtrer par nom ou archétype.
+        </p>
+      </div>
+      <div class="toolbar">
+        <input id="ruleFilter" type="search" placeholder="Filtrer (ex. plaque, cabin, intrusion…)" />
+        <button type="button" id="openAllRules">Tout ouvrir</button>
+        <button type="button" id="closeAllRules">Tout fermer</button>
+      </div>
+
+<details class="rule" id="tpl-crowd-density">
+  <summary>
+    <span class="rn">01. Densité foule élevée</span>
+    <span class="rmeta"><span class="chip">aggregate</span><code>scene_density_high</code></span>
+  </summary>
+  <ol class="usecases"><li>Place publique — densité foule au-delà du seuil d&#x27;évacuation.</li><li>Carrefour — nombre de véhicules déclenchant plan de feux adapté.</li><li>Manifestation — seuil foule atteint près d&#x27;un bâtiment sensible.</li><li>Parking — saturation places → message déport vers parking B.</li><li>Festival — congestion accès créant risque de bousculade.</li><li>Hôpital urgences — file véhicules trop dense sur dépose-minute.</li><li>Tunnel urbain — embouteillage détecté pour alerte exploitation.</li></ol>
+</details>
+
+<details class="rule" id="tpl-vehicle-count">
+  <summary>
+    <span class="rn">02. Nombre véhicules élevé</span>
+    <span class="rmeta"><span class="chip">aggregate</span><code>vehicle_count_threshold</code></span>
+  </summary>
+  <ol class="usecases"><li>Nombre véhicules élevé — cas terrain typique : place publique — densité foule au-delà du seuil d&#x27;évacuation.</li><li>Carrefour — nombre de véhicules déclenchant plan de feux adapté.</li><li>Manifestation — seuil foule atteint près d&#x27;un bâtiment sensible.</li><li>Parking — saturation places → message déport vers parking B.</li><li>Festival — congestion accès créant risque de bousculade.</li><li>Hôpital urgences — file véhicules trop dense sur dépose-minute.</li><li>Tunnel urbain — embouteillage détecté pour alerte exploitation.</li></ol>
+</details>
+
+<details class="rule" id="tpl-person-stopped">
+  <summary>
+    <span class="rn">03. Personne immobile prolongée</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>person_stopped</code></span>
+  </summary>
+  <ol class="usecases"><li>Personne immobile prolongée — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-crowd-count">
+  <summary>
+    <span class="rn">04. Seuil foule atteint</span>
+    <span class="rmeta"><span class="chip">aggregate</span><code>crowd_count_threshold</code></span>
+  </summary>
+  <ol class="usecases"><li>Place publique — densité foule au-delà du seuil d&#x27;évacuation.</li><li>Carrefour — nombre de véhicules déclenchant plan de feux adapté.</li><li>Manifestation — seuil foule atteint près d&#x27;un bâtiment sensible.</li><li>Parking — saturation places → message déport vers parking B.</li><li>Festival — congestion accès créant risque de bousculade.</li><li>Hôpital urgences — file véhicules trop dense sur dépose-minute.</li><li>Tunnel urbain — embouteillage détecté pour alerte exploitation.</li></ol>
+</details>
+
+<details class="rule" id="tpl-vehicle-stopped">
+  <summary>
+    <span class="rn">05. Véhicule arrêté</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>vehicle_stopped</code></span>
+  </summary>
+  <ol class="usecases"><li>Véhicule arrêté — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-identity-correlation">
+  <summary>
+    <span class="rn">06. Corrélation identité</span>
+    <span class="rmeta"><span class="chip">composite</span><code>correlation_match</code></span>
+  </summary>
+  <ol class="usecases"><li>Corrélation identité — cas terrain typique : intrusion après heures — présence + hors plage horaire + zone sensible.</li><li>Site industriel — corrélation identité + franchissement périmètre.</li><li>Pipeline trafic — voiture → plaque → vitesse dans un seul dossier.</li><li>Règle N-sur-M — N conditions observées sur M caméras avant alerte.</li><li>OU logique — l&#x27;un des signaux (ligne OU zone) suffit en mode garde.</li><li>Corrélation multi-sources — face + plaque sur le même créneau.</li><li>Scénario VIP — ensemble de règles pour parcours sécurisé temporaire.</li></ol>
+</details>
+
+<details class="rule" id="tpl-face-watchlist">
+  <summary>
+    <span class="rn">07. Personne liste noire</span>
+    <span class="rmeta"><span class="chip">face</span><code>face_watchlist_match</code></span>
+  </summary>
+  <ol class="usecases"><li>Personne liste noire — cas terrain typique : contrôle d&#x27;accès bâtiment administratif — visage vs liste autorisée à l&#x27;entrée principale.</li><li>Alerte watchlist aéroport / gare — correspondance sur flux caméra hall.</li><li>Sécurité événement sportif — détection personne signalée près des tribunes.</li><li>Site industriel — badge + visage pour zone haute sécurité.</li><li>Banque / agence — visage inconnu en dehors des horaires d&#x27;ouverture.</li><li>Hôpital — corrélation identité soignant / zone restreinte pharmacie.</li><li>Enquête post-incident — timeline des détections visage autour d&#x27;un créneau critique.</li></ol>
+</details>
+
+<details class="rule" id="tpl-plate-whitelist">
+  <summary>
+    <span class="rn">08. Plaque autorisée</span>
+    <span class="rmeta"><span class="chip">plate</span><code>plate_allowed</code></span>
+  </summary>
+  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
+</details>
+
+<details class="rule" id="tpl-blocked-plate">
+  <summary>
+    <span class="rn">09. Plaque bloquée</span>
+    <span class="rmeta"><span class="chip">plate</span><code>plate_blocked</code></span>
+  </summary>
+  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
+</details>
+
+<details class="rule" id="tpl-plate-detected">
+  <summary>
+    <span class="rn">10. Plaque détectée</span>
+    <span class="rmeta"><span class="chip">plate</span><code>plate_detected</code></span>
+  </summary>
+  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
+</details>
+
+<details class="rule" id="tpl-unknown-plate">
+  <summary>
+    <span class="rn">11. Plaque inconnue</span>
+    <span class="rmeta"><span class="chip">plate</span><code>plate_unknown</code></span>
+  </summary>
+  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
+</details>
+
+<details class="rule" id="tpl-plate-unknown">
+  <summary>
+    <span class="rn">12. Plaque non enregistrée</span>
+    <span class="rmeta"><span class="chip">plate</span><code>plate_unknown</code></span>
+  </summary>
+  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
+</details>
+
+<details class="rule" id="tpl-plate-repeat">
+  <summary>
+    <span class="rn">13. Plaque récurrente</span>
+    <span class="rmeta"><span class="chip">plate</span><code>plate_detected</code></span>
+  </summary>
+  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
+</details>
+
+<details class="rule" id="tpl-face-detected">
+  <summary>
+    <span class="rn">14. Visage détecté</span>
+    <span class="rmeta"><span class="chip">face</span><code>face_detected</code></span>
+  </summary>
+  <ol class="usecases"><li>Contrôle d&#x27;accès bâtiment administratif — visage vs liste autorisée à l&#x27;entrée principale.</li><li>Alerte watchlist aéroport / gare — correspondance sur flux caméra hall.</li><li>Sécurité événement sportif — détection personne signalée près des tribunes.</li><li>Site industriel — badge + visage pour zone haute sécurité.</li><li>Banque / agence — visage inconnu en dehors des horaires d&#x27;ouverture.</li><li>Hôpital — corrélation identité soignant / zone restreinte pharmacie.</li><li>Enquête post-incident — timeline des détections visage autour d&#x27;un créneau critique.</li></ol>
+</details>
+
+<details class="rule" id="tpl-unknown-face">
+  <summary>
+    <span class="rn">15. Visage inconnu</span>
+    <span class="rmeta"><span class="chip">face</span><code>face_unknown</code></span>
+  </summary>
+  <ol class="usecases"><li>Contrôle d&#x27;accès bâtiment administratif — visage vs liste autorisée à l&#x27;entrée principale.</li><li>Alerte watchlist aéroport / gare — correspondance sur flux caméra hall.</li><li>Sécurité événement sportif — détection personne signalée près des tribunes.</li><li>Site industriel — badge + visage pour zone haute sécurité.</li><li>Banque / agence — visage inconnu en dehors des horaires d&#x27;ouverture.</li><li>Hôpital — corrélation identité soignant / zone restreinte pharmacie.</li><li>Enquête post-incident — timeline des détections visage autour d&#x27;un créneau critique.</li></ol>
+</details>
+
+<details class="rule" id="tpl-watchlist-match">
+  <summary>
+    <span class="rn">16. Visage liste de surveillance</span>
+    <span class="rmeta"><span class="chip">face</span><code>face_watchlist_match</code></span>
+  </summary>
+  <ol class="usecases"><li>Contrôle d&#x27;accès bâtiment administratif — visage vs liste autorisée à l&#x27;entrée principale.</li><li>Alerte watchlist aéroport / gare — correspondance sur flux caméra hall.</li><li>Sécurité événement sportif — détection personne signalée près des tribunes.</li><li>Site industriel — badge + visage pour zone haute sécurité.</li><li>Banque / agence — visage inconnu en dehors des horaires d&#x27;ouverture.</li><li>Hôpital — corrélation identité soignant / zone restreinte pharmacie.</li><li>Enquête post-incident — timeline des détections visage autour d&#x27;un créneau critique.</li></ol>
+</details>
+
+<details class="rule" id="tpl-industrial-intrusion">
+  <summary>
+    <span class="rn">17. Intrusion site industriel</span>
+    <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-abandoned-object">
+  <summary>
+    <span class="rn">18. Objet abandonné</span>
+    <span class="rmeta"><span class="chip">objects</span><code>object_abandoned</code></span>
+  </summary>
+  <ol class="usecases"><li>Gare — bagage abandonné près d&#x27;un banc pendant &gt; N minutes.</li><li>Musée — objet retiré d&#x27;un socle hors procédure.</li><li>Aéroport — disparition chariot/équipement en zone stérile.</li><li>Entrepôt — palette déplacée hors créneau inventaire.</li><li>Mairie — colis suspect laissé devant entrée publique.</li><li>Chantier — outil critique retiré de zone outillage.</li><li>Centre commercial — sac abandonné déclenchant protocole évacuation partielle.</li></ol>
+</details>
+
+<details class="rule" id="tpl-object-removed">
+  <summary>
+    <span class="rn">19. Objet retiré</span>
+    <span class="rmeta"><span class="chip">objects</span><code>object_removed</code></span>
+  </summary>
+  <ol class="usecases"><li>Gare — bagage abandonné près d&#x27;un banc pendant &gt; N minutes.</li><li>Musée — objet retiré d&#x27;un socle hors procédure.</li><li>Aéroport — disparition chariot/équipement en zone stérile.</li><li>Entrepôt — palette déplacée hors créneau inventaire.</li><li>Mairie — colis suspect laissé devant entrée publique.</li><li>Chantier — outil critique retiré de zone outillage.</li><li>Centre commercial — sac abandonné déclenchant protocole évacuation partielle.</li></ol>
+</details>
+
+<details class="rule" id="tpl-zone-absence">
+  <summary>
+    <span class="rn">20. Absence prolongée dans une zone</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Absence prolongée dans une zone — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-object-disappeared">
+  <summary>
+    <span class="rn">21. Disparition d&#x27;objet</span>
+    <span class="rmeta"><span class="chip">objects</span><code>object_disappeared</code></span>
+  </summary>
+  <ol class="usecases"><li>Gare — bagage abandonné près d&#x27;un banc pendant &gt; N minutes.</li><li>Musée — objet retiré d&#x27;un socle hors procédure.</li><li>Aéroport — disparition chariot/équipement en zone stérile.</li><li>Entrepôt — palette déplacée hors créneau inventaire.</li><li>Mairie — colis suspect laissé devant entrée publique.</li><li>Chantier — outil critique retiré de zone outillage.</li><li>Centre commercial — sac abandonné déclenchant protocole évacuation partielle.</li></ol>
+</details>
+
+<details class="rule" id="tpl-zone-presence">
+  <summary>
+    <span class="rn">22. Présence dans une zone</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Présence dans une zone — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-video-blur">
+  <summary>
+    <span class="rn">23. Vidéo floue</span>
+    <span class="rmeta"><span class="chip">quality</span><code>video_blur</code></span>
+  </summary>
+  <ol class="usecases"><li>Vidéo floue — cas terrain typique : caméra vandalisme — flou soudain → ticket maintenance prioritaire.</li><li>Nuit sans IR — obscurité anormale sur axe critique.</li><li>Brouillard / pluie — baisse qualité → bascule politique preuve.</li><li>Sabotage optique — spray/peinture détecté via métriques blur.</li><li>Mauvais focus PTZ — alerte qualité avant perte de conformité.</li><li>Perte d&#x27;éclairage rue — darkness prolongée sur carrefour.</li><li>Audit SLA caméra — disponibilité optique mesurée, pas seulement uptime IP.</li></ol>
+</details>
+
+<details class="rule" id="tpl-video-darkness">
+  <summary>
+    <span class="rn">24. Vidéo sombre</span>
+    <span class="rmeta"><span class="chip">quality</span><code>video_darkness</code></span>
+  </summary>
+  <ol class="usecases"><li>Vidéo sombre — cas terrain typique : caméra vandalisme — flou soudain → ticket maintenance prioritaire.</li><li>Nuit sans IR — obscurité anormale sur axe critique.</li><li>Brouillard / pluie — baisse qualité → bascule politique preuve.</li><li>Sabotage optique — spray/peinture détecté via métriques blur.</li><li>Mauvais focus PTZ — alerte qualité avant perte de conformité.</li><li>Perte d&#x27;éclairage rue — darkness prolongée sur carrefour.</li><li>Audit SLA caméra — disponibilité optique mesurée, pas seulement uptime IP.</li></ol>
+</details>
+
+<details class="rule" id="tpl-seatbelt">
+  <summary>
+    <span class="rn">25. Ceinture de sécurité</span>
+    <span class="rmeta"><span class="chip">cabin</span><code>seatbelt_violation</code></span>
+  </summary>
+  <ol class="usecases"><li>Contrôle routier urbain — téléphone au volant en approche carrefour.</li><li>Corridor scolaire — ceinture non bouclée aux abords d&#x27;une école.</li><li>Flotte entreprise — audit conformité conducteurs sur axe périurbain.</li><li>Péage / barrière — vérification cabine avant ouverture file rapide.</li><li>Police municipale — dossier preuve (clip + crop) pour contravention.</li><li>Campagne sensibilisation — statistiques anonymisées violations cabine.</li><li>Zone travaux — conduite à risque (téléphone) près d&#x27;ouvriers.</li></ol>
+</details>
+
+<details class="rule" id="tpl-congestion">
+  <summary>
+    <span class="rn">26. Embouteillage</span>
+    <span class="rmeta"><span class="chip">aggregate</span><code>vehicle_count_threshold</code></span>
+  </summary>
+  <ol class="usecases"><li>Place publique — densité foule au-delà du seuil d&#x27;évacuation.</li><li>Carrefour — nombre de véhicules déclenchant plan de feux adapté.</li><li>Manifestation — seuil foule atteint près d&#x27;un bâtiment sensible.</li><li>Parking — saturation places → message déport vers parking B.</li><li>Festival — congestion accès créant risque de bousculade.</li><li>Hôpital urgences — file véhicules trop dense sur dépose-minute.</li><li>Tunnel urbain — embouteillage détecté pour alerte exploitation.</li></ol>
+</details>
+
+<details class="rule" id="tpl-speeding-premium">
+  <summary>
+    <span class="rn">27. Excès de vitesse</span>
+    <span class="rmeta"><span class="chip">measure</span><code>speeding</code></span>
+  </summary>
+  <ol class="usecases"><li>Avenue 50 km/h — excès mesuré entre deux lignes de référence.</li><li>Zone 30 résidentielle — alerte vitesse + plaque pour médiation.</li><li>Approche carrefour — arrêt brusque suspect (risque collision).</li><li>Voie bus — véhicule trop lent créant un bouchon artificiel.</li><li>Périphérique urbain — dépassement seuil dynamique heure de pointe.</li><li>Parking souterrain — vitesse anormale dans rampe étroite.</li><li>Chantier temporaire — non-respect limitation provisoire signalée.</li></ol>
+</details>
+
+<details class="rule" id="tpl-red-light">
+  <summary>
+    <span class="rn">28. Feu rouge</span>
+    <span class="rmeta"><span class="chip">dual_signal</span><code>red_light_violation</code></span>
+  </summary>
+  <ol class="usecases"><li>Carrefour à feux — franchissement au rouge avec plaque + clip 6 s.</li><li>Passage piéton protégé — véhicule qui grille le rouge face aux écoliers.</li><li>Boulevard à plusieurs files — file de droite qui anticipe le vert.</li><li>Priorité pompiers — audit a posteriori des franchissements dangereux.</li><li>Smart corridor — corrélation feu rouge + vitesse dans la même scène.</li><li>Litige assurance — package preuve horodaté pour sinistre carrefour.</li><li>Campagne sécurité — heatmaps des carrefours les plus transgressés.</li></ol>
+</details>
+
+<details class="rule" id="tpl-line-cross-forbidden">
+  <summary>
+    <span class="rn">29. Franchissement ligne continue</span>
+    <span class="rmeta"><span class="chip">line</span><code>line_cross</code></span>
+  </summary>
+  <ol class="usecases"><li>Franchissement ligne continue — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Sens interdit — croisement ligne dans le mauvais sens.</li><li>Ligne continue routière — dépassement dangereux matérialisé.</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li></ol>
+</details>
+
+<details class="rule" id="tpl-traffic-pipeline">
+  <summary>
+    <span class="rn">30. Pipeline voiture → plaque + vitesse</span>
+    <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Avenue 50 km/h — excès mesuré entre deux lignes de référence.</li><li>Zone 30 résidentielle — alerte vitesse + plaque pour médiation.</li><li>Approche carrefour — arrêt brusque suspect (risque collision).</li><li>Voie bus — véhicule trop lent créant un bouchon artificiel.</li><li>Périphérique urbain — dépassement seuil dynamique heure de pointe.</li><li>Parking souterrain — vitesse anormale dans rampe étroite.</li><li>Chantier temporaire — non-respect limitation provisoire signalée.</li></ol>
+</details>
+
+<details class="rule" id="tpl-plate-pipeline">
+  <summary>
+    <span class="rn">31. Plaque détectée (OCR)</span>
+    <span class="rmeta"><span class="chip">plate</span><code>plate_detected</code></span>
+  </summary>
+  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
+</details>
+
+<details class="rule" id="tpl-phone-driving">
+  <summary>
+    <span class="rn">32. Téléphone au volant</span>
+    <span class="rmeta"><span class="chip">cabin</span><code>phone_use_violation</code></span>
+  </summary>
+  <ol class="usecases"><li>Contrôle routier urbain — téléphone au volant en approche carrefour.</li><li>Corridor scolaire — ceinture non bouclée aux abords d&#x27;une école.</li><li>Flotte entreprise — audit conformité conducteurs sur axe périurbain.</li><li>Péage / barrière — vérification cabine avant ouverture file rapide.</li><li>Police municipale — dossier preuve (clip + crop) pour contravention.</li><li>Campagne sensibilisation — statistiques anonymisées violations cabine.</li><li>Zone travaux — conduite à risque (téléphone) près d&#x27;ouvriers.</li></ol>
+</details>
+
+<details class="rule" id="tpl-loitering-entrance">
+  <summary>
+    <span class="rn">33. Flânerie près entrée</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>loitering_near_entrance</code></span>
+  </summary>
+  <ol class="usecases"><li>Flânerie près entrée — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-intrusion-after-hours">
+  <summary>
+    <span class="rn">34. Intrusion hors horaires</span>
+    <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-intrusion">
+  <summary>
+    <span class="rn">35. Intrusion zone interdite</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-multi-person-vehicle">
+  <summary>
+    <span class="rn">36. Plusieurs personnes, un véhicule</span>
+    <span class="rmeta"><span class="chip">relational</span><code>multiple_persons_one_vehicle</code></span>
+  </summary>
+  <ol class="usecases"><li>Plusieurs personnes, un véhicule — cas terrain typique : covoiturage frauduleux — plusieurs personnes autour d&#x27;un seul véhicule en file HOV.</li><li>Agression potentielle — proximité anormale personne/véhicule parking isolé.</li><li>Vol à la portière — personne collée à véhicule arrêté moteur allumé.</li><li>Dépose scolaire — trop de piétons autour d&#x27;un même véhicule file.</li><li>Livraison suspecte — interaction prolongée personne–utilitaire zone résidentielle.</li><li>Parking relais — regroupement inhabituel autour d&#x27;un véhicule la nuit.</li><li>Contrôle frontière — corrélation occupants / véhicule déclaré.</li></ol>
+</details>
+
+<details class="rule" id="tpl-proximity-alert">
+  <summary>
+    <span class="rn">37. Proximité personne-véhicule</span>
+    <span class="rmeta"><span class="chip">relational</span><code>person_vehicle_proximity</code></span>
+  </summary>
+  <ol class="usecases"><li>Proximité personne-véhicule — cas terrain typique : covoiturage frauduleux — plusieurs personnes autour d&#x27;un seul véhicule en file HOV.</li><li>Agression potentielle — proximité anormale personne/véhicule parking isolé.</li><li>Vol à la portière — personne collée à véhicule arrêté moteur allumé.</li><li>Dépose scolaire — trop de piétons autour d&#x27;un même véhicule file.</li><li>Livraison suspecte — interaction prolongée personne–utilitaire zone résidentielle.</li><li>Parking relais — regroupement inhabituel autour d&#x27;un véhicule la nuit.</li><li>Contrôle frontière — corrélation occupants / véhicule déclaré.</li></ol>
+</details>
+
+<details class="rule" id="tpl-observation-rule-set-n">
+  <summary>
+    <span class="rn">38. Comptage ensemble (N-sur-M)</span>
+    <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Comptage ensemble (N-sur-M) — cas terrain typique : intrusion après heures — présence + hors plage horaire + zone sensible.</li><li>Site industriel — corrélation identité + franchissement périmètre.</li><li>Pipeline trafic — voiture → plaque → vitesse dans un seul dossier.</li><li>Règle N-sur-M — N conditions observées sur M caméras avant alerte.</li><li>OU logique — l&#x27;un des signaux (ligne OU zone) suffit en mode garde.</li><li>Corrélation multi-sources — face + plaque sur le même créneau.</li><li>Scénario VIP — ensemble de règles pour parcours sécurisé temporaire.</li></ol>
+</details>
+
+<details class="rule" id="tpl-observation-rule-set-or">
+  <summary>
+    <span class="rn">39. Comptage ensemble (OU)</span>
+    <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Comptage ensemble (OU) — cas terrain typique : intrusion après heures — présence + hors plage horaire + zone sensible.</li><li>Site industriel — corrélation identité + franchissement périmètre.</li><li>Pipeline trafic — voiture → plaque → vitesse dans un seul dossier.</li><li>Règle N-sur-M — N conditions observées sur M caméras avant alerte.</li><li>OU logique — l&#x27;un des signaux (ligne OU zone) suffit en mode garde.</li><li>Corrélation multi-sources — face + plaque sur le même créneau.</li><li>Scénario VIP — ensemble de règles pour parcours sécurisé temporaire.</li></ol>
+</details>
+
+<details class="rule" id="tpl-zone-enter">
+  <summary>
+    <span class="rn">40. Entrée dans une zone</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Entrée dans une zone — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-line-cross-bidir">
+  <summary>
+    <span class="rn">41. Franchissement bidirectionnel</span>
+    <span class="rmeta"><span class="chip">line</span><code>line_cross</code></span>
+  </summary>
+  <ol class="usecases"><li>Franchissement bidirectionnel — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Sens interdit — croisement ligne dans le mauvais sens.</li><li>Ligne continue routière — dépassement dangereux matérialisé.</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li></ol>
+</details>
+
+<details class="rule" id="tpl-line-cross">
+  <summary>
+    <span class="rn">42. Franchissement de ligne</span>
+    <span class="rmeta"><span class="chip">line</span><code>entry-line</code></span>
+  </summary>
+  <ol class="usecases"><li>Franchissement de ligne — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Sens interdit — croisement ligne dans le mauvais sens.</li><li>Ligne continue routière — dépassement dangereux matérialisé.</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li></ol>
+</details>
+
+<details class="rule" id="tpl-perimeter-breach">
+  <summary>
+    <span class="rn">43. Intrusion périmétrique</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>perimeter_breach</code></span>
+  </summary>
+  <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-multi-zone">
+  <summary>
+    <span class="rn">44. Présence multi-zones</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Présence multi-zones — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-zone-exit">
+  <summary>
+    <span class="rn">45. Sortie d&#x27;une zone</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Sortie d&#x27;une zone — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-unauthorized-exit">
+  <summary>
+    <span class="rn">46. Sortie non autorisée</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>unauthorized_exit</code></span>
+  </summary>
+  <ol class="usecases"><li>Sortie non autorisée — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-sudden-stop">
+  <summary>
+    <span class="rn">47. Arrêt brusque</span>
+    <span class="rmeta"><span class="chip">measure</span><code>sudden_stop</code></span>
+  </summary>
+  <ol class="usecases"><li>Arrêt brusque — cas terrain typique : avenue 50 km/h — excès mesuré entre deux lignes de référence.</li><li>Zone 30 résidentielle — alerte vitesse + plaque pour médiation.</li><li>Approche carrefour — arrêt brusque suspect (risque collision).</li><li>Voie bus — véhicule trop lent créant un bouchon artificiel.</li><li>Périphérique urbain — dépassement seuil dynamique heure de pointe.</li><li>Parking souterrain — vitesse anormale dans rampe étroite.</li><li>Chantier temporaire — non-respect limitation provisoire signalée.</li></ol>
+</details>
+
+<details class="rule" id="tpl-dwell-exceeded">
+  <summary>
+    <span class="rn">48. Dépassement temps de présence</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>dwell_time_exceeded</code></span>
+  </summary>
+  <ol class="usecases"><li>Dépassement temps de présence — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-loitering">
+  <summary>
+    <span class="rn">49. Présence prolongée (loitering)</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-pedestrian-zone">
+  <summary>
+    <span class="rn">50. Piéton en zone véhicules</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Piéton en zone véhicules — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
+</details>
+
+<details class="rule" id="tpl-illegal-parking">
+  <summary>
+    <span class="rn">51. Stationnement illégal</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
+  </summary>
+  <ol class="usecases"><li>Voie pompiers — véhicule arrêté bloquant l&#x27;accès secours.</li><li>Arrêt minute gare — dépassement durée autorisée.</li><li>Place PMR — occupation par véhicule non habilité.</li><li>Double file centre-ville — gêne bus et vélos.</li><li>Trottoir — roues sur passage piéton / bateau.</li><li>Zone livraison — hors créneau horaire autorisé.</li><li>Devant hydrant — stationnement critique pour pompiers.</li></ol>
+</details>
+
+<details class="rule" id="tpl-slow-vehicle">
+  <summary>
+    <span class="rn">52. Véhicule trop lent</span>
+    <span class="rmeta"><span class="chip">measure</span><code>speed_below_minimum</code></span>
+  </summary>
+  <ol class="usecases"><li>Véhicule trop lent — cas terrain typique : avenue 50 km/h — excès mesuré entre deux lignes de référence.</li><li>Zone 30 résidentielle — alerte vitesse + plaque pour médiation.</li><li>Approche carrefour — arrêt brusque suspect (risque collision).</li><li>Voie bus — véhicule trop lent créant un bouchon artificiel.</li><li>Périphérique urbain — dépassement seuil dynamique heure de pointe.</li><li>Parking souterrain — vitesse anormale dans rampe étroite.</li><li>Chantier temporaire — non-respect limitation provisoire signalée.</li></ol>
+</details>
+    </section>
+
+    <section id="compare">
+      <div class="section-head">
+        <p class="eyebrow">04 — Positionnement</p>
+        <h2>CitéVision · Genetec · Smart City — parallèle honnête</h2>
+        <p>
+          Lecture orientée « où CitéVision gagne ou égale ». Les cases où un concurrent reste
+          structurellement plus fort (échelle mondiale Genetec, IoT large Smart City) sont assumées.
+        </p>
+      </div>
+      <div class="legend">
+        <span class="win">CitéVision en avance</span>
+        <span class="eq">À niveau / parité</span>
+        <span class="them">Concurrent structurellement plus fort</span>
+      </div>
+      <div class="table-wrap">
+        <table class="rich">
+          <thead>
+            <tr>
+              <th>Critère</th>
+              <th>CitéVision</th>
+              <th>Genetec</th>
+              <th>Smart City (générique)</th>
+              <th>Lecture</th>
+            </tr>
+          </thead>
+          <tbody>
+<tr><td><strong>Chaîne zone → IA → règle → preuve</strong></td><td>CitéVision</td><td>Égale / partielle</td><td>CitéVision meilleure</td><td class='note'>CitéVision impose preuves (clip, images, plaque si routier) avant statut final ; Genetec/SmartCity ont souvent alerte + vidéo, moins le package preuve métier unifié.</td></tr>
+<tr><td><strong>Catalogue règles transparent (real / partial / beta)</strong></td><td>CitéVision</td><td>Partiel</td><td>CitéVision meilleure</td><td class='note'>Badges d&#x27;honnêteté produit : pas de « supported: true » sur heuristique fragile. Concurrentes affichent parfois des modules marketing plus larges que le terrain.</td></tr>
+<tr><td><strong>NVR multi-caméras RTSP / enregistrement</strong></td><td>À niveau (via Frigate)</td><td>Genetec leader échelle</td><td>À niveau sur périmètre démo/PME</td><td class='note'>Genetec domine très grands déploiements, certifications et support global. CitéVision est à niveau sur ingest, restream, événements pour sites ciblés.</td></tr>
+<tr><td><strong>Contrôle d&#x27;accès physique + badge enterprise</strong></td><td>Partiel / intégrable</td><td>Genetec meilleure</td><td>Égale si intégré</td><td class='note'>Genetec Security Center est une référence ACS+VMS. CitéVision se concentre vidéo intelligente + preuves ; l&#x27;ACS peut être branché mais n&#x27;est pas le cœur historique.</td></tr>
+<tr><td><strong>Règles cabine (ceinture, téléphone) via VLM</strong></td><td>CitéVision</td><td>Rare / add-on</td><td>CitéVision meilleure</td><td class='note'>Pipeline Gemini cabin + fail-closed preuves est un différenciateur produit fort face aux suites VMS classiques.</td></tr>
+<tr><td><strong>Mesure vitesse + feu rouge + plaque dans un même dossier</strong></td><td>CitéVision</td><td>Modules séparés fréquents</td><td>CitéVision meilleure sur cohérence dossier</td><td class='note'>Un seul pipeline d&#x27;orchestration et d&#x27;evidence_status ; moins de silos module vitesse vs module LPR.</td></tr>
+<tr><td><strong>Édition zones / lignes par l&#x27;opérateur (pas hardcodé)</strong></td><td>CitéVision</td><td>Oui (outils carte)</td><td>À niveau</td><td class='note'>ZoneEditor + DB : géométrie jamais figée dans le code. Genetec/SmartCity offrent aussi des outils carte matures — parité fonctionnelle, avantage CitéVision sur discipline produit (A.1).</td></tr>
+<tr><td><strong>Déploiement local souverain (WSL/GPU on-prem, MinIO)</strong></td><td>CitéVision</td><td>Possible mais plus lourd</td><td>CitéVision meilleure pour lab/gov locaux</td><td class='note'>Stack reproductible sans Docker Desktop, object storage local, runtime unique — adapté POC souverains et démos terrain.</td></tr>
+<tr><td><strong>Cartographie smart-city IoT large (capteurs hors vidéo)</strong></td><td>Focus vidéo+règles</td><td>SmartCity souvent plus large</td><td>SmartCity peut être devant sur IoT hétérogène</td><td class='note'>CitéVision assume un focus preuve vidéo. Une plateforme SmartCity générique peut agréger capteurs air/énergie ; CitéVision gagne sur la profondeur vidéo métier.</td></tr>
+<tr><td><strong>Coût d&#x27;entrée / time-to-demo</strong></td><td>CitéVision</td><td>Genetec plus élevé</td><td>CitéVision meilleure</td><td class='note'>Start guidé, validate_rule, caméras démo : cycle de preuve rapide pour décideurs.</td></tr>
+<tr><td><strong>Échelle mondiale, certifications, réseau partenaires</strong></td><td>En construction</td><td>Genetec leader</td><td>Genetec meilleure aujourd&#x27;hui</td><td class='note'>Honnêteté : décennies d&#x27;écosystème Genetec. CitéVision vise excellence architecture preuve et collaboration Hologram 2026, pas une revendication de couverture mondiale égale.</td></tr>
+<tr><td><strong>Auto-heal / readiness métier avant « prêt »</strong></td><td>CitéVision</td><td>Monitoring classique</td><td>CitéVision meilleure sur readiness démo</td><td class='note'>Business readiness (LIVE, zones, bridge, GPU) bloquante au Start — moins de fausses démos « vertes ».</td></tr>
+<tr><td><strong>Alerting e-mail premium avec pièces preuve</strong></td><td>CitéVision</td><td>À niveau possible</td><td>À niveau / CitéVision plus opinionated</td><td class='note'>Mail + preuves exigées par politique produit ; Genetec a des notifications riches, CitéVision les couple au DoD preuve.</td></tr>
+<tr><td><strong>Openness / inspectabilité du pipeline</strong></td><td>CitéVision</td><td>Plus fermé</td><td>CitéVision meilleure</td><td class='note'>Contrats JSON, scripts health/validate, logs cause missing evidence — auditabilité ingénieur forte.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="credits">
+      <div class="section-head">
+        <p class="eyebrow">05 — Genèse 2026</p>
+        <h2>Développeur &amp; collaboration entreprise</h2>
+        <p>Contexte humain derrière l’architecture zone → IA → règle → preuve.</p>
+      </div>
+      <div class="about">
+        <div class="about-card">
+          <h3>Glory Henock</h3>
+          <p>
+            <strong>Glory Henock</strong> est le développeur principal de CitéVision&nbsp;:
+            conception de la chaîne d’orchestration, exigence de preuves infalsifiables,
+            runtime WSL unique, catalogue de règles et console opérateur.
+          </p>
+          <p>
+            Son travail en 2026 vise une plateforme vidéo intelligente où chaque alerte
+            « validée » est défendable&nbsp;: géométrie réelle, inférence GPU, règle métier,
+            puis package preuve (clip, images, plaque si routier) — sans raccourci marketing.
+          </p>
+          <p>
+            Contact technique / repos&nbsp;:
+            <a href="https://github.com/henockglory" target="_blank" rel="noopener">github.com/henockglory</a>
+          </p>
+        </div>
+        <div class="about-card">
+          <h3>Hologram Identification Service</h3>
+          <p>
+            CitéVision est développée en <strong>étroite collaboration</strong> avec
+            <strong>Hologram Identification Service</strong> en <strong>2026</strong>&nbsp;:
+            ancrage terrain identification / sécurité, exigences preuves, et cadrage produit
+            pour des déploiements réalistes (mobilité, sites sensibles, collectivités).
+          </p>
+          <p>
+            Cette collaboration oriente les priorités&nbsp;: honnêteté du catalogue,
+            readiness métier au démarrage, et dossiers d’alerte exploitables par des opérateurs
+            — pas seulement des logs MQTT.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>
+        CitéVision — vue d’ensemble produit (34 technologies, 52 règles).
+        Voir aussi <a href="index.html">Architectures métier &amp; produit</a>
+        et <a href="CiteVision-Architectures.pptx">le deck PowerPoint</a>.
+        Généré via <code>build_overview.py</code> à partir du contrat d’orchestration.
+      </p>
+    </footer>
+  </div>
+  <script>
+
+(function () {
+  var toc = document.getElementById("toc");
+  var btn = document.getElementById("tocToggle");
+  var panel = document.getElementById("tocPanel");
+  var label = document.getElementById("tocToggleLabel");
+  var hint = document.getElementById("tocHint");
+  if (toc && btn && panel) {
+    function setOpen(open) {
+      toc.classList.toggle("is-collapsed", !open);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) panel.removeAttribute("hidden");
+      else panel.setAttribute("hidden", "");
+      if (label) label.textContent = open ? "Réduire" : "Ouvrir";
+      if (hint) {
+        hint.textContent = open
+          ? "Sommaire ouvert — cliquer pour réduire"
+          : "Sommaire réduit — cliquer pour ouvrir";
+      }
+      try { localStorage.setItem("citevision-arch-toc-open", open ? "1" : "0"); } catch (e) {}
+    }
+    var preferOpen = false;
+    try { preferOpen = localStorage.getItem("citevision-arch-toc-open") === "1"; } catch (e) {}
+    setOpen(preferOpen);
+    btn.addEventListener("click", function () {
+      setOpen(toc.classList.contains("is-collapsed"));
+    });
+    panel.addEventListener("click", function (ev) {
+      var a = ev.target.closest("a");
+      if (!a) return;
+      setOpen(false);
+    });
+  }
+
+  var q = document.getElementById("ruleFilter");
+  var rules = Array.prototype.slice.call(document.querySelectorAll("details.rule"));
+  function applyFilter() {
+    var v = (q && q.value || "").trim().toLowerCase();
+    rules.forEach(function (el) {
+      var text = el.textContent.toLowerCase();
+      el.style.display = !v || text.indexOf(v) !== -1 ? "" : "none";
+    });
+  }
+  if (q) q.addEventListener("input", applyFilter);
+
+  var openAll = document.getElementById("openAllRules");
+  var closeAll = document.getElementById("closeAllRules");
+  if (openAll) openAll.addEventListener("click", function () {
+    rules.forEach(function (el) { if (el.style.display !== "none") el.open = true; });
+  });
+  if (closeAll) closeAll.addEventListener("click", function () {
+    rules.forEach(function (el) { el.open = false; });
+  });
+})();
+
+  </script>
+</body>
+</html>
