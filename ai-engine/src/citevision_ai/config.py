@@ -197,6 +197,8 @@ class Settings(BaseSettings):
     frigate_red_light_end_time_wait_sec: float = 30.0
     frigate_red_light_end_time_backoff_initial: float = 2.0
     frigate_red_light_end_time_backoff_max: float = 8.0
+    # Speeding: short seal wait then unsealed snapshot/window-clip (demo tracks stay open).
+    frigate_speed_end_time_wait_sec: float = 8.0
     frigate_evidence_frame_count: int = 6
     frigate_clip_frame_jpeg_q: int = 2
     # Proactive track → Frigate event binding (IoU while track is live).

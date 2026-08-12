@@ -417,15 +417,20 @@ class FrigateTrackEvidence:
             },
         )
 
-    def _wait_until_end_time(self, event_id: str) -> dict[str, Any] | None:
+    def _wait_until_end_time(
+        self, event_id: str, wait_sec: float | None = None,
+    ) -> dict[str, Any] | None:
         """Poll Frigate until event has end_time (clip seal signal) or timeout.
 
         Sprint 1: never call clip.mp4 before end_time — eliminates I4 HTTP 400 thrash.
         Exponential backoff 2s → 4s → 8s (capped).
         """
-        wait_sec = float(
-            getattr(settings, "frigate_red_light_end_time_wait_sec", RED_LIGHT_END_TIME_WAIT_SEC)
-        )
+        if wait_sec is None:
+            wait_sec = float(
+                getattr(settings, "frigate_red_light_end_time_wait_sec", RED_LIGHT_END_TIME_WAIT_SEC)
+            )
+        else:
+            wait_sec = float(wait_sec)
         backoff = float(
             getattr(
                 settings,
@@ -558,6 +563,18 @@ class FrigateTrackEvidence:
         meta0 = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
         bridge_sourced = str(meta0.get("bridge_source") or "").lower() == "frigate"
         event_type0 = str(evt.get("event_type") or "")
+        # Recover Frigate-native anchor when emit forgot bbox_ts (wall clock breaks
+        # demo_loop_guard for bridge speeding / red_light).
+        if not isinstance(evt.get("bbox_ts"), (int, float)):
+            for key in ("frigate_frame_time", "frigate_end_time", "frigate_start_time"):
+                raw = meta0.get(key) if isinstance(meta0, dict) else None
+                try:
+                    if raw is not None:
+                        evt["bbox_ts"] = float(raw)
+                        anchor = float(raw)
+                        break
+                except (TypeError, ValueError):
+                    continue
         # Trust Frigate-bridge event ids (Gemini/speed path). Only strip proactive
         # YOLO binder ids which often freeze an early box while the car moved.
         if (
@@ -605,6 +622,35 @@ class FrigateTrackEvidence:
                     camera_id[:8], bound_id[:24],
                 )
                 return None
+            # Bridge speeding: compose from the trusted Frigate track id. Skip the
+            # wall-clock demo_loop_guard accept gate (same policy as compose path).
+            if bridge_sourced and event_type0 == "speeding":
+                bound_ev = self.fetch_event(bound_id)
+                if bound_ev:
+                    if not isinstance(evt.get("bbox_ts"), (int, float)):
+                        frig_ts = best_frigate_ts(bound_ev)
+                        if frig_ts is not None:
+                            evt["bbox_ts"] = float(frig_ts)
+                            anchor = float(frig_ts)
+                    align_delta = min_time_delta(anchor, bound_ev)
+                    composed = self._compose_from_matched(
+                        bound_ev, align_delta, policy, evt, camera_id, org_id,
+                    )
+                    if composed is not None:
+                        logger.info(
+                            "frigate_track: bridge-bound speeding capture cam=%s event=%s delta=%.2fs",
+                            camera_id[:8], bound_id[:24], align_delta,
+                        )
+                        return composed
+                    logger.info(
+                        "frigate_track: bridge-bound speeding compose missing cam=%s id=%s",
+                        camera_id[:8], bound_id[:24],
+                    )
+                else:
+                    logger.info(
+                        "frigate_track: bridge-bound speeding fetch missing cam=%s id=%s",
+                        camera_id[:8], bound_id[:24],
+                    )
             bound_ev = self.fetch_event(bound_id)
             align_delta = min_time_delta(anchor, bound_ev) if bound_ev else 0.0
             if self._accept_correlation(evt, bound_ev, align_delta, camera_id):
@@ -791,34 +837,79 @@ class FrigateTrackEvidence:
         # Wait for Frigate end_time BEFORE align gates or clip download.
         # Active events often lack path_data/end_time; min_time_delta() then returns
         # 1e18 and demo_loop_guard aborts with align_too_wide instead of deferring.
-        # Speeding also needs a sealed track (entry→exit) so average_estimated_speed
-        # and the clip cover the full zone traversal.
+        # Speeding: do NOT fail-closed on missing end_time — demo tracks stay open for
+        # minutes and a 30s wait saturates the retro semaphore. Prefer a short wait,
+        # then snapshot + window clip (synthetic end) so alerts get proof.
+        speed_unsealed = False
         if is_red or is_speed:
-            sealed = self._wait_until_end_time(event_id)
+            # Speeding: short end_time wait (default 8s) so retro slots are not
+            # blocked 30s×N under a demo flood; then unsealed snapshot/window.
+            speed_wait = float(getattr(settings, "frigate_speed_end_time_wait_sec", 8.0))
+            sealed = self._wait_until_end_time(
+                event_id,
+                wait_sec=speed_wait if is_speed else None,
+            )
             if not sealed or sealed.get("end_time") in (None, "", False):
-                return self._missing(
-                    abort_stats.ABORT_CLIP_NOT_READY_TIMEOUT,
-                    camera_id=camera_id,
-                    evt=evt,
-                    event_id=event_id,
-                    extra={
-                        "waited_sec": RED_LIGHT_END_TIME_WAIT_SEC,
-                        "reason": "speed_wait_end_time" if is_speed else "red_wait_end_time",
-                    },
-                )
-            matched = {
-                **matched,
-                **{
-                    k: sealed.get(k)
-                    for k in (
-                        "data", "start_time", "end_time", "frame_time",
-                        "label", "has_clip", "has_snapshot",
+                if is_red:
+                    return self._missing(
+                        abort_stats.ABORT_CLIP_NOT_READY_TIMEOUT,
+                        camera_id=camera_id,
+                        evt=evt,
+                        event_id=event_id,
+                        extra={
+                            "waited_sec": RED_LIGHT_END_TIME_WAIT_SEC,
+                            "reason": "red_wait_end_time",
+                        },
                     )
-                    if k in sealed
-                },
-            }
-            meta = sealed
-            align_delta = min_time_delta(anchor, matched)
+                speed_unsealed = True
+                meta = sealed or self._event_meta(event_id) or dict(matched or {})
+                if sealed:
+                    matched = {
+                        **matched,
+                        **{
+                            k: sealed.get(k)
+                            for k in (
+                                "data", "start_time", "end_time", "frame_time",
+                                "label", "has_clip", "has_snapshot",
+                            )
+                            if k in sealed
+                        },
+                    }
+                # Synthetic end so window-clip fallback can run.
+                st = (
+                    meta.get("start_time")
+                    or matched.get("start_time")
+                    or meta_evt.get("frigate_start_time")
+                    or evt.get("bbox_ts")
+                )
+                try:
+                    st_f = float(st) if st is not None else None
+                except (TypeError, ValueError):
+                    st_f = None
+                if st_f is not None and meta.get("end_time") in (None, "", False):
+                    end_f = st_f + max(3.0, float(policy.get("clip_seconds") or CLIP_DURATION_SEC))
+                    meta = {**meta, "start_time": st_f, "end_time": end_f}
+                    matched = {**matched, "start_time": st_f, "end_time": end_f}
+                logger.warning(
+                    "frigate_track: speed unsealed fallback event=%s cam=%s "
+                    "(snapshot/window clip — end_time not ready)",
+                    event_id[:24], camera_id[:8],
+                )
+                align_delta = min_time_delta(anchor, matched)
+            else:
+                matched = {
+                    **matched,
+                    **{
+                        k: sealed.get(k)
+                        for k in (
+                            "data", "start_time", "end_time", "frame_time",
+                            "label", "has_clip", "has_snapshot",
+                        )
+                        if k in sealed
+                    },
+                }
+                meta = sealed
+                align_delta = min_time_delta(anchor, matched)
         else:
             fresh = self._event_meta(event_id)
             if fresh:
@@ -873,15 +964,26 @@ class FrigateTrackEvidence:
                 extra=extra,
             )
 
+        # Ensure window-clip path has a Frigate camera id when event meta is sparse.
+        if isinstance(meta, dict) and not meta.get("camera"):
+            meta = {**meta, "camera": fid}
+
         clip_bytes = self._download_event_clip(event_id, meta)
         raw_clip_bytes = clip_bytes
-        if (is_red or is_speed) and not clip_bytes:
+        if is_red and not clip_bytes:
             return self._missing(
                 abort_stats.ABORT_NO_CLIP,
                 camera_id=camera_id,
                 evt=evt,
                 event_id=event_id,
-                extra={"reason": "speed_needs_clip" if is_speed else "red_needs_clip"},
+                extra={"reason": "red_needs_clip"},
+            )
+        if is_speed and not clip_bytes:
+            # Snapshot-only partial is acceptable for unsealed/demo tracks —
+            # better than leaving the alert without any proof.
+            logger.warning(
+                "frigate_track: speed snapshot-only (no clip) event=%s cam=%s unsealed=%s",
+                event_id[:24], camera_id[:8], speed_unsealed,
             )
 
         target_clip_sec = float(policy.get("clip_seconds") or CLIP_DURATION_SEC)
@@ -1044,19 +1146,27 @@ class FrigateTrackEvidence:
             bbox_quality_ok = False
 
         # Fail-closed for red_light + speeding: empty / lagged subject must not ship as "proof".
+        # Speeding exception: if we at least have a Frigate scene, ship partial rather than
+        # leaving the alert with zero media (demo unsealed tracks often crop poorly).
         if require_subject:
             if not bbox_quality_ok or not subject_quality_ok:
-                return self._missing(
-                    abort_stats.ABORT_SUBJECT_EMPTY,
-                    camera_id=camera_id,
-                    evt=evt,
-                    event_id=event_id,
-                    extra={
-                        "bbox_ok": bbox_quality_ok,
-                        "subject_ok": subject_quality_ok,
-                        "texture": subject_texture,
-                        "min_texture": subject_min_texture,
-                    },
+                if not (is_speed and scene_bytes is not None):
+                    return self._missing(
+                        abort_stats.ABORT_SUBJECT_EMPTY,
+                        camera_id=camera_id,
+                        evt=evt,
+                        event_id=event_id,
+                        extra={
+                            "bbox_ok": bbox_quality_ok,
+                            "subject_ok": subject_quality_ok,
+                            "texture": subject_texture,
+                            "min_texture": subject_min_texture,
+                        },
+                    )
+                logger.warning(
+                    "frigate_track: speed scene-only partial event=%s cam=%s "
+                    "bbox_ok=%s subject_ok=%s",
+                    event_id[:24], camera_id[:8], bbox_quality_ok, subject_quality_ok,
                 )
 
         plate_jpeg, plate_number, plate_confidence, plate_source = self._ocr_plate(plate_crop, evt)
@@ -1114,6 +1224,8 @@ class FrigateTrackEvidence:
             meta_out["zone_entry_exit"] = meta_in.get("zone_entry_exit") or "exit"
             meta_out["frigate_start_time"] = matched.get("start_time") or meta_in.get("frigate_start_time")
             meta_out["frigate_end_time"] = matched.get("end_time") or meta_in.get("frigate_end_time")
+            if speed_unsealed:
+                meta_out["speed_unsealed"] = True
             if bridge_sourced:
                 meta_out["bbox_source"] = "frigate_mqtt"
         light_poly = meta_in.get("light_zone_polygon")
@@ -1894,10 +2006,18 @@ class FrigateTrackEvidence:
         else:
             anchor_for_loop = anchor
 
-        # demo_loop_guard §3.1: absolute window before any soft-accept / bound trust.
+        # demo_loop_guard §3.1: absolute window before soft-accept / bound trust.
+        # Bridge-sourced events already carry Frigate-native bbox_ts (or track id);
+        # skip loop guard — same policy as _compose_from_matched.
         accept_max = self._hard_align_max_sec(event_type)
-        if self._demo_loop_guard_active() and not self._demo_loop_pair_ok(
-            anchor_for_loop, matched, float(align_delta), event_type,
+        meta_early = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        bridge_sourced = str(meta_early.get("bridge_source") or "").lower() == "frigate"
+        if (
+            self._demo_loop_guard_active()
+            and not bridge_sourced
+            and not self._demo_loop_pair_ok(
+                anchor_for_loop, matched, float(align_delta), event_type,
+            )
         ):
             logger.warning(
                 "frigate_track: demo_loop_guard reject cam=%s delta=%.2fs max=%.1fs",
@@ -1916,8 +2036,8 @@ class FrigateTrackEvidence:
             return False
 
         bound_id = str(evt.get("frigate_event_id") or "").strip()
-        # Bound id still must pass the hard align gate above; then trust geometry path.
-        # Speeding / red_light must not short-circuit on binder alone (stale snapshot box).
+        # Bound id still must pass the hard align gate above (non-bridge); then trust.
+        # Speeding / red_light must not short-circuit on YOLO binder alone (stale box).
         if bound_id and event_type not in ("red_light_violation", "speeding"):
             return True
         meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
@@ -1951,6 +2071,9 @@ class FrigateTrackEvidence:
             soft_pre = True
         # Demo go2rtc: time-only accept for most rules (inside hard window already).
         # Red-light + speeding keep IoU gate so the snapshot still shows the offender.
+        # Bridge-sourced speeding/red_light: track id is authoritative — accept.
+        if bridge_sourced and event_type in ("red_light_violation", "speeding") and bound_id:
+            return True
         if (
             settings.demo_relaxed_evidence()
             and settings.frigate_demo_timeline_align

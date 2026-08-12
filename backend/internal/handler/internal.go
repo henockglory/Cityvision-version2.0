@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -252,6 +253,61 @@ func (a *API) InternalCreateIncident(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, inc)
+}
+
+func (a *API) InternalEnrichAlertEvidence(w http.ResponseWriter, r *http.Request) {
+	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid org id")
+		return
+	}
+	var req struct {
+		AlertCorrelationID string                 `json:"alert_correlation_id"`
+		EvidenceSnapshot   map[string]interface{} `json:"evidence_snapshot"`
+		EvidenceStatus     string                 `json:"evidence_status"`
+		Package            map[string]interface{} `json:"package"`
+		BBox               interface{}            `json:"bbox"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if strings.TrimSpace(req.AlertCorrelationID) == "" {
+		writeError(w, http.StatusBadRequest, "alert_correlation_id required")
+		return
+	}
+	snap := req.EvidenceSnapshot
+	if snap == nil {
+		snap = map[string]interface{}{}
+	}
+	if req.Package != nil {
+		snap["package"] = req.Package
+	}
+	if req.BBox != nil {
+		snap["bbox"] = req.BBox
+	}
+	status := strings.TrimSpace(req.EvidenceStatus)
+	if status == "" {
+		status = "complete"
+	}
+	snap["evidence_status"] = status
+	raw, _ := json.Marshal(snap)
+	a2, err := a.Alerts.PatchEvidenceByCorrelation(r.Context(), orgID, req.AlertCorrelationID, raw, status)
+	if err != nil {
+		if errors.Is(err, alerts.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "alert not found for correlation id")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "evidence enrich failed")
+		return
+	}
+	if a.Hub != nil {
+		a.Hub.Broadcast(map[string]interface{}{
+			"type":  "alert_updated",
+			"alert": a2,
+		})
+	}
+	writeJSON(w, http.StatusOK, a2)
 }
 
 func (a *API) InternalArchiveAlert(w http.ResponseWriter, r *http.Request) {

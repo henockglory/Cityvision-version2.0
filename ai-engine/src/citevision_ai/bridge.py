@@ -175,6 +175,8 @@ class FrigateEventBridge:
         }
         self._stats_lock = threading.Lock()
         self._speed_peak: dict[str, float] = {}
+        # Last good in-zone vehicle bbox per event:zone (exit MQTT often drops box).
+        self._speed_bbox: dict[str, dict[str, Any]] = {}
         # Frigate detect resolution per camera (cv_-prefixed name) — MQTT boxes
         # are detect-resolution pixels, NOT 1920x1080.
         self._detect_wh_cache: dict[str, tuple[float, float]] = {}
@@ -2281,6 +2283,9 @@ class FrigateEventBridge:
         prev = self._speed_peak.get(peak_key, 0.0)
         if speed > prev:
             self._speed_peak[peak_key] = speed
+        box = self._vehicle_bbox_norm(after)
+        if box is not None:
+            self._speed_bbox[peak_key] = dict(box)
         mode = self._speed_emit_mode()
         peak = self._speed_peak.get(peak_key, speed)
         if peak < limit:
@@ -2313,21 +2318,26 @@ class FrigateEventBridge:
             return
         data = after.get("data") if isinstance(after.get("data"), dict) else {}
         zone_name = str(zinfo.get("zone_id") or zinfo.get("name") or "")
-        box = None
-        data_box = data.get("box") if isinstance(data, dict) else None
-        if isinstance(data_box, (list, tuple)) and len(data_box) >= 4:
-            box = {
-                "x": float(data_box[0]),
-                "y": float(data_box[1]),
-                "width": float(data_box[2]),
-                "height": float(data_box[3]),
-                "norm": True,
-            }
         emit_mode = self._speed_emit_mode()
         zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
-        peak = self._speed_peak.pop(f"{event_id}:{zone_key}", speed)
+        peak_key = f"{event_id}:{zone_key}"
+        # Prefer live MQTT box; fall back to last good in-zone bbox (exit often empty).
+        box = self._vehicle_bbox_norm(after) or self._speed_bbox.pop(peak_key, None)
+        peak = self._speed_peak.pop(peak_key, speed)
+        self._speed_bbox.pop(peak_key, None)
         start_time = after.get("start_time") or data.get("start_time")
         end_time = after.get("end_time") or data.get("end_time") or after.get("frame_time")
+        frame_time = after.get("frame_time") or data.get("frame_time")
+        # Frigate-native clock (not wall time) — evidence demo_loop_guard aligns on this.
+        fallback_ts = time.time()
+        for raw in (end_time, start_time, frame_time):
+            try:
+                if raw is not None:
+                    fallback_ts = float(raw)
+                    break
+            except (TypeError, ValueError):
+                continue
+        bbox_ts = self._bbox_ts_from_after(after, fallback_ts)
         entered = after.get("entered_zones") or data.get("entered_zones") or []
         current = after.get("current_zones") or data.get("current_zones") or []
         evt = {
@@ -2336,7 +2346,9 @@ class FrigateEventBridge:
             "event_type": "speeding",
             "event": "speeding",
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bbox_ts": bbox_ts,
             "zone_id": zone_name,
+            "track_id": event_id,
             "frigate_event_id": event_id,
             "speed_kmh": round(speed, 1),
             "speed_limit_kmh": limit,
@@ -2346,6 +2358,7 @@ class FrigateEventBridge:
                 "detection_method": "frigate_speed",
                 "bridge_source": "frigate",
                 "frigate_event_id": event_id,
+                "track_id": event_id,
                 "frigate_label": after.get("label"),
                 "bbox_source": "frigate",
                 "speed_est_kmh": round(speed, 1),
@@ -2353,6 +2366,7 @@ class FrigateEventBridge:
                 "speed_limit_kmh": limit,
                 "speed_emit_mode": emit_mode,
                 "zone_entry_exit": "exit" if emit_mode == "exit" else emit_mode,
+                "frigate_frame_time": frame_time,
                 "frigate_start_time": start_time,
                 "frigate_end_time": end_time,
                 "entered_zones": list(entered) if isinstance(entered, (list, tuple)) else [],
@@ -2401,6 +2415,7 @@ class FrigateEventBridge:
                 camera_id[:8], event_id[:12], peak,
             )
             self._speed_peak.pop(peak_key, None)
+            self._speed_bbox.pop(peak_key, None)
             return
         use_speed = float(speed)
         if mode in ("shadow_max", "shadow"):
@@ -2411,6 +2426,7 @@ class FrigateEventBridge:
                 camera_id[:8], use_speed, peak, limit, event_id[:12],
             )
             self._speed_peak.pop(peak_key, None)
+            self._speed_bbox.pop(peak_key, None)
             return
         if use_speed < limit:
             with self._stats_lock:
@@ -2420,6 +2436,7 @@ class FrigateEventBridge:
                 camera_id[:8], use_speed, limit, event_id[:12],
             )
             self._speed_peak.pop(peak_key, None)
+            self._speed_bbox.pop(peak_key, None)
             return
         if self._dedupe(f"speed:{event_id}:{zinfo.get('id')}"):
             return

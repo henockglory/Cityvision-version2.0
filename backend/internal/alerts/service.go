@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -73,7 +74,9 @@ func (s *Service) CreateAlert(ctx context.Context, req CreateAlertRequest) (*mod
 				}
 			}
 			if evidence.PolicyRequiresProof(policy) && !evidence.IsComplete(evidenceSnap, policy) {
-				return nil, ErrIncompleteEvidence
+				if !allowsPendingEvidence(metaMap, evidenceSnap) {
+					return nil, ErrIncompleteEvidence
+				}
 			}
 			var def map[string]interface{}
 			if json.Unmarshal(definition, &def) == nil {
@@ -454,6 +457,88 @@ func (s *Service) ListDeliveryLog(ctx context.Context, orgID uuid.UUID, limit in
 		}
 	}
 	return out, rows.Err()
+}
+
+func allowsPendingEvidence(metaMap map[string]interface{}, evidenceSnap json.RawMessage) bool {
+	if statusFromMap(metaMap) == "pending" {
+		return true
+	}
+	var snap map[string]interface{}
+	if json.Unmarshal(evidenceSnap, &snap) == nil {
+		if statusFromMap(snap) == "pending" {
+			return true
+		}
+		if pkg, ok := snap["package"].(map[string]interface{}); ok {
+			if meta, ok := pkg["metadata"].(map[string]interface{}); ok && statusFromMap(meta) == "pending" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func statusFromMap(m map[string]interface{}) string {
+	if m == nil {
+		return ""
+	}
+	if s, ok := m["evidence_status"].(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return ""
+}
+
+func (s *Service) PatchEvidenceByCorrelation(
+	ctx context.Context,
+	orgID uuid.UUID,
+	correlationID string,
+	evidenceSnap json.RawMessage,
+	status string,
+) (*EnrichedAlert, error) {
+	correlationID = strings.TrimSpace(correlationID)
+	if correlationID == "" {
+		return nil, ErrNotFound
+	}
+	if status == "" {
+		status = "complete"
+	}
+	var id uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		SELECT id FROM alerts
+		WHERE org_id = $1
+		  AND (
+		    metadata->>'alert_correlation_id' = $2
+		    OR metadata->'evidence_snapshot'->'package'->'metadata'->>'alert_correlation_id' = $2
+		    OR metadata->'package'->'metadata'->>'alert_correlation_id' = $2
+		  )
+		ORDER BY created_at DESC
+		LIMIT 1`, orgID, correlationID).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE alerts SET
+			evidence_snapshot = $1::jsonb,
+			metadata = jsonb_set(
+				jsonb_set(
+					COALESCE(metadata, '{}'::jsonb),
+					'{evidence_snapshot}',
+					$1::jsonb,
+					true
+				),
+				'{evidence_status}',
+				to_jsonb($2::text),
+				true
+			),
+			updated_at = NOW()
+		WHERE id = $3 AND org_id = $4`,
+		string(evidenceSnap), status, id, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetByID(ctx, orgID, id)
 }
 
 func (s *Service) AppendForwardLog(ctx context.Context, orgID, alertID uuid.UUID, entry map[string]interface{}) error {

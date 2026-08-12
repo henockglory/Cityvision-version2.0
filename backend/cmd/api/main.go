@@ -309,6 +309,7 @@ func main() {
 			r.Post("/incidents", api.InternalCreateIncident)
 			r.Post("/alerts/archive", api.InternalArchiveAlert)
 			r.Post("/alerts/archive-stale", api.InternalArchiveStaleAlerts)
+			r.Post("/alerts/enrich-evidence", api.InternalEnrichAlertEvidence)
 			r.Post("/rules/counter", api.InternalIncrementRuleCounter)
 			r.Post("/webhook", api.InternalWebhook)
 			r.Get("/notification-defaults", api.InternalNotificationDefaults)

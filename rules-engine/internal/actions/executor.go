@@ -2,6 +2,8 @@ package actions
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -169,26 +171,21 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 		severity = s
 	}
 	evPolicy := evidencePolicyForRule(rule)
-	const maxAttempts = 8
-	const retryDelay = 8 * time.Second
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		e.ensureEvidencePackage(orgID, rule, payload)
-		if hasEvidencePackage(payload, evPolicy) {
-			break
-		}
-		if attempt < maxAttempts-1 && policyRequiresProof(evPolicy) {
-			time.Sleep(retryDelay)
-		}
-	}
+	correlationID := newAlertCorrelationID()
+	payload["alert_correlation_id"] = correlationID
+
+	// Alert-first: never block MQTT matching on evidence capture. Seed pending
+	// proof metadata when a policy requires media that is not yet available.
+	needsAsync := false
 	if policyRequiresProof(evPolicy) && !hasEvidencePackage(payload, evPolicy) {
-		log.Printf("alert suppressed: incomplete evidence for rule %s", rule.RuleID)
-		payload["_alert_suppressed"] = true
-		payload["suppression_reason"] = "incomplete_evidence"
-		return false
+		seedPendingEvidence(payload, correlationID, rule)
+		needsAsync = true
 	}
+
 	meta := e.enrichedMeta(orgID, rule, payload, nil)
 	evidence := buildEvidenceSnapshot(payload)
 	meta["evidence_snapshot"] = evidence
+	meta["alert_correlation_id"] = correlationID
 	if e.Publisher != nil {
 		if !e.Publisher.PublishAlert(orgID, rule.RuleID, rule.Name, premiumAlertMessage(rule, payload), severity, meta) {
 			return false
@@ -197,7 +194,144 @@ func (e *Executor) runAlert(orgID string, rule evaluator.RuleDefinition, payload
 		log.Printf("alert skipped: no publisher for rule %s", rule.RuleID)
 		return false
 	}
+
+	if needsAsync {
+		// Copy payload so the async worker is not racing the caller.
+		payloadCopy := shallowCopyMap(payload)
+		go e.enrichEvidenceAsync(orgID, rule, payloadCopy, correlationID)
+	}
 	return true
+}
+
+func newAlertCorrelationID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("corr-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+func shallowCopyMap(in map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func seedPendingEvidence(payload map[string]interface{}, correlationID string, rule evaluator.RuleDefinition) {
+	meta, _ := payload["metadata"].(map[string]interface{})
+	if meta == nil {
+		meta = map[string]interface{}{}
+		payload["metadata"] = meta
+	}
+	pkgMeta := map[string]interface{}{
+		"evidence_status":       "pending",
+		"alert_correlation_id":  correlationID,
+		"detection_method":      meta["detection_method"],
+		"bridge_source":         meta["bridge_source"],
+		"frigate_event_id":      payload["frigate_event_id"],
+		"speed_kmh":             payload["speed_kmh"],
+		"speed_limit_kmh":       payload["speed_limit_kmh"],
+	}
+	if meta["frigate_event_id"] != nil {
+		pkgMeta["frigate_event_id"] = meta["frigate_event_id"]
+	}
+	pkg := map[string]interface{}{
+		"version":  1,
+		"metadata": pkgMeta,
+		"images":   []interface{}{},
+	}
+	payload["package"] = pkg
+	payload["evidence_snapshot"] = map[string]interface{}{
+		"package":         pkg,
+		"evidence_status": "pending",
+		"bbox":            payload["bbox"],
+		"event_type":      payload["event_type"],
+		"zone_id":         payload["zone_id"],
+		"camera_id":       payload["camera_id"],
+		"speed_kmh":       payload["speed_kmh"],
+		"class_name":      payload["class_name"],
+	}
+	meta["evidence_status"] = "pending"
+	meta["alert_correlation_id"] = correlationID
+	_ = rule
+}
+
+func (e *Executor) enrichEvidenceAsync(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, correlationID string) {
+	evPolicy := evidencePolicyForRule(rule)
+	// Speeding Frigate clips often seal late; keep retrying longer than cabin rules.
+	const maxAttempts = 12
+	const retryDelay = 8 * time.Second
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		e.ensureEvidencePackage(orgID, rule, payload)
+		if hasEvidencePackage(payload, evPolicy) {
+			status := evidenceEnrichStatus(payload)
+			e.postEvidenceEnrich(orgID, correlationID, payload, status)
+			log.Printf("alert evidence enriched correlation=%s rule=%s status=%s", correlationID, rule.RuleID, status)
+			return
+		}
+		if attempt < maxAttempts-1 {
+			time.Sleep(retryDelay)
+		}
+	}
+	// Mark failed so UI does not stay on pending forever.
+	e.postEvidenceEnrich(orgID, correlationID, payload, "failed")
+	log.Printf("alert evidence enrich failed correlation=%s rule=%s", correlationID, rule.RuleID)
+}
+
+func evidenceEnrichStatus(payload map[string]interface{}) string {
+	pkg := extractPackage(payload)
+	if pkg == nil {
+		return "partial"
+	}
+	if meta := packageMetadata(pkg); meta != nil {
+		if st, ok := meta["evidence_status"].(string); ok && st != "" {
+			return st
+		}
+	}
+	clip, _ := pkg["clip"].(map[string]interface{})
+	if clip != nil && (clip["url"] != nil || clip["asset_id"] != nil) {
+		return "complete"
+	}
+	return "partial"
+}
+
+func (e *Executor) postEvidenceEnrich(orgID, correlationID string, payload map[string]interface{}, status string) {
+	if e.BackendURL == "" || correlationID == "" {
+		return
+	}
+	snap := buildEvidenceSnapshot(payload)
+	if snap == nil {
+		snap = map[string]interface{}{}
+	}
+	if pkg, ok := snap["package"].(map[string]interface{}); ok && pkg != nil {
+		meta, _ := pkg["metadata"].(map[string]interface{})
+		if meta == nil {
+			meta = map[string]interface{}{}
+			pkg["metadata"] = meta
+		}
+		meta["evidence_status"] = status
+		meta["alert_correlation_id"] = correlationID
+	} else {
+		snap["package"] = map[string]interface{}{
+			"version": 1,
+			"metadata": map[string]interface{}{
+				"evidence_status":      status,
+				"alert_correlation_id": correlationID,
+			},
+		}
+	}
+	snap["evidence_status"] = status
+	body, _ := json.Marshal(map[string]interface{}{
+		"alert_correlation_id": correlationID,
+		"evidence_snapshot":    snap,
+		"evidence_status":      status,
+		"bbox":                 payload["bbox"],
+		"package":              payload["package"],
+	})
+	url := e.internalOrgURL(orgID, "/alerts/enrich-evidence")
+	_ = e.postInternal(url, body)
 }
 
 func (e *Executor) ensureEvidencePackage(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}) {
@@ -250,6 +384,22 @@ func hasEvidencePackage(payload map[string]interface{}, policy map[string]interf
 			return true
 		}
 	}
+	images, _ := pkg["images"].([]interface{})
+	roles := map[string]bool{}
+	for _, im := range images {
+		m, _ := im.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		role, _ := m["role"].(string)
+		if (m["url"] != nil || m["asset_id"] != nil) && role != "" {
+			roles[role] = true
+		}
+	}
+	// Soft proof: a Frigate scene (even without clip/subject) beats an empty alert.
+	if roles["scene"] {
+		return true
+	}
 	clipRequired := true
 	if policy != nil {
 		if v, ok := policy["clip_seconds"].(float64); ok && v <= 0 {
@@ -265,18 +415,6 @@ func hasEvidencePackage(payload map[string]interface{}, policy map[string]interf
 	if meta := packageMetadata(pkg); meta != nil {
 		if ok, exists := meta["bbox_quality_ok"].(bool); exists && !ok {
 			return false
-		}
-	}
-	images, _ := pkg["images"].([]interface{})
-	roles := map[string]bool{}
-	for _, im := range images {
-		m, _ := im.(map[string]interface{})
-		if m == nil {
-			continue
-		}
-		role, _ := m["role"].(string)
-		if (m["url"] != nil || m["asset_id"] != nil) && role != "" {
-			roles[role] = true
 		}
 	}
 	requiredRoles := []string{}

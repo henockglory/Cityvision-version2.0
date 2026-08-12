@@ -928,10 +928,15 @@ class EvidenceCaptureService:
                 if reused is not None:
                     return reused
                 logger.info(
-                    "speed evidence dedupe skip (retro) camera=%s track=%s event=%s",
+                    "speed evidence dedupe busy (retro) camera=%s track=%s event=%s",
                     camera_id[:8], evt.get("track_id"), str(evt.get("event_id") or "")[:8],
                 )
-                return None
+                # Do NOT return None (→ HTTP 404 / enrich failed). Keep pending so
+                # rules-engine retries once the in-flight capture finishes.
+                return {
+                    "evidence_status": "pending",
+                    "abort_reason": "speed_evidence_busy",
+                }
             speed_slot = True
         # Use the dedicated retroactive semaphore (_RETRO_SEM, limit=4) so these HTTP
         # requests don't compete with the background attachment threads (_ENCODE_SEM,
@@ -952,7 +957,10 @@ class EvidenceCaptureService:
             )
             if speed_slot:
                 self._finish_speed_evidence(camera_id, evt, success=False)
-            return None
+            return {
+                "evidence_status": "pending",
+                "abort_reason": "retro_semaphore_busy",
+            }
         try:
             uploaded = self._capture_retroactive_inner(camera_id, org_id, evt, policy)
             if speed_slot:
