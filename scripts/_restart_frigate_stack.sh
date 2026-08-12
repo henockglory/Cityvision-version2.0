@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+# shellcheck disable=SC1091
+if ! declare -F compose_gpu_files >/dev/null 2>&1; then
+  _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  [[ -f "$_cg_root/scripts/lib/compose-gpu.sh" ]] || _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  source "$_cg_root/scripts/lib/compose-gpu.sh"
+fi
 ROOT=~/citevision-v2
 cd "$ROOT"
 # shellcheck source=scripts/lib/env-utils.sh
@@ -7,9 +14,9 @@ source scripts/lib/env-utils.sh
 load_dotenv .env
 
 echo "=== 1. Frigate Docker ==="
-if ! docker image inspect ghcr.io/blakeblackshear/frigate:stable >/dev/null 2>&1; then
+if ! docker image inspect ghcr.io/blakeblackshear/frigate:stable-tensorrt >/dev/null 2>&1; then
   echo "[INFO] Pulling Frigate image (~1 Go)…"
-  docker pull ghcr.io/blakeblackshear/frigate:stable
+  docker pull ghcr.io/blakeblackshear/frigate:stable-tensorrt
 fi
 docker compose -f infra/docker-compose.yml --env-file .env --profile frigate up -d frigate
 for i in $(seq 1 60); do

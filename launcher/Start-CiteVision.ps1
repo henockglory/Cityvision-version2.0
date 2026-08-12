@@ -85,6 +85,10 @@ copy_one scripts/lib/business-readiness.sh
 copy_one scripts/lib/env-utils.sh
 copy_one scripts/lib/service-heal.sh
 copy_one scripts/ensure-demo-pipeline.sh
+copy_one scripts/lib/compose-gpu.sh
+copy_one infra/docker-compose.nvidia.yml
+copy_one infra/frigate.base.yaml
+copy_one scripts/apply-wsl-balanced-resources.ps1
 echo "[OK] start scripts refresh done"
 exit 0
 '@

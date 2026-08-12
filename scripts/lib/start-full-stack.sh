@@ -15,6 +15,8 @@ source "$ROOT/scripts/lib/service-heal.sh"
 source "$ROOT/scripts/lib/business-readiness.sh"
 # shellcheck source=scripts/lib/cuda-utils.sh
 source "$ROOT/scripts/lib/cuda-utils.sh"
+# shellcheck source=scripts/lib/compose-gpu.sh
+source "$ROOT/scripts/lib/compose-gpu.sh"
 
 if [[ "$ROOT" == /mnt/c/* ]] || [[ "$ROOT" == /mnt/d/* ]]; then
   echo "[FAIL] Refuse ROOT under /mnt/* (got $ROOT). Use native WSL tree e.g. \$HOME/citevision-v2" >&2
@@ -53,6 +55,15 @@ fi
 
 # --- infra + Frigate + OCR ---
 echo "=== [2/10] docker compose (frigate + ocr profiles) ==="
+# Prefer GPU Frigate override when present (nvidia-container-toolkit + ONNX detector).
+COMPOSE_GPU_STR="$(compose_gpu_files)"
+# shellcheck disable=SC2206
+COMPOSE_GPU=($COMPOSE_GPU_STR)
+if [[ ${#COMPOSE_GPU[@]} -gt 0 ]]; then
+  echo "[OK] using docker-compose.nvidia.yml for Frigate GPU"
+  ensure_nvidia_container_runtime || true
+fi
+
 bash "$ROOT/scripts/ensure-video-storage.sh" 2>/dev/null || true
 
 # Stale docker-proxy / half-recreated go2rtc often holds 8555 and blocks compose.
@@ -69,11 +80,11 @@ heal_go2rtc() {
 
 cd "$ROOT/infra"
 # Core infra first (without go2rtc) so a bind failure on 8555 does not abort siblings.
-docker compose --env-file "$ENV_FILE" --profile frigate --profile ocr up -d \
+docker compose "${COMPOSE_GPU[@]}" --env-file "$ENV_FILE" --profile frigate --profile ocr up -d \
   postgres redis mosquitto minio mailhog citevision-ocr frigate 2>&1 | tail -25 || true
 # Named services may still need profile; retry profiles if frigate missing
 if ! docker ps --format '{{.Names}}' | grep -q citevision-v2-frigate; then
-  docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate 2>&1 | tail -10 || true
+  docker compose "${COMPOSE_GPU[@]}" --env-file "$ENV_FILE" --profile frigate up -d frigate 2>&1 | tail -10 || true
 fi
 if ! docker ps --format '{{.Names}}' | grep -q citevision-v2-ocr; then
   docker compose --env-file "$ENV_FILE" --profile ocr up -d citevision-ocr 2>&1 | tail -10 || true
@@ -213,7 +224,7 @@ curl -sf -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/internal/ingest/frigat
 
 if ! wait_http_ok "http://127.0.0.1:5000/api/version" 90; then
   echo "[WARN] Frigate down - recreate"
-  (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate)
+  (cd "$ROOT/infra" && docker compose "${COMPOSE_GPU[@]}" --env-file "$ENV_FILE" --profile frigate up -d frigate)
   wait_http_ok "http://127.0.0.1:5000/api/version" 120 || { echo "[FAIL] Frigate"; exit 1; }
 fi
 export SKIP_FRIGATE_EVENTS_WAIT=1

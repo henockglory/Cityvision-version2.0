@@ -11,6 +11,13 @@
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# shellcheck disable=SC1091
+if ! declare -F compose_gpu_files >/dev/null 2>&1; then
+  _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  [[ -f "$_cg_root/scripts/lib/compose-gpu.sh" ]] || _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  source "$_cg_root/scripts/lib/compose-gpu.sh"
+fi
+
 # ── Argument parsing ──────────────────────────────────────────
 SILENT=false
 LOG_FILE=""
@@ -150,11 +157,33 @@ ensure_demo_validation_env "$ROOT" "$ROOT/.env" >/dev/null
 _ok ".env ready (DEMO_MODE=1, Frigate, VIDEOS_PATH, validation env)"
 
 # ── Docker images (frigate + ocr profiles) ────────────────────
+
+# ── NVIDIA Container Toolkit (Frigate GPU / TensorRT) ─────────
+_step "NVIDIA container toolkit (Frigate GPU)"
+if command -v nvidia-smi >/dev/null 2>&1; then
+  if ! docker info 2>/dev/null | grep -qi 'Runtimes:.*nvidia'; then
+    if ! command -v nvidia-ctk >/dev/null 2>&1; then
+      _log "[INFO] Installing nvidia-container-toolkit (best-effort)..."
+      curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg 2>/dev/null || true
+      curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list         | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g'         | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null || true
+      sudo apt-get update -qq && sudo apt-get install -y -qq nvidia-container-toolkit || true
+    fi
+    sudo nvidia-ctk runtime configure --runtime=docker >/dev/null 2>&1 || true
+    _log "[WARN] Restart dockerd if needed so Runtime nvidia appears in docker info"
+  else
+    _ok "Docker nvidia runtime present"
+  fi
+  # Prefer TensorRT Frigate image when GPU present (non-fatal if network flakes)
+  docker pull ghcr.io/blakeblackshear/frigate:stable-tensorrt 2>&1 | tail -5 ||     _log "[WARN] Could not pull frigate:stable-tensorrt — ONNX may run on CPU until pull succeeds"
+else
+  _log "[INFO] No nvidia-smi — Frigate stays on CPU/ONNX fallback"
+fi
+
 _step "Docker images (frigate + ocr)"
 if command -v docker &>/dev/null && docker info &>/dev/null; then
   (
     cd "$ROOT/infra"
-    docker compose --env-file "$ROOT/.env" --profile frigate --profile ocr pull \
+    docker compose $(compose_gpu_files) --env-file "$ROOT/.env" --profile frigate --profile ocr pull \
       postgres redis mosquitto minio go2rtc mailhog citevision-ocr frigate 2>&1 | tail -20 || true
   )
   _ok "Compose profiles frigate/ocr préparés (pull best-effort)"

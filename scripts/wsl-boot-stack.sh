@@ -1,3 +1,10 @@
+
+# shellcheck disable=SC1091
+if ! declare -F compose_gpu_files >/dev/null 2>&1; then
+  _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  [[ -f "$_cg_root/scripts/lib/compose-gpu.sh" ]] || _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  source "$_cg_root/scripts/lib/compose-gpu.sh"
+fi
 #!/usr/bin/env bash
 # Sprint 3 — start native dockerd + critical compose services after WSL boot.
 # Called from /etc/wsl.conf [boot] command=... (runs as root) OR manually.
@@ -42,7 +49,7 @@ cd "$COMPOSE_DIR"
 # Critical infra (no AI/frontend — those are host processes)
 docker compose up -d postgres redis mosquitto minio mailhog go2rtc 2>&1 || true
 # Frigate is profiled — bring up if previously used
-docker compose --profile frigate up -d frigate 2>&1 || true
+docker compose $(compose_gpu_files) --profile frigate up -d frigate 2>&1 || true
 
 echo "containers:"
 docker ps --format '{{.Names}} {{.Status}}' | head -20

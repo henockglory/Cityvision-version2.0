@@ -28,6 +28,23 @@ detect:
   enabled: true
   fps: 10
 
+# GPU ONNX detector (RTX) — avoids CPU detector saturating the host.
+# Requires: docker compose -f docker-compose.yml -f docker-compose.nvidia.yml
+# and model at infra/frigate-config/model_cache/yolov9-t-320.onnx
+detectors:
+  onnx:
+    type: onnx
+
+model:
+  model_type: yolo-generic
+  path: /config/model_cache/yolov9-t-320.onnx
+  width: 320
+  height: 320
+  input_tensor: nchw
+  input_dtype: float
+  labelmap_path: /labelmap/coco-80.txt
+
+
 # Vehicle tracking for evidence correlation + Frigate-primary bridges.
 # Speed estimation uses zone distances (synced from CiteVision when 4-point + edge_distances_m).
 # ui.unit_system must be metric for km/h estimates.

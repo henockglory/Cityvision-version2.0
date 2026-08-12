@@ -92,7 +92,9 @@ fi
 echo
 
 # shellcheck source=scripts/lib/service-heal.sh
-source "$ROOT/scripts/lib/service-heal.sh" 2>/dev/null || true
+source "$ROOT/scripts/lib/service-heal.sh"
+# shellcheck source=scripts/lib/compose-gpu.sh
+source "$ROOT/scripts/lib/compose-gpu.sh" 2>/dev/null || true
 
 echo "--- postgres ---"
 if docker exec "$PG_CONTAINER" pg_isready -U "$PG_USER" >/dev/null 2>&1; then
@@ -128,7 +130,7 @@ else
   ENV_FILE="${ENV_FILE:-$ROOT/.env}"
   [[ -f "$ENV_FILE" ]] || ENV_FILE="$(ensure_env_file "$ROOT" 2>/dev/null || echo "$ROOT/.env")"
   if [[ -f "$ROOT/infra/docker-compose.yml" ]]; then
-    (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate) >/dev/null 2>&1 || true
+    (cd "$ROOT/infra" && docker compose $(compose_gpu_files) --env-file "$ENV_FILE" --profile frigate up -d frigate) >/dev/null 2>&1 || true
     sleep 8
   fi
   FRIGATE_ST="$(docker inspect -f '{{.State.Status}}' citevision-v2-frigate 2>/dev/null || echo missing)"
@@ -200,7 +202,7 @@ print(len(d.get("cameras") or {}))' 2>/dev/null || echo err)"
 else
   warn "Frigate API unreachable — retry compose up + wait"
   ENV_FILE="${ENV_FILE:-$ROOT/.env}"
-  (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" --profile frigate up -d frigate) >/dev/null 2>&1 || true
+  (cd "$ROOT/infra" && docker compose $(compose_gpu_files) --env-file "$ENV_FILE" --profile frigate up -d frigate) >/dev/null 2>&1 || true
   sleep 15
   if curl -sf --max-time 8 "$FRIGATE_URL/api/version" >/dev/null 2>&1; then
     ok "Frigate API up after heal"

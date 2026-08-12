@@ -1,3 +1,10 @@
+
+# shellcheck disable=SC1091
+if ! declare -F compose_gpu_files >/dev/null 2>&1; then
+  _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  [[ -f "$_cg_root/scripts/lib/compose-gpu.sh" ]] || _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  source "$_cg_root/scripts/lib/compose-gpu.sh"
+fi
 #!/bin/bash
 set -e
 cd ~/citevision-v2
@@ -26,7 +33,7 @@ docker compose -f infra/docker-compose.yml --env-file "$ENV_FILE" \
   --profile frigate --profile ocr up -d
 # Explicit frigate bring-up if profile missed the container
 if ! docker ps --format '{{.Names}}' | grep -q citevision-v2-frigate; then
-  docker compose -f infra/docker-compose.yml --env-file "$ENV_FILE" --profile frigate up -d frigate || true
+  docker compose $(compose_gpu_files infra/) --env-file "$ENV_FILE" --profile frigate up -d frigate || true
 fi
 sleep 5
 docker ps --format 'table {{.Names}}\t{{.Status}}'

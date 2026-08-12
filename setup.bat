@@ -11,8 +11,8 @@ echo.
 echo  ============================================================
 echo    CiteVision v2  -  Installateur
 echo    Plateforme de telesurveillance intelligente
-echo    Windows : WSL2 requis (IA + Frigate + OCR + DEMO_MODE)
-echo    Runtime : WSL ~/citevision-v2 — Ouvrir = Health 100%%
+echo    Windows : WSL2 requis (IA + Frigate GPU/TensorRT + OCR)
+echo    Runtime : WSL ~/citevision-v2 (12GB/8c, Frigate GPU)
 echo  ============================================================
 echo.
 

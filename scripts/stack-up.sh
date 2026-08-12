@@ -3,6 +3,13 @@
 # Usage: bash scripts/stack-up.sh
 set -euo pipefail
 
+# shellcheck disable=SC1091
+if ! declare -F compose_gpu_files >/dev/null 2>&1; then
+  _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  [[ -f "$_cg_root/scripts/lib/compose-gpu.sh" ]] || _cg_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  source "$_cg_root/scripts/lib/compose-gpu.sh"
+fi
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -14,7 +21,7 @@ cd "$ROOT/infra"
 # Always pass root .env so VIDEOS_PATH mounts the real demo MP4s (not infra/data/videos).
 COMPOSE_ENV=(--env-file "$ROOT/.env")
 docker compose "${COMPOSE_ENV[@]}" up -d postgres redis mosquitto minio mailhog go2rtc
-docker compose "${COMPOSE_ENV[@]}" --profile frigate up -d frigate || true
+docker compose "${COMPOSE_ENV[@]}" $(compose_gpu_files) --profile frigate up -d frigate || true
 # OCR required for road evidence plate slot (Sprint 4 / A.3)
 docker compose "${COMPOSE_ENV[@]}" --profile ocr up -d citevision-ocr || true
 

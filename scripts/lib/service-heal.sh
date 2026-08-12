@@ -1,3 +1,8 @@
+# Frigate GPU compose helper (safe if already sourced)
+if ! declare -F compose_gpu_files >/dev/null 2>&1; then
+  # shellcheck disable=SC1091
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compose-gpu.sh"
+fi
 #!/usr/bin/env bash
 # Lightweight service heal — backend / AI / rules-engine + published Docker ports.
 # Permanent ops path (sourced by health_check_all / start-full-stack / watch-infra-ports).
@@ -70,6 +75,7 @@ heal_published_container() {
         citevision-v2-ocr|citevision-ocr) svc=citevision-ocr ;;
         citevision-v2-mailhog) svc=mailhog ;;
         citevision-v2-go2rtc) svc=go2rtc ;;
+        citevision-v2-frigate) svc=frigate ;;
         *) svc="" ;;
       esac
     fi
@@ -78,7 +84,7 @@ heal_published_container() {
       if declare -F free_port >/dev/null 2>&1; then
         free_port "${ports[@]}" 2>/dev/null || true
       fi
-      (cd "$ROOT/infra" && docker compose --env-file "$env_file" --profile ocr --profile frigate up -d "$svc") >/dev/null 2>&1 || \
+      (cd "$ROOT/infra" && docker compose $(compose_gpu_files) --env-file "$env_file" --profile ocr --profile frigate up -d "$svc") >/dev/null 2>&1 || \
         (cd "$ROOT/infra" && docker compose --env-file "$env_file" up -d "$svc") >/dev/null 2>&1 || true
       for i in $(seq 1 20); do
         ok=1

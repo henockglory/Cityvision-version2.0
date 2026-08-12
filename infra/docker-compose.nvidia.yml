@@ -1,0 +1,11 @@
+# Override Frigate → GPU ONNX via TensorRT image (NVIDIA WSL2 + nvidia-container-toolkit)
+# Used automatically by start-full-stack / heal / health when this file is present.
+# Pull once: docker pull ghcr.io/blakeblackshear/frigate:stable-tensorrt
+services:
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    gpus: all
+    shm_size: "512mb"
