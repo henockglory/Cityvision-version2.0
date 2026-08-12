@@ -7,6 +7,8 @@ import os
 import threading
 import time
 import uuid
+import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -309,9 +311,7 @@ class FrigateEventBridge:
         zone_by_uuid = self._index_zones(zones)
         memory_sec = self._red_light_memory_sec()
         cam_f = f"cv_{camera_id}"
-        url = f"{self._frigate_url}/api/events?camera={cam_f}&limit=20"
-        with urllib.request.urlopen(url, timeout=8.0) as resp:
-            events = json.loads(resp.read().decode("utf-8"))
+        events = self._fetch_frigate_events_list(cam_f, limit=20)
         if not isinstance(events, list):
             return
         now = time.time()
@@ -798,6 +798,43 @@ class FrigateEventBridge:
             except (TypeError, ValueError):
                 continue
         return pts
+
+    def _fetch_frigate_events_list(self, frigate_camera: str, limit: int = 20) -> list[dict[str, Any]]:
+        """List Frigate events for one camera.
+
+        Prefer ``cameras=`` (Frigate NVR list filter). Fall back to legacy
+        ``camera=`` if needed. Transient HTTP 500s are retried briefly.
+        """
+        cam = str(frigate_camera or "").strip()
+        if not cam:
+            return []
+        lim = max(1, int(limit))
+        variants = (
+            urllib.parse.urlencode({"cameras": cam, "limit": lim}),
+            urllib.parse.urlencode({"camera": cam, "limit": lim}),
+        )
+        last_err: Exception | None = None
+        for attempt in range(3):
+            for qs in variants:
+                url = f"{self._frigate_url}/api/events?{qs}"
+                try:
+                    with urllib.request.urlopen(url, timeout=8.0) as resp:
+                        events = json.loads(resp.read().decode("utf-8"))
+                    if isinstance(events, list):
+                        return [ev for ev in events if isinstance(ev, dict)]
+                    return []
+                except urllib.error.HTTPError as exc:
+                    last_err = exc
+                    if int(getattr(exc, "code", 0) or 0) != 500:
+                        break
+                except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError, ValueError) as exc:
+                    last_err = exc
+                    break
+            if attempt < 2:
+                time.sleep(0.35 * (attempt + 1))
+        if last_err is not None:
+            raise last_err
+        return []
 
     def _dedupe(self, key: str, ttl: float = 120.0) -> bool:
         """Return True if this key was already seen (should skip)."""

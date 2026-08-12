@@ -119,14 +119,28 @@ class YoloOnnxDetector:
                     label = "cpu"
                 else:
                     raise
-            self._input_name = self._session.get_inputs()[0].name
+            inp0 = self._session.get_inputs()[0]
+            self._input_name = inp0.name
+            # Fixed batch=1 exports cannot run detect_batch(N>1); clamp microbatch.
+            try:
+                dim0 = inp0.shape[0] if getattr(inp0, "shape", None) else None
+                if dim0 == 1 and self._max_batch_size > 1:
+                    logger.warning(
+                        "YOLO ONNX input batch dim is fixed at 1 — clamping microbatch to 1 "
+                        "(was max_batch_size=%d)",
+                        self._max_batch_size,
+                    )
+                    self._max_batch_size = 1
+            except Exception:
+                pass
             active = self._session.get_providers()
             self.active_provider = active[0] if active else label
             logger.info(
-                "Loaded YOLO ONNX from %s (device=%s, provider=%s)",
+                "Loaded YOLO ONNX from %s (device=%s, provider=%s, max_batch=%d)",
                 self.model_path,
                 label,
                 self.active_provider,
+                self._max_batch_size,
             )
         except Exception:
             logger.exception("Failed to load ONNX model")
@@ -207,9 +221,23 @@ class YoloOnnxDetector:
             frames = [r.frame for r in batch]
             try:
                 results = self.detect_batch(frames)
-            except Exception:
+            except Exception as exc:
                 logger.exception("YOLO microbatch inference failed (batch_size=%d)", len(frames))
-                results = [[] for _ in frames]
+                # Fixed-batch ONNX models reject N>1 ("Got: 2 Expected: 1"). Fall back
+                # per-frame and permanently clamp so we stop thrashing the GPU.
+                msg = str(exc).lower()
+                if len(frames) > 1 and (
+                    "invalid_argument" in msg
+                    or "invalid dimensions" in msg
+                    or "expected: 1" in msg
+                ):
+                    self._max_batch_size = 1
+                    logger.warning("YOLO microbatch disabled (max_batch_size=1) after ONNX batch error")
+                try:
+                    results = [self._detect_single(f) for f in frames]
+                except Exception:
+                    logger.exception("YOLO per-frame fallback failed")
+                    results = [[] for _ in frames]
             for r, res in zip(batch, results):
                 r.result = res
                 r.event.set()
