@@ -316,10 +316,20 @@
           {
             "role": "face",
             "crop": "bbox"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          },
+          {
+            "role": "reference",
+            "crop": "full"
           }
         ],
         "fail_closed": [
-          "face"
+          "face",
+          "reference"
         ]
       },
       "dod_alias": "face-watchlist",
@@ -629,6 +639,11 @@
           {
             "role": "face",
             "crop": "bbox"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
           }
         ],
         "fail_closed": [
@@ -669,6 +684,11 @@
           {
             "role": "face",
             "crop": "bbox"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
           }
         ],
         "fail_closed": [
@@ -715,10 +735,20 @@
           {
             "role": "face",
             "crop": "bbox"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          },
+          {
+            "role": "reference",
+            "crop": "full"
           }
         ],
         "fail_closed": [
-          "face"
+          "face",
+          "reference"
         ]
       },
       "dod_alias": "face-watchlist",
@@ -1033,7 +1063,7 @@
       ],
       "evidence_policy": {
         "enabled": true,
-        "clip_seconds": 6,
+        "clip_seconds": 0,
         "images": [
           {
             "role": "scene",
@@ -1046,6 +1076,7 @@
           }
         ],
         "fail_closed": [
+          "scene",
           "subject"
         ]
       },
@@ -1339,7 +1370,7 @@
       ],
       "evidence_policy": {
         "enabled": true,
-        "clip_seconds": 6,
+        "clip_seconds": 0,
         "images": [
           {
             "role": "scene",
@@ -1352,6 +1383,7 @@
           }
         ],
         "fail_closed": [
+          "scene",
           "subject"
         ]
       },

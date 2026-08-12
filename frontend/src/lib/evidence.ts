@@ -212,42 +212,66 @@ export function evidenceMediaSlots(
 ): {
   total: number;
   have: number;
-  urls: { clip?: string; scene?: string; subject?: string; plate?: string };
+  urls: { clip?: string; scene?: string; subject?: string; plate?: string; reference?: string; face?: string };
 } {
   const p = normalizeEvidencePolicy(policy);
   const ev = parseEvidenceSnapshot(snapshot as EvidenceSnapshot | undefined);
   const pkg = ev.package;
   const scene = pkg?.images?.find((i) => i.role === 'scene');
   const subject = pkg?.images?.find((i) => i.role === 'subject');
+  const face = pkg?.images?.find((i) => i.role === 'face');
   const plate = pkg?.images?.find((i) => i.role === 'plate');
+  const reference = pkg?.images?.find((i) => i.role === 'reference');
+  const subjectOrFace = subject ?? face;
   const pkgHasClip = Boolean(pkg?.clip?.url || pkg?.clip?.asset_id);
   const pkgHasScene = Boolean(scene?.url || scene?.asset_id);
-  const pkgHasSubject = Boolean(subject?.url || subject?.asset_id);
+  const pkgHasSubject = Boolean(subjectOrFace?.url || subjectOrFace?.asset_id);
   const pkgHasPlate = Boolean(plate?.url || plate?.asset_id);
-  const clipUrl = p.clip_seconds > 0 && pkgHasClip
+  const pkgHasReference = Boolean(reference?.url || reference?.asset_id);
+  const pkgHasFace = Boolean(face?.url || face?.asset_id);
+  // Prefer package contents when present (face identity may not match road policy roles).
+  const wantScene = p.images.some((i) => i.role === 'scene') || pkgHasScene;
+  const wantSubject = p.images.some((i) => i.role === 'subject' || i.role === 'face') || pkgHasSubject;
+  const wantPlate = p.images.some((i) => i.role === 'plate') || pkgHasPlate;
+  const wantReference = p.images.some((i) => i.role === 'reference') || pkgHasReference;
+  const clipUrl = (p.clip_seconds > 0 || pkgHasClip) && pkgHasClip
     ? resolveEvidenceMediaUrl(pkg?.clip?.url, pkg?.clip?.asset_id, orgId)
     : undefined;
-  const sceneUrl = p.images.some((i) => i.role === 'scene') && pkgHasScene
+  const sceneUrl = wantScene && pkgHasScene
     ? resolveEvidenceMediaUrl(scene?.url, scene?.asset_id, orgId)
     : undefined;
-  const subjectUrl = p.images.some((i) => i.role === 'subject') && pkgHasSubject
-    ? resolveEvidenceMediaUrl(subject?.url, subject?.asset_id, orgId)
+  const subjectUrl = wantSubject && pkgHasSubject
+    ? resolveEvidenceMediaUrl(subjectOrFace?.url, subjectOrFace?.asset_id, orgId)
     : undefined;
-  const plateUrl = p.images.some((i) => i.role === 'plate') && pkgHasPlate
+  const faceUrl = pkgHasFace
+    ? resolveEvidenceMediaUrl(face?.url, face?.asset_id, orgId)
+    : undefined;
+  const plateUrl = wantPlate && pkgHasPlate
     ? resolveEvidenceMediaUrl(plate?.url, plate?.asset_id, orgId)
     : undefined;
-  const have = [clipUrl, sceneUrl, subjectUrl, plateUrl].filter(Boolean).length;
+  const referenceUrl = wantReference && pkgHasReference
+    ? resolveEvidenceMediaUrl(reference?.url, reference?.asset_id, orgId)
+    : undefined;
+  const have = [clipUrl, sceneUrl, subjectUrl, plateUrl, referenceUrl].filter(Boolean).length;
   let total = 0;
-  if (pkg && (pkgHasClip || pkgHasScene || pkgHasSubject || pkgHasPlate)) {
-    if (p.clip_seconds > 0 && pkgHasClip) total += 1;
-    if (p.images.some((i) => i.role === 'scene') && pkgHasScene) total += 1;
-    if (p.images.some((i) => i.role === 'subject') && pkgHasSubject) total += 1;
-    if (p.images.some((i) => i.role === 'plate') && pkgHasPlate) total += 1;
+  if (pkg && (pkgHasClip || pkgHasScene || pkgHasSubject || pkgHasPlate || pkgHasReference)) {
+    if (pkgHasClip) total += 1;
+    if (pkgHasScene) total += 1;
+    if (pkgHasSubject) total += 1;
+    if (pkgHasPlate) total += 1;
+    if (pkgHasReference) total += 1;
   }
   return {
     total,
     have,
-    urls: { clip: clipUrl, scene: sceneUrl, subject: subjectUrl, plate: plateUrl },
+    urls: {
+      clip: clipUrl,
+      scene: sceneUrl,
+      subject: subjectUrl,
+      plate: plateUrl,
+      reference: referenceUrl,
+      face: faceUrl,
+    },
   };
 }
 

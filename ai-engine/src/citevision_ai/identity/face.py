@@ -224,6 +224,66 @@ class FaceIdentityEngine:
             "face_clear": face_seen,
         }
 
+    def reference_photo_for(
+        self,
+        *,
+        identifier: str | None = None,
+        label: str | None = None,
+    ) -> bytes | None:
+        """Load a single enrollment JPEG for the matched watchlist entry."""
+        ident = str(identifier or "").strip()
+        lab = str(label or "").strip()
+        if not ident and not lab:
+            return None
+        root = watchlist_photo_dir()
+
+        def _paths_for(entry: dict[str, Any]) -> list[str]:
+            meta = entry.get("metadata") or {}
+            paths: list[str] = []
+            for key in ("ai_photo_path", "photo_path"):
+                p = str(meta.get(key) or "").strip()
+                if p:
+                    paths.append(p)
+            for candidate in (
+                str(entry.get("identifier") or "").strip(),
+                str(entry.get("label") or "").strip(),
+                ident,
+                lab,
+            ):
+                if not candidate:
+                    continue
+                safe = re.sub(r"[^A-Za-z0-9_.\-]+", "_", candidate)[:80]
+                paths.append(str(root / f"{safe}.jpg"))
+            return paths
+
+        def _read_first(paths: list[str]) -> bytes | None:
+            for p in paths:
+                try:
+                    data = Path(p).read_bytes()
+                except OSError:
+                    continue
+                if data:
+                    return data
+            return None
+
+        for entry in self._watchlist:
+            e_lab = str(entry.get("label") or "").strip()
+            e_id = str(entry.get("identifier") or "").strip()
+            matched = False
+            if ident and ident in (e_id, e_lab):
+                matched = True
+            if lab and lab in (e_lab, e_id):
+                matched = True
+            if not matched:
+                continue
+            data = _read_first(_paths_for(entry))
+            if data:
+                return data
+        for ref_lab, data in self.reference_photos(max_n=12):
+            if (lab and ref_lab == lab) or (ident and ref_lab == ident):
+                return data
+        return None
+
     def reference_photos(self, max_n: int = 6) -> list[tuple[str, bytes]]:
         """Load up to max_n local watchlist reference JPEGs for Gemini compare."""
         out: list[tuple[str, bytes]] = []

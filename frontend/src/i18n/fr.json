@@ -406,12 +406,16 @@
       "evidenceRole": {
         "scene": "Scène",
         "subject": "Cible",
-        "plate": "Plaque"
+        "plate": "Plaque",
+        "face": "Visage",
+        "reference": "Référence"
       },
       "evidenceRoleHint": {
         "scene": "Vue d'ensemble du passage — contexte complet.",
-        "subject": "Même vue avec le cadre de détection sur le véhicule ou l'objet.",
-        "plate": "Zoom arrière véhicule — OCR PaddleOCR pour la preuve ; zoom live Frigate uniquement."
+        "subject": "Même vue avec le cadre de détection sur la personne, le véhicule ou l'objet.",
+        "plate": "Zoom arrière véhicule — OCR PaddleOCR pour la preuve ; zoom live Frigate uniquement.",
+        "face": "Crop visage InsightFace utilisé pour la fusion d'identité.",
+        "reference": "Photo d'enrôlement watchlist (référence biométrique)."
       },
       "subjectPadding": "Marge autour de la cible",
       "subjectPaddingHint": "Espace laissé autour de la personne ou de l'objet sur la photo zoomée.",
@@ -1203,9 +1207,9 @@
   },
   "stackHealth": {
     "blockTitle": "Stack IA incomplète",
-    "blockBody": "Des modèles critiques ne sont pas chargés. L'administration est bloquée tant que la stack n'est pas saine, sauf mode dégradé explicite.",
+    "blockBody": "Des modèles critiques (YOLO / téléphone / ceinture / plaque) ne sont pas chargés. Ce blocage concerne la stack modèles IA — pas Frigate. Frigate et les watchdogs se soignent en arrière-plan ; recharge automatique toutes les 5 s.",
     "degradedTitle": "Mode dégradé — stack IA incomplète",
-    "degradedBody": "Certains modèles ne sont pas chargés. Les règles dépendantes peuvent être désactivées.",
+    "degradedBody": "Certains modèles ne sont pas chargés. Les règles dépendantes peuvent être désactivées. Frigate peut être sain indépendamment.",
     "degradedContinue": "Continuer en mode dégradé",
     "openHealth": "Voir la santé système"
   },

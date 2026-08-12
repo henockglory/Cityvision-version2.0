@@ -87,6 +87,10 @@ type UploadInput struct {
 	SubjectSz int64
 	Plate     io.Reader
 	PlateSz   int64
+	Face      io.Reader
+	FaceSz    int64
+	Reference io.Reader
+	ReferenceSz int64
 	ExtraFrames []FrameUpload
 	Metadata  map[string]interface{}
 }
@@ -167,6 +171,26 @@ func (s *Service) UploadPackage(ctx context.Context, in UploadInput) (*Package, 
 		pkg.Images = append(pkg.Images, Image{
 			Role: "plate", AssetID: key, URL: s.assetURL(in.OrgID, key),
 			Label: labelFromMeta(in.Metadata, "plate", "Plaque"), Mime: "image/jpeg",
+		})
+	}
+	if in.Face != nil && in.FaceSz > 0 {
+		key := prefix + "/face.jpg"
+		if _, err := s.client.PutObject(ctx, s.cfg.Bucket, key, in.Face, in.FaceSz, minio.PutObjectOptions{ContentType: "image/jpeg"}); err != nil {
+			return nil, fmt.Errorf("upload face: %w", err)
+		}
+		pkg.Images = append(pkg.Images, Image{
+			Role: "face", AssetID: key, URL: s.assetURL(in.OrgID, key),
+			Label: labelFromMeta(in.Metadata, "face", "Visage détecté"), Mime: "image/jpeg",
+		})
+	}
+	if in.Reference != nil && in.ReferenceSz > 0 {
+		key := prefix + "/reference.jpg"
+		if _, err := s.client.PutObject(ctx, s.cfg.Bucket, key, in.Reference, in.ReferenceSz, minio.PutObjectOptions{ContentType: "image/jpeg"}); err != nil {
+			return nil, fmt.Errorf("upload reference: %w", err)
+		}
+		pkg.Images = append(pkg.Images, Image{
+			Role: "reference", AssetID: key, URL: s.assetURL(in.OrgID, key),
+			Label: labelFromMeta(in.Metadata, "reference", "Photo de référence"), Mime: "image/jpeg",
 		})
 	}
 	for _, fr := range in.ExtraFrames {

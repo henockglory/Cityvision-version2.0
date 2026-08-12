@@ -458,6 +458,17 @@ sys.exit(fail)
 }
 
 ensure_frigate_zones() {
+  # If Frigate API is down, heal container before zone rebuild (zones probe can't work otherwise).
+  if ! curl -sf --max-time 4 "${FRIGATE_URL:-http://127.0.0.1:5000}/api/version" >/dev/null 2>&1 \
+    && ! curl -sf --max-time 4 "${FRIGATE_URL:-http://127.0.0.1:5000}/api/stats" >/dev/null 2>&1; then
+    echo "[WARN] Frigate API unreachable — heal container before zones"
+    if declare -F heal_published_container >/dev/null 2>&1; then
+      heal_published_container citevision-v2-frigate frigate 5000 || true
+      sleep 3
+    elif [[ -f "$ROOT/scripts/_heal_frigate_now.sh" ]]; then
+      bash "$ROOT/scripts/_heal_frigate_now.sh" 2>&1 | tail -15 || true
+    fi
+  fi
   if probe_frigate_zones; then
     return 0
   fi

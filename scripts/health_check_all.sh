@@ -175,9 +175,11 @@ if curl -sf --max-time 8 "$FRIGATE_URL/api/version" >/dev/null 2>&1; then
 d=json.load(sys.stdin)
 print(len(d.get("cameras") or {}))' 2>/dev/null || echo err)"
     if [[ "$CAMS" == "0" ]]; then
-      warn "Frigate cameras={} — attempting docker restart + re-check"
-      docker restart citevision-v2-frigate >/dev/null 2>&1 || true
-      sleep 25
+      # Prefer container recreate over /api/reload storms (reload storms → unhealthy).
+      warn "Frigate cameras={} — compose up frigate (no /api/reload)"
+      ENV_FILE="${ENV_FILE:-$ROOT/.env}"
+      (cd "$ROOT/infra" && docker compose $(compose_gpu_files) --env-file "$ENV_FILE" --profile frigate up -d frigate) >/dev/null 2>&1 || true
+      sleep 20
       CFG2="$(curl -sf --max-time 10 "$FRIGATE_URL/api/config" || true)"
       if [[ -n "$CFG2" ]]; then
         CAMS2="$(printf '%s' "$CFG2" | python3 -c 'import json,sys
@@ -186,21 +188,50 @@ print(len(d.get("cameras") or {}))' 2>/dev/null || echo err)"
         if [[ "$CAMS2" != "0" ]] && [[ "$CAMS2" != "err" ]]; then
           ok "Frigate cameras count=$CAMS2 after heal"
         else
-          warn "Frigate cameras still empty after restart — backend compiler pending"
+          if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+            fail "Frigate cameras still empty after heal (STRICT)"
+          else
+            warn "Frigate cameras still empty after heal — backend compiler pending"
+          fi
         fi
       else
-        warn "Frigate /api/config empty after restart"
+        if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+          fail "Frigate /api/config empty after heal (STRICT)"
+        else
+          warn "Frigate /api/config empty after heal"
+        fi
       fi
     elif [[ "$CAMS" == "err" ]]; then
       warn "could not parse Frigate /api/config"
     else
       ok "Frigate cameras count=$CAMS"
+      # STRICT: if face watchlist rules exist, at least one camera should track person.
+      if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+        PERSON_OK="$(printf '%s' "$CFG" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+cams=d.get("cameras") or {}
+for c in cams.values():
+  track=(c.get("objects") or {}).get("track") or []
+  if "person" in track:
+    print("yes"); break
+else:
+  print("no")' 2>/dev/null || echo err)"
+        if [[ "$PERSON_OK" == "yes" ]]; then
+          ok "Frigate objects.track includes person on ≥1 camera"
+        elif [[ "$PERSON_OK" == "no" ]]; then
+          warn "no camera tracks person — face rules may need frigate_watchdog / compiler TrackPerson"
+        fi
+      fi
     fi
   else
-    warn "Frigate /api/config empty/failed"
+    if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+      fail "Frigate /api/config empty/failed (STRICT)"
+    else
+      warn "Frigate /api/config empty/failed"
+    fi
   fi
 else
-  warn "Frigate API unreachable — retry compose up + wait"
+  warn "Frigate API unreachable — retry compose up + wait (no /api/reload)"
   ENV_FILE="${ENV_FILE:-$ROOT/.env}"
   (cd "$ROOT/infra" && docker compose $(compose_gpu_files) --env-file "$ENV_FILE" --profile frigate up -d frigate) >/dev/null 2>&1 || true
   sleep 15
@@ -208,6 +239,35 @@ else
     ok "Frigate API up after heal"
   else
     fail "Frigate API unreachable at $FRIGATE_URL"
+  fi
+fi
+echo
+
+echo "--- minio evidence bucket ---"
+MINIO_C="${MINIO_CONTAINER:-citevision-v2-minio}"
+EVIDENCE_BUCKET="${EVIDENCE_BUCKET:-citevision-evidence}"
+if docker inspect "$MINIO_C" >/dev/null 2>&1; then
+  if docker exec "$MINIO_C" mc ls "local/${EVIDENCE_BUCKET}" >/dev/null 2>&1 \
+    || docker exec "$MINIO_C" sh -c "mc alias set local http://127.0.0.1:9000 \"\$MINIO_ROOT_USER\" \"\$MINIO_ROOT_PASSWORD\" >/dev/null 2>&1; mc ls local/${EVIDENCE_BUCKET}" >/dev/null 2>&1; then
+    ok "MinIO bucket ${EVIDENCE_BUCKET} reachable"
+  else
+    # Best-effort create then recheck
+    docker exec "$MINIO_C" sh -c "mc alias set local http://127.0.0.1:9000 \"\${MINIO_ROOT_USER:-minioadmin}\" \"\${MINIO_ROOT_PASSWORD:-minioadmin}\" >/dev/null 2>&1; mc mb -p local/${EVIDENCE_BUCKET} >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
+    if docker exec "$MINIO_C" sh -c "mc ls local/${EVIDENCE_BUCKET}" >/dev/null 2>&1; then
+      ok "MinIO bucket ${EVIDENCE_BUCKET} created/reachable"
+    else
+      if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+        fail "MinIO evidence bucket ${EVIDENCE_BUCKET} missing (STRICT)"
+      else
+        warn "MinIO evidence bucket ${EVIDENCE_BUCKET} not verified"
+      fi
+    fi
+  fi
+else
+  if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+    fail "MinIO container $MINIO_C missing (STRICT)"
+  else
+    warn "MinIO container $MINIO_C missing"
   fi
 fi
 echo

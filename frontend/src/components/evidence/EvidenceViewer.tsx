@@ -36,11 +36,13 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
   const pkg = ev.package;
   const mediaSlots = useMemo(() => evidenceMediaSlots(ev, orgId), [ev, orgId]);
   const aiStatus = useMemo(() => aiEvidenceStatus(ev), [ev]);
-  const { clip: clipUrl, scene: sceneUrl, subject: subjectUrl, plate: plateUrl } = mediaSlots.urls;
+  const { clip: clipUrl, scene: sceneUrl, subject: subjectUrl, plate: plateUrl, reference: referenceUrl } = mediaSlots.urls;
 
   const scene = pkg?.images?.find((i) => i.role === 'scene');
-  const subject = pkg?.images?.find((i) => i.role === 'subject');
+  const subject = pkg?.images?.find((i) => i.role === 'subject')
+    ?? pkg?.images?.find((i) => i.role === 'face');
   const plateImg = pkg?.images?.find((i) => i.role === 'plate');
+  const referenceImg = pkg?.images?.find((i) => i.role === 'reference');
 
   const [clipRetry, setClipRetry] = useState(0);
   const clipMedia = useEvidenceMediaUrl(clipUrl, { mimeFallback: 'video/mp4', retryKey: clipRetry });
@@ -170,7 +172,7 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
     { label: 'Frigate event', value: frigateEventId },
   ].filter((f) => f.value !== '');
 
-  const hasMediaUrls = Boolean(clipUrl || sceneUrl || subjectUrl || plateUrl);
+  const hasMediaUrls = Boolean(clipUrl || sceneUrl || subjectUrl || plateUrl || referenceUrl);
   const thumbApiUrl = evidenceThumbnailUrl(ev, orgId);
   const thumbMedia = useEvidenceMediaUrl(thumbApiUrl);
   const configuredClipSec = Number(pkg?.metadata?.clip_duration_sec ?? pkg?.clip?.duration_sec ?? 6);
@@ -310,8 +312,8 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
         </div>
       )}
 
-      {(sceneUrl || subjectUrl || plateUrl) && (
-        <div id="evidence-viewer-images" className={`grid gap-2 ${plateUrl ? 'grid-cols-3' : 'grid-cols-2'}`}>
+      {(sceneUrl || subjectUrl || plateUrl || referenceUrl) && (
+        <div id="evidence-viewer-images" className={`grid gap-2 ${(plateUrl || referenceUrl) ? 'grid-cols-3' : 'grid-cols-2'}`}>
           {sceneUrl && (
             <EvidenceImageTile
               apiUrl={sceneUrl}
@@ -331,6 +333,16 @@ export default function EvidenceViewer({ evidence: raw, cameraId, ruleId, compac
               onOpen={() => openLightbox(
                 subjectUrl,
                 subject?.label ?? t('evidence.subject'),
+              )}
+            />
+          )}
+          {referenceUrl && (
+            <EvidenceImageTile
+              apiUrl={referenceUrl}
+              label={referenceImg?.label ?? t('evidence.reference', { defaultValue: 'Photo de référence' })}
+              onOpen={() => openLightbox(
+                referenceUrl,
+                referenceImg?.label ?? t('evidence.reference', { defaultValue: 'Photo de référence' }),
               )}
             />
           )}

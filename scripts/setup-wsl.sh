@@ -260,6 +260,52 @@ else
   exit 1
 fi
 
+# ── Post-images heal resonance (same contracts as Start / watchdogs) ──
+_step "Infra + business readiness heal (best-effort)"
+# shellcheck source=scripts/lib/service-heal.sh
+source "$ROOT/scripts/lib/service-heal.sh" 2>/dev/null || true
+# shellcheck source=scripts/lib/business-readiness.sh
+source "$ROOT/scripts/lib/business-readiness.sh" 2>/dev/null || true
+if declare -F ensure_infra_host_ports >/dev/null 2>&1; then
+  ensure_infra_host_ports || _warn "ensure_infra_host_ports incomplete (Frigate/MinIO/MQTT may heal at Start)"
+else
+  _warn "service-heal.sh not loaded — skip infra port heal"
+fi
+if declare -F ensure_business_readiness >/dev/null 2>&1; then
+  export KEY="${INTERNAL_API_KEY:-changeme_internal_service_key}"
+  export INTERNAL_API_KEY="${INTERNAL_API_KEY:-$KEY}"
+  ensure_business_readiness || _warn "business readiness incomplete (will retry at Start)"
+else
+  _warn "business-readiness.sh not loaded — skip"
+fi
+
+_step "Runtime watchdogs (background, best-effort)"
+mkdir -p "$ROOT/logs" "$ROOT/run"
+_start_wd() {
+  local name="$1" script="$2"
+  shift 2
+  local pidfile="$ROOT/run/${name}.pid"
+  if [[ -f "$pidfile" ]]; then
+    local old
+    old="$(cat "$pidfile" 2>/dev/null || true)"
+    if [[ -n "$old" ]] && kill -0 "$old" 2>/dev/null; then
+      _ok "watchdog $name already running pid=$old"
+      return 0
+    fi
+  fi
+  if [[ ! -f "$ROOT/$script" ]]; then
+    _warn "missing $script — skip $name"
+    return 0
+  fi
+  nohup env "$@" bash "$ROOT/$script" >>"$ROOT/logs/${name}.log" 2>&1 &
+  echo $! >"$pidfile"
+  _ok "started $name pid=$(cat "$pidfile")"
+}
+_start_wd watch-infra-ports scripts/watch-infra-ports.sh
+_start_wd watch-ai-ingest scripts/watch-ai-ingest.sh
+_start_wd watch-business-readiness scripts/watch-business-readiness.sh
+_start_wd frigate-watchdog scripts/frigate_watchdog.sh WATCH_FRIGATE_LOOP=1
+
 _log ""
 _ok "Setup complete"
 _log ""

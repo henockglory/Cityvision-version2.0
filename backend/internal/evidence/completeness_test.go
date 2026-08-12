@@ -20,6 +20,7 @@ func TestIsComplete_fullPackage(t *testing.T) {
 			"images": []interface{}{
 				map[string]interface{}{"role": "scene", "url": "http://x/s"},
 				map[string]interface{}{"role": "subject", "asset_id": "sub-1"},
+				map[string]interface{}{"role": "plate", "asset_id": "plt-1"},
 			},
 		},
 	}
@@ -45,8 +46,8 @@ func TestIsComplete_missingClip(t *testing.T) {
 	}
 }
 
-func TestIsComplete_plateOptionalForViolation(t *testing.T) {
-	// Tâche 4: plate in policy must NOT block violation_confirmed / IsComplete.
+func TestIsComplete_plateOptionalWithoutFailClosed(t *testing.T) {
+	// Plate listed in images but NOT in fail_closed → soft identification only.
 	p := Policy{
 		Enabled:     true,
 		ClipSeconds: 6,
@@ -62,22 +63,92 @@ func TestIsComplete_plateOptionalForViolation(t *testing.T) {
 			"images": []interface{}{
 				map[string]interface{}{"role": "scene", "url": "http://x/s"},
 				map[string]interface{}{"role": "subject", "asset_id": "sub-1"},
-				// Degraded / present plate crop but no OCR text → still violation-complete.
-				map[string]interface{}{"role": "plate", "asset_id": "plt-blur"},
 			},
 		},
 	}
 	b, _ := json.Marshal(snap)
 	if !IsComplete(b, p) {
-		t.Fatal("missing readable plate must not block violation completeness")
+		t.Fatal("plate without fail_closed must not block completeness")
 	}
-	var m map[string]interface{}
-	_ = json.Unmarshal(b, &m)
-	if got := PlateStatus(m, p, ""); got != IdentificationUnreadable {
-		t.Fatalf("plate_status want unreadable got %s", got)
+}
+
+func TestIsComplete_plateFailClosedHardGate(t *testing.T) {
+	p := Policy{
+		Enabled:     true,
+		ClipSeconds: 6,
+		Images: []map[string]interface{}{
+			{"role": "scene"},
+			{"role": "subject"},
+			{"role": "plate"},
+		},
+		FailClosed: []string{"subject", "plate"},
 	}
-	if got := ViolationStatusFromSnap(m, p); got != ViolationConfirmed {
-		t.Fatalf("violation_status want confirmed got %s", got)
+	snap := map[string]interface{}{
+		"package": map[string]interface{}{
+			"clip": map[string]interface{}{"asset_id": "clip-1"},
+			"images": []interface{}{
+				map[string]interface{}{"role": "scene", "url": "http://x/s"},
+				map[string]interface{}{"role": "subject", "asset_id": "sub-1"},
+			},
+		},
+	}
+	b, _ := json.Marshal(snap)
+	if IsComplete(b, p) {
+		t.Fatal("fail_closed plate without plate image/number must be incomplete")
+	}
+	snap2 := map[string]interface{}{
+		"package": map[string]interface{}{
+			"clip": map[string]interface{}{"asset_id": "clip-1"},
+			"images": []interface{}{
+				map[string]interface{}{"role": "scene", "url": "http://x/s"},
+				map[string]interface{}{"role": "subject", "asset_id": "sub-1"},
+				map[string]interface{}{"role": "plate", "asset_id": "plt-1"},
+			},
+		},
+	}
+	b2, _ := json.Marshal(snap2)
+	if !IsComplete(b2, p) {
+		t.Fatal("plate image satisfies fail_closed plate")
+	}
+}
+
+func TestIsComplete_faceReferenceFailClosed(t *testing.T) {
+	p := Policy{
+		Enabled:     true,
+		ClipSeconds: 6,
+		Images: []map[string]interface{}{
+			{"role": "scene"},
+			{"role": "face"},
+			{"role": "reference"},
+		},
+		FailClosed: []string{"face", "reference"},
+	}
+	snap := map[string]interface{}{
+		"package": map[string]interface{}{
+			"metadata": map[string]interface{}{"capture_source": "face_identity"},
+			"images": []interface{}{
+				map[string]interface{}{"role": "face", "asset_id": "f1"},
+				map[string]interface{}{"role": "scene", "asset_id": "s1"},
+			},
+		},
+	}
+	b, _ := json.Marshal(snap)
+	if IsComplete(b, p) {
+		t.Fatal("face watchlist without reference must be incomplete when fail_closed")
+	}
+	snap2 := map[string]interface{}{
+		"package": map[string]interface{}{
+			"metadata": map[string]interface{}{"capture_source": "face_identity"},
+			"images": []interface{}{
+				map[string]interface{}{"role": "face", "asset_id": "f1"},
+				map[string]interface{}{"role": "scene", "asset_id": "s1"},
+				map[string]interface{}{"role": "reference", "asset_id": "r1"},
+			},
+		},
+	}
+	b2, _ := json.Marshal(snap2)
+	if !IsComplete(b2, p) {
+		t.Fatal("face+reference should soft-complete without clip for face_identity")
 	}
 }
 
@@ -148,11 +219,12 @@ func TestAnnotateStatuses(t *testing.T) {
 }
 
 func TestRequiredSlotCount(t *testing.T) {
-	if RequiredSlotCount(DefaultPolicy()) != 3 {
-		t.Fatalf("expected 3 slots")
+	if RequiredSlotCount(DefaultPolicy()) != 4 {
+		t.Fatalf("expected 4 slots (clip+3 images), got %d", RequiredSlotCount(DefaultPolicy()))
 	}
 	p := Policy{Enabled: true, ClipSeconds: 0, Images: []map[string]interface{}{{"role": "scene"}}}
 	if RequiredSlotCount(p) != 1 {
 		t.Fatalf("expected 1 slot")
 	}
 }
+

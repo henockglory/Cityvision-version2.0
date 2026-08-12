@@ -356,6 +356,11 @@ func CompileEvidenceAggregate(ctx context.Context, pool *pgxpool.Pool, orgID, ca
 		if !ingest.RuleAppliesToCamera(def, camStr) {
 			continue
 		}
+		// Face watchlist / face identity rules require Frigate person tracking.
+		rawLower := strings.ToLower(string(defRaw))
+		if strings.Contains(rawLower, "face_watchlist") || strings.Contains(rawLower, "tpl-face-watchlist") {
+			agg.TrackPerson = true
+		}
 		if !ruleHasAlertAction(def) {
 			continue
 		}

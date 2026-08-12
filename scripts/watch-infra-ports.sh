@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Keep Docker published ports alive (redis/mqtt/postgres/minio/ocr/mailhog/go2rtc).
+# Keep Docker published ports alive (redis/mqtt/postgres/minio/ocr/mailhog/go2rtc/frigate).
 # Catches "container running / host port dead" after Start-CiteVision.
 # go2rtc :1984 is mandatory for demo + IP live preview.
+# frigate :5000 is mandatory for detection, clips, and face person track.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

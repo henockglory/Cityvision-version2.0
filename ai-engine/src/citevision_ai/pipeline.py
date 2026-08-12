@@ -310,6 +310,12 @@ class PipelineService:
     @staticmethod
     def _ensure_event_class_name(evt: dict[str, Any]) -> None:
         """Guarantee top-level class_name so rules matches_class never deserts."""
+        et = str(evt.get("event_type") or evt.get("event") or "")
+        # Face identity labels live in metadata.label — never promote them to class_name
+        # or matches_class(person) on tpl-face-watchlist will never fire.
+        if et in ("face_detected", "face_unknown", "face_watchlist_match"):
+            evt["class_name"] = "person"
+            return
         cur = evt.get("class_name")
         if cur is not None and str(cur).strip():
             return
@@ -1470,19 +1476,96 @@ class PipelineService:
         if is_purged_event_type(et):
             logger.debug("drop purged event_type=%s camera=%s", et, camera_id)
             return
-        org_id = self._org_ids.get(camera_id, "")
+        # Always strip raw JPEG before MQTT — bytes are not JSON-serializable.
+        vlm_crop = evt.pop("_vlm_crop_jpeg", None)
+        face_crop = evt.pop("_face_crop_jpeg", None)
+        face_ref = evt.pop("_face_reference_jpeg", None)
+        org_id = self._org_ids.get(camera_id, "") or str(evt.get("org_id") or "")
         if not org_id:
+            logger.warning(
+                "publish without org_id camera=%s et=%s crop=%s",
+                camera_id[:8], et, bool(vlm_crop) or bool(face_crop),
+            )
             self.mqtt.publish_event(camera_id, evt)
             return
         if et in ("vehicle_corridor", "vehicle_count_threshold"):
             return
         if self._is_speed_only_camera(camera_id) and et in self._SPEED_ONLY_SKIP_EVENTS:
             return
+
+        # Cabin / Gemini: prefer the exact crop judged by the VLM (never replace
+        # with ring-buffer / Frigate recomposition that can show another scene).
+        if isinstance(vlm_crop, (bytes, bytearray, memoryview)) and et in (
+            "phone_use_violation", "seatbelt_violation",
+        ):
+            crop_bytes = bytes(vlm_crop)
+            logger.warning(
+                "cabin vlm crop attach start camera=%s et=%s bytes=%d org=%s",
+                camera_id[:8], et, len(crop_bytes), org_id[:8],
+            )
+            pol = self.evidence._gate.match_policy(camera_id, evt) or default_evidence_policy(
+                archetype="cabin", event_type=et,
+            )
+            attached = self.evidence.attach_vlm_crop_evidence(
+                org_id, camera_id, evt, crop_bytes, policy=pol,
+            )
+            if not attached:
+                logger.warning(
+                    "cabin vlm crop attach FAILED camera=%s et=%s — publishing pending",
+                    camera_id[:8], et,
+                )
+            if et in self._EVIDENCE_MANDATORY and not self._event_has_package(evt):
+                evt.setdefault("evidence_status", "pending")
+            self.mqtt.publish_event(camera_id, evt)
+            return
+
+        # Face watchlist / identity: attach judged person crop + enrollment ref + Frigate clip.
+        if isinstance(face_crop, (bytes, bytearray, memoryview)) and et in (
+            "face_watchlist_match", "face_unknown", "face_detected",
+        ):
+            crop_bytes = bytes(face_crop)
+            ref_bytes = bytes(face_ref) if isinstance(face_ref, (bytes, bytearray, memoryview)) else None
+            # Resolve reference from watchlist if emit forgot to attach bytes.
+            if ref_bytes is None and et == "face_watchlist_match":
+                meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+                try:
+                    ref_bytes = self.face_engine.reference_photo_for(
+                        identifier=str(meta.get("identifier") or "") or None,
+                        label=str(meta.get("label") or "") or None,
+                    )
+                except Exception:
+                    logger.exception("face reference lookup failed")
+                    ref_bytes = None
+            face_pol = self.evidence._gate.match_policy(camera_id, evt) or default_evidence_policy(
+                archetype="face", event_type=et,
+            )
+            from citevision_ai.evidence.gate import sanitize_policy_roles
+            face_pol = sanitize_policy_roles(face_pol, archetype="face", event_type=et)
+            logger.warning(
+                "face identity evidence start camera=%s et=%s face=%d ref=%s",
+                camera_id[:8], et, len(crop_bytes), len(ref_bytes) if ref_bytes else 0,
+            )
+            attached = self.evidence.attach_face_identity_evidence(
+                org_id, camera_id, evt, crop_bytes,
+                reference_jpeg=ref_bytes, policy=face_pol,
+            )
+            if not attached:
+                logger.warning(
+                    "face identity evidence FAILED camera=%s et=%s — publishing pending",
+                    camera_id[:8], et,
+                )
+            if et in self._EVIDENCE_MANDATORY and not self._event_has_package(evt):
+                evt.setdefault("evidence_status", "pending")
+            self.mqtt.publish_event(camera_id, evt)
+            return
+
         policy = self.evidence._gate.match_policy(camera_id, evt)
         should_capture = policy is not None or et in self._PLATE_LINKED_EVENTS
         if should_capture:
             force = policy is None and et in self._PLATE_LINKED_EVENTS
-            pol = policy if policy is not None else (default_evidence_policy() if force else None)
+            pol = policy if policy is not None else (
+                default_evidence_policy(event_type=et) if force else None
+            )
             if pol is not None:
                 if segment_ctx is not None:
                     # Synchronous capture: segment MP4 is deleted after replay.
@@ -1616,6 +1699,7 @@ class PipelineService:
         "speeding",
         "phone_use_violation",
         "seatbelt_violation",
+        "face_watchlist_match",
     }
 
     @staticmethod

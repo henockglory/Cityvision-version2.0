@@ -302,6 +302,11 @@ if [[ "${WATCH_BUSINESS_READINESS:-1}" != "0" ]]; then
   stop_from_pid "$LOGDIR/watch-business-readiness.pid" 2>/dev/null || true
   start_bg watch-business-readiness "$ROOT" "bash scripts/watch-business-readiness.sh" "$LOGDIR" "$ENV_FILE"
 fi
+if [[ "${WATCH_FRIGATE:-1}" != "0" ]]; then
+  stop_from_pid "$LOGDIR/frigate-watchdog.pid" 2>/dev/null || true
+  # LOOP=1 continuous; heal container + person track for face rules
+  start_bg frigate-watchdog "$ROOT" "env WATCH_FRIGATE_LOOP=1 bash scripts/frigate_watchdog.sh" "$LOGDIR" "$ENV_FILE"
+fi
 
 # --- service gate (hard) ---
 echo "=== [8/10] service URL gate ==="

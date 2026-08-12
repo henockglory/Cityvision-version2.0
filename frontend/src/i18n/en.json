@@ -403,12 +403,16 @@
       "evidenceRole": {
         "scene": "Scene",
         "subject": "Target",
-        "plate": "Plate"
+        "plate": "Plate",
+        "face": "Face",
+        "reference": "Reference"
       },
       "evidenceRoleHint": {
         "scene": "Full overview of the event — complete context.",
-        "subject": "Same view with the detection box on the vehicle or object.",
-        "plate": "Rear plate crop — PaddleOCR for proof; Frigate LPR is live zoom only."
+        "subject": "Same view with the detection box on the person, vehicle, or object.",
+        "plate": "Rear plate crop — PaddleOCR for proof; Frigate LPR is live zoom only.",
+        "face": "InsightFace crop used for identity fusion.",
+        "reference": "Watchlist enrollment photo (biometric reference)."
       },
       "subjectPadding": "Margin around target",
       "subjectPaddingHint": "Space left around the person or object in the zoomed photo.",
@@ -1174,9 +1178,9 @@
   },
   "stackHealth": {
     "blockTitle": "Incomplete AI stack",
-    "blockBody": "Critical models are not loaded. Administration is blocked until the stack is healthy, unless you explicitly continue in degraded mode.",
+    "blockBody": "Critical models (YOLO / phone / seatbelt / plate) are not loaded. This gate is about AI models — not Frigate. Frigate and watchdogs self-heal in the background; auto-refresh every 5 s.",
     "degradedTitle": "Degraded mode — incomplete AI stack",
-    "degradedBody": "Some models are not loaded. Dependent rules may be disabled.",
+    "degradedBody": "Some models are not loaded. Dependent rules may be disabled. Frigate can be healthy independently.",
     "degradedContinue": "Continue in degraded mode",
     "openHealth": "View system health"
   },

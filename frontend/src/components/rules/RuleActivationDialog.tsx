@@ -45,7 +45,7 @@ import RuleStudioGuideRail from '@/components/rules/RuleStudioGuideRail';
 import RuleFlowBuilder from '@/components/rules/RuleFlowBuilder';
 import EvidencePolicyPanel from '@/components/rules/EvidencePolicyPanel';
 import OutputChannelsPanel from '@/components/rules/OutputChannelsPanel';
-import { DEFAULT_EVIDENCE_POLICY, SPATIAL_TEMPLATES_REQUIRING_CLASS, normalizeEvidencePolicy, type EvidencePolicy, evidencePolicyForTemplate, isCountingRuleTemplate, evidencePolicyForPersistence, isObservationEvidenceDefault } from '@/lib/evidencePolicy';
+import { DEFAULT_EVIDENCE_POLICY, SPATIAL_TEMPLATES_REQUIRING_CLASS, normalizeEvidencePolicy, type EvidencePolicy, evidencePolicyForTemplate, isCountingRuleTemplate, evidencePolicyForPersistence, isObservationEvidenceDefault, templateArchetype } from '@/lib/evidencePolicy';
 import { defaultObservationKind } from '@/lib/observationMode';
 import {
   applyObservationStructure,
@@ -398,11 +398,24 @@ export default function RuleStudioDialog({
   useEffect(() => {
     if (!orgId || isEdit) return;
     if (isCountingRuleTemplate(activeTemplate?.id)) return;
+    // Face / cabin / identity templates keep contract seed — never overwrite with org road defaults.
+    const arch = templateArchetype(activeTemplate?.id);
+    const tplId = activeTemplate?.id ?? '';
+    if (
+      arch === 'face' ||
+      arch === 'cabin' ||
+      tplId.startsWith('tpl-face') ||
+      tplId === 'tpl-watchlist-match' ||
+      tplId === 'tpl-seatbelt' ||
+      tplId === 'tpl-phone-driving'
+    ) {
+      return;
+    }
     void orgApi.get(orgId).then((r) => {
       const raw = (r.data.notification_prefs as Record<string, unknown> | undefined)?.evidence_defaults as Partial<EvidencePolicy> | undefined;
       if (raw) setEvidencePolicy(normalizeEvidencePolicy(raw));
     }).catch(() => undefined);
-  }, [orgId, isEdit, activeTemplate?.id]);
+  }, [orgId, isEdit, activeTemplate?.id, activeTemplate]);
 
   useEffect(() => {
     if (!orgId || !cameraId) return;
@@ -849,7 +862,7 @@ export default function RuleStudioDialog({
             ) : (
               <p className="text-xs text-cv-muted mb-2">Clip de preuve automatique (H.264, {evidencePolicy.clip_seconds} s par défaut) — distinct de l&apos;enregistrement long ffmpeg.</p>
             )}
-            <EvidencePolicyPanel policy={evidencePolicy} onChange={setEvidencePolicy} />
+            <EvidencePolicyPanel policy={evidencePolicy} onChange={setEvidencePolicy} templateId={activeTemplate?.id} />
           </div>
         )}
         {step3Tab === 'notifications' && (

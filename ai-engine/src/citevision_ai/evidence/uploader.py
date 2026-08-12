@@ -27,6 +27,8 @@ class EvidenceUploader:
         metadata: dict[str, Any] | None = None,
         plate_jpeg: bytes | None = None,
         extra_frames: list[bytes] | None = None,
+        face_jpeg: bytes | None = None,
+        reference_jpeg: bytes | None = None,
     ) -> dict[str, Any] | None:
         if not org_id or not camera_id:
             return None
@@ -43,6 +45,10 @@ class EvidenceUploader:
             files["subject"] = ("subject.jpg", subject_jpeg, "image/jpeg")
         if plate_jpeg:
             files["plate"] = ("plate.jpg", plate_jpeg, "image/jpeg")
+        if face_jpeg:
+            files["face"] = ("face.jpg", face_jpeg, "image/jpeg")
+        if reference_jpeg:
+            files["reference"] = ("reference.jpg", reference_jpeg, "image/jpeg")
         for i, jpeg in enumerate(extra_frames or []):
             if jpeg:
                 role = f"frame_{i + 1}"

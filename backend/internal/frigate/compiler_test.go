@@ -222,6 +222,20 @@ func TestUpsertCameraSpeedNoDistancesWhenNotFourPoints(t *testing.T) {
 	}
 }
 
+func TestUpsertCameraTracksPersonForFaceAggregate(t *testing.T) {
+	cam := &models.Camera{ID: uuid.New()}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{TrackPerson: true}, nil)
+	found := false
+	for _, lab := range cc.Entry.Objects.Track {
+		if lab == "person" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected person in objects.track when TrackPerson, got %v", cc.Entry.Objects.Track)
+	}
+}
+
 func TestUpsertCameraTracksPersonForCabinBehavior(t *testing.T) {
 	poly := json.RawMessage(`[{"x":0.1,"y":0.2},{"x":0.5,"y":0.2},{"x":0.5,"y":0.6}]`)
 	camID := uuid.New()

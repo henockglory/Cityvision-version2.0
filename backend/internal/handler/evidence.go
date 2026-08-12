@@ -58,6 +58,16 @@ func (a *API) InternalEvidenceUpload(w http.ResponseWriter, r *http.Request) {
 		in.Plate = f
 		in.PlateSz = hdr.Size
 	}
+	if f, hdr, err := r.FormFile("face"); err == nil {
+		defer f.Close()
+		in.Face = f
+		in.FaceSz = hdr.Size
+	}
+	if f, hdr, err := r.FormFile("reference"); err == nil {
+		defer f.Close()
+		in.Reference = f
+		in.ReferenceSz = hdr.Size
+	}
 	if r.MultipartForm != nil {
 		for key, headers := range r.MultipartForm.File {
 			if !strings.HasPrefix(key, "frame_") || len(headers) == 0 {

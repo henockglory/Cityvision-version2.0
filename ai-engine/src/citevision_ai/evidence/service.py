@@ -39,7 +39,7 @@ from citevision_ai.evidence.config import (
 )
 from citevision_ai.evidence.frigate_backend import FrigateEvidenceBackend
 from citevision_ai.evidence.frigate_track_binder import FrigateTrackBinder
-from citevision_ai.evidence.gate import EvidenceCaptureGate, default_evidence_policy
+from citevision_ai.evidence.gate import EvidenceCaptureGate, default_evidence_policy, sanitize_policy_roles
 from citevision_ai.evidence.uploader import EvidenceUploader
 from citevision_ai.config import settings
 from citevision_ai.evidence.segment_align import resolve_segment_capture_frame, segment_pts_from_bbox_ts
@@ -583,6 +583,245 @@ class EvidenceCaptureService:
         with self._speed_evidence_lock:
             return self._speed_evidence_last.get(key)
 
+    def attach_vlm_crop_evidence(
+        self,
+        org_id: str,
+        camera_id: str,
+        evt: dict[str, Any],
+        crop_jpeg: bytes,
+        *,
+        policy: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Upload the exact Gemini crop as scene+subject (cabin proof).
+
+        Frigate-track / ring-buffer recomposition must not replace this — the UI
+        must show what Gemini judged, not a later unrelated snapshot.
+        """
+        if not org_id or not camera_id or not crop_jpeg:
+            logger.warning(
+                "vlm crop evidence skip org=%s camera=%s bytes=%s",
+                bool(org_id), bool(camera_id), len(crop_jpeg) if crop_jpeg else 0,
+            )
+            return None
+        pol = policy or default_evidence_policy(
+            archetype="cabin",
+            event_type=str(evt.get("event_type") or evt.get("event") or ""),
+        )
+        pol = sanitize_policy_roles(
+            pol,
+            archetype="cabin",
+            event_type=str(evt.get("event_type") or evt.get("event") or ""),
+        )
+        event_id = str(evt.get("event_id") or "")
+        meta = dict(evt.get("metadata") or {})
+        bbox = evt.get("bbox")
+        if isinstance(bbox, dict):
+            # Ensure JSON-safe floats (numpy scalars break evidence upload).
+            try:
+                bbox = {
+                    k: (float(v) if isinstance(v, (int, float)) else v)
+                    for k, v in bbox.items()
+                }
+            except Exception:
+                bbox = None
+        meta.update(
+            {
+                "capture_source": "gemini_vlm_crop",
+                "crop_mode": meta.get("crop_mode") or "frigate_vehicle_bbox",
+                "evidence_status": "partial",
+                "clip_duration_sec": 0,
+                "bbox": bbox,
+                "event_type": evt.get("event_type") or evt.get("event"),
+                "zone_id": evt.get("zone_id"),
+                "frigate_event_id": evt.get("frigate_event_id") or meta.get("frigate_event_id"),
+                "vlm_reason": meta.get("vlm_reason"),
+                "vlm_confidence": meta.get("vlm_confidence") or evt.get("confidence"),
+                "detection_method": meta.get("detection_method") or "gemini_vlm",
+                "image_labels": {"scene": "Crop Gemini", "subject": "Crop Gemini"},
+            }
+        )
+        uploaded = self._uploader.upload(
+            org_id,
+            camera_id,
+            event_id,
+            crop_jpeg,  # scene = exact Gemini input
+            crop_jpeg,  # subject = same crop (cabin has no separate subject crop)
+            None,       # no clip — crop is the proof
+            meta,
+        )
+        if not uploaded:
+            uploaded = self._uploader.upload(
+                org_id, camera_id, event_id, crop_jpeg, crop_jpeg, None, meta,
+            )
+        if not uploaded:
+            logger.warning(
+                "vlm crop evidence upload failed camera=%s event=%s",
+                camera_id[:8], event_id[:8],
+            )
+            return None
+        evt["evidence"] = uploaded
+        if pkg := uploaded.get("package"):
+            evt["package"] = pkg
+        evt["evidence_status"] = "partial"
+        meta["evidence_status"] = "partial"
+        evt["metadata"] = meta
+        logger.warning(
+            "vlm crop evidence attached camera=%s event=%s bytes=%d capture_source=gemini_vlm_crop",
+            camera_id[:8], event_id[:8], len(crop_jpeg),
+        )
+        return uploaded
+
+    def attach_face_identity_evidence(
+        self,
+        org_id: str,
+        camera_id: str,
+        evt: dict[str, Any],
+        face_jpeg: bytes,
+        *,
+        reference_jpeg: bytes | None = None,
+        policy: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Attach person/face crop + watchlist reference + Frigate scene/clip when available.
+
+        Face crop is the biometric proof (like cabin VLM crop). Frigate supplies
+        scene snapshot + clip when the event media is still online.
+        """
+        if not org_id or not camera_id or not face_jpeg:
+            logger.warning(
+                "face identity evidence skip org=%s camera=%s bytes=%s",
+                bool(org_id), bool(camera_id), len(face_jpeg) if face_jpeg else 0,
+            )
+            return None
+        pol = policy or {
+            "enabled": True,
+            "clip_seconds": 6,
+            "images": [
+                {"role": "scene", "crop": "full", "label": "Vue d'ensemble"},
+                {"role": "face", "crop": "bbox", "label": "Visage détecté"},
+                {"role": "subject", "crop": "bbox", "label": "Personne"},
+                {"role": "reference", "label": "Photo de référence"},
+            ],
+            "min_confidence": 0.0,
+        }
+        event_id = str(evt.get("event_id") or "")
+        meta = dict(evt.get("metadata") or {})
+        bbox = evt.get("bbox")
+        if isinstance(bbox, dict):
+            try:
+                bbox = {
+                    k: (float(v) if isinstance(v, (int, float)) else v)
+                    for k, v in bbox.items()
+                }
+            except Exception:
+                bbox = None
+
+        scene_jpeg: bytes | None = None
+        clip_bytes: bytes | None = None
+        frigate_ok = False
+        mode = self._evidence_backend_mode()
+        if mode in ("frigate", "hybrid", "strict_frigate") and self._frigate_track.enabled():
+            try:
+                fg = self._frigate_track.capture(
+                    pol, evt, org_id=org_id, camera_id=camera_id,
+                )
+                if fg and str(fg.get("status") or "") != "missing":
+                    scene_jpeg = fg.get("scene") or None
+                    clip_bytes = fg.get("clip_bytes") or None
+                    frigate_ok = bool(scene_jpeg or clip_bytes)
+                    if isinstance(fg.get("meta"), dict):
+                        meta.update({
+                            k: v for k, v in fg["meta"].items()
+                            if k in (
+                                "frigate_event_id", "frigate_bbox_embedded",
+                                "bbox_source", "capture_source",
+                            ) and v is not None
+                        })
+            except Exception as exc:
+                logger.warning(
+                    "face identity frigate capture failed camera=%s event=%s: %s",
+                    camera_id[:8], event_id[:8], exc,
+                )
+
+        if not scene_jpeg:
+            scene_jpeg = face_jpeg
+
+        clip_sec = float(pol.get("clip_seconds") or 0)
+        has_ref = bool(reference_jpeg)
+        complete = bool(face_jpeg and scene_jpeg and (clip_bytes if clip_sec > 0 else True))
+        status = "complete" if complete else "partial"
+        missing: list[str] = []
+        if clip_sec > 0 and not clip_bytes:
+            missing.append("clip")
+        if not has_ref:
+            missing.append("reference")
+
+        image_labels = {
+            "scene": "Vue d'ensemble",
+            "subject": "Personne / visage",
+            "face": "Visage détecté",
+            "reference": "Photo de référence",
+        }
+        for spec in (pol.get("images") or []):
+            role = str(spec.get("role") or "")
+            if role and spec.get("label"):
+                image_labels[role] = str(spec["label"])
+
+        meta.update(
+            {
+                "capture_source": "face_identity",
+                "evidence_status": status,
+                "clip_duration_sec": float(clip_sec if clip_bytes else 0),
+                "bbox": bbox,
+                "event_type": evt.get("event_type") or evt.get("event"),
+                "zone_id": evt.get("zone_id"),
+                "frigate_event_id": evt.get("frigate_event_id") or meta.get("frigate_event_id"),
+                "detection_method": meta.get("detection_method") or "identity_fusion",
+                "identity_winner": meta.get("identity_winner"),
+                "label": meta.get("label"),
+                "identifier": meta.get("identifier"),
+                "image_labels": image_labels,
+                "missing_roles": missing,
+                "frigate_media_ok": frigate_ok,
+                "has_reference": has_ref,
+            }
+        )
+        uploaded = self._uploader.upload(
+            org_id,
+            camera_id,
+            event_id,
+            scene_jpeg,
+            face_jpeg,  # subject = person/face crop
+            clip_bytes,
+            meta,
+            face_jpeg=face_jpeg,
+            reference_jpeg=reference_jpeg if has_ref else None,
+        )
+        if not uploaded:
+            uploaded = self._uploader.upload(
+                org_id, camera_id, event_id, scene_jpeg, face_jpeg, clip_bytes, meta,
+                face_jpeg=face_jpeg,
+                reference_jpeg=reference_jpeg if has_ref else None,
+            )
+        if not uploaded:
+            logger.warning(
+                "face identity evidence upload failed camera=%s event=%s",
+                camera_id[:8], event_id[:8],
+            )
+            return None
+        evt["evidence"] = uploaded
+        if pkg := uploaded.get("package"):
+            evt["package"] = pkg
+        evt["evidence_status"] = status
+        meta["evidence_status"] = status
+        evt["metadata"] = meta
+        logger.warning(
+            "face identity evidence attached camera=%s event=%s face=%d ref=%s clip=%s status=%s",
+            camera_id[:8], event_id[:8], len(face_jpeg),
+            len(reference_jpeg) if reference_jpeg else 0,
+            len(clip_bytes) if clip_bytes else 0, status,
+        )
+        return uploaded
+
     def attach_evidence(
         self,
         camera_id: str,
@@ -1010,7 +1249,13 @@ class EvidenceCaptureService:
             and os.path.isfile(seg_path)
             and isinstance(frame_pts, (int, float))
         ):
-            pol = policy or default_evidence_policy()
+            pol = policy or default_evidence_policy(
+                event_type=str(evt.get("event_type") or evt.get("event") or ""),
+            )
+            pol = sanitize_policy_roles(
+                pol,
+                event_type=str(evt.get("event_type") or evt.get("event") or ""),
+            )
             buf = self._buffers.get(camera_id)
             frame = None
             if buf:
@@ -1041,8 +1286,16 @@ class EvidenceCaptureService:
                 camera_id,
             )
             return None
-        pol = policy or default_evidence_policy()
-        images_spec = pol.get("images") or default_evidence_policy()["images"]
+        pol = policy or default_evidence_policy(
+            event_type=str(evt.get("event_type") or evt.get("event") or ""),
+        )
+        pol = sanitize_policy_roles(
+            pol,
+            event_type=str(evt.get("event_type") or evt.get("event") or ""),
+        )
+        images_spec = pol.get("images") or default_evidence_policy(
+            event_type=str(evt.get("event_type") or evt.get("event") or ""),
+        )["images"]
         if self._evidence_backend_mode() in ("frigate", "hybrid", "strict_frigate") and self._frigate_track.enabled():
             fg = self._try_frigate_capture(
                 camera_id, org_id, evt, pol, images_spec, return_upload=True,

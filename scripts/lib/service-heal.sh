@@ -201,6 +201,24 @@ ensure_infra_host_ports() {
     fi
   fi
 
+  # Frigate — detection / clips / face person track. Dead :5000 = no alerts, no evidence.
+  local frigate_url="${FRIGATE_URL:-http://127.0.0.1:5000}"
+  local frigate_port="${FRIGATE_PORT:-5000}"
+  if curl -sf --max-time 4 "${frigate_url%/}/api/version" >/dev/null 2>&1 \
+    || curl -sf --max-time 4 "${frigate_url%/}/api/stats" >/dev/null 2>&1; then
+    echo "[OK] frigate host :${frigate_port}"
+  else
+    echo "[WARN] frigate host :${frigate_port} dead/unhealthy — heal"
+    if heal_published_container citevision-v2-frigate frigate "$frigate_port" \
+      && { curl -sf --max-time 8 "${frigate_url%/}/api/version" >/dev/null 2>&1 \
+        || curl -sf --max-time 8 "${frigate_url%/}/api/stats" >/dev/null 2>&1; }; then
+      echo "[OK] frigate host :${frigate_port} after heal"
+    else
+      echo "[FAIL] frigate host :${frigate_port} still dead"
+      rc=1
+    fi
+  fi
+
   return "$rc"
 }
 

@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { Film, Image, Target, ScanLine } from 'lucide-react';
+import { Film, Image, Target, ScanLine, Smile, Contact } from 'lucide-react';
 import InfoTip from '@/components/ui/InfoTip';
 import type { EvidenceImageRole, EvidencePolicy } from '@/lib/evidencePolicy';
 import {
   EVIDENCE_IMAGE_ROLE_DEFAULTS,
+  allowedEvidenceRolesForTemplate,
+  hidesPlateForTemplate,
   setEvidenceImageCount,
   setEvidenceImageRole,
 } from '@/lib/evidencePolicy';
@@ -14,12 +16,15 @@ export interface EvidencePolicyFormProps {
   /** Rule studio uses i18n keys; settings panel uses plain labels when compact */
   variant?: 'studio' | 'settings';
   showEnabledToggle?: boolean;
+  templateId?: string | null;
 }
 
 const ROLE_ICONS: Record<EvidenceImageRole, typeof Image> = {
   scene: Image,
   subject: Target,
   plate: ScanLine,
+  face: Smile,
+  reference: Contact,
 };
 
 export default function EvidencePolicyForm({
@@ -27,9 +32,15 @@ export default function EvidencePolicyForm({
   onChange,
   variant = 'studio',
   showEnabledToggle = variant === 'studio',
+  templateId = null,
 }: EvidencePolicyFormProps) {
   const { t } = useTranslation();
   const imageCount = policy.images.length;
+  const allowedRoles = allowedEvidenceRolesForTemplate(templateId).filter((role) => {
+    if (role === 'plate' && hidesPlateForTemplate(templateId)) return false;
+    return true;
+  });
+  const maxSlots = Math.max(1, Math.min(4, allowedRoles.length || 3));
   const lbl = (key: string, fallback: string) =>
     variant === 'studio' ? t(key) : fallback;
 
@@ -45,8 +56,10 @@ export default function EvidencePolicyForm({
       ? t(`rules.studio.evidenceRoleHint.${role}`, { defaultValue: '' })
       : '';
 
-  const subjectIndex = policy.images.findIndex((img) => img.role === 'subject');
+  const subjectIndex = policy.images.findIndex((img) => img.role === 'subject' || img.role === 'face');
   const subjectSpec = subjectIndex >= 0 ? policy.images[subjectIndex] : null;
+
+  const slotChoices = Array.from({ length: maxSlots }, (_, i) => i + 1);
 
   return (
     <div className="cv-panel space-y-3">
@@ -76,7 +89,7 @@ export default function EvidencePolicyForm({
         </label>
         <input
           type="range"
-          min={3}
+          min={0}
           max={15}
           step={1}
           value={policy.clip_seconds}
@@ -84,7 +97,9 @@ export default function EvidencePolicyForm({
           onChange={(e) => onChange({ ...policy, clip_seconds: Number(e.target.value) })}
           className="cv-range w-full"
         />
-        <p className="text-xs text-cv-muted mt-1">{policy.clip_seconds} s · H.264</p>
+        <p className="text-xs text-cv-muted mt-1">
+          {policy.clip_seconds <= 0 ? 'Clip off (crop VLM / images seules)' : `${policy.clip_seconds} s · H.264`}
+        </p>
       </div>
 
       <div>
@@ -93,7 +108,7 @@ export default function EvidencePolicyForm({
           {variant === 'studio' && <InfoTip helpKey="imageCount" content={t('rules.studio.imageCountHint')} />}
         </label>
         <div className="flex gap-2 mt-1">
-          {[1, 2, 3].map((n) => (
+          {slotChoices.map((n) => (
             <button
               key={n}
               type="button"
@@ -103,7 +118,7 @@ export default function EvidencePolicyForm({
                   ? 'border-cv-accent bg-cv-accent/15 text-cv-accent'
                   : 'border-cv-border/60 text-cv-muted'
               }`}
-              onClick={() => onChange(setEvidenceImageCount(policy, n))}
+              onClick={() => onChange(setEvidenceImageCount(policy, n, templateId))}
             >
               {n}
             </button>
@@ -141,7 +156,7 @@ export default function EvidencePolicyForm({
                         onChange(setEvidenceImageRole(policy, index, e.target.value as EvidenceImageRole))
                       }
                     >
-                      {(['scene', 'subject', 'plate'] as EvidenceImageRole[]).map((role) => (
+                      {allowedRoles.map((role) => (
                         <option key={role} value={role}>
                           {roleLabel(role)}
                         </option>
@@ -232,7 +247,7 @@ export default function EvidencePolicyForm({
       <div className="grid grid-cols-3 gap-1 text-[10px] text-center text-cv-muted pt-1">
         <span className="p-2 rounded bg-black/20 border border-cv-border/40 flex flex-col items-center gap-1">
           <Film className="w-3 h-3" />
-          Clip {policy.clip_seconds}s
+          {policy.clip_seconds <= 0 ? 'Clip off' : `Clip ${policy.clip_seconds}s`}
         </span>
         {policy.images.map((img, i) => {
           const Icon = ROLE_ICONS[img.role] ?? Image;

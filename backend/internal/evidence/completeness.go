@@ -10,6 +10,7 @@ type Policy struct {
 	Enabled     bool                     `json:"enabled"`
 	ClipSeconds float64                  `json:"clip_seconds"`
 	Images      []map[string]interface{} `json:"images"`
+	FailClosed  []string                 `json:"fail_closed,omitempty"`
 }
 
 // Identification / plate_status — separate from violation proof (Phase A Tâche 4).
@@ -26,7 +27,7 @@ const (
 	ViolationIncomplete = "incomplete"
 )
 
-// DefaultPolicy matches DEFAULT_EVIDENCE_POLICY in the frontend.
+// DefaultPolicy matches DEFAULT_EVIDENCE_POLICY in the frontend (road archetype).
 func DefaultPolicy() Policy {
 	return Policy{
 		Enabled:     true,
@@ -34,13 +35,15 @@ func DefaultPolicy() Policy {
 		Images: []map[string]interface{}{
 			{"role": "scene"},
 			{"role": "subject"},
+			{"role": "plate"},
 		},
+		FailClosed: []string{"subject", "plate"},
 	}
 }
 
 // CountingPolicy matches COUNTING_EVIDENCE_POLICY — line_cross alerts need no clip/images.
 func CountingPolicy() Policy {
-	return Policy{Enabled: false, ClipSeconds: 0, Images: nil}
+	return Policy{Enabled: false, ClipSeconds: 0, Images: nil, FailClosed: nil}
 }
 
 func templateIDFromDefinition(root map[string]interface{}) string {
@@ -71,6 +74,22 @@ func observationModeFromDefinition(root map[string]interface{}) bool {
 	return v
 }
 
+func failClosedFromRaw(raw map[string]interface{}) []string {
+	arr, ok := raw["fail_closed"].([]interface{})
+	if !ok || len(arr) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, v := range arr {
+		s, _ := v.(string)
+		s = strings.TrimSpace(strings.ToLower(s))
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // PolicyFromDefinition extracts evidence policy from a rule definition JSON blob.
 func PolicyFromDefinition(definition json.RawMessage) Policy {
 	if len(definition) == 0 {
@@ -91,6 +110,7 @@ func PolicyFromDefinition(definition json.RawMessage) Policy {
 		}
 		return DefaultPolicy()
 	}
+	rawMap, _ := raw.(map[string]interface{})
 	b, err := json.Marshal(raw)
 	if err != nil {
 		if isCountingTemplate(tplID) {
@@ -112,7 +132,15 @@ func PolicyFromDefinition(definition json.RawMessage) Policy {
 		dp := DefaultPolicy()
 		p.Images = dp.Images
 	}
-	if p.ClipSeconds == 0 {
+	// Preserve explicit clip_seconds=0 (cabin VLM). Only default when key absent.
+	if rawMap != nil {
+		if _, hasClip := rawMap["clip_seconds"]; !hasClip && p.ClipSeconds == 0 {
+			p.ClipSeconds = DefaultPolicy().ClipSeconds
+		}
+		if len(p.FailClosed) == 0 {
+			p.FailClosed = failClosedFromRaw(rawMap)
+		}
+	} else if p.ClipSeconds == 0 {
 		p.ClipSeconds = DefaultPolicy().ClipSeconds
 	}
 	return p
@@ -145,12 +173,31 @@ func policyWantsPlate(policy Policy) bool {
 	return false
 }
 
-// violationRoles are hard requirements for alert persistence (never includes plate).
+func failClosedSet(policy Policy) map[string]bool {
+	out := map[string]bool{}
+	for _, r := range policy.FailClosed {
+		r = strings.TrimSpace(strings.ToLower(r))
+		if r != "" {
+			out[r] = true
+		}
+	}
+	// Contract often lists plate in images without repeating fail_closed in older rules —
+	// only hard-gate plate when explicitly listed in fail_closed.
+	return out
+}
+
+// violationRoles are hard requirements for alert persistence.
+// Plate is included only when fail_closed contains "plate".
 func violationRoles(policy Policy) []string {
+	fc := failClosedSet(policy)
 	out := make([]string, 0, len(policy.Images))
 	for _, im := range policy.Images {
 		role, ok := im["role"].(string)
-		if !ok || role == "" || role == "plate" {
+		if !ok || role == "" {
+			continue
+		}
+		role = strings.ToLower(role)
+		if role == "plate" && !fc["plate"] {
 			continue
 		}
 		out = append(out, role)
@@ -158,7 +205,62 @@ func violationRoles(policy Policy) []string {
 	if len(out) == 0 {
 		return []string{"scene", "subject"}
 	}
+	// If fail_closed is set, require those roles (plus non-plate images already collected).
+	if len(fc) > 0 {
+		seen := map[string]bool{}
+		merged := make([]string, 0, len(out)+len(fc))
+		for _, r := range out {
+			if !seen[r] {
+				seen[r] = true
+				merged = append(merged, r)
+			}
+		}
+		for r := range fc {
+			if !seen[r] {
+				seen[r] = true
+				merged = append(merged, r)
+			}
+		}
+		return merged
+	}
 	return out
+}
+
+func plateNumberFromSnap(snap map[string]interface{}) string {
+	if snap == nil {
+		return ""
+	}
+	if s, ok := snap["plate_number"].(string); ok && strings.TrimSpace(s) != "" {
+		return strings.TrimSpace(s)
+	}
+	if pkg := extractPackageMap(snap); pkg != nil {
+		if meta, ok := pkg["metadata"].(map[string]interface{}); ok {
+			if s, ok := meta["plate_number"].(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
+}
+
+func hasPlateProof(snap map[string]interface{}, pkg map[string]interface{}) bool {
+	if strings.TrimSpace(plateNumberFromSnap(snap)) != "" {
+		return true
+	}
+	if pkg == nil {
+		return false
+	}
+	images, _ := pkg["images"].([]interface{})
+	for _, im := range images {
+		m, _ := im.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		if role, _ := m["role"].(string); role == "plate" && hasMediaRef(m) {
+			return true
+		}
+	}
+	return false
 }
 
 // PlateStatus returns identification status. Never "verified" without extracted plate_number.
@@ -190,7 +292,7 @@ func PlateStatus(snap map[string]interface{}, policy Policy, plateNumber string)
 	return IdentificationMissing
 }
 
-// ViolationStatusFromSnap returns violation_confirmed when clip+scene+subject are present.
+// ViolationStatusFromSnap returns violation_confirmed when clip+required roles are present.
 func ViolationStatusFromSnap(snap map[string]interface{}, policy Policy) string {
 	if !policy.Enabled {
 		return ViolationConfirmed
@@ -207,6 +309,9 @@ func AnnotateStatuses(snapshot json.RawMessage, policy Policy, plateNumber strin
 	if json.Unmarshal(snapshot, &snap) != nil || snap == nil {
 		snap = map[string]interface{}{}
 	}
+	if strings.TrimSpace(plateNumber) != "" {
+		snap["plate_number"] = strings.TrimSpace(plateNumber)
+	}
 	vStatus := ViolationStatusFromSnap(snap, policy)
 	iStatus := PlateStatus(snap, policy, plateNumber)
 	snap["violation_status"] = vStatus
@@ -221,13 +326,16 @@ func AnnotateStatuses(snapshot json.RawMessage, policy Policy, plateNumber strin
 		meta["violation_status"] = vStatus
 		meta["plate_status"] = iStatus
 		meta["identification"] = iStatus
+		if strings.TrimSpace(plateNumber) != "" {
+			meta["plate_number"] = strings.TrimSpace(plateNumber)
+		}
 		snap["package"] = pkg
 	}
 	b, _ := json.Marshal(snap)
 	return b
 }
 
-// IsComplete checks *violation* proof (clip + scene + subject). Plate is not a hard gate.
+// IsComplete checks violation proof including fail_closed plate / face / reference.
 func IsComplete(snapshot json.RawMessage, policy Policy) bool {
 	if !policy.Enabled {
 		return true
@@ -248,6 +356,7 @@ func isViolationCompleteMap(snap map[string]interface{}, policy Policy) bool {
 		return false
 	}
 	needRoles := violationRoles(policy)
+	fc := failClosedSet(policy)
 	images, _ := pkg["images"].([]interface{})
 	roles := map[string]bool{}
 	for _, im := range images {
@@ -257,10 +366,74 @@ func isViolationCompleteMap(snap map[string]interface{}, policy Policy) bool {
 		}
 		role, _ := m["role"].(string)
 		if role != "" && hasMediaRef(m) {
-			roles[role] = true
+			roles[strings.ToLower(role)] = true
 		}
 	}
+	// Cabin / Gemini: exact VLM crop as scene(+subject) is sufficient proof —
+	// no clip is expected (crop bytes are what Gemini judged).
+	if pkgMeta, ok := pkg["metadata"].(map[string]interface{}); ok {
+		src, _ := pkgMeta["capture_source"].(string)
+		if strings.EqualFold(strings.TrimSpace(src), "gemini_vlm_crop") && roles["scene"] {
+			if fc["subject"] && !(roles["subject"] || roles["face"]) {
+				return false
+			}
+			return true
+		}
+		// Face identity: crop + optional/hard reference; face and subject are aliases.
+		if strings.EqualFold(strings.TrimSpace(src), "face_identity") {
+			if roles["face"] {
+				roles["subject"] = true
+			}
+			if roles["subject"] {
+				roles["face"] = true
+			}
+			if fc["face"] && !(roles["face"] || roles["subject"]) {
+				return false
+			}
+			if fc["reference"] && !roles["reference"] {
+				return false
+			}
+			if (roles["face"] || roles["subject"]) && (roles["scene"] || roles["face"] || roles["subject"]) {
+				if policy.ClipSeconds <= 0 {
+					return true
+				}
+				clip, _ := pkg["clip"].(map[string]interface{})
+				if hasMediaRef(clip) {
+					return true
+				}
+				// Soft-complete when face present so Alertes shows the match (clip may be late).
+				if roles["face"] || roles["subject"] {
+					if !fc["reference"] || roles["reference"] {
+						return true
+					}
+				}
+			}
+		}
+	}
+	// face ↔ subject alias for tpl-face-watchlist policies.
+	if roles["face"] {
+		roles["subject"] = true
+	}
+	if roles["subject"] {
+		roles["face"] = true
+	}
 	for _, r := range needRoles {
+		r = strings.ToLower(r)
+		if r == "plate" {
+			if !hasPlateProof(snap, pkg) {
+				return false
+			}
+			continue
+		}
+		if r == "reference" {
+			// Hard only when fail_closed lists reference.
+			if fc["reference"] && !roles["reference"] {
+				return false
+			}
+			if !fc["reference"] {
+				continue
+			}
+		}
 		if !roles[r] {
 			return false
 		}
@@ -268,6 +441,7 @@ func isViolationCompleteMap(snap map[string]interface{}, policy Policy) bool {
 	if policy.ClipSeconds > 0 {
 		clip, _ := pkg["clip"].(map[string]interface{})
 		if !hasMediaRef(clip) {
+			// Soft clip only for face_identity (handled above); otherwise hard.
 			return false
 		}
 	}
@@ -282,6 +456,9 @@ func IsCompleteFromPayload(payload map[string]interface{}, policy Policy) bool {
 	snap := map[string]interface{}{}
 	if pkg := extractPackageFromMap(payload); pkg != nil {
 		snap["package"] = pkg
+	}
+	if pn, ok := payload["plate_number"].(string); ok && pn != "" {
+		snap["plate_number"] = pn
 	}
 	return isViolationCompleteMap(snap, policy)
 }

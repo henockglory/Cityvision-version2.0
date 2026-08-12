@@ -7,17 +7,101 @@ from typing import Any
 
 from citevision_ai.detection.class_groups import matches_class_filter
 
-def default_evidence_policy() -> dict[str, Any]:
-    return {
-        "enabled": True,
-        "clip_seconds": 6,
-        "images": [
-            {"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
-            {"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 12, "zoom": 1.0},
-            {"role": "plate", "label": "Plaque", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8},
-        ],
-        "min_confidence": 0.0,
-    }
+_ROAD_POLICY = {
+    "enabled": True,
+    "clip_seconds": 6,
+    "images": [
+        {"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
+        {"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 12, "zoom": 1.0},
+        {"role": "plate", "label": "Plaque", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8},
+    ],
+    "min_confidence": 0.0,
+    "fail_closed": ["subject", "plate"],
+}
+
+_FACE_WATCHLIST_POLICY = {
+    "enabled": True,
+    "clip_seconds": 6,
+    "images": [
+        {"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
+        {"role": "face", "label": "Visage", "crop": "bbox", "padding_pct": 8, "zoom": 1.2},
+        {"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 10, "zoom": 1.0},
+        {"role": "reference", "label": "Référence watchlist", "crop": "full"},
+    ],
+    "min_confidence": 0.0,
+    "fail_closed": ["face", "reference"],
+}
+
+_FACE_POLICY = {
+    "enabled": True,
+    "clip_seconds": 6,
+    "images": [
+        {"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
+        {"role": "face", "label": "Visage", "crop": "bbox", "padding_pct": 8, "zoom": 1.2},
+        {"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 10, "zoom": 1.0},
+    ],
+    "min_confidence": 0.0,
+    "fail_closed": ["face"],
+}
+
+_CABIN_POLICY = {
+    "enabled": True,
+    "clip_seconds": 0,
+    "images": [
+        {"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
+        {"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 10, "zoom": 1.0},
+    ],
+    "min_confidence": 0.0,
+    "fail_closed": ["scene", "subject"],
+}
+
+_GEOMETRY_POLICY = {
+    "enabled": True,
+    "clip_seconds": 6,
+    "images": [
+        {"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
+        {"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 10, "zoom": 1.0},
+    ],
+    "min_confidence": 0.0,
+    "fail_closed": ["subject"],
+}
+
+
+def default_evidence_policy(archetype: str | None = None, event_type: str | None = None) -> dict[str, Any]:
+    """Archetype-aware default evidence policy (aligned with orchestration contract)."""
+    arch = (archetype or "").strip().lower()
+    et = (event_type or "").strip().lower()
+    if et in ("face_watchlist_match", "watchlist_match") or (
+        arch == "face" and "watchlist" in et
+    ):
+        return {**_FACE_WATCHLIST_POLICY, "images": [dict(x) for x in _FACE_WATCHLIST_POLICY["images"]]}
+    if arch == "face" or et in ("face_detected", "face_unknown"):
+        return {**_FACE_POLICY, "images": [dict(x) for x in _FACE_POLICY["images"]]}
+    if arch == "cabin" or et in ("seatbelt_violation", "phone_use_violation"):
+        return {**_CABIN_POLICY, "images": [dict(x) for x in _CABIN_POLICY["images"]]}
+    if arch == "geometry" and "parking" not in et and "plate" not in et:
+        return {**_GEOMETRY_POLICY, "images": [dict(x) for x in _GEOMETRY_POLICY["images"]]}
+    return {**_ROAD_POLICY, "images": [dict(x) for x in _ROAD_POLICY["images"]]}
+
+
+def sanitize_policy_roles(policy: dict[str, Any] | None, archetype: str | None = None, event_type: str | None = None) -> dict[str, Any]:
+    """Strip roles that do not belong to the archetype (e.g. plate on face)."""
+    pol = dict(policy or default_evidence_policy(archetype, event_type))
+    arch = (archetype or "").strip().lower()
+    et = (event_type or "").strip().lower()
+    images = list(pol.get("images") or [])
+    roles = {str(s.get("role") or "").lower() for s in images if isinstance(s, dict)}
+    if arch == "face" or et.startswith("face_") or "watchlist" in et:
+        images = [s for s in images if str(s.get("role") or "").lower() != "plate"]
+        if not any(str(s.get("role") or "").lower() == "face" for s in images):
+            images.append({"role": "face", "crop": "bbox"})
+    elif arch == "cabin" or et in ("seatbelt_violation", "phone_use_violation"):
+        images = [s for s in images if str(s.get("role") or "").lower() not in ("plate", "reference")]
+        pol["clip_seconds"] = float(pol.get("clip_seconds") or 0)
+    elif "plate" not in roles and arch in ("plate", "measure"):
+        images.append({"role": "plate", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8})
+    pol["images"] = images
+    return pol
 
 
 def _norm(s: str | None) -> str:
@@ -70,7 +154,12 @@ class EvidenceCaptureGate:
         for rule in rules:
             if rule.get("enabled") is False:
                 continue
-            policy = rule.get("evidence") or default_evidence_policy()
+            archetype = str(rule.get("archetype") or "")
+            policy = rule.get("evidence")
+            if not policy:
+                policy = default_evidence_policy(archetype, et)
+            else:
+                policy = sanitize_policy_roles(policy, archetype, et)
             if policy.get("enabled") is False:
                 continue
             want_et = _norm(str(rule.get("event_type") or ""))

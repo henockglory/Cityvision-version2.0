@@ -66,6 +66,8 @@ type EvidenceAggregate struct {
 	RecordEnabled    bool
 	SnapshotsEnabled bool
 	LPREnabled       bool
+	// TrackPerson forces Frigate objects.track to include person (face watchlist / face rules).
+	TrackPerson bool
 }
 
 // Compiler builds frigate.generated.yml from DB state.
@@ -187,7 +189,7 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 		entry.Detect.Height = 720
 	}
 	entry.Objects.Track = []string{"car", "truck", "motorcycle", "bus", "van"}
-	needPerson := false
+	needPerson := agg.TrackPerson
 	trackExtra := map[string]struct{}{}
 	entry.Record.Enabled = agg.RecordEnabled
 	entry.Snapshots.Enabled = agg.SnapshotsEnabled

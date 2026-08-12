@@ -85,6 +85,15 @@ copy_one scripts/lib/business-readiness.sh
 copy_one scripts/lib/env-utils.sh
 copy_one scripts/lib/service-heal.sh
 copy_one scripts/ensure-demo-pipeline.sh
+copy_one scripts/ensure-ai-stack.sh
+copy_one scripts/health_check_all.sh
+copy_one scripts/frigate_watchdog.sh
+copy_one scripts/watch-infra-ports.sh
+copy_one scripts/watch-ai-ingest.sh
+copy_one scripts/watch-business-readiness.sh
+copy_one scripts/watch-api.sh
+copy_one scripts/watch-ai.sh
+copy_one scripts/watch-rules.sh
 copy_one scripts/lib/compose-gpu.sh
 copy_one infra/docker-compose.nvidia.yml
 copy_one infra/frigate.base.yaml
