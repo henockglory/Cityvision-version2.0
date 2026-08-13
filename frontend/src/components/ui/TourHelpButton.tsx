@@ -10,7 +10,11 @@ interface TourHelpButtonProps {
   className?: string;
 }
 
-export default function TourHelpButton({ onClick, dataTour, className = 'cv-btn-ghost p-2' }: TourHelpButtonProps) {
+export default function TourHelpButton({
+  onClick,
+  dataTour,
+  className = 'cv-btn-ghost p-2 rounded-full border border-cv-border/50 hover:border-cv-accent/40 hover:bg-cv-accent/10 hover:text-cv-accent transition-colors',
+}: TourHelpButtonProps) {
   const { t } = useTranslation();
   const toursEnabled = useUiStore((s) => s.toursEnabled);
   if (!toursEnabled) return null;
