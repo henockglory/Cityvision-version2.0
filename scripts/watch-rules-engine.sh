@@ -23,6 +23,12 @@ RESTART_FLAG="${LOGDIR}/rules-engine.restart-request"
 LAST_RESTART_FILE="${LOGDIR}/.watch-rules-engine.last-restart"
 
 mkdir -p "$LOGDIR"
+# Drop stale restart flags from a previous boot/supervisor tick — Start already
+# brought rules-engine up; consuming an old flag mid-launch causes GATE FAIL RULES.
+if [[ -f "$RESTART_FLAG" ]]; then
+  echo "[watch-rules-engine] clearing stale restart-request on start"
+  rm -f "$RESTART_FLAG" 2>/dev/null || true
+fi
 echo "[watch-rules-engine] monitoring ${RULES_URL}/health every ${INTERVAL}s (mqtt_stale>${STALE_SEC}s)"
 
 last_restart_epoch() {
@@ -45,6 +51,8 @@ do_restart() {
   local reason="$1"
   if in_cooldown; then
     echo "[watch-rules-engine] SKIP restart (cooldown ${COOLDOWN}s) reason=${reason} ($(date -Iseconds))"
+    # Consume the flag so we do not spin on the same stale request every INTERVAL.
+    [[ "$reason" == "restart-request-flag" ]] && rm -f "$RESTART_FLAG" 2>/dev/null || true
     return 0
   fi
   echo "[watch-rules-engine] RESTART reason=${reason} ($(date -Iseconds))"

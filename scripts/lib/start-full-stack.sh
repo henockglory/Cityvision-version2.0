@@ -26,6 +26,8 @@ fi
 LOGDIR="$ROOT/logs"
 mkdir -p "$LOGDIR" "$ROOT/backend/bin" "$ROOT/data/videos"
 export CITEVISION_LOGDIR="$LOGDIR"
+# Stale supervisor/health flags must not make watch-rules kill a fresh rules-engine mid-Start.
+rm -f "$LOGDIR/rules-engine.restart-request" 2>/dev/null || true
 
 echo "=== CiteVision START FULL STACK $(date -Is) ==="
 echo "ROOT=$ROOT"
@@ -68,14 +70,28 @@ bash "$ROOT/scripts/ensure-video-storage.sh" 2>/dev/null || true
 
 # Stale docker-proxy / half-recreated go2rtc often holds 8555 and blocks compose.
 heal_go2rtc() {
+  local attempt out
   echo "[INFO] heal go2rtc (free 1984/8554/8555 + recreate)"
-  docker rm -f citevision-v2-go2rtc 2>/dev/null || true
-  free_port 1984 8554 8555 2>/dev/null || true
-  if command -v fuser >/dev/null 2>&1; then
-    fuser -k 8555/udp 2>/dev/null || true
-  fi
-  sleep 1
-  (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" up -d go2rtc) 2>&1 | tail -15 || true
+  for attempt in 1 2 3; do
+    docker rm -f citevision-v2-go2rtc 2>/dev/null || true
+    free_port 1984 8554 8555 2>/dev/null || true
+    if command -v fuser >/dev/null 2>&1; then
+      fuser -k 1984/tcp 8554/tcp 8555/tcp 8555/udp 2>/dev/null || true
+    fi
+    sleep 2
+    out="$(cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" up -d go2rtc 2>&1)" || true
+    printf '%s\n' "$out" | tail -15
+    if curl -sf --max-time 3 "http://127.0.0.1:1984/api" >/dev/null 2>&1 \
+      || wait_http_ok "http://127.0.0.1:1984/api" 20; then
+      return 0
+    fi
+    if printf '%s' "$out" | grep -qi 'address already in use'; then
+      echo "[WARN] go2rtc bind still busy — retry ${attempt}/3"
+      continue
+    fi
+    break
+  done
+  return 0
 }
 
 cd "$ROOT/infra"
@@ -282,7 +298,81 @@ bash "$ROOT/scripts/ensure-frontend.sh" 2>&1 | tail -20 || \
 wait_http_ok "http://127.0.0.1:5174/" 90 || { echo "[FAIL] frontend"; exit 1; }
 echo "[OK] frontend"
 
-# --- watchdogs ---
+# --- service gate (hard) — watchdogs start AFTER gate so they cannot kill services mid-check ---
+echo "=== [8/10] service URL gate ==="
+rm -f "$LOGDIR/rules-engine.restart-request" 2>/dev/null || true
+# Re-heal infra publishes right before gate (catch races during AI/backend boot).
+ensure_infra_host_ports || { echo "[FAIL] infra host ports at gate"; exit 1; }
+# Rules often flaps if a stale restart-request was consumed earlier — force ready.
+if ! curl -sf --max-time 3 "http://127.0.0.1:${RULES_PORT}/health" >/dev/null 2>&1; then
+  echo "[WARN] rules-engine down at gate — heal"
+  ensure_rules_engine_up || bash "$ROOT/scripts/_start-rules-engine.sh" || true
+  wait_http_ok "http://127.0.0.1:${RULES_PORT}/health" 45 \
+    || { echo "[FAIL] rules-engine unreachable at gate"; exit 1; }
+fi
+REDIS_PORT="${REDIS_PORT:-6380}" MQTT_PORT="${MQTT_PORT:-1884}" POSTGRES_PORT="${POSTGRES_PORT:-5433}" \
+MINIO_API_PORT="${MINIO_API_PORT:-9003}" RULES_PORT="${RULES_PORT}" python3 - <<'PY'
+import os, socket, sys, time, urllib.request
+
+def tcp(port, host="127.0.0.1", timeout=2.0):
+    s = socket.socket()
+    s.settimeout(timeout)
+    try:
+        s.connect((host, int(port)))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+def http_ok(url, attempts=3, delay=2.0):
+    last = None
+    for i in range(attempts):
+        try:
+            urllib.request.urlopen(url, timeout=5).read(64)
+            return True, None
+        except Exception as e:
+            last = e
+            if i + 1 < attempts:
+                time.sleep(delay)
+    return False, last
+
+http_checks = [
+  ("API", "http://127.0.0.1:8081/health"),
+  ("AI", "http://127.0.0.1:8001/health"),
+  ("RULES", f"http://127.0.0.1:{os.environ.get('RULES_PORT','8010')}/health"),
+  ("UI", "http://127.0.0.1:5174/"),
+  ("FRIGATE", "http://127.0.0.1:5000/api/version"),
+  ("GO2RTC", "http://127.0.0.1:1984/api"),
+  ("MAILHOG", "http://127.0.0.1:8025/"),
+  ("OCR", "http://127.0.0.1:8181/healthz"),
+  ("MINIO", f"http://127.0.0.1:{os.environ.get('MINIO_API_PORT','9003')}/minio/health/live"),
+]
+tcp_checks = [
+  ("REDIS_TCP", os.environ.get("REDIS_PORT", "6380")),
+  ("MQTT_TCP", os.environ.get("MQTT_PORT", "1884")),
+  ("POSTGRES_TCP", os.environ.get("POSTGRES_PORT", "5433")),
+]
+fail = 0
+for name, url in http_checks:
+  ok, err = http_ok(url, attempts=4 if name == "RULES" else 3, delay=2.0)
+  if ok:
+    print(f"[GATE OK] {name}")
+  else:
+    print(f"[GATE FAIL] {name}: {err}")
+    fail = 1
+for name, port in tcp_checks:
+  if tcp(port):
+    print(f"[GATE OK] {name}:{port}")
+  else:
+    print(f"[GATE FAIL] {name}:{port} connection refused")
+    fail = 1
+sys.exit(fail)
+PY
+
+# --- watchdogs (after gate) ---
+echo "=== watchdogs ==="
+rm -f "$LOGDIR/rules-engine.restart-request" 2>/dev/null || true
 if [[ "${WATCH_BACKEND:-1}" != "0" ]]; then
   stop_from_pid "$LOGDIR/watch-backend.pid" 2>/dev/null || true
   start_bg watch-backend "$ROOT" "bash scripts/watch-backend.sh" "$LOGDIR" "$ENV_FILE"
@@ -308,58 +398,6 @@ if [[ "${WATCH_FRIGATE:-1}" != "0" ]]; then
   # LOOP=1 continuous; heal container + person track for face rules
   start_bg frigate-watchdog "$ROOT" "env WATCH_FRIGATE_LOOP=1 bash scripts/frigate_watchdog.sh" "$LOGDIR" "$ENV_FILE"
 fi
-
-# --- service gate (hard) ---
-echo "=== [8/10] service URL gate ==="
-# Re-heal infra publishes right before gate (catch races during AI/backend boot).
-ensure_infra_host_ports || { echo "[FAIL] infra host ports at gate"; exit 1; }
-REDIS_PORT="${REDIS_PORT:-6380}" MQTT_PORT="${MQTT_PORT:-1884}" POSTGRES_PORT="${POSTGRES_PORT:-5433}" \
-MINIO_API_PORT="${MINIO_API_PORT:-9003}" python3 - <<'PY'
-import os, socket, sys, urllib.request
-
-def tcp(port, host="127.0.0.1", timeout=2.0):
-    s = socket.socket()
-    s.settimeout(timeout)
-    try:
-        s.connect((host, int(port)))
-        return True
-    except OSError as e:
-        return False
-    finally:
-        s.close()
-
-http_checks = [
-  ("API", "http://127.0.0.1:8081/health"),
-  ("AI", "http://127.0.0.1:8001/health"),
-  ("RULES", "http://127.0.0.1:8010/health"),
-  ("UI", "http://127.0.0.1:5174/"),
-  ("FRIGATE", "http://127.0.0.1:5000/api/version"),
-  ("GO2RTC", "http://127.0.0.1:1984/api"),
-  ("MAILHOG", "http://127.0.0.1:8025/"),
-  ("OCR", "http://127.0.0.1:8181/healthz"),
-  ("MINIO", f"http://127.0.0.1:{os.environ.get('MINIO_API_PORT','9003')}/minio/health/live"),
-]
-tcp_checks = [
-  ("REDIS_TCP", os.environ.get("REDIS_PORT", "6380")),
-  ("MQTT_TCP", os.environ.get("MQTT_PORT", "1884")),
-  ("POSTGRES_TCP", os.environ.get("POSTGRES_PORT", "5433")),
-]
-fail = 0
-for name, url in http_checks:
-  try:
-    urllib.request.urlopen(url, timeout=5).read(64)
-    print(f"[GATE OK] {name}")
-  except Exception as e:
-    print(f"[GATE FAIL] {name}: {e}")
-    fail = 1
-for name, port in tcp_checks:
-  if tcp(port):
-    print(f"[GATE OK] {name}:{port}")
-  else:
-    print(f"[GATE FAIL] {name}:{port} connection refused")
-    fail = 1
-sys.exit(fail)
-PY
 
 # --- Gemini live probe (hard gate when STRICT_INSTALL_HEALTH=1, default for launcher) ---
 echo "=== [9/10] gemini probe ==="
