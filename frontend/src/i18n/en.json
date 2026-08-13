@@ -754,7 +754,18 @@
     "title": "Site Map",
     "cameras": "Cameras on map",
     "empty": "No cameras on map",
-    "emptyHint": "Geolocated cameras will appear here"
+    "emptyHint": "Geolocated cameras will appear here",
+    "subtitle": "Site plan — place your cameras",
+    "realSubtitle": "Real map — OpenStreetMap & Esri satellite",
+    "globe": {
+      "subtitle": "Day globe — multi-site fleet, alerts and camera coverage",
+      "sitesLayer": "Sites",
+      "camerasLayer": "Cameras",
+      "fleet": "Fleet",
+      "recenter": "Recenter fleet",
+      "stats": "{{sites}} site(s) · {{alerts}} with alerts · {{offline}} offline",
+      "gpsHint": "{{count}} camera(s) without real GPS — place them in Map mode for exact positioning. Sites without GPS are estimated for the fleet view."
+    }
   },
   "zoneEditor": {
     "title": "Zone Editor",
@@ -1074,9 +1085,9 @@
     },
     "map": {
       "modes": "Map modes",
-      "modesDesc": "Real OSM map, schematic plan, or 3D globe.",
+      "modesDesc": "OSM map, site plan, or day globe for multi-site fleet overview.",
       "canvas": "GIS placement",
-      "canvasDesc": "Hover over a camera for live preview; click for details."
+      "canvasDesc": "Hover a camera for live preview; click for details. On Globe: sites → drill-down cameras."
     },
     "rules": {
       "catalog": "Catalog",

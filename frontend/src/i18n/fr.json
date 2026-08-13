@@ -766,7 +766,18 @@
     "title": "Carte des sites",
     "cameras": "Caméras sur la carte",
     "empty": "Aucune caméra sur la carte",
-    "emptyHint": "Les caméras géolocalisées apparaîtront ici"
+    "emptyHint": "Les caméras géolocalisées apparaîtront ici",
+    "subtitle": "Plan du site — positionnez vos caméras",
+    "realSubtitle": "Carte réelle — OpenStreetMap & satellite Esri",
+    "globe": {
+      "subtitle": "Globe jour — flotte multi-sites, alertes et couverture caméras",
+      "sitesLayer": "Sites",
+      "camerasLayer": "Caméras",
+      "fleet": "Flotte",
+      "recenter": "Recentrer la flotte",
+      "stats": "{{sites}} site(s) · {{alerts}} avec alertes · {{offline}} hors ligne",
+      "gpsHint": "{{count}} caméra(s) sans GPS réel — placez-les en mode Carte pour un positionnement exact. Les sites sans GPS sont estimés pour la vue flotte."
+    }
   },
   "zoneEditor": {
     "title": "Éditeur de zones",
@@ -1092,9 +1103,9 @@
     },
     "map": {
       "modes": "Modes carte",
-      "modesDesc": "Carte réelle OSM, plan schématique ou globe 3D animé (arcs, pulses d'alertes).",
+      "modesDesc": "Carte OSM, plan de site, ou globe jour multi-sites (flotte, alertes, couverture).",
       "canvas": "Placement SIG",
-      "canvasDesc": "Survolez une caméra pour l'aperçu live ; cliquez pour la fiche. En Globe : pulses sur alertes ouvertes."
+      "canvasDesc": "Survolez une caméra pour l'aperçu live ; cliquez pour la fiche. En Globe : sites → drill-down caméras."
     },
     "rules": {
       "catalog": "Catalogue",

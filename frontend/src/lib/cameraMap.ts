@@ -48,6 +48,11 @@ export function mergeMapMetadata(
   };
 }
 
+export function hasRealGeo(metadata: Record<string, unknown> | undefined): boolean {
+  const meta = metadata ?? {};
+  return typeof meta.lat === 'number' && typeof meta.lng === 'number';
+}
+
 export function getCameraGeoPosition(
   metadata: Record<string, unknown> | undefined,
   index: number,
@@ -59,6 +64,31 @@ export function getCameraGeoPosition(
     return { lat, lng };
   }
   return defaultGeoPosition(index);
+}
+
+/** Wider site-level fallback so distinct sites are visible at globe scale. */
+export function defaultSiteGeoPosition(siteIndex: number): GeoPosition {
+  const angle = (siteIndex * 2.399963) % (2 * Math.PI);
+  const radius = 0.35 + (siteIndex % 6) * 0.22;
+  return {
+    lat: DEFAULT_GEO_CENTER.lat + Math.sin(angle) * radius,
+    lng: DEFAULT_GEO_CENTER.lng + Math.cos(angle) * radius,
+  };
+}
+
+export function cameraSiteKey(camera: {
+  id: string;
+  siteId?: string;
+  location?: string;
+  metadata?: Record<string, unknown>;
+}): string {
+  if (camera.siteId) return `site:${camera.siteId}`;
+  if (camera.location && camera.location !== '—') return `loc:${camera.location}`;
+  if (hasRealGeo(camera.metadata)) {
+    const { lat, lng } = getCameraGeoPosition(camera.metadata, 0);
+    return `geo:${lat.toFixed(3)},${lng.toFixed(3)}`;
+  }
+  return `cam:${camera.id}`;
 }
 
 export function defaultGeoPosition(index: number): GeoPosition {
