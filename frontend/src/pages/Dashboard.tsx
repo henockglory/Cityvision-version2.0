@@ -1,31 +1,56 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Camera, Bell, Clock, Workflow, ArrowRight, Activity, Film } from 'lucide-react';
-import { evidenceCompleteness, parseEvidenceSnapshot } from '@/lib/evidence';
+import { Camera, Bell, Clock, Workflow, RefreshCw, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PageShell from '@/components/ui/PageShell';
-import StatTile from '@/components/ui/StatTile';
-import SeverityBadge from '@/components/ui/SeverityBadge';
 import DenseEmpty from '@/components/ui/DenseEmpty';
 import { DashboardSkeleton } from '@/components/ui/Skeleton';
 import ErrorState from '@/components/ErrorState';
 import LiveEventStream from '@/components/dashboard/LiveEventStream';
+import DashboardMetricCard from '@/components/dashboard/DashboardMetricCard';
+import CameraRiskList from '@/components/dashboard/CameraRiskList';
+import AlertHeatmap, { alertDailySeries } from '@/components/dashboard/AlertHeatmap';
+import OpsInsightStrip from '@/components/dashboard/OpsInsightStrip';
 import FirstRuleWizard from '@/components/rules/FirstRuleWizard';
 import AnimatedTutorial from '@/components/onboarding/AnimatedTutorial';
 import { useAlerts, useDashboardSummary, useHealth } from '@/hooks/api/queries';
 import { useSound } from '@/hooks/useSound';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 
+function sevenDaysAgoIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString();
+}
+
 export default function Dashboard() {
   const { t } = useTranslation();
   const { playClick } = useSound();
   const startTour = useAutoPageTour('dashboard');
   const summary = useDashboardSummary();
-  const alerts = useAlerts({ status: 'open', limit: 6 });
+  const openAlerts = useAlerts({ status: 'open', limit: 40 });
+  const weekAlerts = useAlerts({ from: sevenDaysAgoIso(), limit: 80 });
   const health = useHealth();
+
+  const refreshing =
+    summary.isFetching || openAlerts.isFetching || weekAlerts.isFetching || health.isFetching;
+
+  const handleRefresh = () => {
+    playClick();
+    void summary.refetch();
+    void openAlerts.refetch();
+    void weekAlerts.refetch();
+    void health.refetch();
+  };
+
+  const sparkAlerts = useMemo(
+    () => alertDailySeries(weekAlerts.data ?? []),
+    [weekAlerts.data],
+  );
 
   if (summary.isLoading) {
     return (
-      <PageShell title={t('dashboard.title')}>
+      <PageShell title={t('dashboard.title')} subtitle={t('dashboard.subtitle')}>
         <DashboardSkeleton />
       </PageShell>
     );
@@ -33,7 +58,7 @@ export default function Dashboard() {
 
   if (summary.isError) {
     return (
-      <PageShell title={t('dashboard.title')}>
+      <PageShell title={t('dashboard.title')} subtitle={t('dashboard.subtitle')}>
         <ErrorState onRetry={() => void summary.refetch()} />
       </PageShell>
     );
@@ -45,150 +70,171 @@ export default function Dashboard() {
   const activeAlerts = data?.open_alerts ?? 0;
   const eventsToday = data?.events_last_24h ?? 0;
   const rulesActive = data?.rules_enabled ?? 0;
-  const recentAlerts = alerts.data ?? [];
+  const offline = Math.max(0, camerasTotal - camerasOnline);
+  const coverage = camerasTotal > 0 ? Math.round((camerasOnline / camerasTotal) * 100) : 0;
+  const openList = openAlerts.data ?? [];
+  const weekList = weekAlerts.data ?? [];
   const healthMetrics = health.data ?? [];
+  const criticalOpen = openList.filter((a) => a.severity === 'critical').length;
+
+  // Sparklines only from real weekly alert series (or flat current coverage / rules level).
+  const sparkCameras = Array.from({ length: 7 }, () => camerasOnline);
+  const sparkEvents = sparkAlerts.some((n) => n > 0)
+    ? sparkAlerts
+    : Array.from({ length: 7 }, (_, i) => (i === 6 ? Math.max(0, eventsToday) : 0));
+  const sparkRules = Array.from({ length: 7 }, () => rulesActive);
 
   return (
-    <PageShell title={t('dashboard.title')} onHelpTour={startTour}>
+    <PageShell
+      title={t('dashboard.title')}
+      subtitle={t('dashboard.subtitle')}
+      onHelpTour={startTour}
+      actions={
+        <div className="flex items-center gap-2">
+          <span className="cv-btn-secondary text-xs py-2 px-3 pointer-events-none">
+            {t('dashboard.period24h')}
+          </span>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="cv-btn-secondary text-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            {t('dashboard.refresh')}
+          </button>
+        </div>
+      }
+    >
       <AnimatedTutorial />
       <FirstRuleWizard />
 
-      <div id="dashboard-stats" className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <StatTile
+      <div id="dashboard-stats" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <DashboardMetricCard
           label={t('dashboard.camerasOnline')}
           value={`${camerasOnline}/${camerasTotal}`}
+          secondary={t('dashboard.kpiCamerasSecondary', { coverage, offline })}
           icon={Camera}
           tone="cameras"
-          hint="Nombre de caméras actives et diffusant sur le site."
+          hint={t('dashboard.hintCameras')}
+          sparkline={sparkCameras}
         />
-        <StatTile
+        <DashboardMetricCard
           label={t('dashboard.activeAlerts')}
           value={activeAlerts}
+          secondary={
+            criticalOpen > 0
+              ? t('dashboard.kpiAlertsCritical', { count: criticalOpen })
+              : t('dashboard.kpiAlertsSecondary')
+          }
           icon={Bell}
           tone="alerts"
-          hint="Alertes ouvertes nécessitant une action opérateur."
+          hint={t('dashboard.hintAlerts')}
+          sparkline={sparkAlerts}
         />
-        <StatTile
+        <DashboardMetricCard
           label={t('dashboard.eventsToday')}
           value={eventsToday}
+          secondary={t('dashboard.kpiEventsSecondary')}
           icon={Clock}
           tone="events"
-          hint="Événements IA enregistrés sur les dernières 24 h."
+          hint={t('dashboard.hintEvents')}
+          sparkline={sparkEvents}
         />
-        <StatTile
+        <DashboardMetricCard
           label={t('dashboard.rulesActive')}
           value={rulesActive}
+          secondary={t('dashboard.kpiRulesSecondary')}
           icon={Workflow}
           tone="rules"
-          hint="Règles d'analyse actuellement activées."
+          hint={t('dashboard.hintRules')}
+          sparkline={sparkRules}
         />
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <CameraRiskList
+          alerts={openList}
+          isError={openAlerts.isError}
+          onRetry={() => void openAlerts.refetch()}
+        />
+        <AlertHeatmap
+          alerts={weekList}
+          isError={weekAlerts.isError}
+          onRetry={() => void weekAlerts.refetch()}
+        />
+      </div>
+
+      <OpsInsightStrip
+        camerasOnline={camerasOnline}
+        camerasTotal={camerasTotal}
+        openAlerts={activeAlerts}
+        eventsToday={eventsToday}
+        rulesActive={rulesActive}
+        alerts={openList}
+        health={healthMetrics}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div id="dashboard-alerts" className="lg:col-span-7 cv-card p-4 min-h-[220px] flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-display text-sm font-semibold">{t('dashboard.recentAlerts')}</h2>
-            <Link
-              to="/alerts"
-              onClick={() => playClick()}
-              className="text-cv-accent text-xs flex items-center gap-1 hover:underline shrink-0"
-            >
-              {t('dashboard.viewAll')} <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-          {alerts.isError ? (
-            <ErrorState onRetry={() => void alerts.refetch()} />
-          ) : recentAlerts.length === 0 ? (
-            <DenseEmpty title={t('dashboard.noAlerts')} hint={t('dashboard.noAlertsHint')} />
-          ) : (
-            <div className="space-y-2 flex-1">
-              {recentAlerts.slice(0, 5).map((alert) => {
-                const evComplete = evidenceCompleteness(parseEvidenceSnapshot(alert.evidenceSnapshot));
-                return (
-                  <Link
-                    key={alert.id}
-                    to="/alerts"
-                    onClick={() => playClick()}
-                    className="flex items-center gap-3 p-2.5 rounded-lg bg-cv-deep/40 border border-cv-border/60 hover:border-metric-alerts/30 transition-colors"
-                  >
-                    <SeverityBadge severity={alert.severity} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{alert.message}</p>
-                      <p className="text-xs text-cv-muted">{alert.cameraName}</p>
-                    </div>
-                    {evComplete.have > 0 && (
-                      <span
-                        className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${
-                          evComplete.complete ? 'bg-metric-rules/15 text-metric-rules' : 'bg-cv-surface text-cv-muted'
-                        }`}
-                        title={evComplete.complete ? t('evidence.complete') : t('evidence.partial', { have: evComplete.have, total: evComplete.total })}
-                      >
-                        <Film className="w-3 h-3" />
-                        {evComplete.have}/{evComplete.total}
-                      </span>
-                    )}
-                    <span className="text-xs text-cv-muted tabular-nums shrink-0">
-                      {new Date(alert.timestamp).toLocaleTimeString()}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="lg:col-span-5 cv-card p-4 min-h-[220px]">
-          <div className="flex items-center gap-2 mb-3">
-            <Activity className="w-4 h-4 text-metric-rules cv-icon-spin-slow" />
-            <h2 className="font-display text-sm font-semibold">{t('dashboard.systemStatus')}</h2>
-          </div>
-          {health.isError ? (
-            <ErrorState onRetry={() => void health.refetch()} />
-          ) : healthMetrics.length === 0 ? (
-            <DenseEmpty title={t('systemHealth.empty')} />
-          ) : (
-            <div className="space-y-2">
-              {healthMetrics.slice(0, 6).map((metric) => (
-                <div key={metric.name} className="flex items-center justify-between text-sm py-1 border-b border-cv-border/40 last:border-0">
-                  <span className="text-cv-muted truncate">{metric.name}</span>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="font-medium tabular-nums">{metric.value}</span>
-                    <span className={`w-2 h-2 rounded-full ${
-                      metric.status === 'healthy' ? 'bg-metric-rules' :
-                      metric.status === 'warning' ? 'bg-metric-alerts' : 'bg-severity-critical'
-                    }`} />
-                  </div>
-                </div>
-              ))}
-              <p className="text-xs text-cv-muted pt-2 border-t border-cv-border/40 mt-2">
-                Événements 24h : <span className="text-metric-events font-semibold">{eventsToday.toLocaleString()}</span>
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div id="dashboard-live" className="lg:col-span-8">
+        <div className="lg:col-span-8">
           <LiveEventStream />
         </div>
 
-        <div className="lg:col-span-4 cv-card p-4">
-          <h2 className="font-display text-sm font-semibold mb-3">{t('dashboard.quickActions')}</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { to: '/map', label: t('dashboard.mapSig') },
-              { to: '/live', label: t('nav.liveView') },
-              { to: '/rules', label: t('nav.rules') },
-              { to: '/alerts', label: t('nav.alerts') },
-            ].map((action) => (
-              <Link
-                key={action.to}
-                to={action.to}
-                onClick={() => playClick()}
-                className="cv-btn-secondary py-2.5 text-xs text-center"
-              >
-                {action.label}
-              </Link>
-            ))}
+        <div className="lg:col-span-4 space-y-4">
+          <div className="cv-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="w-4 h-4 text-metric-rules" />
+              <h2 className="font-display text-sm font-semibold">{t('dashboard.systemStatus')}</h2>
+            </div>
+            {health.isError ? (
+              <ErrorState onRetry={() => void health.refetch()} />
+            ) : healthMetrics.length === 0 ? (
+              <DenseEmpty title={t('systemHealth.empty')} />
+            ) : (
+              <div className="space-y-2">
+                {healthMetrics.slice(0, 5).map((metric) => (
+                  <div
+                    key={metric.name}
+                    className="flex items-center justify-between text-sm py-1 border-b border-cv-border/40 last:border-0"
+                  >
+                    <span className="text-cv-muted truncate">{metric.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-medium tabular-nums text-xs">{metric.value}</span>
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          metric.status === 'healthy'
+                            ? 'bg-metric-rules'
+                            : metric.status === 'warning'
+                              ? 'bg-metric-alerts'
+                              : 'bg-severity-critical'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="cv-card p-4">
+            <h2 className="font-display text-sm font-semibold mb-3">{t('dashboard.quickActions')}</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { to: '/map', label: t('dashboard.mapSig') },
+                { to: '/live', label: t('nav.liveView') },
+                { to: '/rules', label: t('nav.rules') },
+                { to: '/alerts', label: t('nav.alerts') },
+              ].map((action) => (
+                <Link
+                  key={action.to}
+                  to={action.to}
+                  onClick={() => playClick()}
+                  className="cv-btn-secondary py-2.5 text-xs text-center"
+                >
+                  {action.label}
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
       </div>
