@@ -1236,10 +1236,12 @@
   },
   "stackHealth": {
     "blockTitle": "Stack IA incomplète",
-    "blockBody": "Des modèles critiques (YOLO / téléphone / ceinture / plaque) ne sont pas chargés. Ce blocage concerne la stack modèles IA — pas Frigate. Frigate et les watchdogs se soignent en arrière-plan ; recharge automatique toutes les 5 s.",
+    "blockBody": "Les modèles critiques (YOLO / téléphone / ceinture / plaque) ne répondent pas dans /health. Ce n’est confirmé que si la plateforme est joignable. Recharge auto toutes les 5 s.",
+    "unreachableTitle": "Plateforme temporairement injoignable",
+    "unreachableBody": "L’UI n’atteint pas /health/platform (proxy Vite, API ou pont localhost WSL). Ce n’est pas « modèles YOLO absents ». L’app reste utilisable ; nouvel essai toutes les 5 s.",
     "degradedTitle": "Mode dégradé — stack IA incomplète",
-    "degradedBody": "Certains modèles ne sont pas chargés. Les règles dépendantes peuvent être désactivées. Frigate peut être sain indépendamment.",
-    "degradedContinue": "Continuer en mode dégradé",
+    "degradedBody": "Certains modèles ne sont pas chargés. Les règles dépendantes peuvent être fragiles. Frigate peut rester sain.",
+    "degradedContinue": "Continuer quand même",
     "openHealth": "Voir la santé système"
   },
   "integrations": {

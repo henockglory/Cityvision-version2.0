@@ -82,8 +82,8 @@ for svc in watch-demo-stack watch-backend watch-ai-ingest watch-rules-engine wat
     rm -f "$LOGDIR/${svc}.pid"
   fi
 done
-pkill -f 'watch-backend|watch-ai-ingest|watch-demo-stack|watch-rules-engine|watch-infra-ports|watch-business-readiness|frigate_watchdog|frigate-watchdog' 2>/dev/null || true
-pkill -f 'vite|ensure-frontend' 2>/dev/null || true
+pkill -f 'watch-backend|watch-ai-ingest|watch-demo-stack|watch-rules-engine|watch-infra-ports|watch-business-readiness|watch-frontend|frigate_watchdog|frigate-watchdog' 2>/dev/null || true
+pkill -f 'vite|ensure-frontend|watch-frontend|serve-frontend-static' 2>/dev/null || true
 pkill -f 'uvicorn citevision_ai.main' 2>/dev/null || true
 pkill -f 'citevision-ai|run-ai-engine' 2>/dev/null || true
 pkill -f 'rules-engine' 2>/dev/null || true

@@ -54,7 +54,7 @@ Write-Host ("CiteVision START - WSL {0}" -f $WslRoot) -ForegroundColor Cyan
 Write-Host ("Product mirror (refresh SRC): {0}" -f $ProductRoot) -ForegroundColor DarkGray
 Write-Host ""
 
-Write-Host "[1/4] Runtime check" -ForegroundColor Cyan
+Write-Host "[1/5] Runtime check" -ForegroundColor Cyan
 $prev = $ErrorActionPreference
 $ErrorActionPreference = "SilentlyContinue"
 wsl -d $Distro -e true 2>$null | Out-Null
@@ -74,7 +74,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[OK] Runtime ready" -ForegroundColor Green
 
 # Bounded refresh only (never hang Start on /mnt rsync of whole trees).
-Write-Host "[2/4] Refresh start scripts (max 25s)" -ForegroundColor Cyan
+Write-Host "[2/5] Refresh start scripts (max 25s)" -ForegroundColor Cyan
 $syncBash = @'
 #!/usr/bin/env bash
 set -uo pipefail
@@ -105,6 +105,11 @@ copy_one scripts/lib/probe-gemini.sh
 copy_one scripts/lib/set-gemini-key.sh
 copy_one scripts/ensure-demo-pipeline.sh
 copy_one scripts/ensure-ai-stack.sh
+copy_one scripts/ensure-frontend.sh
+copy_one scripts/serve-frontend-static.mjs
+copy_one scripts/watch-frontend.sh
+copy_one scripts/lib/platform-models-ok.py
+copy_one frontend/vite.config.ts
 copy_one scripts/health_check_all.sh
 copy_one scripts/frigate_watchdog.sh
 copy_one scripts/watch-infra-ports.sh
@@ -119,6 +124,9 @@ copy_one scripts/lib/compose-gpu.sh
 copy_one infra/docker-compose.nvidia.yml
 copy_one infra/frigate.base.yaml
 copy_one scripts/apply-wsl-balanced-resources.ps1
+copy_one frontend/src/components/StackHealthGate.tsx
+copy_one frontend/src/i18n/locales/fr.json
+copy_one frontend/src/i18n/locales/en.json
 echo "[OK] start scripts refresh done"
 exit 0
 '@
@@ -132,7 +140,21 @@ wsl -d $Distro -- bash -lc $syncCmd
 Write-Host "[OK] Refresh step finished" -ForegroundColor Green
 Write-Host ""
 
-Write-Host "[3/4] Starting stack (live log below)" -ForegroundColor Cyan
+# Force WSL RAM profile when still below 20GB (OOM killed Vite under 12GB). Needs wsl --shutdown once.
+$wslCfgPath = Join-Path $env:USERPROFILE '.wslconfig'
+$wslCfgText = ''
+if (Test-Path -LiteralPath $wslCfgPath) {
+  $wslCfgText = Get-Content -LiteralPath $wslCfgPath -Raw -ErrorAction SilentlyContinue
+}
+if ($wslCfgText -notmatch '(?im)^\s*memory\s*=\s*20GB\s*$') {
+  Write-Host "[INFO] Updating .wslconfig to memory=20GB (apply with: wsl --shutdown)" -ForegroundColor Yellow
+  $applyPs1 = Join-Path $ProductRoot 'scripts\apply-wsl-balanced-resources.ps1'
+  if (Test-Path -LiteralPath $applyPs1) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $applyPs1
+  }
+}
+
+Write-Host "[3/5] Starting stack (live log below)" -ForegroundColor Cyan
 Write-Host ""
 
 # Stop-like: script on disk, stdout streams live to this console (no ForEach filter).
@@ -171,7 +193,7 @@ $remoteCmd = ('sed "s/\r$//" "{0}" > /tmp/citevision-start-all.sh; chmod +x /tmp
 $rc = $LASTEXITCODE
 
 Write-Host ""
-Write-Host "[4/4] Start result" -ForegroundColor Cyan
+Write-Host "[4/5] Start result" -ForegroundColor Cyan
 
 if ($rc -ne 0) {
   Write-Host "[FAIL] CiteVision could not start completely." -ForegroundColor Red
@@ -188,7 +210,37 @@ if ($rc -ne 0) {
   exit $rc
 }
 
-Write-Host "[OK] CiteVision is ready" -ForegroundColor Green
+# Definitive Windows gate: browser uses localhost from Windows, not only WSL curl.
+Write-Host "[5/5] Windows UI + /health/platform" -ForegroundColor Cyan
+$uiOk = $false
+$platformUrl = 'http://127.0.0.1:5174/health/platform'
+for ($i = 1; $i -le 45; $i++) {
+  try {
+    $resp = Invoke-WebRequest -Uri $platformUrl -UseBasicParsing -TimeoutSec 5
+    # API returns models_all_ok as string "true" under components.ai_engine.detail
+    if ($resp.StatusCode -eq 200 -and $resp.Content -match '"models_all_ok"\s*:\s*"?true"?') {
+      $uiOk = $true
+      break
+    }
+  } catch {}
+  if (($i % 5) -eq 0) {
+    Write-Host ("  retry {0}/45 - waking UI in WSL..." -f $i) -ForegroundColor DarkGray
+    $healCmd = ('bash "{0}/scripts/ensure-frontend.sh"' -f $WslRoot)
+    wsl -d $Distro -- bash -lc $healCmd 2>$null | Out-Null
+    # Touch from WSL then Windows to re-bind localhostForwarding after UI restart.
+    wsl -d $Distro -- bash -lc 'curl -sf --max-time 3 http://127.0.0.1:5174/ >/dev/null' 2>$null | Out-Null
+  }
+  Start-Sleep -Seconds 2
+}
+
+if (-not $uiOk) {
+  Write-Host "[FAIL] Windows cannot reach http://127.0.0.1:5174/health/platform with models_all_ok." -ForegroundColor Red
+  Write-Host "       Stack may be up in WSL but the Windows browser path is broken." -ForegroundColor Yellow
+  Write-Host "       Check: wsl --shutdown then Start again; ensure .wslconfig has localhostForwarding=true and memory=20GB." -ForegroundColor Yellow
+  exit 1
+}
+
+Write-Host "[OK] CiteVision is ready (Windows UI + platform models OK)" -ForegroundColor Green
 Write-Host "     Open http://127.0.0.1:5174" -ForegroundColor Green
 Write-Host ""
 exit 0

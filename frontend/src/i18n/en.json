@@ -1207,10 +1207,12 @@
   },
   "stackHealth": {
     "blockTitle": "Incomplete AI stack",
-    "blockBody": "Critical models (YOLO / phone / seatbelt / plate) are not loaded. This gate is about AI models — not Frigate. Frigate and watchdogs self-heal in the background; auto-refresh every 5 s.",
+    "blockBody": "Critical models (YOLO / phone / seatbelt / plate) are not reporting healthy in /health. Only shown when the platform endpoint is reachable. Auto-refresh every 5 s.",
+    "unreachableTitle": "Platform temporarily unreachable",
+    "unreachableBody": "The UI cannot reach /health/platform (Vite proxy, API, or WSL localhost bridge). This is not “YOLO models missing”. The app stays usable; retry every 5 s.",
     "degradedTitle": "Degraded mode — incomplete AI stack",
-    "degradedBody": "Some models are not loaded. Dependent rules may be disabled. Frigate can be healthy independently.",
-    "degradedContinue": "Continue in degraded mode",
+    "degradedBody": "Some models are not loaded. Dependent rules may be fragile. Frigate can still be healthy.",
+    "degradedContinue": "Continue anyway",
     "openHealth": "View system health"
   },
   "integrations": {

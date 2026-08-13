@@ -217,7 +217,8 @@ GO_BIN="/usr/local/go/bin/go"
 [[ -x "$GO_BIN" ]] || GO_BIN="$(command -v go || true)"
 [[ -n "$GO_BIN" ]] || { echo "[FAIL] go not found"; exit 1; }
 
-free_port 8081 8001 8010 5174 5175 5176 5177 2>/dev/null || true
+# Do not free 8001 here: [3/10] already validated AI. Killing it forces a second CUDA cold start.
+free_port 8081 8010 5174 5175 5176 5177 2>/dev/null || true
 sleep 1
 bash "$ROOT/scripts/ensure-rules-sync-env.sh" --static-only 2>/dev/null || true
 load_dotenv "$ENV_FILE"
@@ -260,24 +261,28 @@ if [[ -f "$ROOT/scripts/preflight-validate.sh" ]]; then
   PREFLIGHT_VALIDATE_LIGHT=1 bash "$ROOT/scripts/preflight-validate.sh" "$LOGDIR/preflight-validate-light.log" \
     2>&1 | tail -15 || echo "[WARN] preflight-validate light skipped"
 fi
-if [[ -f "$ROOT/scripts/_restart_ai.py" ]]; then
-  python3 "$ROOT/scripts/_restart_ai.py" || true
+# Restart AI only when down / models incomplete. Unconditional _restart_ai after a healthy
+# [3/10] caused a second CUDA cold start (2+ min) and Start FAIL on Ctrl+C / timeout.
+_ai_models_ok=0
+if curl -sf --max-time 8 "http://127.0.0.1:${AI_PORT}/health" 2>/dev/null \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin);sys.exit(0 if str(d.get("models_all_ok","")).lower() in ("true","1","yes") or (d.get("yolo_loaded") and d.get("face_loaded") and d.get("plate_loaded")) else 1)' 2>/dev/null; then
+  _ai_models_ok=1
+fi
+if [[ "$_ai_models_ok" == "1" ]]; then
+  echo "[OK] AI already healthy after [3/10] — skip _restart_ai"
 else
-  start_bg ai-engine "$ROOT" "bash scripts/run-ai-engine.sh" "$LOGDIR" "$ENV_FILE"
+  echo "[INFO] AI not healthy — starting via _restart_ai"
+  if [[ -f "$ROOT/scripts/_restart_ai.py" ]]; then
+    python3 "$ROOT/scripts/_restart_ai.py" || true
+  else
+    start_bg ai-engine "$ROOT" "bash scripts/run-ai-engine.sh" "$LOGDIR" "$ENV_FILE"
+  fi
 fi
 if ! wait_http_ok "http://127.0.0.1:${AI_PORT}/health" 180; then
   echo "[FAIL] AI health" >&2
   exit 1
 fi
-# Skip second ensure-ai-stack --restart-ai when health already reports models OK (faster, fewer flaps).
-_ai_models_ok=0
-if curl -sf --max-time 5 "http://127.0.0.1:${AI_PORT}/health" 2>/dev/null \
-  | python3 -c 'import sys,json;d=json.load(sys.stdin);sys.exit(0 if d.get("models_all_ok") is True or (d.get("yolo_loaded") and d.get("face_loaded") and d.get("plate_loaded")) else 1)' 2>/dev/null; then
-  _ai_models_ok=1
-fi
-if [[ "$_ai_models_ok" == "1" ]]; then
-  echo "[OK] AI models already healthy - skip redundant restart"
-else
+if [[ "$_ai_models_ok" != "1" ]]; then
   bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --restart-ai \
     --health-url="http://127.0.0.1:${AI_PORT}/health" --max-attempts=3 || true
 fi
@@ -352,11 +357,39 @@ echo "[INFO] AI cameras running=${n:-0} (ingest not required for launch OK)"
 echo "[OK] business readiness"
 
 # --- frontend ---
-echo "=== [7/10] frontend :5174 ==="
-bash "$ROOT/scripts/ensure-frontend.sh" 2>&1 | tail -20 || \
-  start_bg frontend "$ROOT/frontend" "npm run dev -- --host 0.0.0.0 --port 5174 --strictPort" "$LOGDIR" "$ENV_FILE"
+# static = low-RAM Node serve of dist (Vite HMR was OOM-killed under WSL 12GB).
+export CITEVISION_FRONTEND_MODE="${CITEVISION_FRONTEND_MODE:-static}"
+echo "=== [7/10] frontend :5174 (mode=${CITEVISION_FRONTEND_MODE}) ==="
+bash "$ROOT/scripts/ensure-frontend.sh" 2>&1 | tail -40 || {
+  echo "[FAIL] ensure-frontend"
+  exit 1
+}
 wait_http_ok "http://127.0.0.1:5174/" 90 || { echo "[FAIL] frontend"; exit 1; }
-echo "[OK] frontend"
+echo "[OK] frontend HTTP"
+
+# Hard gate: same path as the browser (Vite proxy → API /health/platform).
+# Prevents READY while UI shows "Stack IA incomplete" / platform:unknown.
+echo "=== [7b/10] UI proxy /health/platform (models_all_ok) ==="
+_ui_plat_ok=0
+for _ui_i in $(seq 1 45); do
+  if curl -sf --max-time 8 "http://127.0.0.1:5174/health/platform" 2>/dev/null \
+    | python3 "$ROOT/scripts/lib/platform-models-ok.py" 2>/dev/null; then
+    _ui_plat_ok=1
+    break
+  fi
+  if ! curl -sf --max-time 2 "http://127.0.0.1:5174/" >/dev/null 2>&1; then
+    echo "[WARN] Vite down during platform gate — ensure-frontend"
+    bash "$ROOT/scripts/ensure-frontend.sh" 2>&1 | tail -8 || true
+  fi
+  sleep 2
+done
+if [[ "$_ui_plat_ok" != "1" ]]; then
+  echo "[FAIL] UI proxy /health/platform not models_all_ok after ~90s" >&2
+  curl -sS --max-time 5 "http://127.0.0.1:5174/health/platform" 2>&1 | head -c 800 || true
+  echo "" >&2
+  exit 1
+fi
+echo "[OK] UI proxy /health/platform (models_all_ok)"
 
 # --- service gate (hard) — watchdogs start AFTER gate so they cannot kill services mid-check ---
 echo "=== [8/10] service URL gate ==="
@@ -402,6 +435,7 @@ http_checks = [
   ("AI", "http://127.0.0.1:8001/health"),
   ("RULES", f"http://127.0.0.1:{os.environ.get('RULES_PORT','8010')}/health"),
   ("UI", "http://127.0.0.1:5174/"),
+  ("UI_PLATFORM", "http://127.0.0.1:5174/health/platform"),
   ("FRIGATE", "http://127.0.0.1:5000/api/version"),
   ("GO2RTC", "http://127.0.0.1:1984/api"),
   ("MAILHOG", "http://127.0.0.1:8025/"),
@@ -457,6 +491,11 @@ if [[ "${WATCH_FRIGATE:-1}" != "0" ]]; then
   stop_from_pid "$LOGDIR/frigate-watchdog.pid" 2>/dev/null || true
   # LOOP=1 continuous; heal container + person track for face rules
   start_bg frigate-watchdog "$ROOT" "env WATCH_FRIGATE_LOOP=1 bash scripts/frigate_watchdog.sh" "$LOGDIR" "$ENV_FILE"
+fi
+if [[ "${WATCH_FRONTEND:-1}" != "0" ]]; then
+  stop_from_pid "$LOGDIR/watch-frontend.pid" 2>/dev/null || true
+  pkill -f 'scripts/watch-frontend.sh' 2>/dev/null || true
+  start_bg watch-frontend "$ROOT" "bash scripts/watch-frontend.sh" "$LOGDIR" "$ENV_FILE"
 fi
 
 # --- Gemini live probe (hard gate when STRICT_INSTALL_HEALTH=1, default for launcher) ---

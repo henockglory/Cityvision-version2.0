@@ -135,7 +135,7 @@ interface RuleActivationDialogProps {
 
 const STEP_LABELS_KEYS = ['config', 'conditions', 'actionsEvidence', 'preview'] as const;
 
-function WizardStepContext({ step, template, t }: {
+function WizardStepContext({ step, template: _template, t }: {
   step: number;
   template: { name: string; partial_status?: string; partial_reason_fr?: string; category?: string };
   t: (k: string, opts?: Record<string, unknown>) => string;
