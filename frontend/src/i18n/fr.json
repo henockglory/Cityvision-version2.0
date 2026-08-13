@@ -770,7 +770,7 @@
     "subtitle": "Plan du site — positionnez vos caméras",
     "realSubtitle": "Carte réelle — OpenStreetMap & satellite Esri",
     "globe": {
-      "subtitle": "Globe jour — flotte multi-sites, alertes et couverture caméras",
+      "subtitle": "Globe nuit — flotte multi-sites, alertes et couverture caméras",
       "sitesLayer": "Sites",
       "camerasLayer": "Caméras",
       "fleet": "Flotte",
@@ -1103,7 +1103,7 @@
     },
     "map": {
       "modes": "Modes carte",
-      "modesDesc": "Carte OSM, plan de site, ou globe jour multi-sites (flotte, alertes, couverture).",
+      "modesDesc": "Carte OSM, plan de site, ou globe nuit multi-sites (flotte, alertes, couverture).",
       "canvas": "Placement SIG",
       "canvasDesc": "Survolez une caméra pour l'aperçu live ; cliquez pour la fiche. En Globe : sites → drill-down caméras."
     },

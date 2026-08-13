@@ -67,7 +67,7 @@ export default function MapPage() {
 
   const subtitle =
     mapMode === 'globe'
-      ? t('map.globe.subtitle', 'Globe jour — flotte multi-sites, alertes et couverture caméras')
+      ? t('map.globe.subtitle', 'Globe nuit — flotte multi-sites, alertes et couverture caméras')
       : mapMode === 'real'
         ? t('map.realSubtitle', 'Carte réelle — OpenStreetMap & satellite Esri')
         : t('map.subtitle', 'Plan du site — positionnez vos caméras');

@@ -758,7 +758,7 @@
     "subtitle": "Site plan — place your cameras",
     "realSubtitle": "Real map — OpenStreetMap & Esri satellite",
     "globe": {
-      "subtitle": "Day globe — multi-site fleet, alerts and camera coverage",
+      "subtitle": "Night globe — multi-site fleet, alerts and camera coverage",
       "sitesLayer": "Sites",
       "camerasLayer": "Cameras",
       "fleet": "Fleet",
@@ -1085,7 +1085,7 @@
     },
     "map": {
       "modes": "Map modes",
-      "modesDesc": "OSM map, site plan, or day globe for multi-site fleet overview.",
+      "modesDesc": "OSM map, site plan, or night globe for multi-site fleet overview.",
       "canvas": "GIS placement",
       "canvasDesc": "Hover a camera for live preview; click for details. On Globe: sites → drill-down cameras."
     },

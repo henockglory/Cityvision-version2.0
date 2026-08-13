@@ -346,10 +346,11 @@ export default function GlobeMapView({
     g.pointOfView({ lat: fleetCenter.lat, lng: fleetCenter.lng, altitude: fleetAltitude }, 900);
     const ctrl = g.controls?.();
     if (ctrl) {
-      ctrl.autoRotate = false;
+      ctrl.autoRotate = !reducedMotion;
+      ctrl.autoRotateSpeed = 0.85;
       ctrl.enableDamping = true;
     }
-  }, [ready, fleetCenter.lat, fleetCenter.lng, fleetAltitude, size.w, size.h]);
+  }, [ready, fleetCenter.lat, fleetCenter.lng, fleetAltitude, reducedMotion, size.w, size.h]);
 
   useEffect(() => {
     if (!ready || !globeRef.current) return;
@@ -463,12 +464,12 @@ export default function GlobeMapView({
             ref={globeRef}
             width={size.w}
             height={size.h}
-            globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+            globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
             bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-            backgroundColor="rgba(7, 19, 39, 1)"
+            backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
             showAtmosphere
-            atmosphereColor="rgba(125, 211, 252, 0.65)"
-            atmosphereAltitude={0.16}
+            atmosphereColor="rgba(56, 189, 248, 0.55)"
+            atmosphereAltitude={0.18}
             pointsData={points}
             pointLat="lat"
             pointLng="lng"
