@@ -89,6 +89,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'docs/cas-pratiques',
+        element: (
+          <LazyPage>
+            <DocumentationFrame doc="casPratiques" />
+          </LazyPage>
+        ),
+      },
+      {
         path: 'cameras',
         element: (
           <ProtectedRoute roles={['admin', 'operator']}>

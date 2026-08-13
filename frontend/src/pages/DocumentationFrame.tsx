@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ExternalLink } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 
-export type DocDocId = 'overview' | 'architectures';
+export type DocDocId = 'overview' | 'architectures' | 'casPratiques';
 
 const DOC_SRC: Record<DocDocId, { src: string; titleKey: string; titleFallback: string }> = {
   overview: {
@@ -15,6 +15,11 @@ const DOC_SRC: Record<DocDocId, { src: string; titleKey: string; titleFallback: 
     src: '/docs/architectures/index.html',
     titleKey: 'nav.docsArchitectures',
     titleFallback: 'Architectures',
+  },
+  casPratiques: {
+    src: '/docs/cas-pratiques/index.html',
+    titleKey: 'nav.docsCasPratiques',
+    titleFallback: 'Cas pratiques',
   },
 };
 
