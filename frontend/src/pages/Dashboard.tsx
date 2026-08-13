@@ -109,7 +109,7 @@ export default function Dashboard() {
       <AnimatedTutorial />
       <FirstRuleWizard />
 
-      <div id="dashboard-stats" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div id="dashboard-stats" className="grid grid-cols-2 lg:grid-cols-4 cv-section-grid">
         <DashboardMetricCard
           label={t('dashboard.camerasOnline')}
           value={`${camerasOnline}/${camerasTotal}`}
@@ -152,7 +152,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 cv-section-grid">
         <CameraRiskList
           alerts={openList}
           isError={openAlerts.isError}
@@ -175,14 +175,14 @@ export default function Dashboard() {
         health={healthMetrics}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 cv-section-grid">
         <div className="lg:col-span-8">
           <LiveEventStream />
         </div>
 
-        <div className="lg:col-span-4 space-y-4">
-          <div className="cv-card p-4">
-            <div className="flex items-center gap-2 mb-3">
+        <div className="lg:col-span-4 cv-section-stack">
+          <div className="cv-card p-5">
+            <div className="flex items-center gap-2 mb-4">
               <Activity className="w-4 h-4 text-metric-rules" />
               <h2 className="font-display text-sm font-semibold">{t('dashboard.systemStatus')}</h2>
             </div>
@@ -216,9 +216,9 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="cv-card p-4">
-            <h2 className="font-display text-sm font-semibold mb-3">{t('dashboard.quickActions')}</h2>
-            <div className="grid grid-cols-2 gap-2">
+          <div className="cv-card p-5">
+            <h2 className="font-display text-sm font-semibold mb-4">{t('dashboard.quickActions')}</h2>
+            <div className="grid grid-cols-2 gap-3">
               {[
                 { to: '/map', label: t('dashboard.mapSig') },
                 { to: '/live', label: t('nav.liveView') },

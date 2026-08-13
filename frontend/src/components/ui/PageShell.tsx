@@ -29,8 +29,8 @@ export default function PageShell({
     <div
       className={`animate-fade-in ${
         fillViewport
-          ? 'flex flex-col h-[calc(100dvh-7rem)] max-h-[calc(100dvh-7rem)] overflow-hidden gap-5'
-          : 'space-y-5'
+          ? 'flex flex-col h-[calc(100dvh-7rem)] max-h-[calc(100dvh-7rem)] overflow-hidden gap-6 md:gap-7'
+          : 'space-y-6 md:space-y-7'
       } ${className}`}
     >
       <div className={fillViewport ? 'shrink-0' : undefined}>
@@ -41,9 +41,9 @@ export default function PageShell({
           onHelpTour={onHelpTour}
           tourTriggerAttr={tourTriggerAttr}
         />
-        {toolbar && <div className="flex flex-wrap items-center gap-3 mt-5">{toolbar}</div>}
+        {toolbar && <div className="flex flex-wrap items-center gap-3 mt-5 md:mt-6">{toolbar}</div>}
       </div>
-      <div className={fillViewport ? 'flex flex-col flex-1 min-h-0 overflow-hidden gap-5' : undefined}>{children}</div>
+      <div className={fillViewport ? 'flex flex-col flex-1 min-h-0 overflow-hidden gap-6 md:gap-7' : undefined}>{children}</div>
     </div>
   );
 }

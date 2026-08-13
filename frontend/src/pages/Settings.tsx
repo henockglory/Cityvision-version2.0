@@ -432,7 +432,7 @@ function Section({ title, icon: Icon, children }: { title: string; icon: typeof 
         <Icon className="w-5 h-5 text-cv-accent" />
         <h2 className="font-display text-lg font-semibold">{title}</h2>
       </div>
-      <div className="space-y-4">{children}</div>
+      <div className="cv-section-stack">{children}</div>
     </div>
   );
 }

@@ -108,14 +108,14 @@ export default function OpsInsightStrip({
   ] as const;
 
   return (
-    <div className="cv-card p-4 border border-cv-accent/20">
-      <div className="flex items-center gap-2 mb-4">
+    <div className="cv-card p-5 md:p-6 border border-cv-accent/20">
+      <div className="flex items-center gap-2 mb-5">
         <div className="p-1.5 rounded-lg bg-cv-accent/10 text-cv-accent border border-cv-accent/25">
           <Sparkles className="w-3.5 h-3.5" />
         </div>
         <h2 className="font-display text-sm font-semibold">{t('dashboard.insights.title')}</h2>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
         {cols.map(({ key, title, text, Icon, tone }) => (
           <div key={key} className="flex gap-3 min-w-0">
             <div className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center ${tone}`}>

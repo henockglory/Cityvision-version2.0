@@ -16,8 +16,8 @@ export default function LiveEventStream() {
   const recent = events.slice(0, 8);
 
   return (
-    <div id="dashboard-live" className="cv-card p-4 h-full flex flex-col">
-      <div className="flex items-center justify-between gap-2 mb-3">
+    <div id="dashboard-live" className="cv-card p-5 h-full flex flex-col">
+      <div className="flex items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <Activity className="w-4 h-4 text-metric-events cv-icon-spin-slow shrink-0" />
           <h2 className="font-display text-sm font-semibold truncate">Flux détections</h2>

@@ -168,7 +168,7 @@ export default function SystemHealth() {
       <h2 className="font-display text-sm font-semibold text-cv-muted uppercase tracking-wider mb-3">
         {t('systemHealth.services')}
       </h2>
-      <div id="health-services" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div id="health-services" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 cv-section-grid">
         {health.map((metric) => (
           <HealthBar key={metric.name} metric={metric} />
         ))}
@@ -200,7 +200,7 @@ export default function SystemHealth() {
           <span>{t('systemHealth.aiUnreachable', 'Moteur IA non joignable — les modèles ne peuvent pas être vérifiés.')}</span>
         </div>
       ) : modelPack?.models?.length ? (
-        <div id="health-ai-models" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div id="health-ai-models" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 cv-section-grid">
           {modelPack.models.map((m) => (
             <ModelRow
               key={m.id}
@@ -225,7 +225,7 @@ export default function SystemHealth() {
           />
         </div>
       ) : (
-        <div id="health-ai-models" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div id="health-ai-models" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 cv-section-grid">
           <ModelRow icon={Cpu} label="YOLO (détection)" loaded={aiHealth?.yolo ?? false} hint={t('systemHealth.modelMissingHint')} />
           <ModelRow icon={Eye} label={t('systemHealth.faceModel', 'Reconnaissance faciale')} loaded={aiHealth?.face ?? false} hint={t('systemHealth.modelMissingHint')} />
           <ModelRow icon={ScanLine} label={t('systemHealth.plateModel', 'Lecture de plaques (OCR)')} loaded={aiHealth?.plate ?? false} hint={t('systemHealth.modelMissingHint')} />

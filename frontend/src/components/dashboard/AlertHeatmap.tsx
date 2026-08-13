@@ -58,8 +58,8 @@ export default function AlertHeatmap({ alerts, isError, onRetry }: AlertHeatmapP
   const locale = i18n.language?.startsWith('fr') ? 'fr-FR' : 'en-US';
 
   return (
-    <div className="cv-card p-4 min-h-[260px] flex flex-col border border-metric-events/20">
-      <div className="flex items-center gap-2 mb-3">
+    <div className="cv-card p-5 min-h-[260px] flex flex-col border border-metric-events/20">
+      <div className="flex items-center gap-2 mb-4">
         <div className="p-1.5 rounded-lg bg-metric-events/10 text-metric-events border border-metric-events/25">
           <Grid3x3 className="w-3.5 h-3.5" />
         </div>

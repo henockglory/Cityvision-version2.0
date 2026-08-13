@@ -112,7 +112,7 @@ export default function LiveView() {
     <div>
       <PageHeader title={t('liveView.title')} onHelpTour={startTour} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-4 cv-section-grid items-start">
         <div id="live-view-player" className="lg:col-span-3 min-w-0">
           <div className="cv-card overflow-hidden border-cv-electric/25">
             <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-cv-border bg-cv-surface/40">
@@ -161,8 +161,8 @@ export default function LiveView() {
           {activeId && <CameraObservationPanel cameraId={activeId} className="mt-4" />}
         </div>
 
-        <div id="live-view-sidebar" className="space-y-4 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
-          <div className="cv-card p-4">
+        <div id="live-view-sidebar" className="cv-section-stack lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+          <div className="cv-card p-5">
             <h3 className="font-display text-sm font-semibold mb-3">{t('liveView.selectCamera')}</h3>
             <div className="space-y-1 max-h-48 overflow-y-auto">
               {cameras.map((cam) => (
@@ -182,7 +182,7 @@ export default function LiveView() {
             </div>
           </div>
 
-          <div className="cv-card p-4">
+          <div className="cv-card p-5">
             <div className="flex items-center gap-2 mb-3">
               <Activity className="w-4 h-4 text-cv-accent" />
               <h3 className="font-display text-sm font-semibold">{t('liveView.aiStatus', 'Analyse IA')}</h3>
@@ -205,7 +205,7 @@ export default function LiveView() {
 
           <LiveEventStream />
 
-          <div className="cv-card p-4">
+          <div className="cv-card p-5">
             <h3 className="font-display text-sm font-semibold mb-3">{t('liveView.ptz')}</h3>
             <div className="grid grid-cols-3 gap-2 max-w-[160px] mx-auto">
               <div />

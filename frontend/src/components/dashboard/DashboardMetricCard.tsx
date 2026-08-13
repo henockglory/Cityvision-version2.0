@@ -75,7 +75,7 @@ export default function DashboardMetricCard({
   );
 
   return (
-    <div className={`cv-card-hover p-4 border ${s.ring} ${s.glow} shadow-soft h-full flex flex-col gap-3`}>
+    <div className={`cv-card-hover p-5 border ${s.ring} ${s.glow} shadow-soft h-full flex flex-col gap-4`}>
       <div className="flex items-start justify-between gap-3">
         <div className={`p-2.5 rounded-full border border-cv-border/40 ${s.icon}`}>
           <Icon className="w-4 h-4" />

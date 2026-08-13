@@ -90,7 +90,7 @@ export default function MapPage() {
         ) : undefined
       }
     >
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 cv-section-grid">
         <div id="map-canvas" className="lg:col-span-8 cv-card p-3 flex flex-col min-h-[560px] lg:min-h-[calc(100vh-12rem)]">
           <div id="map-mode-tabs" className="flex gap-1 mb-3 p-1 bg-cv-deep/60 rounded-lg w-fit border border-cv-border/50 flex-wrap">
             {([

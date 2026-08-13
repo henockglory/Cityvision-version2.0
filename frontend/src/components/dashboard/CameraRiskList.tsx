@@ -34,8 +34,8 @@ export default function CameraRiskList({ alerts, isError, onRetry }: CameraRiskL
   const max = Math.max(...rows.map((r) => r.count), 1);
 
   return (
-    <div id="dashboard-alerts" className="cv-card p-4 min-h-[260px] flex flex-col border border-metric-alerts/20">
-      <div className="flex items-center justify-between mb-3 gap-2">
+    <div id="dashboard-alerts" className="cv-card p-5 min-h-[260px] flex flex-col border border-metric-alerts/20">
+      <div className="flex items-center justify-between mb-4 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <div className="p-1.5 rounded-lg bg-metric-alerts/10 text-metric-alerts border border-metric-alerts/25">
             <Camera className="w-3.5 h-3.5" />
