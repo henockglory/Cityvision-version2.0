@@ -23,20 +23,14 @@ API="${BACKEND_API_URL:-http://127.0.0.1:8081/api/v1}"
 KEY="${INTERNAL_API_KEY:-}"
 
 heal_frigate_api() {
-  if curl -sf --max-time 4 "${FRIGATE_URL%/}/api/version" >/dev/null 2>&1 \
-    || curl -sf --max-time 4 "${FRIGATE_URL%/}/api/stats" >/dev/null 2>&1; then
+  if frigate_api_ok "${FRIGATE_URL}"; then
     return 0
   fi
-  echo "[frigate-watchdog] API down — heal container"
-  heal_published_container citevision-v2-frigate frigate 5000 || true
-  local i
-  for i in $(seq 1 30); do
-    if curl -sf --max-time 4 "${FRIGATE_URL%/}/api/version" >/dev/null 2>&1; then
-      echo "[frigate-watchdog] Frigate API OK after heal"
-      return 0
-    fi
-    sleep 2
-  done
+  echo "[frigate-watchdog] API down — patient Frigate heal"
+  if heal_frigate_host "${FRIGATE_HEAL_WAIT:-90}" "${FRIGATE_HEAL_RECREATE_WAIT:-120}"; then
+    echo "[frigate-watchdog] Frigate API OK after heal"
+    return 0
+  fi
   echo "[frigate-watchdog] FAIL: Frigate API still unreachable" >&2
   return 1
 }

@@ -122,7 +122,8 @@ if ! docker exec citevision-v2-go2rtc ls /videos >/dev/null 2>&1; then
   sleep 3
 fi
 
-echo "=== [2b/10] infra host ports (redis/mqtt/postgres/minio/ocr) ==="
+echo "=== [2b/10] infra host ports (redis/mqtt/postgres/minio/ocr/frigate) ==="
+# Frigate TensorRT often needs 1–3 min after compose; ensure_infra_host_ports waits/heals.
 if ! ensure_infra_host_ports; then
   echo "[FAIL] infra host ports unreachable after heal — abort before backend" >&2
   exit 1

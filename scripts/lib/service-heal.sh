@@ -48,6 +48,12 @@ heal_published_container() {
   [[ -n "$name" ]] || return 1
   [[ ${#ports[@]} -gt 0 ]] || return 1
 
+  # Frigate: host network + TensorRT — never use the short restart path.
+  if [[ "$name" == "citevision-v2-frigate" ]] || [[ "${compose_svc:-}" == "frigate" ]]; then
+    heal_frigate_host "${FRIGATE_HEAL_WAIT:-120}" "${FRIGATE_HEAL_RECREATE_WAIT:-150}"
+    return $?
+  fi
+
   local env_file="${ENV_FILE:-$ROOT/.env}"
   echo "[INFO] heal published $name ports=${ports[*]}"
   # Prefer start/restart WITHOUT free_port first — free_port can kill docker-proxy
@@ -96,6 +102,78 @@ heal_published_container() {
       done
     fi
   fi
+  return 1
+}
+
+frigate_api_ok() {
+  local base="${1:-${FRIGATE_URL:-http://127.0.0.1:5000}}"
+  base="${base%/}"
+  curl -sf --max-time 5 "${base}/api/version" >/dev/null 2>&1 \
+    || curl -sf --max-time 5 "${base}/api/stats" >/dev/null 2>&1
+}
+
+# Frigate uses network_mode:host + TensorRT — cold start often 60-180s.
+# Never docker-restart while the container is still booting (resets engine load).
+# Usage: heal_frigate_host [wait_sec] [recreate_wait_sec]
+heal_frigate_host() {
+  local wait_sec="${1:-120}"
+  local recreate_wait="${2:-150}"
+  local url="${FRIGATE_URL:-http://127.0.0.1:5000}"
+  local name="citevision-v2-frigate"
+  local env_file="${ENV_FILE:-$ROOT/.env}"
+  local i
+
+  if frigate_api_ok "$url"; then
+    return 0
+  fi
+
+  # Container Up but API not ready yet → wait only (TensorRT / onnx).
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$name"; then
+    echo "[INFO] Frigate container up — waiting API up to ${wait_sec}s (no restart)"
+    for i in $(seq 1 "$wait_sec"); do
+      if frigate_api_ok "$url"; then
+        echo "[OK] Frigate API ready after ${i}s wait"
+        return 0
+      fi
+      if (( i % 15 == 0 )); then
+        echo "[INFO] still waiting Frigate API… ${i}s/${wait_sec}s"
+      fi
+      sleep 1
+    done
+  else
+    echo "[INFO] Frigate container missing — compose up"
+    if [[ -f "$ROOT/infra/docker-compose.yml" ]]; then
+      (cd "$ROOT/infra" && docker compose $(compose_gpu_files) --env-file "$env_file" --profile frigate up -d frigate) >/dev/null 2>&1 || true
+    fi
+    for i in $(seq 1 "$wait_sec"); do
+      if frigate_api_ok "$url"; then
+        echo "[OK] Frigate API ready after compose (${i}s)"
+        return 0
+      fi
+      if (( i % 15 == 0 )); then
+        echo "[INFO] still waiting Frigate API… ${i}s/${wait_sec}s"
+      fi
+      sleep 1
+    done
+  fi
+
+  # Still dead → one recreate (not a short restart loop).
+  echo "[INFO] Frigate API still down — recreate once (TensorRT may take 1-3 min)"
+  docker rm -f "$name" 2>/dev/null || true
+  if [[ -f "$ROOT/infra/docker-compose.yml" ]]; then
+    (cd "$ROOT/infra" && docker compose $(compose_gpu_files) --env-file "$env_file" --profile frigate up -d frigate) >/dev/null 2>&1 || \
+      (cd "$ROOT/infra" && docker compose --env-file "$env_file" --profile frigate up -d frigate) >/dev/null 2>&1 || true
+  fi
+  for i in $(seq 1 "$recreate_wait"); do
+    if frigate_api_ok "$url"; then
+      echo "[OK] Frigate API ready after recreate (${i}s)"
+      return 0
+    fi
+    if (( i % 20 == 0 )); then
+      echo "[INFO] still waiting Frigate after recreate… ${i}s/${recreate_wait}s"
+    fi
+    sleep 1
+  done
   return 1
 }
 
@@ -201,17 +279,15 @@ ensure_infra_host_ports() {
     fi
   fi
 
-  # Frigate — detection / clips / face person track. Dead :5000 = no alerts, no evidence.
+  # Frigate — host network + TensorRT; do NOT use short heal_published_container.
   local frigate_url="${FRIGATE_URL:-http://127.0.0.1:5000}"
   local frigate_port="${FRIGATE_PORT:-5000}"
-  if curl -sf --max-time 4 "${frigate_url%/}/api/version" >/dev/null 2>&1 \
-    || curl -sf --max-time 4 "${frigate_url%/}/api/stats" >/dev/null 2>&1; then
+  if frigate_api_ok "$frigate_url"; then
     echo "[OK] frigate host :${frigate_port}"
   else
-    echo "[WARN] frigate host :${frigate_port} dead/unhealthy — heal"
-    if heal_published_container citevision-v2-frigate frigate "$frigate_port" \
-      && { curl -sf --max-time 8 "${frigate_url%/}/api/version" >/dev/null 2>&1 \
-        || curl -sf --max-time 8 "${frigate_url%/}/api/stats" >/dev/null 2>&1; }; then
+    echo "[WARN] frigate host :${frigate_port} dead/unhealthy — patient heal"
+    if heal_frigate_host "${FRIGATE_HEAL_WAIT:-120}" "${FRIGATE_HEAL_RECREATE_WAIT:-150}" \
+      && frigate_api_ok "$frigate_url"; then
       echo "[OK] frigate host :${frigate_port} after heal"
     else
       echo "[FAIL] frigate host :${frigate_port} still dead"
