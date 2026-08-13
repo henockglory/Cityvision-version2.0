@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CitéVision — Architectures métier & produit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "loose",
+      flowchart: { curve: "basis", padding: 14, htmlLabels: true },
+      themeVariables: {
+        primaryColor: "#1a2f2a",
+        primaryTextColor: "#e8f0ec",
+        primaryBorderColor: "#3d7a6a",
+        secondaryColor: "#2a241c",
+        tertiaryColor: "#162028",
+        lineColor: "#8fb8a8",
+        textColor: "#e8f0ec",
+        fontFamily: "Manrope, sans-serif",
+        mainBkg: "#1a2f2a",
+        nodeBorder: "#4a9b84",
+        clusterBkg: "#12181a",
+        titleColor: "#f0e6d4",
+        edgeLabelBackground: "#0e1416"
+      }
+    });
+  </script>
+  <style>
+    :root {
+      --bg0: #0b1012;
+      --bg1: #12181a;
+      --bg2: #1a2226;
+      --ink: #e8efe9;
+      --muted: #9aaba3;
+      --faint: #6a7a74;
+      --accent: #d4a574;
+      --accent-soft: rgba(212, 165, 116, 0.14);
+      --teal: #4a9b84;
+      --teal-dim: #2d5c4f;
+      --danger: #c97b6a;
+      --ok: #7cbc8f;
+      --line: rgba(232, 239, 233, 0.08);
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      --radius: 18px;
+      --font: "Manrope", sans-serif;
+      --display: "Fraunces", Georgia, serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(74, 155, 132, 0.18), transparent 55%),
+        radial-gradient(900px 500px at 90% 0%, rgba(212, 165, 116, 0.12), transparent 50%),
+        linear-gradient(180deg, #0d1315 0%, var(--bg0) 40%, #0a0e10 100%);
+      min-height: 100vh;
+      line-height: 1.55;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .shell {
+      width: min(1120px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 0 0 5rem;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 3.5rem 0 2.5rem;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 2.5rem;
+      animation: rise 0.7s ease both;
+    }
+    .brand {
+      font-family: var(--display);
+      font-size: clamp(2.4rem, 5vw, 3.6rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 0.35rem;
+      background: linear-gradient(120deg, #f3ebe0 10%, var(--accent) 55%, #8fd0b8 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero h1 {
+      font-family: var(--display);
+      font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+      font-weight: 500;
+      margin: 0 0 1rem;
+      color: var(--ink);
+      max-width: 36ch;
+    }
+    .hero-lead {
+      max-width: 62ch;
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin: 0 0 1.5rem;
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .pill strong { color: var(--accent); font-weight: 700; }
+
+    /* Nav — collapsible sticky bar */
+    .toc {
+      position: sticky;
+      top: 0.65rem;
+      z-index: 40;
+      backdrop-filter: blur(14px);
+      background: rgba(11, 16, 18, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 0;
+      margin-bottom: 1.75rem;
+      box-shadow: var(--shadow);
+      animation: rise 0.8s 0.08s ease both;
+      overflow: hidden;
+      transition: box-shadow 0.2s ease;
+    }
+    .toc-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.55rem 0.85rem;
+      cursor: pointer;
+      user-select: none;
+      border: 0;
+      width: 100%;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+    }
+    .toc-bar:hover { background: rgba(255,255,255,0.03); }
+    .toc-bar:focus-visible {
+      outline: 2px solid var(--teal);
+      outline-offset: -2px;
+    }
+    .toc-bar-left {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      min-width: 0;
+    }
+    .toc-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--faint);
+      margin: 0;
+      font-weight: 700;
+    }
+    .toc-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .toc-toggle {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.28rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid rgba(74, 155, 132, 0.35);
+      background: rgba(74, 155, 132, 0.12);
+      color: #b8e0d0;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .toc-chevron {
+      display: inline-block;
+      width: 0.55rem;
+      height: 0.55rem;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: rotate(45deg);
+      transition: transform 0.2s ease;
+      margin-top: -0.15rem;
+    }
+    .toc:not(.is-collapsed) .toc-chevron {
+      transform: rotate(-135deg);
+      margin-top: 0.15rem;
+    }
+    .toc-panel {
+      padding: 0 1rem 0.9rem;
+      border-top: 1px solid var(--line);
+      max-height: min(55vh, 420px);
+      overflow: auto;
+      transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.2s ease;
+    }
+    .toc.is-collapsed .toc-panel {
+      max-height: 0;
+      opacity: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      border-top-color: transparent;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .toc.is-collapsed {
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.25rem 0.85rem;
+      padding-top: 0.65rem;
+    }
+    .toc a {
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 500;
+      text-decoration: none;
+      padding: 0.15rem 0;
+      border-bottom: 1px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .toc a:hover {
+      color: var(--ink);
+      border-bottom-color: var(--teal);
+      text-decoration: none;
+    }
+    .toc .grp { color: var(--accent); font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 0.35rem; grid-column: 1 / -1; }
+
+    /* Sections */
+    .section-head {
+      margin: 3rem 0 1.25rem;
+      animation: rise 0.6s ease both;
+    }
+    .section-head .eyebrow {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--teal);
+      font-weight: 700;
+      margin: 0 0 0.4rem;
+    }
+    .section-head h2 {
+      font-family: var(--display);
+      font-size: clamp(1.6rem, 3vw, 2.1rem);
+      margin: 0 0 0.6rem;
+      letter-spacing: -0.02em;
+    }
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 70ch;
+    }
+
+    /* Cheat table */
+    .cheat {
+      background: linear-gradient(145deg, var(--bg2), var(--bg1));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 2.5rem;
+      box-shadow: var(--shadow);
+    }
+    .cheat table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    .cheat th, .cheat td {
+      padding: 0.85rem 1.1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    .cheat th {
+      background: rgba(74, 155, 132, 0.12);
+      color: var(--accent);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .cheat tr:last-child td { border-bottom: 0; }
+    .cheat td:first-child { color: var(--ink); font-weight: 600; width: 48%; }
+    .cheat code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.84em;
+      color: #b8e0d0;
+      background: rgba(74, 155, 132, 0.12);
+      padding: 0.1rem 0.35rem;
+      border-radius: 5px;
+    }
+
+    /* Arch cards */
+    .arch {
+      background: var(--bg1);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      margin-bottom: 1.75rem;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.28);
+      animation: rise 0.55s ease both;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .arch:hover { border-color: rgba(74, 155, 132, 0.35); }
+    .arch-head {
+      padding: 1.35rem 1.5rem 1rem;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, var(--accent-soft), transparent 55%),
+        linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+    }
+    .arch-id {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin: 0 0 0.35rem;
+    }
+    .arch-head h3 {
+      font-family: var(--display);
+      font-size: 1.45rem;
+      margin: 0 0 0.55rem;
+      letter-spacing: -0.02em;
+    }
+    .arch-head .blurb {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.98rem;
+      max-width: 75ch;
+    }
+    .arch-body { padding: 1.25rem 1.5rem 1.5rem; }
+    .diagram {
+      background: #0e1416;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem;
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
+    }
+    .diagram .mermaid { display: flex; justify-content: center; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 760px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+    .panel h4 {
+      margin: 0 0 0.55rem;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--faint);
+    }
+    .panel ul {
+      margin: 0;
+      padding-left: 1.1rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .panel li { margin: 0.3rem 0; }
+    .panel li strong { color: var(--ink); }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .chip {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.28rem 0.55rem;
+      border-radius: 8px;
+      background: rgba(74, 155, 132, 0.14);
+      color: #b8e0d0;
+      border: 1px solid rgba(74, 155, 132, 0.25);
+    }
+    .chip.alt {
+      background: var(--accent-soft);
+      color: #e8c9a8;
+      border-color: rgba(212, 165, 116, 0.3);
+    }
+    .check {
+      margin-top: 1rem;
+      padding: 0.9rem 1.1rem;
+      border-radius: 12px;
+      border-left: 3px solid var(--teal);
+      background: rgba(74, 155, 132, 0.08);
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .check strong { color: var(--ok); }
+
+    .principle {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.85rem;
+      margin: 1.5rem 0 2rem;
+    }
+    .principle article {
+      padding: 1.1rem;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+    }
+    .principle h3 {
+      margin: 0 0 0.4rem;
+      font-size: 0.95rem;
+      color: var(--accent);
+    }
+    .principle p {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    footer {
+      margin-top: 3.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 0.85rem;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <p class="brand">CitéVision</p>
+      <h1>Cartographie des architectures métier &amp; produit</h1>
+      <p class="hero-lead">
+        Une page pour <strong style="color:var(--ink)">reconnaître le pattern</strong> de n’importe quelle règle
+        du catalogue, puis comprendre comment Start, l’auto-heal, les caméras, les containers et les preuves
+        s’assemblent. Chaîne de vérité&nbsp;: <em>zone → IA → règle → preuve</em>.
+      </p>
+      <div class="hero-meta">
+        <span class="pill"><strong>10</strong> patterns règles</span>
+        <span class="pill"><strong>6</strong> blocs produit</span>
+        <span class="pill">Fail-closed · preuves exigées</span>
+        <span class="pill">Source&nbsp;: orchestration contract + runtime</span>
+        <span class="pill"><a href="overview.html">Vue d’ensemble tech &amp; règles →</a></span>
+        <span class="pill"><a href="CiteVision-Overview.pdf">Overview PDF →</a></span>
+      </div>
+    </header>
+
+    <nav class="toc is-collapsed" id="toc" aria-label="Sommaire">
+      <button type="button" class="toc-bar" id="tocToggle" aria-expanded="false" aria-controls="tocPanel">
+        <span class="toc-bar-left">
+          <span class="toc-title">Navigation</span>
+          <span class="toc-hint" id="tocHint">Sommaire réduit — cliquer pour ouvrir</span>
+        </span>
+        <span class="toc-toggle">
+          <span id="tocToggleLabel">Ouvrir</span>
+          <span class="toc-chevron" aria-hidden="true"></span>
+        </span>
+      </button>
+      <div class="toc-panel" id="tocPanel" hidden>
+        <div class="toc-grid">
+          <span class="grp">Pages</span>
+          <a href="overview.html">Vue d’ensemble (tech, règles, comparaison)</a>
+          <a href="CiteVision-Overview.pdf">Vue d’ensemble PDF</a>
+          <a href="index.html">Cette page architectures</a>
+          <span class="grp">Lire d’abord</span>
+          <a href="#comment-lire">Comment lire ces schémas</a>
+          <a href="#cheat">Table de reconnaissance</a>
+          <span class="grp">A — Patterns règles</span>
+          <a href="#a1">A1 Identité faciale</a>
+          <a href="#a2">A2 Cabin Gemini</a>
+          <a href="#a3">A3 Vitesse</a>
+          <a href="#a4">A4 Feu rouge</a>
+          <a href="#a5">A5 Géométrie zone</a>
+          <a href="#a6">A6 Ligne</a>
+          <a href="#a6b">A6b Sens interdit</a>
+          <a href="#a7">A7 Agrégats</a>
+          <a href="#a8">A8 Plaque OCR</a>
+          <a href="#a9">A9 Objets</a>
+          <a href="#a10">A10 Composite</a>
+          <span class="grp">B — Blocs produit</span>
+          <a href="#b1">B1 Start</a>
+          <a href="#b2">B2 Auto-heal</a>
+          <a href="#b3">B3 Webhook / mail</a>
+          <a href="#b4">B4 Ajout caméra</a>
+          <a href="#b5">B5 Containers</a>
+          <a href="#b6">B6 Preuves DB + MinIO</a>
+        </div>
+      </div>
+    </nav>
+
+    <section id="comment-lire" class="section-head">
+      <p class="eyebrow">Mode d’emploi</p>
+      <h2>Comment lire ces architectures</h2>
+      <p>
+        Chaque schéma décrit un <strong>mécanisme</strong>, pas une règle isolée. Si deux templates
+        partagent le même jugement (Gemini cabin, fusion identité, géométrie zone…), ils partagent
+        le même schéma — seules changent la condition rules-engine et le packaging d’alerte.
+      </p>
+    </section>
+
+    <div class="principle">
+      <article>
+        <h3>1. Signal</h3>
+        <p>Qui voit l’objet&nbsp;? En général Frigate (person/car) ou le moteur local (qualité vidéo).</p>
+      </article>
+      <article>
+        <h3>2. Jugement</h3>
+        <p>Qui décide l’événement métier&nbsp;? Géométrie, vitesse Frigate, Gemini, InsightFace, OCR, ou composite.</p>
+      </article>
+      <article>
+        <h3>3. Règle</h3>
+        <p>Le rules-engine ne détecte pas&nbsp;: il matche <code>event_type</code> + bindings caméra/zone/liste.</p>
+      </article>
+      <article>
+        <h3>4. Preuve</h3>
+        <p>Clip ~6&nbsp;s + images (scène / sujet / face / plaque). Fail-closed si artefact manquant exigé.</p>
+      </article>
+    </div>
+
+    <section id="cheat" class="section-head">
+      <p class="eyebrow">Reconnaissance rapide</p>
+      <h2>Quelle question → quel pattern&nbsp;?</h2>
+      <p>Utilisez cette table avant d’ouvrir un ticket « la règle ne marche pas ».</p>
+    </section>
+
+    <div class="cheat">
+      <table>
+        <thead>
+          <tr><th>Si la règle…</th><th>Pattern</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Juge un habitacle (ceinture / téléphone) via Gemini yes/no</td><td><code>A2</code> Cabin VLM</td></tr>
+          <tr><td>Mesure une vitesse km/h</td><td><code>A3</code> Measure</td></tr>
+          <tr><td>Combine état du feu + véhicule</td><td><code>A4</code> Dual-signal</td></tr>
+          <tr><td>Reconnaît un visage / liste de surveillance (« liste noire »)</td><td><code>A1</code> Face fusion</td></tr>
+          <tr><td>Lit une plaque / blocklist / allowlist</td><td><code>A8</code> Plate OCR</td></tr>
+          <tr><td>Zone enter, loitering, périmètre, stopped, absence</td><td><code>A5</code> Geometry</td></tr>
+          <tr><td>Traverse une ligne (comptage / franchissement interdit)</td><td><code>A6</code> Line</td></tr>
+          <tr><td>Sens interdit (zone arêtes entrée→sortie)</td><td><code>A6b</code> Wrong-way</td></tr>
+          <tr><td>Seuil de foule / nombre de véhicules</td><td><code>A7</code> Aggregate</td></tr>
+          <tr><td>Objet abandonné / retiré</td><td><code>A9</code> Objects</td></tr>
+          <tr><td>Enchaîne plusieurs events dans une fenêtre</td><td><code>A10</code> Composite</td></tr>
+          <tr><td>Flou / obscurité flux (hors Frigate)</td><td><code>A5</code>-like quality (signal local)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ========== A RULES ========== -->
+    <section class="section-head" id="patterns-regles">
+      <p class="eyebrow">Partie A</p>
+      <h2>Dix architectures de règles</h2>
+      <p>
+        Ces dix patterns couvrent le catalogue. Les badges catalogue <em>real / partial / beta</em>
+        restent la vérité produit&nbsp;: un schéma « beau » ne transforme pas une règle <em>partial</em> en DoD.
+      </p>
+    </section>
+
+    <!-- A1 -->
+    <article class="arch" id="a1">
+      <div class="arch-head">
+        <p class="arch-id">A1 · Archetype face</p>
+        <h3>Identité faciale — fusion à priorité</h3>
+        <p class="blurb">
+          Frigate détecte une personne et livre un crop. Trois votes indépendants (Frigate Face Library,
+          InsightFace vs watchlist, Gemini multimodal sur photos d’enrôlement) sont fusionnés.
+          Priorité&nbsp;: <strong>Frigate &gt; InsightFace &gt; Gemini</strong>. Fail-closed&nbsp;: pas de match inventé.
+          En UI, « liste noire » = liste <code>face_watchlist</code> → event <code>face_watchlist_match</code>
+          (pas de type DB séparé).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate person] --> C[crop JPEG]
+  C --> V1[Frigate Face]
+  C --> V2[InsightFace watchlist]
+  C --> V3[Gemini refs]
+  V1 --> Fuse[fusion priorité]
+  V2 --> Fuse
+  V3 --> Fuse
+  Fuse -->|match+label| M[face_watchlist_match]
+  Fuse -->|visage sans match| U[face_unknown]
+  Fuse -->|audit| D[face_detected]
+  M --> R[rules-engine]
+  U --> R
+  D --> R
+  R --> E[clip 6s + scene + face bbox]
+          </pre>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <h4>Même fonctionnement</h4>
+            <div class="chips">
+              <span class="chip">tpl-face-watchlist</span>
+              <span class="chip">tpl-watchlist-match</span>
+              <span class="chip">tpl-face-detected</span>
+              <span class="chip">tpl-unknown-face</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>Combine avec</h4>
+            <div class="chips">
+              <span class="chip alt">tpl-identity-correlation</span>
+            </div>
+            <ul style="margin-top:0.7rem">
+              <li>Corrélation face + plaque dans une fenêtre (A10).</li>
+            </ul>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:1rem">
+          <h4>Preuves</h4>
+          <ul>
+            <li><strong>Clip 6&nbsp;s</strong> + image <strong>scene</strong> (full) + image <strong>face</strong> (bbox).</li>
+            <li>Fail-closed sur le rôle <code>face</code>. Métadonnées utiles&nbsp;: <code>face_label</code>, <code>identity_votes</code>, <code>identity_winner</code>.</li>
+          </ul>
+        </div>
+        <p class="check"><strong>Debug pragmatique&nbsp;:</strong> watchlist active + photos enroll + Frigate face ON + crop lisible. Si <code>face_enqueued=0</code>, le bridge ne voit pas de person utile — ce n’est pas encore Gemini.</p>
+      </div>
+    </article>
+
+    <!-- A2 -->
+    <article class="arch" id="a2">
+      <div class="arch-head">
+        <p class="arch-id">A2 · Archetype cabin</p>
+        <h3>Cabin Gemini — jugement yes / no</h3>
+        <p class="blurb">
+          Frigate signale un véhicule dans une zone à behavior cabin (<code>seatbelt</code>, téléphone…).
+          Un crop (souvent <code>vehicle_bbox</code>) part dans la file VLM. Gemini répond violation ou non.
+          <strong>Fail-closed</strong>&nbsp;: pas de violation claire → <code>cabin_ignored</code>, aucun event,
+          donc aucune alerte (ce n’est pas un « rejet de crop »).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate car zone cabin] --> C[crop vehicle_bbox]
+  C --> Q[VLM queue]
+  Q --> G[Gemini judge]
+  G -->|violation=true| E1[seatbelt_violation / phone_usage]
+  G -->|no / unclear| X[cabin_ignored fail-closed]
+  E1 --> R[rules-engine]
+  R --> Ev[clip 6s + scene + subject]
+          </pre>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <h4>Même fonctionnement</h4>
+            <div class="chips">
+              <span class="chip">tpl-seatbelt</span>
+              <span class="chip">tpl-phone-driving</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>Ne pas confondre</h4>
+            <ul>
+              <li><strong>A4 feu</strong>&nbsp;: signal HSV + véhicule, pas habitacle.</li>
+              <li><strong>A3 vitesse</strong>&nbsp;: jugement numérique, pas VLM yes/no.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> spatial <code>seatbelt</code> chaud → <code>cabin_enqueued&gt;0</code> → <code>vlm_completed</code>. Si <code>emitted=0</code> et <code>rejected=0</code>, Gemini a souvent répondu « pas de violation ».</p>
+      </div>
+    </article>
+
+    <!-- A3 -->
+    <article class="arch" id="a3">
+      <div class="arch-head">
+        <p class="arch-id">A3 · Archetype measure</p>
+        <h3>Vitesse — pont Frigate speed</h3>
+        <p class="blurb">
+          Le track Frigate + zone/ligne de mesure produisent une estimation <code>speed_kmh</code>.
+          Comparaison au seuil (règle / zone). Au-dessus → event <code>speeding</code>.
+          Preuve&nbsp;: scène + sujet + plaque si le pipeline plaque est branché.
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate track + zone speed] --> S[estimate speed_kmh]
+  S -->|above limit| Evt[speeding]
+  S -->|below| Drop[speed_below_limit]
+  Evt --> R[rules-engine]
+  R --> Ev[clip 6s + scene + subject + plate?]
+          </pre>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <h4>Même fonctionnement</h4>
+            <div class="chips">
+              <span class="chip">tpl-speeding</span>
+              <span class="chip">tpl-speeding-premium</span>
+              <span class="chip">variantes vitesse</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>Combine avec</h4>
+            <div class="chips">
+              <span class="chip alt">tpl-speeding-premium</span>
+              <span class="chip alt">tpl-plate-detected</span>
+            </div>
+            <ul style="margin-top:0.7rem"><li>Vitesse canonique + plaque en règles séparées (plus de traffic-pipeline).</li></ul>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> zone <code>speed_measurement</code> en spatial AI + bridge speed ON. Compteurs <code>speed_emitted</code> vs <code>speed_below_limit</code>.</p>
+      </div>
+    </article>
+
+    <!-- A4 -->
+    <article class="arch" id="a4">
+      <div class="arch-head">
+        <p class="arch-id">A4 · Archetype dual_signal</p>
+        <h3>Feu rouge — géométrie + état feu</h3>
+        <p class="blurb">
+          Deux signaux doivent s’aligner&nbsp;: véhicule dans la zone d’observation <em>et</em> feu jugé rouge
+          (HSV / état stable, éventuellement vote Gemini). Sinon skip explicite (<code>skipped_not_red</code>).
+          C’est le pattern « dual signal », plus exigeant qu’une simple présence zone.
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate car ∩ zone] --> H[HSV / light state]
+  F --> C[crop]
+  C --> G[Gemini vote optionnel]
+  H --> J[jugement geometry ± VLM]
+  G --> J
+  J -->|red + cross| Evt[red_light_violation]
+  J -->|not red| Skip[skipped_not_red]
+  Evt --> R[rules-engine]
+  R --> Ev[clip 6s + scene + subject + plate]
+          </pre>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <h4>Même fonctionnement</h4>
+            <div class="chips"><span class="chip">tpl-red-light</span></div>
+          </div>
+          <div class="panel">
+            <h4>Preuves typiques</h4>
+            <ul>
+              <li>Clip 6&nbsp;s, scène, sujet véhicule, plaque si dispo.</li>
+              <li>Métadonnées feu (état HSV / vote) dans le package.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> zone feu + behavior traffic light en spatial. Distinguer « pas de voiture » vs « feu pas rouge » vs « Gemini refuse ».</p>
+      </div>
+    </article>
+
+    <!-- A5 -->
+    <article class="arch" id="a5">
+      <div class="arch-head">
+        <p class="arch-id">A5 · Archetype geometry</p>
+        <h3>Géométrie de zone — présence, durée, périmètre</h3>
+        <p class="blurb">
+          Frigate (ou moteur local) fournit tracks/objets. Le jugement est spatial-temporel&nbsp;:
+          entrée zone, présence, loitering / dwell, arrêt, absence, franchissement de périmètre.
+          Pas de VLM obligatoire. La zone doit être active et liée à la caméra (jamais hardcodée).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate object in zone] --> G[geometry engine]
+  G -->|enter/present| P[zone_enter / presence]
+  G -->|dwell/loiter| L[loitering / dwell]
+  G -->|breach| B[perimeter_breach]
+  G -->|stopped| St[person/vehicle_stopped]
+  G -->|absence| A[zone_absence]
+  P --> R[rules-engine]
+  L --> R
+  B --> R
+  St --> R
+  A --> R
+  R --> Ev[clip 6s + scene + subject]
+          </pre>
+        </div>
+        <div class="panel">
+          <h4>Même fonctionnement</h4>
+          <div class="chips">
+            <span class="chip">tpl-zone-presence</span>
+            <span class="chip">tpl-zone-absence</span>
+            <span class="chip">tpl-loitering</span>
+            <span class="chip">tpl-loitering-entrance</span>
+            <span class="chip">tpl-perimeter-breach</span>
+            <span class="chip">tpl-dwell-exceeded</span>
+            <span class="chip">tpl-person-stopped</span>
+            <span class="chip">tpl-vehicle-stopped</span>
+          </div>
+          <p style="margin:0.75rem 0 0;color:var(--muted);font-size:0.9rem">
+            Variante <strong>quality</strong> (flou / obscurité)&nbsp;: même idée « jugement local », mais signal <code>citevision_local</code> plutôt que Frigate.
+          </p>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> zone dans Frigate (<code>cv_zone_*</code>) + spatial AI. Puis event géométrie avant d’accuser la règle.</p>
+      </div>
+    </article>
+
+    <!-- A6 -->
+    <article class="arch" id="a6">
+      <div class="arch-head">
+        <p class="arch-id">A6 · Archetype line</p>
+        <h3>Ligne — croisement &amp; franchissement</h3>
+        <p class="blurb">
+          Une <strong>ligne</strong> (pas une zone) découpe le plan. Le track Frigate qui la traverse
+          émet <code>line_cross</code> (éventuellement filtré par direction / classe).
+          Sert au comptage directionnel et aux interdictions de franchissement de ligne
+          (<code>tpl-line-cross-forbidden</code>). Le <strong>sens interdit routier</strong> est un autre pattern (A6b).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate track] --> L[line geometry]
+  L -->|cross| Evt[line_cross]
+  Evt --> R[rules-engine]
+  R --> Ev[clip 6s + scene + subject]
+          </pre>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <h4>Même fonctionnement</h4>
+            <div class="chips">
+              <span class="chip">tpl-line-cross</span>
+              <span class="chip">tpl-line-cross-bidir</span>
+              <span class="chip">tpl-line-cross-forbidden</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>Lien avec A7</h4>
+            <ul>
+              <li>Les agrégats peuvent compter des crossings dans une fenêtre temporelle.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> ligne active en DB + présente côté spatial/Frigate. Une cam « ligne seule » n’active pas forcément les gates cabin/live — autre sujet (ingest).</p>
+      </div>
+    </article>
+
+    <!-- A6b -->
+    <article class="arch" id="a6b">
+      <div class="arch-head">
+        <p class="arch-id">A6b · Sens interdit (zone)</p>
+        <h3>Sens interdit — arêtes entrée / sortie</h3>
+        <p class="blurb">
+          Zone polygone (4+ points) avec <code>entry_edge_index</code> et <code>exit_edge_index</code>.
+          Sens autorisé = entrer par l’arête d’entrée et sortir par l’arête de sortie.
+          Le chemin inverse émet <code>wrong_way</code> (<code>tpl-wrong-way</code>) via bridge Frigate
+          ou géométrie locale (XOR <code>FRIGATE_GEOMETRY_BRIDGE</code>).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  Z[zone wrong_way + edges] --> E[enter nearest edge]
+  E --> X[exit nearest edge]
+  X -->|not entry to exit| W[wrong_way]
+  W --> R[tpl-wrong-way + evidence]
+          </pre>
+        </div>
+        <div class="panel">
+          <h4>Catalogue</h4>
+          <div class="chips">
+            <span class="chip">tpl-wrong-way</span>
+            <span class="chip alt">tpl-wrong-lane → redirect</span>
+            <span class="chip alt">tpl-wrong-direction → redirect</span>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> behavior zone <code>wrong_way</code>, deux arêtes distinctes, track véhicules Frigate, event <code>wrong_way</code> à la sortie.</p>
+      </div>
+    </article>
+
+    <!-- A7 -->
+    <article class="arch" id="a7">
+      <div class="arch-head">
+        <p class="arch-id">A7 · Archetype aggregate</p>
+        <h3>Agrégats — seuils &amp; densité</h3>
+        <p class="blurb">
+          On ne juge pas un individu « en faute », on agrège (count, densité, fenêtre).
+          Quand le seuil est franchi → event de seuil. Utile pour foule, files, parking saturé.
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate objects] --> C[count / density window]
+  C -->|threshold| Evt[vehicle_count / crowd_*]
+  Evt --> R[rules-engine]
+  R --> Ev[clip 6s + scene]
+          </pre>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <h4>Même fonctionnement</h4>
+            <div class="chips">
+              <span class="chip">tpl-vehicle-count</span>
+              <span class="chip">tpl-crowd-count</span>
+              <span class="chip">tpl-crowd-density</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>Combine avec</h4>
+            <div class="chips"><span class="chip alt">observation N/OR</span></div>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> vérifier la fenêtre de comptage et le seuil dans les bindings — souvent un faux « bug IA » est un seuil trop haut.</p>
+      </div>
+    </article>
+
+    <!-- A8 -->
+    <article class="arch" id="a8">
+      <div class="arch-head">
+        <p class="arch-id">A8 · Archetype plate</p>
+        <h3>Plaque — OCR fusion + listes</h3>
+        <p class="blurb">
+          Crop véhicule/plaque → PaddleOCR (+ Gemini OCR optionnel) → fusion texte.
+          Puis politique de liste&nbsp;: <code>plate_block</code>, allow, unknown, repeat.
+          Listes plaque ≠ watchlist visage (types DB distincts).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate vehicle] --> C[plate crop]
+  C --> O1[PaddleOCR]
+  C --> O2[Gemini OCR?]
+  O1 --> Fuse[ocr_fusion]
+  O2 --> Fuse
+  Fuse --> Det[plate_detected]
+  Det --> List{listes}
+  List -->|block| Bl[plate_blocked]
+  List -->|allow| Wh[whitelist logic]
+  List -->|unknown| Un[plate_unknown]
+  List -->|repeat| Rep[plate_repeat]
+  Det --> R[rules-engine]
+  Bl --> R
+  Un --> R
+  Rep --> R
+  R --> Ev[clip 6s + scene + plate]
+          </pre>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <h4>Même fonctionnement</h4>
+            <div class="chips">
+              <span class="chip">tpl-plate-detected</span>
+              <span class="chip">tpl-blocked-plate</span>
+              <span class="chip">tpl-plate-whitelist</span>
+              <span class="chip">tpl-unknown-plate</span>
+              <span class="chip">tpl-plate-repeat</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>Combine avec</h4>
+            <div class="chips">
+              <span class="chip alt">A1 face</span>
+              <span class="chip alt">A3 speed</span>
+              <span class="chip alt">A4 red light</span>
+            </div>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> OCR health + crop lisible. Blocklist active. Pour routier DoD, plaque souvent exigée dans le package preuve.</p>
+      </div>
+    </article>
+
+    <!-- A9 -->
+    <article class="arch" id="a9">
+      <div class="arch-head">
+        <p class="arch-id">A9 · Archetype objects</p>
+        <h3>Objets — abandon, retrait, disparition</h3>
+        <p class="blurb">
+          Pattern géométrie + temps sur un objet (sac, valise…). Signal souvent <em>hybrid</em>
+          (Frigate + logique locale). Différent du loitering personne (A5) par la classe objet et la durée d’abandon.
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  F[Frigate / hybrid object] --> G[geometry + time]
+  G -->|left behind| Ab[object_abandoned]
+  G -->|removed| Rm[object_removed]
+  Ab --> R[rules-engine]
+  Rm --> R
+  R --> Ev[clip 6s + scene + object bbox]
+          </pre>
+        </div>
+        <div class="panel">
+          <h4>Même fonctionnement</h4>
+          <div class="chips">
+            <span class="chip">tpl-abandoned-object</span>
+            <span class="chip">tpl-object-removed</span>
+            <span class="chip alt">tpl-object-disappeared → redirect</span>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> durée minimale d’abandon / disparition dans les bindings. Souvent trop courte en démo, trop longue en prod.</p>
+      </div>
+    </article>
+
+    <!-- A10 -->
+    <article class="arch" id="a10">
+      <div class="arch-head">
+        <p class="arch-id">A10 · Archetype composite</p>
+        <h3>Composite — séquence d’atomes déjà prouvés</h3>
+        <p class="blurb">
+          <strong>Pas un nouveau détecteur.</strong> Le rules-engine attend plusieurs atoms
+          (ex. face + plaque, vitesse + feu) dans une fenêtre. Preuve = <em>union</em> des packages.
+          Si un atom a <code>evidence_status=missing</code>, le composite se tait (fail-closed).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  A1[atom A + evidence] --> W[window / sequence]
+  A2[atom B + evidence] --> W
+  W -->|all OK| Comp[composite match]
+  W -->|missing evidence| Fail[suppress fail-closed]
+  Comp --> R[alert composite]
+  R --> Ev[union des preuves]
+          </pre>
+        </div>
+        <div class="panel">
+          <h4>Même fonctionnement</h4>
+          <div class="chips">
+            <span class="chip">tpl-identity-correlation</span>
+            <span class="chip">tpl-industrial-intrusion</span>
+            <span class="chip">Compteur scénario N/OR</span>
+            <span class="chip">intrusion + schedule</span>
+            <span class="chip alt">tpl-traffic-pipeline → redirect</span>
+          </div>
+          <p style="margin:0.75rem 0 0;color:var(--muted);font-size:0.9rem">
+            Les composites restent <em>partial</em> tant que chaque atom n’a pas son DoD individuel.
+          </p>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> valider d’abord chaque atom isolément (<code>validate_rule</code>). Un composite ne répare jamais un atom froid.</p>
+      </div>
+    </article>
+
+    <!-- ========== B PRODUCT ========== -->
+    <section class="section-head" id="blocs-produit">
+      <p class="eyebrow">Partie B</p>
+      <h2>Six architectures produit</h2>
+      <p>
+        Au-delà des règles&nbsp;: comment la plateforme démarre, se soigne, orchestre les sorties,
+        onboarde une caméra, fait tourner les containers, et stocke les preuves.
+      </p>
+    </section>
+
+    <article class="arch" id="b1">
+      <div class="arch-head">
+        <p class="arch-id">B1 · Runtime</p>
+        <h3>Démarrage Start-CiteVision</h3>
+        <p class="blurb">
+          Le launcher Windows (messages produit, logs streamés) délègue au runtime WSL.
+          <code>start-full-stack.sh</code> en STRICT enchaîne infra → API → IA → rules →
+          <strong>business readiness</strong> (spatial / rules / Frigate / go2rtc) → UI → watchdogs.
+          Échec readiness = Start non-zéro (plus de « vert mensonger »).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart TD
+  PS[Start-CiteVision.ps1] --> WSL[WSL runtime]
+  WSL --> Env[runtime env LIVE_108=1]
+  Env --> Dock[dockerd + compose infra]
+  Dock --> API[backend]
+  API --> AI[ai-engine]
+  AI --> RE[rules-engine]
+  RE --> BR[ensure_business_readiness]
+  BR --> UI[frontend :5174]
+  UI --> Watch[watchdogs]
+  BR -->|FAIL| Abort[Start exit non-0]
+          </pre>
+        </div>
+        <p class="check"><strong>Pragmatique&nbsp;:</strong> un client ne doit voir que « Starting services… » / étapes propres — pas des chemins miroir labo.</p>
+      </div>
+    </article>
+
+    <article class="arch" id="b2">
+      <div class="arch-head">
+        <p class="arch-id">B2 · Resilience</p>
+        <h3>Auto-heal global + readiness métier</h3>
+        <p class="blurb">
+          Deux couches&nbsp;: (1) ports / containers publiés (<code>watch-infra-ports</code>),
+          (2) état métier chaud (<code>watch-business-readiness</code>) — spatial AI, parité rules,
+          clés zones Frigate, streams go2rtc. Probe → heal → re-probe → FAIL ou WARN selon STRICT.
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart TD
+  Probe[probe ports / spatial / rules / Frigate / go2rtc] -->|OK| Idle[OK]
+  Probe -->|KO| Heal[heal restart / resync / rebuild / repair]
+  Heal --> Reprobe[re-probe]
+  Reprobe -->|OK| Idle
+  Reprobe -->|KO| Fail[FAIL STRICT / WARN soft]
+  Watch[watchdogs ~30s] --> Probe
+          </pre>
+        </div>
+        <p class="check"><strong>Pragmatique&nbsp;:</strong> distinguer « Redis down » (infra) de « zone_count=0 » (métier). Les heals ne sont pas interchangeables.</p>
+      </div>
+    </article>
+
+    <article class="arch" id="b3">
+      <div class="arch-head">
+        <p class="arch-id">B3 · Sorties</p>
+        <h3>Orchestration alerte → webhook / mail</h3>
+        <p class="blurb">
+          Event MQTT → match rules-engine → alerte persistée → composition preuve async →
+          routing (webhook HTTP, mail). Si la politique exige des preuves complètes,
+          pas d’alerte « finale » tant que <code>evidence_status≠complete</code>.
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  Ev[event MQTT] --> RE[rules-engine match]
+  RE --> Al[alert DB]
+  Al --> Evd[evidence async]
+  Evd -->|complete| Out[routing]
+  Out --> WH[webhook]
+  Out --> Mail[mail / Mailhog]
+  Evd -->|missing| Hold[pas de finale fail-closed]
+          </pre>
+        </div>
+        <p class="check"><strong>Pragmatique&nbsp;:</strong> tester le webhook avec une alerte déjà <em>complete</em>. Un 200 webhook sur alerte sans clip n’est pas un DoD.</p>
+      </div>
+    </article>
+
+    <article class="arch" id="b4">
+      <div class="arch-head">
+        <p class="arch-id">B4 · Onboarding</p>
+        <h3>Ajout d’une caméra</h3>
+        <p class="blurb">
+          UI → ligne <code>cameras</code> (metadata RTSP / go2rtc) → rebuild Frigate (<code>cv_&lt;uuid&gt;</code>)
+          → orchestrator <code>StartCamera</code> vers l’IA avec spatial.
+          Zones/lignes ensuite via ZoneEditor uniquement (jamais scripts qui réécrivent la géométrie).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart TD
+  UI[UI onboard] --> DB[(cameras)]
+  DB --> RTSP[RTSP / go2rtc_src]
+  DB --> Frig[Frigate rebuild]
+  DB --> Ing[SyncNow StartCamera]
+  Ing --> AI[AI spatial + ingest]
+  UI --> Zones[ZoneEditor]
+  Zones --> Spat[resync-spatial]
+  Spat --> AI
+          </pre>
+        </div>
+        <p class="check"><strong>Pragmatique&nbsp;:</strong> cam en Live View ≠ cam ingérée IA. Vérifier spatial + bridge après ajout de zone/règle.</p>
+      </div>
+    </article>
+
+    <article class="arch" id="b5">
+      <div class="arch-head">
+        <p class="arch-id">B5 · Infra</p>
+        <h3>Orchestration des containers</h3>
+        <p class="blurb">
+          Compose sous dockerd WSL natif (pas Docker Desktop)&nbsp;: Postgres, Redis, Mosquitto, MinIO,
+          go2rtc, Frigate, OCR optionnel. Backend / AI / rules / frontend restent des process host
+          surveillés par watchdogs — pas tout est « un container ».
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart TD
+  Compose[docker compose] --> PG[(postgres)]
+  Compose --> Redis[(redis)]
+  Compose --> MQTT[mosquitto]
+  Compose --> Minio[(minio)]
+  Compose --> G2[go2rtc]
+  Compose --> Fr[frigate]
+  Compose --> OCR[ocr?]
+  API[backend process] --> PG
+  API --> Redis
+  AI[ai-engine process] --> MQTT
+  AI --> Fr
+  RE[rules-engine] --> MQTT
+  RE --> API
+          </pre>
+        </div>
+        <p class="check"><strong>Pragmatique&nbsp;:</strong> ports host morts (6380, 1984…) = symptôme classique après hibernation Windows — heal infra avant de toucher aux règles.</p>
+      </div>
+    </article>
+
+    <article class="arch" id="b6">
+      <div class="arch-head">
+        <p class="arch-id">B6 · Données</p>
+        <h3>Preuves — Postgres + MinIO</h3>
+        <p class="blurb">
+          Events et alerts vivent en Postgres. Les binaires (clip, JPEG scène/sujet/face/plaque)
+          vont dans MinIO. Le composer attend le clip Frigate / alignement temporel&nbsp;;
+          il ne fabrique pas de preuve de secours. Retention démo purge vieux artefacts.
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  Det[détection] --> Ev[(events)]
+  Ev --> Al[(alerts)]
+  Al --> Comp[evidence composer]
+  Comp --> Clip[clip 6s]
+  Comp --> Img[scene + subject/face/plate]
+  Clip --> S3[(MinIO)]
+  Img --> S3
+  Comp --> Meta[evidence_status]
+  Meta --> Al
+  Ret[retention] --> S3
+  Ret --> Ev
+          </pre>
+        </div>
+        <div class="panel">
+          <h4>Statuts preuve à connaître</h4>
+          <ul>
+            <li><strong>complete</strong> — package prêt, alerte présentable comme finale.</li>
+            <li><strong>missing</strong> — cause loguée (<code>clip_not_ready</code>, <code>scene_green</code>, <code>align_too_large</code>, timeout…).</li>
+            <li>Interdit&nbsp;: fabriquer une plaque / sujet de substitution pour « passer au vert ».</li>
+          </ul>
+        </div>
+        <p class="check"><strong>Pragmatique&nbsp;:</strong> pour valider une règle, exiger alerte UI + fichiers MinIO + mail si configuré — pas seulement un log MQTT.</p>
+      </div>
+    </article>
+
+    <footer>
+      <p>
+        CitéVision — document d’architectures généré pour aligner produit, ops et validation.
+        Les diagrammes reflètent le contrat d’orchestration et le runtime actuel (bridge Frigate,
+        readiness métier, fail-closed preuves). Ouvrir ce fichier dans un navigateur (réseau pour Mermaid CDN + polices).
+      </p>
+    </footer>
+  </div>
+  <script>
+    (function () {
+      var toc = document.getElementById("toc");
+      var btn = document.getElementById("tocToggle");
+      var panel = document.getElementById("tocPanel");
+      var label = document.getElementById("tocToggleLabel");
+      var hint = document.getElementById("tocHint");
+      if (!toc || !btn || !panel) return;
+
+      function setOpen(open) {
+        toc.classList.toggle("is-collapsed", !open);
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) panel.removeAttribute("hidden");
+        else panel.setAttribute("hidden", "");
+        if (label) label.textContent = open ? "Réduire" : "Ouvrir";
+        if (hint) {
+          hint.textContent = open
+            ? "Sommaire ouvert — cliquer pour réduire"
+            : "Sommaire réduit — cliquer pour ouvrir";
+        }
+        try { localStorage.setItem("citevision-arch-toc-open", open ? "1" : "0"); } catch (e) {}
+      }
+
+      // Default collapsed so diagrams stay readable; remember preference.
+      var preferOpen = false;
+      try { preferOpen = localStorage.getItem("citevision-arch-toc-open") === "1"; } catch (e) {}
+      setOpen(preferOpen);
+
+      btn.addEventListener("click", function () {
+        setOpen(toc.classList.contains("is-collapsed"));
+      });
+
+      panel.addEventListener("click", function (ev) {
+        var a = ev.target.closest("a");
+        if (!a) return;
+        setOpen(false);
+      });
+    })();
+  </script>
+</body>
+</html>

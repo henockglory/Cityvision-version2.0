@@ -16,6 +16,7 @@ from typing import Any, Callable
 import paho.mqtt.client as mqtt
 
 from citevision_ai.frigate_bridge.ids import parse_camera_uuid, parse_zone_uuid
+from citevision_ai.analytics.zone_geometry import nearest_edge_index
 from citevision_ai.frigate_bridge.snapshot import (
     classify_snapshot_light_state,
     download_snapshot_jpeg,
@@ -64,6 +65,7 @@ _VEHICLE_LABELS_GEOM = frozenset({
     "car", "truck", "bus", "motorcycle", "motorbike", "van", "vehicle",
 })
 _PERSON_LABELS = frozenset({"person"})
+# Bag / carryables for abandoned / removed / disappeared (not bicycle/dog).
 _OBJECT_LIKE_LABELS = frozenset({
     "backpack", "handbag", "suitcase", "umbrella", "bottle", "cup",
     "sports ball", "bag", "package", "box",
@@ -187,6 +189,8 @@ class FrigateEventBridge:
         self._speed_peak: dict[str, float] = {}
         # Last good in-zone vehicle bbox per event:zone (exit MQTT often drops box).
         self._speed_bbox: dict[str, dict[str, Any]] = {}
+        # wrong_way: enter edge index per event:zone_key
+        self._wrong_way_enter_edge: dict[str, int] = {}
         # Frigate detect resolution per camera (cv_-prefixed name) — MQTT boxes
         # are detect-resolution pixels, NOT 1920x1080.
         self._detect_wh_cache: dict[str, tuple[float, float]] = {}
@@ -439,6 +443,18 @@ class FrigateEventBridge:
                 self._maybe_pedestrian_in_traffic(camera_id, event_id, after, zinfo, behavior, label)
                 if behavior == "abandoned_object" or label in _OBJECT_LIKE_LABELS:
                     self._maybe_abandoned_active(camera_id, event_id, after, zinfo, behavior, label)
+            if (
+                self._geometry_enabled
+                and behavior == "wrong_way"
+                and self._label_allowed(label, zinfo)
+            ):
+                # First sighting in zone (enter MQTT or already-current without prior edge).
+                zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+                dkey = f"{event_id}:{zone_key}"
+                if dkey not in self._wrong_way_enter_edge and (
+                    fz in entered or fz in current or fz in active_zone_ids
+                ):
+                    self._wrong_way_on_enter(camera_id, event_id, after, zinfo)
 
         # Geometry: zone exit emits (controlled_exit / zone_exit)
         if self._geometry_enabled:
@@ -455,6 +471,8 @@ class FrigateEventBridge:
                 self._maybe_geometry_exit(camera_id, event_id, after, zinfo, behavior, label)
                 if behavior == "abandoned_object" or label in _OBJECT_LIKE_LABELS:
                     self._maybe_object_removed(camera_id, event_id, after, zinfo, behavior, label)
+                if behavior == "wrong_way":
+                    self._maybe_wrong_way_exit(camera_id, event_id, after, zinfo, label)
 
         # Speed: peak tracking in-zone (shadow / diagnostics only when exit mode).
         # Label filtering is per-zone via _label_allowed (track_objects config,
@@ -1060,14 +1078,31 @@ class FrigateEventBridge:
 
     def _label_allowed(self, label: str, zinfo: dict[str, Any], *, allow_person_default: bool = False) -> bool:
         lab = (label or "").strip().lower()
+        if lab == "motorbike":
+            lab = "motorcycle"
         allowed = self._track_labels_for_zone(zinfo)
         if allowed is not None:
-            if lab == "motorbike" and "motorcycle" in allowed:
-                return True
             return lab in allowed
         if lab in _VEHICLE_LABELS:
             return True
-        return bool(allow_person_default and lab == "person")
+        if allow_person_default and lab == "person":
+            return True
+        # Abandoned zones: Frigate compiler always tracks bags; allow them even when
+        # track_objects is unset (vehicle-only default would otherwise block).
+        behavior = str(zinfo.get("behavior") or zinfo.get("zone_kind") or "")
+        if behavior == "abandoned_object" and lab in _OBJECT_LIKE_LABELS:
+            return True
+        return False
+
+    def _abandoned_label_ok(self, label: str, zinfo: dict[str, Any]) -> bool:
+        """Bags+umbrella by default; bicycle/dog only if explicitly in track_objects."""
+        lab = (label or "").strip().lower()
+        if lab in _OBJECT_LIKE_LABELS:
+            return True
+        allowed = self._track_labels_for_zone(zinfo)
+        if allowed and lab in allowed and lab in ("bicycle", "dog", "cat", "boat", "cell phone", "laptop"):
+            return True
+        return False
 
     def _maybe_cabin(
         self,
@@ -1992,6 +2027,92 @@ class FrigateEventBridge:
                 event_type="zone_exit", severity="info",
             )
 
+    def _anchor_xy_from_after(self, after: dict[str, Any]) -> tuple[float, float] | None:
+        box = self._vehicle_bbox_norm(after)
+        if not box:
+            return None
+        try:
+            x = float(box.get("x") or 0)
+            y = float(box.get("y") or 0)
+            w = float(box.get("width") or 0)
+            h = float(box.get("height") or 0)
+        except (TypeError, ValueError):
+            return None
+        if w <= 0 or h <= 0:
+            return None
+        # Bottom-center of bbox (road contact) for edge proximity.
+        return x + w / 2.0, y + h
+
+    def _poly_dicts(self, zinfo: dict[str, Any]) -> list[dict[str, float]]:
+        return [{"x": x, "y": y} for x, y in self._zone_points(zinfo)]
+
+    def _wrong_way_on_enter(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zinfo: dict[str, Any],
+    ) -> None:
+        cfg = self._behavior_cfg(zinfo)
+        try:
+            entry_cfg = int(cfg.get("entry_edge_index"))
+            exit_cfg = int(cfg.get("exit_edge_index"))
+        except (TypeError, ValueError):
+            return
+        if entry_cfg == exit_cfg:
+            return
+        xy = self._anchor_xy_from_after(after)
+        if xy is None:
+            return
+        poly = self._poly_dicts(zinfo)
+        edge = nearest_edge_index(poly, xy[0], xy[1])
+        if edge is None:
+            return
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        self._wrong_way_enter_edge[f"{event_id}:{zone_key}"] = edge
+
+    def _maybe_wrong_way_exit(
+        self,
+        camera_id: str,
+        event_id: str,
+        after: dict[str, Any],
+        zinfo: dict[str, Any],
+        label: str,
+    ) -> None:
+        cfg = self._behavior_cfg(zinfo)
+        try:
+            entry_cfg = int(cfg.get("entry_edge_index"))
+            exit_cfg = int(cfg.get("exit_edge_index"))
+        except (TypeError, ValueError):
+            return
+        if entry_cfg == exit_cfg:
+            return
+        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+        dkey = f"{event_id}:{zone_key}"
+        enter_edge = self._wrong_way_enter_edge.pop(dkey, None)
+        xy = self._anchor_xy_from_after(after)
+        poly = self._poly_dicts(zinfo)
+        exit_edge = nearest_edge_index(poly, xy[0], xy[1]) if xy else None
+        if enter_edge is None or exit_edge is None:
+            return
+        # Allowed path only: configured entry → configured exit.
+        if enter_edge == entry_cfg and exit_edge == exit_cfg:
+            return
+        if self._dedupe(f"geom:{event_id}:wrong_way:{zone_key}", ttl=90.0):
+            return
+        self._emit_geometry(
+            camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
+            event_type="wrong_way", severity="high",
+            extra_meta={
+                "object_label": label,
+                "enter_edge_index": enter_edge,
+                "exit_edge_index": exit_edge,
+                "allowed_entry_edge": entry_cfg,
+                "allowed_exit_edge": exit_cfg,
+                "detection_method": "frigate_wrong_way_edges",
+            },
+        )
+
     def _maybe_zone_absence(self, camera_id: str, zone_by_uuid: dict[str, dict[str, Any]]) -> None:
         now = time.monotonic()
         for zuuid, zinfo in zone_by_uuid.items():
@@ -2204,19 +2325,14 @@ class FrigateEventBridge:
         behavior: str,
         label: str,
     ) -> None:
-        """Immobile object-like track dwell → abandoned_object (no Gemini by default)."""
+        """Immobile object-like track dwell → object_abandoned (no Gemini by default)."""
         if behavior != "abandoned_object":
             return
-        if label in _PERSON_LABELS or label in _VEHICLE_LABELS_GEOM:
-            # Still allow suitcase/backpack; skip people/cars unless labeled object-like
-            if label not in _OBJECT_LIKE_LABELS:
-                return
-        elif label and label not in _OBJECT_LIKE_LABELS and label not in ("", "unknown"):
-            # Frigate may track generic stationary blobs — allow empty/unknown
-            if label not in ("dog", "cat"):  # noise
-                pass
+        lab = (label or "").strip().lower()
+        if not self._abandoned_label_ok(lab, zinfo):
+            return
         zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
-        dur = self._duration_sec(zinfo, 45.0)
+        dur = self._duration_sec(zinfo, 60.0)
         dkey = f"abandoned:{event_id}:{zone_key}"
         now = time.monotonic()
         first = self._dwell_since.get(dkey)
@@ -2229,11 +2345,11 @@ class FrigateEventBridge:
             return
         self._emit_geometry(
             camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
-            event_type="abandoned_object", severity="high",
+            event_type="object_abandoned", severity="high",
             extra_meta={
                 "dwell_sec": round(now - first, 1),
                 "duration_threshold_sec": dur,
-                "object_label": label,
+                "object_label": lab,
                 "vlm_role": "anti_fp_optional",
             },
         )
@@ -2249,23 +2365,19 @@ class FrigateEventBridge:
     ) -> None:
         if behavior not in ("abandoned_object", "presence"):
             return
-        if label in _PERSON_LABELS or label in _VEHICLE_LABELS_GEOM:
-            if label not in _OBJECT_LIKE_LABELS:
-                return
+        lab = (label or "").strip().lower()
+        if not self._abandoned_label_ok(lab, zinfo):
+            return
         zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
         if self._dedupe(f"geom:{event_id}:object_removed:{zone_key}", ttl=60.0):
             return
         self._emit_geometry(
             camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
             event_type="object_removed", severity="medium",
-            extra_meta={"object_label": label},
+            extra_meta={"object_label": lab},
         )
-        if not self._dedupe(f"geom:{event_id}:object_disappeared:{zone_key}", ttl=60.0):
-            self._emit_geometry(
-                camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
-                event_type="object_disappeared", severity="medium",
-                extra_meta={"object_label": label},
-            )
+        # object_disappeared intentionally not emitted — same exit path as removed;
+        # catalog no longer exposes a separate "disappeared" product.
 
     def _maybe_slow_vehicle(
         self,

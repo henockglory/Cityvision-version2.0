@@ -61,6 +61,12 @@ type ZoneEntry struct {
 	} `yaml:"filters,omitempty"`
 }
 
+// ObjectSurveillanceLabels are additive Frigate objects.track labels for abandoned /
+// removed / disappeared object rules (bags + a few useful classes). Never replaces vehicles.
+var ObjectSurveillanceLabels = []string{
+	"backpack", "handbag", "suitcase", "umbrella", "bicycle", "dog",
+}
+
 // EvidenceAggregate drives record/snapshots/lpr per camera from active rules.
 type EvidenceAggregate struct {
 	RecordEnabled    bool
@@ -68,6 +74,8 @@ type EvidenceAggregate struct {
 	LPREnabled       bool
 	// TrackPerson forces Frigate objects.track to include person (face watchlist / face rules).
 	TrackPerson bool
+	// TrackObjects merges extra Frigate objects.track labels (object surveillance).
+	TrackObjects []string
 }
 
 // Compiler builds frigate.generated.yml from DB state.
@@ -253,24 +261,25 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 			if behaviorNeedsPerson(behavior) {
 				needPerson = true
 			}
+			if behavior == "abandoned_object" {
+				for _, lab := range ObjectSurveillanceLabels {
+					trackExtra[lab] = struct{}{}
+				}
+			}
 			for _, lab := range trackObjectsFromCfg(cfgMap) {
 				trackExtra[lab] = struct{}{}
 				if lab == "person" {
 					needPerson = true
 				}
 			}
-			if behavior == "speed_measurement" {
-				if dists, ok := speedDistancesCSV(z.Polygon, cfgMap); ok {
-					ze.Distances = dists
-					// Frigate speed_threshold is a zone-membership filter (minimum
-					// speed to be considered in the zone), NOT the legal limit.
-					// Setting it to the limit would hide below-limit vehicles from
-					// the zone and bias average_estimated_speed. Keep it low to
-					// drop stationary/parked objects only; the legal verdict is
-					// bridge-side (average_estimated_speed vs speed_limit_kmh).
-					ze.SpeedThreshold = 1
-					if st := floatFromCfg(cfgMap, "frigate_speed_threshold"); st > 0 {
-						ze.SpeedThreshold = st
+			if behavior == "speed_measurement" || behavior == "wrong_way" {
+				if behavior == "speed_measurement" {
+					if dists, ok := speedDistancesCSV(z.Polygon, cfgMap); ok {
+						ze.Distances = dists
+						ze.SpeedThreshold = 1
+						if st := floatFromCfg(cfgMap, "frigate_speed_threshold"); st > 0 {
+							ze.SpeedThreshold = st
+						}
 					}
 				}
 			}
@@ -279,6 +288,16 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 	}
 	if needPerson {
 		trackExtra["person"] = struct{}{}
+	}
+	for _, lab := range agg.TrackObjects {
+		lab = strings.ToLower(strings.TrimSpace(lab))
+		if lab == "" {
+			continue
+		}
+		if lab == "motorbike" {
+			lab = "motorcycle"
+		}
+		trackExtra[lab] = struct{}{}
 	}
 	if len(trackExtra) > 0 {
 		seen := map[string]struct{}{}

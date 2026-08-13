@@ -358,8 +358,23 @@ func CompileEvidenceAggregate(ctx context.Context, pool *pgxpool.Pool, orgID, ca
 		}
 		// Face watchlist / face identity rules require Frigate person tracking.
 		rawLower := strings.ToLower(string(defRaw))
-		if strings.Contains(rawLower, "face_watchlist") || strings.Contains(rawLower, "tpl-face-watchlist") {
+		if strings.Contains(rawLower, "face_watchlist") || strings.Contains(rawLower, "tpl-face-watchlist") ||
+			strings.Contains(rawLower, "face_detected") || strings.Contains(rawLower, "tpl-face-") {
 			agg.TrackPerson = true
+		}
+		if ruleNeedsObjectSurveillance(def, rawLower) {
+			agg.TrackObjects = mergeTrackObjectLabels(agg.TrackObjects, ObjectSurveillanceLabels)
+		}
+		if ruleNeedsWrongWayVehicles(def, rawLower) {
+			agg.TrackObjects = mergeTrackObjectLabels(agg.TrackObjects, []string{"car", "truck", "bus", "motorcycle", "van"})
+		}
+		// Rule personalization: class_filter / track_objects → Frigate objects.track.
+		person, extras := trackLabelsFromRuleDefinition(def)
+		if person {
+			agg.TrackPerson = true
+		}
+		if len(extras) > 0 {
+			agg.TrackObjects = mergeTrackObjectLabels(agg.TrackObjects, extras)
 		}
 		if !ruleHasAlertAction(def) {
 			continue
@@ -395,6 +410,219 @@ func CompileEvidenceAggregate(ctx context.Context, pool *pgxpool.Pool, orgID, ca
 		}
 	}
 	return agg
+}
+
+func ruleNeedsWrongWayVehicles(def map[string]interface{}, rawLower string) bool {
+	markers := []string{"wrong_way", "tpl-wrong-way"}
+	for _, m := range markers {
+		if strings.Contains(rawLower, m) {
+			return true
+		}
+	}
+	if bindings, ok := def["bindings"].(map[string]interface{}); ok {
+		tid := strings.ToLower(strings.TrimSpace(fmt.Sprint(bindings["template_id"])))
+		if tid == "tpl-wrong-way" {
+			return true
+		}
+	}
+	return false
+}
+
+func ruleNeedsObjectSurveillance(def map[string]interface{}, rawLower string) bool {
+	markers := []string{
+		"object_abandoned", "abandoned_object", "object_removed", "object_disappeared",
+		"tpl-abandoned-object", "tpl-object-removed", "tpl-object-disappeared",
+	}
+	for _, m := range markers {
+		if strings.Contains(rawLower, m) {
+			return true
+		}
+	}
+	if bindings, ok := def["bindings"].(map[string]interface{}); ok {
+		tid := strings.ToLower(strings.TrimSpace(fmt.Sprint(bindings["template_id"])))
+		switch tid {
+		case "tpl-abandoned-object", "tpl-object-removed", "tpl-object-disappeared":
+			return true
+		}
+	}
+	return false
+}
+
+// trackLabelsFromRuleDefinition extracts Frigate track labels from bindings.class_filter
+// and bindings.track_objects (and nested condition matches_class leaves).
+func trackLabelsFromRuleDefinition(def map[string]interface{}) (trackPerson bool, labels []string) {
+	var raw []string
+	if bindings, ok := def["bindings"].(map[string]interface{}); ok {
+		raw = append(raw, stringLabelsFromAny(bindings["class_filter"])...)
+		raw = append(raw, stringLabelsFromAny(bindings["track_objects"])...)
+		raw = append(raw, stringLabelsFromAny(bindings["class_name"])...)
+	}
+	collectMatchesClassLabels(def["condition"], &raw)
+	for _, et := range collectMemberEventTypes(def["condition"]) {
+		raw = append(raw, trackHintsFromEventType(et)...)
+	}
+	for _, lab := range raw {
+		lab = strings.ToLower(strings.TrimSpace(lab))
+		if lab == "" || lab == "any" || lab == "*" {
+			continue
+		}
+		if lab == "motorbike" {
+			lab = "motorcycle"
+		}
+		switch lab {
+		case "person", "people", "pedestrian":
+			trackPerson = true
+		case "vehicle", "vehicles":
+			labels = mergeTrackObjectLabels(labels, []string{"car", "truck", "bus", "motorcycle", "van"})
+		case "bag", "bags", "package":
+			labels = mergeTrackObjectLabels(labels, []string{"backpack", "handbag", "suitcase"})
+		default:
+			labels = mergeTrackObjectLabels(labels, []string{lab})
+		}
+	}
+	return trackPerson, labels
+}
+
+func collectMemberEventTypes(node interface{}) []string {
+	m, ok := node.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	var out []string
+	seen := map[string]struct{}{}
+	add := func(s string) {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s == "" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	for _, s := range stringLabelsFromAny(m["member_event_types"]) {
+		add(s)
+	}
+	if field, _ := m["field"].(string); field == "event_type" {
+		add(fmt.Sprint(m["value"]))
+	}
+	for _, key := range []string{"and", "or", "args", "children", "conditions"} {
+		if arr, ok := m[key].([]interface{}); ok {
+			for _, child := range arr {
+				for _, s := range collectMemberEventTypes(child) {
+					add(s)
+				}
+			}
+		}
+	}
+	if inner, ok := m["condition"]; ok {
+		for _, s := range collectMemberEventTypes(inner) {
+			add(s)
+		}
+	}
+	return out
+}
+
+func trackHintsFromEventType(et string) []string {
+	et = strings.ToLower(strings.TrimSpace(et))
+	switch {
+	case strings.Contains(et, "face"), strings.Contains(et, "person"), strings.Contains(et, "loiter"),
+		strings.Contains(et, "crowd"), et == "zone_enter", et == "zone_exit", et == "zone_presence",
+		et == "perimeter_breach", et == "unauthorized_exit":
+		return []string{"person"}
+	case strings.Contains(et, "plate"), strings.Contains(et, "speed"), strings.Contains(et, "vehicle"),
+		et == "wrong_way", et == "red_light_violation", et == "line_cross", et == "congestion",
+		et == "vehicle_stopped", et == "vehicle_count_threshold":
+		return []string{"car", "truck", "bus", "motorcycle", "van"}
+	case strings.Contains(et, "abandon"), strings.Contains(et, "object_"):
+		return []string{"backpack", "handbag", "suitcase"}
+	default:
+		return nil
+	}
+}
+
+func stringLabelsFromAny(v interface{}) []string {
+	switch t := v.(type) {
+	case string:
+		parts := strings.Split(t, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				out = append(out, p)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			s := strings.TrimSpace(fmt.Sprint(item))
+			if s != "" && s != "<nil>" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		return t
+	default:
+		return nil
+	}
+}
+
+func collectMatchesClassLabels(node interface{}, out *[]string) {
+	m, ok := node.(map[string]interface{})
+	if !ok {
+		return
+	}
+	if op, _ := m["op"].(string); strings.EqualFold(op, "matches_class") {
+		*out = append(*out, stringLabelsFromAny(m["value"])...)
+		*out = append(*out, stringLabelsFromAny(m["class"])...)
+	}
+	if field, _ := m["field"].(string); field == "class_name" || field == "class_filter" {
+		*out = append(*out, stringLabelsFromAny(m["value"])...)
+	}
+	for _, key := range []string{"and", "or", "args", "children", "conditions"} {
+		if arr, ok := m[key].([]interface{}); ok {
+			for _, child := range arr {
+				collectMatchesClassLabels(child, out)
+			}
+		}
+	}
+	if inner, ok := m["condition"]; ok {
+		collectMatchesClassLabels(inner, out)
+	}
+}
+
+func mergeTrackObjectLabels(dst, add []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, lab := range dst {
+		lab = strings.ToLower(strings.TrimSpace(lab))
+		if lab == "" {
+			continue
+		}
+		if _, ok := seen[lab]; ok {
+			continue
+		}
+		seen[lab] = struct{}{}
+		out = append(out, lab)
+	}
+	for _, lab := range add {
+		lab = strings.ToLower(strings.TrimSpace(lab))
+		if lab == "" {
+			continue
+		}
+		if lab == "motorbike" {
+			lab = "motorcycle"
+		}
+		if _, ok := seen[lab]; ok {
+			continue
+		}
+		seen[lab] = struct{}{}
+		out = append(out, lab)
+	}
+	return out
 }
 
 func ruleHasAlertAction(def map[string]interface{}) bool {

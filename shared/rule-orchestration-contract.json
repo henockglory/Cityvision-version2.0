@@ -242,9 +242,9 @@
     },
     {
       "id": "tpl-identity-correlation",
-      "name": "Corrélation identité",
+      "name": "Corrélation visage + plaque",
       "category": "identity",
-      "event_type": "correlation_match",
+      "event_type": null,
       "matrix_status": "partial",
       "matrix_requirement": "requires_face_ai",
       "catalog_badge": "partial",
@@ -257,7 +257,7 @@
         "person",
         "car"
       ],
-      "dedupe_key": "corr:{window}",
+      "dedupe_key": "corr:face+plate:{window}",
       "xor_disables": [],
       "evidence_policy": {
         "enabled": true,
@@ -811,7 +811,8 @@
       "track_objects": [
         "backpack",
         "handbag",
-        "suitcase"
+        "suitcase",
+        "umbrella"
       ],
       "dedupe_key": "obj:abandoned:{event_id}",
       "xor_disables": [],
@@ -849,7 +850,12 @@
       "judgment_owner": "geometry",
       "vlm_role": "none",
       "emit_moment": "on_exit",
-      "track_objects": [],
+      "track_objects": [
+        "backpack",
+        "handbag",
+        "suitcase",
+        "umbrella"
+      ],
       "dedupe_key": "obj:removed:{event_id}",
       "xor_disables": [],
       "evidence_policy": {
@@ -920,7 +926,12 @@
       "judgment_owner": "geometry",
       "vlm_role": "none",
       "emit_moment": "after_duration",
-      "track_objects": [],
+      "track_objects": [
+        "backpack",
+        "handbag",
+        "suitcase",
+        "umbrella"
+      ],
       "dedupe_key": "obj:disappeared:{event_id}",
       "xor_disables": [],
       "evidence_policy": {
@@ -1258,10 +1269,59 @@
       "archetype": "line"
     },
     {
+      "id": "tpl-wrong-way",
+      "name": "Sens interdit",
+      "category": "road-enforcement",
+      "event_type": "wrong_way",
+      "matrix_status": "real",
+      "matrix_requirement": null,
+      "catalog_badge": "real",
+      "dod_verified": false,
+      "signal_owner": "frigate",
+      "judgment_owner": "geometry",
+      "vlm_role": "none",
+      "emit_moment": "on_exit",
+      "track_objects": [
+        "car",
+        "truck",
+        "bus",
+        "motorcycle",
+        "van"
+      ],
+      "dedupe_key": "geom:{event_id}:wrong_way:{zone}",
+      "xor_disables": [
+        "local_wrong_way_when_frigate_geometry"
+      ],
+      "evidence_policy": {
+        "enabled": true,
+        "clip_seconds": 6,
+        "images": [
+          {
+            "role": "scene",
+            "crop": "full"
+          },
+          {
+            "role": "subject",
+            "crop": "bbox",
+            "padding_pct": 10
+          },
+          {
+            "role": "clip",
+            "crop": "full"
+          }
+        ],
+        "fail_closed": [
+          "subject"
+        ]
+      },
+      "dod_alias": "wrong-way",
+      "archetype": "geometry"
+    },
+    {
       "id": "tpl-traffic-pipeline",
       "name": "Pipeline voiture → plaque + vitesse",
       "category": "road-enforcement",
-      "event_type": null,
+      "event_type": "speeding",
       "matrix_status": "partial",
       "matrix_requirement": "requires_calibration",
       "catalog_badge": "partial",
@@ -1597,7 +1657,7 @@
     },
     {
       "id": "tpl-observation-rule-set-n",
-      "name": "Comptage ensemble (N-sur-M)",
+      "name": "Compteur scénario (N types)",
       "category": "spatial",
       "event_type": null,
       "matrix_status": "real",
@@ -1612,28 +1672,17 @@
       "dedupe_key": "obs:n:{rule}",
       "xor_disables": [],
       "evidence_policy": {
-        "enabled": true,
-        "clip_seconds": 6,
-        "images": [
-          {
-            "role": "scene",
-            "crop": "full"
-          },
-          {
-            "role": "subject",
-            "crop": "bbox"
-          }
-        ],
-        "fail_closed": [
-          "subject"
-        ]
+        "enabled": false,
+        "clip_seconds": 0,
+        "images": [],
+        "fail_closed": []
       },
       "dod_alias": "obs-n",
       "archetype": "composite"
     },
     {
       "id": "tpl-observation-rule-set-or",
-      "name": "Comptage ensemble (OU)",
+      "name": "Compteur scénario (OU)",
       "category": "spatial",
       "event_type": null,
       "matrix_status": "real",
@@ -1648,21 +1697,10 @@
       "dedupe_key": "obs:or:{rule}",
       "xor_disables": [],
       "evidence_policy": {
-        "enabled": true,
-        "clip_seconds": 6,
-        "images": [
-          {
-            "role": "scene",
-            "crop": "full"
-          },
-          {
-            "role": "subject",
-            "crop": "bbox"
-          }
-        ],
-        "fail_closed": [
-          "subject"
-        ]
+        "enabled": false,
+        "clip_seconds": 0,
+        "images": [],
+        "fail_closed": []
       },
       "dod_alias": "obs-or",
       "archetype": "composite"

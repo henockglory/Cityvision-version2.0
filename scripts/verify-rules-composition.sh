@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vérifie présence des briques règles composables (trigger_rule, SEQUENCE, vehicle_corridor, road catalog)
+# Vérifie briques règles composables + honesty redirects (plus d'event live vehicle_corridor)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,8 +14,24 @@ echo "PASS mqtt trigger topic"
 grep -q SuppressLower "$ROOT/rules-engine/internal/evaluator/engine.go" || { echo "FAIL: suppress_lower"; exit 1; }
 echo "PASS suppress_lower model"
 
-grep -q vehicle_corridor "$ROOT/ai-engine/src/citevision_ai/pipeline.py" || { echo "FAIL: vehicle_corridor"; exit 1; }
-echo "PASS vehicle_corridor event"
+# vehicle_corridor must be drop-on-publish (not a live product event)
+grep -q 'if et == "vehicle_corridor"' "$ROOT/ai-engine/src/citevision_ai/pipeline.py" || {
+  echo "FAIL: vehicle_corridor drop publish missing"
+  exit 1
+}
+echo "PASS vehicle_corridor drop publish"
+
+grep -q 'tpl-wrong-way' "$ROOT/shared/rule-catalog/road-enforcement.json" || {
+  echo "FAIL: tpl-wrong-way missing from road-enforcement catalog"
+  exit 1
+}
+echo "PASS tpl-wrong-way catalog"
+
+grep -q 'redirect_to": "tpl-speeding-premium"' "$ROOT/shared/rule-catalog/road-enforcement.json" || {
+  echo "FAIL: tpl-traffic-pipeline redirect → tpl-speeding-premium"
+  exit 1
+}
+echo "PASS tpl-traffic-pipeline redirect"
 
 grep -q capability_profiles "$ROOT/backend/internal/ingest/orchestrator.go" || { echo "FAIL: capability_profiles"; exit 1; }
 echo "PASS capability_profiles sync"

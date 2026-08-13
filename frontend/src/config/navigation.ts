@@ -55,6 +55,14 @@ export const navGroups: NavGroup[] = [
       { path: '/demo', labelKey: 'nav.demo', icon: 'Sparkles', roles: ['admin', 'operator'] },
     ],
   },
+  {
+    id: 'docs',
+    labelKey: 'nav.groups.docs',
+    items: [
+      { path: '/docs/overview', labelKey: 'nav.docsOverview', icon: 'BookOpen', roles: ['admin', 'operator', 'viewer'] },
+      { path: '/docs/architectures', labelKey: 'nav.docsArchitectures', icon: 'Network', roles: ['admin', 'operator', 'viewer'] },
+    ],
+  },
 ];
 
 /** @deprecated use navGroups */

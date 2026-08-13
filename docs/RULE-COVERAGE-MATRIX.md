@@ -67,7 +67,7 @@ Généré le 2026-06-18T10:30:52.275620+00:00 par `scripts/generate-rule-coverag
 | `tpl-multi-person-vehicle` | Plusieurs personnes, un véhicule | security | `multiple_persons_one_vehicle` | Disponibles | implémenté | verify-e2e-pytest-catalog.sh | Chaîne IA branchée (YOLO/heuristiques) |
 | `tpl-multi-zone` | Présence multi-zones | spatial | `zone_enter` | Disponibles | implémenté | verify-e2e-bientot-templates.sh | Chaîne IA branchée (YOLO/heuristiques) |
 | `tpl-object-appeared` | Apparition d'objet | presence | `object_appeared` | Disponibles | implémenté | verify-e2e-pytest-catalog.sh | Chaîne IA branchée (YOLO/heuristiques) |
-| `tpl-object-disappeared` | Disparition d'objet | presence | `object_disappeared` | Disponibles | implémenté | verify-e2e-pytest-catalog.sh | Chaîne IA branchée (YOLO/heuristiques) |
+| `tpl-object-disappeared` | Disparition d'objet | presence | `object_removed` | — | redirect | — | Redirect → `tpl-object-removed` (plus d'emit `object_disappeared`) |
 | `tpl-object-removed` | Objet retiré | objects | `object_removed` | Disponibles | implémenté | verify-e2e-pytest-catalog.sh | Chaîne IA branchée (YOLO/heuristiques) |
 | `tpl-pedestrian-zone` | Piéton en zone véhicules | traffic | `—` | Disponibles | partiel | verify-e2e-pytest-catalog.sh | event_type non extrait de la définition |
 | `tpl-perimeter-breach` | Intrusion périmétrique | spatial | `perimeter_breach` | Disponibles | implémenté | verify-e2e-family-spatial.sh | Chaîne IA branchée (YOLO/heuristiques) |

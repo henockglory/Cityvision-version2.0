@@ -343,7 +343,7 @@ footer {
       </p>
       <div class="hero-meta">
         <span class="pill"><strong>34</strong> technologies</span>
-        <span class="pill"><strong>52</strong> règles × 7 cas</span>
+        <span class="pill"><strong>47</strong> règles × 7 cas</span>
         <span class="pill">Comparaison Genetec · Smart City</span>
         <span class="pill"><a href="index.html">Architectures →</a></span>
         <span class="pill"><a href="CiteVision-Overview.pdf">PDF →</a></span>
@@ -459,7 +459,7 @@ footer {
     <section id="rules">
       <div class="section-head">
         <p class="eyebrow">03 — Catalogue</p>
-        <h2>52 règles — 7 cas d’usage chacune</h2>
+        <h2>47 règles — 7 cas d’usage chacune</h2>
         <p>
           Cas quotidiens, pratiques et critiques (sécurité, mobilité, sites sensibles).
           Ouvrir une règle pour afficher sa palette d’exemples. Filtrer par nom ou archétype.
@@ -513,23 +513,15 @@ footer {
 
 <details class="rule" id="tpl-identity-correlation">
   <summary>
-    <span class="rn">06. Corrélation identité</span>
-    <span class="rmeta"><span class="chip">composite</span><code>correlation_match</code></span>
+    <span class="rn">06. Corrélation visage + plaque</span>
+    <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
   </summary>
-  <ol class="usecases"><li>Corrélation identité — cas terrain typique : intrusion après heures — présence + hors plage horaire + zone sensible.</li><li>Site industriel — corrélation identité + franchissement périmètre.</li><li>Pipeline trafic — voiture → plaque → vitesse dans un seul dossier.</li><li>Règle N-sur-M — N conditions observées sur M caméras avant alerte.</li><li>OU logique — l&#x27;un des signaux (ligne OU zone) suffit en mode garde.</li><li>Corrélation multi-sources — face + plaque sur le même créneau.</li><li>Scénario VIP — ensemble de règles pour parcours sécurisé temporaire.</li></ol>
-</details>
-
-<details class="rule" id="tpl-face-watchlist">
-  <summary>
-    <span class="rn">07. Personne liste noire</span>
-    <span class="rmeta"><span class="chip">face</span><code>face_watchlist_match</code></span>
-  </summary>
-  <ol class="usecases"><li>Personne liste noire — cas terrain typique : contrôle d&#x27;accès bâtiment administratif — visage vs liste autorisée à l&#x27;entrée principale.</li><li>Alerte watchlist aéroport / gare — correspondance sur flux caméra hall.</li><li>Sécurité événement sportif — détection personne signalée près des tribunes.</li><li>Site industriel — badge + visage pour zone haute sécurité.</li><li>Banque / agence — visage inconnu en dehors des horaires d&#x27;ouverture.</li><li>Hôpital — corrélation identité soignant / zone restreinte pharmacie.</li><li>Enquête post-incident — timeline des détections visage autour d&#x27;un créneau critique.</li></ol>
+  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
 </details>
 
 <details class="rule" id="tpl-plate-whitelist">
   <summary>
-    <span class="rn">08. Plaque autorisée</span>
+    <span class="rn">07. Plaque autorisée</span>
     <span class="rmeta"><span class="chip">plate</span><code>plate_allowed</code></span>
   </summary>
   <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
@@ -537,7 +529,7 @@ footer {
 
 <details class="rule" id="tpl-blocked-plate">
   <summary>
-    <span class="rn">09. Plaque bloquée</span>
+    <span class="rn">08. Plaque bloquée</span>
     <span class="rmeta"><span class="chip">plate</span><code>plate_blocked</code></span>
   </summary>
   <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
@@ -545,7 +537,7 @@ footer {
 
 <details class="rule" id="tpl-plate-detected">
   <summary>
-    <span class="rn">10. Plaque détectée</span>
+    <span class="rn">09. Plaque détectée</span>
     <span class="rmeta"><span class="chip">plate</span><code>plate_detected</code></span>
   </summary>
   <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
@@ -553,15 +545,7 @@ footer {
 
 <details class="rule" id="tpl-unknown-plate">
   <summary>
-    <span class="rn">11. Plaque inconnue</span>
-    <span class="rmeta"><span class="chip">plate</span><code>plate_unknown</code></span>
-  </summary>
-  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
-</details>
-
-<details class="rule" id="tpl-plate-unknown">
-  <summary>
-    <span class="rn">12. Plaque non enregistrée</span>
+    <span class="rn">10. Plaque inconnue</span>
     <span class="rmeta"><span class="chip">plate</span><code>plate_unknown</code></span>
   </summary>
   <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
@@ -569,7 +553,7 @@ footer {
 
 <details class="rule" id="tpl-plate-repeat">
   <summary>
-    <span class="rn">13. Plaque récurrente</span>
+    <span class="rn">11. Plaque récurrente</span>
     <span class="rmeta"><span class="chip">plate</span><code>plate_detected</code></span>
   </summary>
   <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
@@ -577,7 +561,7 @@ footer {
 
 <details class="rule" id="tpl-face-detected">
   <summary>
-    <span class="rn">14. Visage détecté</span>
+    <span class="rn">12. Visage détecté</span>
     <span class="rmeta"><span class="chip">face</span><code>face_detected</code></span>
   </summary>
   <ol class="usecases"><li>Contrôle d&#x27;accès bâtiment administratif — visage vs liste autorisée à l&#x27;entrée principale.</li><li>Alerte watchlist aéroport / gare — correspondance sur flux caméra hall.</li><li>Sécurité événement sportif — détection personne signalée près des tribunes.</li><li>Site industriel — badge + visage pour zone haute sécurité.</li><li>Banque / agence — visage inconnu en dehors des horaires d&#x27;ouverture.</li><li>Hôpital — corrélation identité soignant / zone restreinte pharmacie.</li><li>Enquête post-incident — timeline des détections visage autour d&#x27;un créneau critique.</li></ol>
@@ -585,7 +569,7 @@ footer {
 
 <details class="rule" id="tpl-unknown-face">
   <summary>
-    <span class="rn">15. Visage inconnu</span>
+    <span class="rn">13. Visage inconnu</span>
     <span class="rmeta"><span class="chip">face</span><code>face_unknown</code></span>
   </summary>
   <ol class="usecases"><li>Contrôle d&#x27;accès bâtiment administratif — visage vs liste autorisée à l&#x27;entrée principale.</li><li>Alerte watchlist aéroport / gare — correspondance sur flux caméra hall.</li><li>Sécurité événement sportif — détection personne signalée près des tribunes.</li><li>Site industriel — badge + visage pour zone haute sécurité.</li><li>Banque / agence — visage inconnu en dehors des horaires d&#x27;ouverture.</li><li>Hôpital — corrélation identité soignant / zone restreinte pharmacie.</li><li>Enquête post-incident — timeline des détections visage autour d&#x27;un créneau critique.</li></ol>
@@ -593,7 +577,7 @@ footer {
 
 <details class="rule" id="tpl-watchlist-match">
   <summary>
-    <span class="rn">16. Visage liste de surveillance</span>
+    <span class="rn">14. Visage liste de surveillance</span>
     <span class="rmeta"><span class="chip">face</span><code>face_watchlist_match</code></span>
   </summary>
   <ol class="usecases"><li>Contrôle d&#x27;accès bâtiment administratif — visage vs liste autorisée à l&#x27;entrée principale.</li><li>Alerte watchlist aéroport / gare — correspondance sur flux caméra hall.</li><li>Sécurité événement sportif — détection personne signalée près des tribunes.</li><li>Site industriel — badge + visage pour zone haute sécurité.</li><li>Banque / agence — visage inconnu en dehors des horaires d&#x27;ouverture.</li><li>Hôpital — corrélation identité soignant / zone restreinte pharmacie.</li><li>Enquête post-incident — timeline des détections visage autour d&#x27;un créneau critique.</li></ol>
@@ -601,7 +585,7 @@ footer {
 
 <details class="rule" id="tpl-industrial-intrusion">
   <summary>
-    <span class="rn">17. Intrusion site industriel</span>
+    <span class="rn">15. Intrusion site industriel</span>
     <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -609,7 +593,7 @@ footer {
 
 <details class="rule" id="tpl-abandoned-object">
   <summary>
-    <span class="rn">18. Objet abandonné</span>
+    <span class="rn">16. Objet abandonné</span>
     <span class="rmeta"><span class="chip">objects</span><code>object_abandoned</code></span>
   </summary>
   <ol class="usecases"><li>Gare — bagage abandonné près d&#x27;un banc pendant &gt; N minutes.</li><li>Musée — objet retiré d&#x27;un socle hors procédure.</li><li>Aéroport — disparition chariot/équipement en zone stérile.</li><li>Entrepôt — palette déplacée hors créneau inventaire.</li><li>Mairie — colis suspect laissé devant entrée publique.</li><li>Chantier — outil critique retiré de zone outillage.</li><li>Centre commercial — sac abandonné déclenchant protocole évacuation partielle.</li></ol>
@@ -617,7 +601,7 @@ footer {
 
 <details class="rule" id="tpl-object-removed">
   <summary>
-    <span class="rn">19. Objet retiré</span>
+    <span class="rn">17. Objet retiré</span>
     <span class="rmeta"><span class="chip">objects</span><code>object_removed</code></span>
   </summary>
   <ol class="usecases"><li>Gare — bagage abandonné près d&#x27;un banc pendant &gt; N minutes.</li><li>Musée — objet retiré d&#x27;un socle hors procédure.</li><li>Aéroport — disparition chariot/équipement en zone stérile.</li><li>Entrepôt — palette déplacée hors créneau inventaire.</li><li>Mairie — colis suspect laissé devant entrée publique.</li><li>Chantier — outil critique retiré de zone outillage.</li><li>Centre commercial — sac abandonné déclenchant protocole évacuation partielle.</li></ol>
@@ -625,23 +609,15 @@ footer {
 
 <details class="rule" id="tpl-zone-absence">
   <summary>
-    <span class="rn">20. Absence prolongée dans une zone</span>
+    <span class="rn">18. Absence prolongée dans une zone</span>
     <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Absence prolongée dans une zone — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
 </details>
 
-<details class="rule" id="tpl-object-disappeared">
-  <summary>
-    <span class="rn">21. Disparition d&#x27;objet</span>
-    <span class="rmeta"><span class="chip">objects</span><code>object_disappeared</code></span>
-  </summary>
-  <ol class="usecases"><li>Gare — bagage abandonné près d&#x27;un banc pendant &gt; N minutes.</li><li>Musée — objet retiré d&#x27;un socle hors procédure.</li><li>Aéroport — disparition chariot/équipement en zone stérile.</li><li>Entrepôt — palette déplacée hors créneau inventaire.</li><li>Mairie — colis suspect laissé devant entrée publique.</li><li>Chantier — outil critique retiré de zone outillage.</li><li>Centre commercial — sac abandonné déclenchant protocole évacuation partielle.</li></ol>
-</details>
-
 <details class="rule" id="tpl-zone-presence">
   <summary>
-    <span class="rn">22. Présence dans une zone</span>
+    <span class="rn">19. Présence dans une zone</span>
     <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Présence dans une zone — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -649,7 +625,7 @@ footer {
 
 <details class="rule" id="tpl-video-blur">
   <summary>
-    <span class="rn">23. Vidéo floue</span>
+    <span class="rn">20. Vidéo floue</span>
     <span class="rmeta"><span class="chip">quality</span><code>video_blur</code></span>
   </summary>
   <ol class="usecases"><li>Vidéo floue — cas terrain typique : caméra vandalisme — flou soudain → ticket maintenance prioritaire.</li><li>Nuit sans IR — obscurité anormale sur axe critique.</li><li>Brouillard / pluie — baisse qualité → bascule politique preuve.</li><li>Sabotage optique — spray/peinture détecté via métriques blur.</li><li>Mauvais focus PTZ — alerte qualité avant perte de conformité.</li><li>Perte d&#x27;éclairage rue — darkness prolongée sur carrefour.</li><li>Audit SLA caméra — disponibilité optique mesurée, pas seulement uptime IP.</li></ol>
@@ -657,7 +633,7 @@ footer {
 
 <details class="rule" id="tpl-video-darkness">
   <summary>
-    <span class="rn">24. Vidéo sombre</span>
+    <span class="rn">21. Vidéo sombre</span>
     <span class="rmeta"><span class="chip">quality</span><code>video_darkness</code></span>
   </summary>
   <ol class="usecases"><li>Vidéo sombre — cas terrain typique : caméra vandalisme — flou soudain → ticket maintenance prioritaire.</li><li>Nuit sans IR — obscurité anormale sur axe critique.</li><li>Brouillard / pluie — baisse qualité → bascule politique preuve.</li><li>Sabotage optique — spray/peinture détecté via métriques blur.</li><li>Mauvais focus PTZ — alerte qualité avant perte de conformité.</li><li>Perte d&#x27;éclairage rue — darkness prolongée sur carrefour.</li><li>Audit SLA caméra — disponibilité optique mesurée, pas seulement uptime IP.</li></ol>
@@ -665,7 +641,7 @@ footer {
 
 <details class="rule" id="tpl-seatbelt">
   <summary>
-    <span class="rn">25. Ceinture de sécurité</span>
+    <span class="rn">22. Ceinture de sécurité</span>
     <span class="rmeta"><span class="chip">cabin</span><code>seatbelt_violation</code></span>
   </summary>
   <ol class="usecases"><li>Contrôle routier urbain — téléphone au volant en approche carrefour.</li><li>Corridor scolaire — ceinture non bouclée aux abords d&#x27;une école.</li><li>Flotte entreprise — audit conformité conducteurs sur axe périurbain.</li><li>Péage / barrière — vérification cabine avant ouverture file rapide.</li><li>Police municipale — dossier preuve (clip + crop) pour contravention.</li><li>Campagne sensibilisation — statistiques anonymisées violations cabine.</li><li>Zone travaux — conduite à risque (téléphone) près d&#x27;ouvriers.</li></ol>
@@ -673,7 +649,7 @@ footer {
 
 <details class="rule" id="tpl-congestion">
   <summary>
-    <span class="rn">26. Embouteillage</span>
+    <span class="rn">23. Embouteillage</span>
     <span class="rmeta"><span class="chip">aggregate</span><code>vehicle_count_threshold</code></span>
   </summary>
   <ol class="usecases"><li>Place publique — densité foule au-delà du seuil d&#x27;évacuation.</li><li>Carrefour — nombre de véhicules déclenchant plan de feux adapté.</li><li>Manifestation — seuil foule atteint près d&#x27;un bâtiment sensible.</li><li>Parking — saturation places → message déport vers parking B.</li><li>Festival — congestion accès créant risque de bousculade.</li><li>Hôpital urgences — file véhicules trop dense sur dépose-minute.</li><li>Tunnel urbain — embouteillage détecté pour alerte exploitation.</li></ol>
@@ -681,7 +657,7 @@ footer {
 
 <details class="rule" id="tpl-speeding-premium">
   <summary>
-    <span class="rn">27. Excès de vitesse</span>
+    <span class="rn">24. Excès de vitesse</span>
     <span class="rmeta"><span class="chip">measure</span><code>speeding</code></span>
   </summary>
   <ol class="usecases"><li>Avenue 50 km/h — excès mesuré entre deux lignes de référence.</li><li>Zone 30 résidentielle — alerte vitesse + plaque pour médiation.</li><li>Approche carrefour — arrêt brusque suspect (risque collision).</li><li>Voie bus — véhicule trop lent créant un bouchon artificiel.</li><li>Périphérique urbain — dépassement seuil dynamique heure de pointe.</li><li>Parking souterrain — vitesse anormale dans rampe étroite.</li><li>Chantier temporaire — non-respect limitation provisoire signalée.</li></ol>
@@ -689,7 +665,7 @@ footer {
 
 <details class="rule" id="tpl-red-light">
   <summary>
-    <span class="rn">28. Feu rouge</span>
+    <span class="rn">25. Feu rouge</span>
     <span class="rmeta"><span class="chip">dual_signal</span><code>red_light_violation</code></span>
   </summary>
   <ol class="usecases"><li>Carrefour à feux — franchissement au rouge avec plaque + clip 6 s.</li><li>Passage piéton protégé — véhicule qui grille le rouge face aux écoliers.</li><li>Boulevard à plusieurs files — file de droite qui anticipe le vert.</li><li>Priorité pompiers — audit a posteriori des franchissements dangereux.</li><li>Smart corridor — corrélation feu rouge + vitesse dans la même scène.</li><li>Litige assurance — package preuve horodaté pour sinistre carrefour.</li><li>Campagne sécurité — heatmaps des carrefours les plus transgressés.</li></ol>
@@ -697,31 +673,23 @@ footer {
 
 <details class="rule" id="tpl-line-cross-forbidden">
   <summary>
-    <span class="rn">29. Franchissement ligne continue</span>
+    <span class="rn">26. Franchissement ligne continue</span>
     <span class="rmeta"><span class="chip">line</span><code>line_cross</code></span>
   </summary>
-  <ol class="usecases"><li>Franchissement ligne continue — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Sens interdit — croisement ligne dans le mauvais sens.</li><li>Ligne continue routière — dépassement dangereux matérialisé.</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li></ol>
+  <ol class="usecases"><li>Franchissement ligne continue — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Ligne continue routière — dépassement dangereux matérialisé (event line_cross).</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li><li>Parc — ligne virtuelle pour compter les entrées sans alerte sens interdit.</li></ol>
 </details>
 
-<details class="rule" id="tpl-traffic-pipeline">
+<details class="rule" id="tpl-wrong-way">
   <summary>
-    <span class="rn">30. Pipeline voiture → plaque + vitesse</span>
-    <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
+    <span class="rn">27. Sens interdit</span>
+    <span class="rmeta"><span class="chip">geometry</span><code>wrong_way</code></span>
   </summary>
-  <ol class="usecases"><li>Avenue 50 km/h — excès mesuré entre deux lignes de référence.</li><li>Zone 30 résidentielle — alerte vitesse + plaque pour médiation.</li><li>Approche carrefour — arrêt brusque suspect (risque collision).</li><li>Voie bus — véhicule trop lent créant un bouchon artificiel.</li><li>Périphérique urbain — dépassement seuil dynamique heure de pointe.</li><li>Parking souterrain — vitesse anormale dans rampe étroite.</li><li>Chantier temporaire — non-respect limitation provisoire signalée.</li></ol>
-</details>
-
-<details class="rule" id="tpl-plate-pipeline">
-  <summary>
-    <span class="rn">31. Plaque détectée (OCR)</span>
-    <span class="rmeta"><span class="chip">plate</span><code>plate_detected</code></span>
-  </summary>
-  <ol class="usecases"><li>Liste blanche parking employés — ouverture barrière automatique.</li><li>Liste noire véhicule volé — alerte temps réel + preuve OCR.</li><li>Zone piétonne — plaque détectée = véhicule non autorisé.</li><li>Flotte logistique — récurrence anormale d&#x27;une même plaque.</li><li>Douane / port — plaque inconnue hors registre du jour.</li><li>Contrôle pollution — corrélation plaque + zone ZFE.</li><li>Enquête — historique des passages d&#x27;une plaque sur N caméras.</li></ol>
+  <ol class="usecases"><li>Sens interdit — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
 </details>
 
 <details class="rule" id="tpl-phone-driving">
   <summary>
-    <span class="rn">32. Téléphone au volant</span>
+    <span class="rn">28. Téléphone au volant</span>
     <span class="rmeta"><span class="chip">cabin</span><code>phone_use_violation</code></span>
   </summary>
   <ol class="usecases"><li>Contrôle routier urbain — téléphone au volant en approche carrefour.</li><li>Corridor scolaire — ceinture non bouclée aux abords d&#x27;une école.</li><li>Flotte entreprise — audit conformité conducteurs sur axe périurbain.</li><li>Péage / barrière — vérification cabine avant ouverture file rapide.</li><li>Police municipale — dossier preuve (clip + crop) pour contravention.</li><li>Campagne sensibilisation — statistiques anonymisées violations cabine.</li><li>Zone travaux — conduite à risque (téléphone) près d&#x27;ouvriers.</li></ol>
@@ -729,7 +697,7 @@ footer {
 
 <details class="rule" id="tpl-loitering-entrance">
   <summary>
-    <span class="rn">33. Flânerie près entrée</span>
+    <span class="rn">29. Flânerie près entrée</span>
     <span class="rmeta"><span class="chip">geometry</span><code>loitering_near_entrance</code></span>
   </summary>
   <ol class="usecases"><li>Flânerie près entrée — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -737,7 +705,7 @@ footer {
 
 <details class="rule" id="tpl-intrusion-after-hours">
   <summary>
-    <span class="rn">34. Intrusion hors horaires</span>
+    <span class="rn">30. Intrusion hors horaires</span>
     <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -745,7 +713,7 @@ footer {
 
 <details class="rule" id="tpl-intrusion">
   <summary>
-    <span class="rn">35. Intrusion zone interdite</span>
+    <span class="rn">31. Intrusion zone interdite</span>
     <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -753,7 +721,7 @@ footer {
 
 <details class="rule" id="tpl-multi-person-vehicle">
   <summary>
-    <span class="rn">36. Plusieurs personnes, un véhicule</span>
+    <span class="rn">32. Plusieurs personnes, un véhicule</span>
     <span class="rmeta"><span class="chip">relational</span><code>multiple_persons_one_vehicle</code></span>
   </summary>
   <ol class="usecases"><li>Plusieurs personnes, un véhicule — cas terrain typique : covoiturage frauduleux — plusieurs personnes autour d&#x27;un seul véhicule en file HOV.</li><li>Agression potentielle — proximité anormale personne/véhicule parking isolé.</li><li>Vol à la portière — personne collée à véhicule arrêté moteur allumé.</li><li>Dépose scolaire — trop de piétons autour d&#x27;un même véhicule file.</li><li>Livraison suspecte — interaction prolongée personne–utilitaire zone résidentielle.</li><li>Parking relais — regroupement inhabituel autour d&#x27;un véhicule la nuit.</li><li>Contrôle frontière — corrélation occupants / véhicule déclaré.</li></ol>
@@ -761,7 +729,7 @@ footer {
 
 <details class="rule" id="tpl-proximity-alert">
   <summary>
-    <span class="rn">37. Proximité personne-véhicule</span>
+    <span class="rn">33. Proximité personne-véhicule</span>
     <span class="rmeta"><span class="chip">relational</span><code>person_vehicle_proximity</code></span>
   </summary>
   <ol class="usecases"><li>Proximité personne-véhicule — cas terrain typique : covoiturage frauduleux — plusieurs personnes autour d&#x27;un seul véhicule en file HOV.</li><li>Agression potentielle — proximité anormale personne/véhicule parking isolé.</li><li>Vol à la portière — personne collée à véhicule arrêté moteur allumé.</li><li>Dépose scolaire — trop de piétons autour d&#x27;un même véhicule file.</li><li>Livraison suspecte — interaction prolongée personne–utilitaire zone résidentielle.</li><li>Parking relais — regroupement inhabituel autour d&#x27;un véhicule la nuit.</li><li>Contrôle frontière — corrélation occupants / véhicule déclaré.</li></ol>
@@ -769,23 +737,23 @@ footer {
 
 <details class="rule" id="tpl-observation-rule-set-n">
   <summary>
-    <span class="rn">38. Comptage ensemble (N-sur-M)</span>
+    <span class="rn">34. Compteur scénario (N types)</span>
     <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
   </summary>
-  <ol class="usecases"><li>Comptage ensemble (N-sur-M) — cas terrain typique : intrusion après heures — présence + hors plage horaire + zone sensible.</li><li>Site industriel — corrélation identité + franchissement périmètre.</li><li>Pipeline trafic — voiture → plaque → vitesse dans un seul dossier.</li><li>Règle N-sur-M — N conditions observées sur M caméras avant alerte.</li><li>OU logique — l&#x27;un des signaux (ligne OU zone) suffit en mode garde.</li><li>Corrélation multi-sources — face + plaque sur le même créneau.</li><li>Scénario VIP — ensemble de règles pour parcours sécurisé temporaire.</li></ol>
+  <ol class="usecases"><li>Compteur scénario (N types) — cas terrain typique : intrusion après heures — présence + hors plage horaire + zone sensible.</li><li>Site industriel — corrélation identité + franchissement périmètre.</li><li>Pipeline trafic — voiture → plaque → vitesse dans un seul dossier.</li><li>Règle N-sur-M — N conditions observées sur M caméras avant alerte.</li><li>OU logique — l&#x27;un des signaux (ligne OU zone) suffit en mode garde.</li><li>Corrélation multi-sources — face + plaque sur le même créneau.</li><li>Scénario VIP — ensemble de règles pour parcours sécurisé temporaire.</li></ol>
 </details>
 
 <details class="rule" id="tpl-observation-rule-set-or">
   <summary>
-    <span class="rn">39. Comptage ensemble (OU)</span>
+    <span class="rn">35. Compteur scénario (OU)</span>
     <span class="rmeta"><span class="chip">composite</span><code>—</code></span>
   </summary>
-  <ol class="usecases"><li>Comptage ensemble (OU) — cas terrain typique : intrusion après heures — présence + hors plage horaire + zone sensible.</li><li>Site industriel — corrélation identité + franchissement périmètre.</li><li>Pipeline trafic — voiture → plaque → vitesse dans un seul dossier.</li><li>Règle N-sur-M — N conditions observées sur M caméras avant alerte.</li><li>OU logique — l&#x27;un des signaux (ligne OU zone) suffit en mode garde.</li><li>Corrélation multi-sources — face + plaque sur le même créneau.</li><li>Scénario VIP — ensemble de règles pour parcours sécurisé temporaire.</li></ol>
+  <ol class="usecases"><li>Compteur scénario (OU) — cas terrain typique : intrusion après heures — présence + hors plage horaire + zone sensible.</li><li>Site industriel — corrélation identité + franchissement périmètre.</li><li>Pipeline trafic — voiture → plaque → vitesse dans un seul dossier.</li><li>Règle N-sur-M — N conditions observées sur M caméras avant alerte.</li><li>OU logique — l&#x27;un des signaux (ligne OU zone) suffit en mode garde.</li><li>Corrélation multi-sources — face + plaque sur le même créneau.</li><li>Scénario VIP — ensemble de règles pour parcours sécurisé temporaire.</li></ol>
 </details>
 
 <details class="rule" id="tpl-zone-enter">
   <summary>
-    <span class="rn">40. Entrée dans une zone</span>
+    <span class="rn">36. Entrée dans une zone</span>
     <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Entrée dans une zone — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -793,23 +761,23 @@ footer {
 
 <details class="rule" id="tpl-line-cross-bidir">
   <summary>
-    <span class="rn">41. Franchissement bidirectionnel</span>
+    <span class="rn">37. Franchissement bidirectionnel</span>
     <span class="rmeta"><span class="chip">line</span><code>line_cross</code></span>
   </summary>
-  <ol class="usecases"><li>Franchissement bidirectionnel — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Sens interdit — croisement ligne dans le mauvais sens.</li><li>Ligne continue routière — dépassement dangereux matérialisé.</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li></ol>
+  <ol class="usecases"><li>Franchissement bidirectionnel — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Ligne continue routière — dépassement dangereux matérialisé (event line_cross).</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li><li>Parc — ligne virtuelle pour compter les entrées sans alerte sens interdit.</li></ol>
 </details>
 
 <details class="rule" id="tpl-line-cross">
   <summary>
-    <span class="rn">42. Franchissement de ligne</span>
+    <span class="rn">38. Franchissement de ligne</span>
     <span class="rmeta"><span class="chip">line</span><code>entry-line</code></span>
   </summary>
-  <ol class="usecases"><li>Franchissement de ligne — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Sens interdit — croisement ligne dans le mauvais sens.</li><li>Ligne continue routière — dépassement dangereux matérialisé.</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li></ol>
+  <ol class="usecases"><li>Franchissement de ligne — cas terrain typique : comptage entrée magasin — franchissement ligne porte principale.</li><li>Ligne continue routière — dépassement dangereux matérialisé (event line_cross).</li><li>Quai métro — franchissement ligne sécurité bord de quai.</li><li>Entrepôt — passage ligne jaune engins vs piétons.</li><li>Stade — flux bidirectionnel portes A/B pour régulation foule.</li><li>Frontière de zone — audit des croisements pendant la nuit.</li><li>Parc — ligne virtuelle pour compter les entrées sans alerte sens interdit.</li></ol>
 </details>
 
 <details class="rule" id="tpl-perimeter-breach">
   <summary>
-    <span class="rn">43. Intrusion périmétrique</span>
+    <span class="rn">39. Intrusion périmétrique</span>
     <span class="rmeta"><span class="chip">geometry</span><code>perimeter_breach</code></span>
   </summary>
   <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -817,7 +785,7 @@ footer {
 
 <details class="rule" id="tpl-multi-zone">
   <summary>
-    <span class="rn">44. Présence multi-zones</span>
+    <span class="rn">40. Présence multi-zones</span>
     <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Présence multi-zones — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -825,7 +793,7 @@ footer {
 
 <details class="rule" id="tpl-zone-exit">
   <summary>
-    <span class="rn">45. Sortie d&#x27;une zone</span>
+    <span class="rn">41. Sortie d&#x27;une zone</span>
     <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Sortie d&#x27;une zone — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -833,7 +801,7 @@ footer {
 
 <details class="rule" id="tpl-unauthorized-exit">
   <summary>
-    <span class="rn">46. Sortie non autorisée</span>
+    <span class="rn">42. Sortie non autorisée</span>
     <span class="rmeta"><span class="chip">geometry</span><code>unauthorized_exit</code></span>
   </summary>
   <ol class="usecases"><li>Sortie non autorisée — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -841,7 +809,7 @@ footer {
 
 <details class="rule" id="tpl-sudden-stop">
   <summary>
-    <span class="rn">47. Arrêt brusque</span>
+    <span class="rn">43. Arrêt brusque</span>
     <span class="rmeta"><span class="chip">measure</span><code>sudden_stop</code></span>
   </summary>
   <ol class="usecases"><li>Arrêt brusque — cas terrain typique : avenue 50 km/h — excès mesuré entre deux lignes de référence.</li><li>Zone 30 résidentielle — alerte vitesse + plaque pour médiation.</li><li>Approche carrefour — arrêt brusque suspect (risque collision).</li><li>Voie bus — véhicule trop lent créant un bouchon artificiel.</li><li>Périphérique urbain — dépassement seuil dynamique heure de pointe.</li><li>Parking souterrain — vitesse anormale dans rampe étroite.</li><li>Chantier temporaire — non-respect limitation provisoire signalée.</li></ol>
@@ -849,7 +817,7 @@ footer {
 
 <details class="rule" id="tpl-dwell-exceeded">
   <summary>
-    <span class="rn">48. Dépassement temps de présence</span>
+    <span class="rn">44. Dépassement temps de présence</span>
     <span class="rmeta"><span class="chip">geometry</span><code>dwell_time_exceeded</code></span>
   </summary>
   <ol class="usecases"><li>Dépassement temps de présence — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -857,7 +825,7 @@ footer {
 
 <details class="rule" id="tpl-loitering">
   <summary>
-    <span class="rn">49. Présence prolongée (loitering)</span>
+    <span class="rn">45. Présence prolongée (loitering)</span>
     <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
@@ -865,23 +833,15 @@ footer {
 
 <details class="rule" id="tpl-pedestrian-zone">
   <summary>
-    <span class="rn">50. Piéton en zone véhicules</span>
+    <span class="rn">46. Piéton en zone véhicules</span>
     <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
   </summary>
   <ol class="usecases"><li>Piéton en zone véhicules — cas terrain typique : périmètre usine — présence en zone interdite hors badge.</li><li>Hall gare — loitering prolongé près des consignes à bagages.</li><li>Parking VIP — véhicule arrêté trop longtemps sur voie pompiers.</li><li>École — piéton/enfant dans voie véhicules à la sortie des classes.</li><li>Data center — absence prolongée d&#x27;un agent attendu en zone ronde.</li><li>Centre commercial — flânerie suspecte près entrée secours.</li><li>Site portuaire — sortie non autorisée d&#x27;une zone douanière.</li></ol>
 </details>
 
-<details class="rule" id="tpl-illegal-parking">
-  <summary>
-    <span class="rn">51. Stationnement illégal</span>
-    <span class="rmeta"><span class="chip">geometry</span><code>—</code></span>
-  </summary>
-  <ol class="usecases"><li>Voie pompiers — véhicule arrêté bloquant l&#x27;accès secours.</li><li>Arrêt minute gare — dépassement durée autorisée.</li><li>Place PMR — occupation par véhicule non habilité.</li><li>Double file centre-ville — gêne bus et vélos.</li><li>Trottoir — roues sur passage piéton / bateau.</li><li>Zone livraison — hors créneau horaire autorisé.</li><li>Devant hydrant — stationnement critique pour pompiers.</li></ol>
-</details>
-
 <details class="rule" id="tpl-slow-vehicle">
   <summary>
-    <span class="rn">52. Véhicule trop lent</span>
+    <span class="rn">47. Véhicule trop lent</span>
     <span class="rmeta"><span class="chip">measure</span><code>speed_below_minimum</code></span>
   </summary>
   <ol class="usecases"><li>Véhicule trop lent — cas terrain typique : avenue 50 km/h — excès mesuré entre deux lignes de référence.</li><li>Zone 30 résidentielle — alerte vitesse + plaque pour médiation.</li><li>Approche carrefour — arrêt brusque suspect (risque collision).</li><li>Voie bus — véhicule trop lent créant un bouchon artificiel.</li><li>Périphérique urbain — dépassement seuil dynamique heure de pointe.</li><li>Parking souterrain — vitesse anormale dans rampe étroite.</li><li>Chantier temporaire — non-respect limitation provisoire signalée.</li></ol>
@@ -976,7 +936,7 @@ footer {
 
     <footer>
       <p>
-        CitéVision — vue d’ensemble produit (34 technologies, 52 règles).
+        CitéVision — vue d’ensemble produit (34 technologies, 47 règles).
         Voir aussi <a href="index.html">Architectures métier &amp; produit</a>,
         <a href="CiteVision-Architectures.pptx">le deck PowerPoint</a>
         et <a href="CiteVision-Overview.pdf">la version PDF</a>.

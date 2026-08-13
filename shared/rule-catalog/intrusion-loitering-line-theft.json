@@ -175,7 +175,7 @@
       "condition": {
         "op": "eq",
         "field": "event_type",
-        "value": "abandoned_object"
+        "value": "object_abandoned"
       },
       "actions": [
         {
@@ -186,7 +186,7 @@
         }
       ]
     },
-    "role_summary_fr": "Objet immobile (atome Frigate abandoned_object, Gemini anti-FP optionnel).",
+    "role_summary_fr": "Objet immobile (atome Frigate object_abandoned, Gemini anti-FP optionnel).",
     "partial_status": "requires_external",
     "partial_reason_fr": "Dépend du détecteur abandoned analytics ; distinct de object_appeared (heuristique durée)."
   }

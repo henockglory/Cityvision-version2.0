@@ -701,12 +701,14 @@ class PipelineService:
     _LOITERING_SKIP_BEHAVIORS = frozenset({
         "speed_measurement", "traffic_light", "red_light", "phone_use",
         "seatbelt", "driver_cabin", "vehicle_count", "line_crossing",
+        "wrong_way",
         # Frigate geometry bridge owns these when FRIGATE_GEOMETRY_BRIDGE=1.
         "presence", "perimeter", "controlled_exit", "loitering", "parking",
         "abandoned_object",
     })
 
-    # Local EventGenerator event types suppressed when geometry bridge owns spatial.
+    # Local event types suppressed when geometry bridge owns spatial (EventGenerator,
+    # StateEngine, Scene, Heuristics — line_cross stays local by design).
     _GEOMETRY_BRIDGE_SKIP_EVENTS = frozenset({
         "zone_enter", "zone_exit", "zone_presence", "zone_absence",
         "perimeter_breach", "unauthorized_exit",
@@ -715,8 +717,19 @@ class PipelineService:
         "crowd_count_threshold", "vehicle_count_threshold",
         "scene_density_high", "congestion",
         "person_vehicle_proximity", "multiple_persons_one_vehicle",
-        "abandoned_object", "object_removed", "object_disappeared",
+        "abandoned_object", "object_abandoned", "object_removed", "object_disappeared",
+        "pedestrian_in_vehicle_zone",
+        # Bridge owns edge-based wrong_way when FRIGATE_GEOMETRY_BRIDGE=1; local
+        # EventGenerator path remains when bridge is off.
+        "wrong_way",
     })
+
+    @classmethod
+    def _drop_geometry_bridge_owned(cls, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            e for e in events
+            if str(e.get("event_type") or "") not in cls._GEOMETRY_BRIDGE_SKIP_EVENTS
+        ]
 
     # Non-speed MQTT noise suppressed on speed-only cameras.
     _SPEED_ONLY_SKIP_EVENTS = frozenset({
@@ -1059,11 +1072,9 @@ class PipelineService:
                     )
                 ]
             all_events.extend(self.event_generator.process_frame(camera_id, track_dicts_inframe, scaled_rules, ts))
-            if bool(settings.frigate_geometry_bridge):
-                all_events = [
-                    e for e in all_events
-                    if str(e.get("event_type") or "") not in self._GEOMETRY_BRIDGE_SKIP_EVENTS
-                ]
+            geom_bridge = bool(settings.frigate_geometry_bridge)
+            if geom_bridge:
+                all_events = self._drop_geometry_bridge_owned(all_events)
 
             for evt in all_events:
                 if evt.get("event_type") != "line_cross":
@@ -1101,7 +1112,10 @@ class PipelineService:
                     self.state_engine.set_zone(camera_id, evt["track_id"], evt["zone_id"], False)
 
             _, state_events, zone_dwell = self.state_engine.update(camera_id, frame_id, track_dicts_inframe, ts)
-            all_events.extend(state_events)
+            # Keep state for dwell bookkeeping, but do not publish geometry-owned types
+            # when Frigate geometry bridge is the sole spatial emitter (XOR).
+            if not geom_bridge:
+                all_events.extend(state_events)
 
             frame_histories = {
                 t["track_id"]: self._track_history.get((camera_id, t["track_id"]), [])
@@ -1116,9 +1130,12 @@ class PipelineService:
             behavior_signals = self.behavior.evaluate_frame(
                 track_dicts_inframe, frame_histories, frame_bbox_histories
             )
-            all_events.extend(
-                self.event_generator.emit_behavior_signals(camera_id, behavior_signals, ts)
+            heur_events = self.event_generator.emit_behavior_signals(
+                camera_id, behavior_signals, ts,
             )
+            if geom_bridge:
+                heur_events = self._drop_geometry_bridge_owned(heur_events)
+            all_events.extend(heur_events)
 
             speeds = [t.get("metadata", {}).get("speed_kmh", 0) for t in track_dicts_inframe]
             avg_speed = sum(speeds) / max(len(speeds), 1)
@@ -1129,10 +1146,11 @@ class PipelineService:
                 scene_kw["crowd_threshold"] = int(rt["crowd_threshold"])
             if rt.get("vehicle_threshold") is not None:
                 scene_kw["vehicle_threshold"] = int(rt["vehicle_threshold"])
-            _, scene_events = self.scene.analyze(
-                camera_id, track_dicts_inframe, float(w * h), avg_speed, **scene_kw,
-            )
-            all_events.extend(scene_events)
+            if not geom_bridge:
+                _, scene_events = self.scene.analyze(
+                    camera_id, track_dicts_inframe, float(w * h), avg_speed, **scene_kw,
+                )
+                all_events.extend(scene_events)
 
             vehicle_count = len([
                 t for t in track_dicts_inframe
@@ -1248,35 +1266,6 @@ class PipelineService:
             self.evidence.update_frigate_bindings(
                 camera_id, track_dicts, frame_w=w, frame_h=h, wall_ts=frame_wall_ts,
             )
-
-        for t in track_dicts:
-            if not self._track_in_capability_zone(camera_id, t, "speed_estimate"):
-                continue
-            spd = t.get("metadata", {}).get("speed_kmh")
-            plate = next(
-                (e.get("plate_number") for e in all_events if e.get("track_id") == t.get("track_id") and e.get("plate_number")),
-                None,
-            )
-            zone_id = next(
-                (e.get("zone_id") for e in all_events if e.get("track_id") == t.get("track_id") and e.get("zone_id")),
-                None,
-            )
-            if spd is not None and float(spd) > 0:
-                all_events.append({
-                    "event_id": str(uuid.uuid4()),
-                    "camera_id": camera_id,
-                    "event_type": "vehicle_corridor",
-                    "event": "vehicle_corridor",
-                    "timestamp": ts,
-                    "track_id": t.get("track_id"),
-                    "class_name": t.get("class_name"),
-                    "zone_id": zone_id,
-                    "plate_number": plate,
-                    "speed_kmh": spd,
-                    "bbox": t.get("bbox"),
-                    "confidence": t.get("confidence", 0.8),
-                    "severity": "info",
-                })
 
         for evt in all_events:
             if self._org_ids.get(camera_id):
@@ -1493,7 +1482,7 @@ class PipelineService:
             )
             self.mqtt.publish_event(camera_id, evt)
             return
-        if et in ("vehicle_corridor", "vehicle_count_threshold"):
+        if et == "vehicle_corridor":
             return
         if self._is_speed_only_camera(camera_id) and et in self._SPEED_ONLY_SKIP_EVENTS:
             return
@@ -1696,7 +1685,6 @@ class PipelineService:
         "speeding",
         "phone_use_violation",
         "seatbelt_violation",
-        "vehicle_corridor",
         "wrong_way",
     }
     _EVIDENCE_MANDATORY = {

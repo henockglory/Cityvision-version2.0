@@ -33,6 +33,11 @@ bash scripts/download-yolo-model.sh
 | Email | `glory.henock@hologram.cd` |
 | Mot de passe | `Hologram2026!` |
 
+**Cinéma Earthzoom** (si `frontend/public/media/earthzoom.mp4` présent) :
+- Intro **0–9 s** puis image gelée + formulaire de connexion
+- Après login OK : outro **10–14 s**, puis Dashboard `/`
+- `prefers-reduced-motion` : skip vidéo
+
 Reset mot de passe : `bash scripts/reset-admin-password.sh`
 
 **Important :** Ctrl+Shift+R après redémarrage du frontend.

@@ -18,6 +18,9 @@
     "audit": "Audit",
     "systemHealth": "System Health",
     "settings": "Settings",
+    "docsOverview": "Overview",
+    "docsArchitectures": "Architectures",
+    "docsOpenNewTab": "Open in new tab",
     "logout": "Logout",
     "collapse": "Collapse",
     "groups": {
@@ -26,7 +29,8 @@
       "security": "Security",
       "admin": "Administration",
       "account": "Account",
-      "demo": "Demo"
+      "demo": "Demo",
+      "docs": "Documentation"
     }
   },
   "setup": {
@@ -568,7 +572,6 @@
         "seatbelt_violation": "Ceinture non portée",
         "phone_driving": "Téléphone au volant",
         "sudden_stop": "Arrêt brusque",
-        "vehicle_corridor": "Corridor véhicule (plaque + vitesse)",
         "perimeter_breach": "Intrusion périmétrique",
         "unauthorized_exit": "Sortie non autorisée"
       },
@@ -682,7 +685,10 @@
     "streamError": "Cannot display video — check credentials and that the camera is on the same network",
     "fallbackMse": "MSE fallback…",
     "detectionOverlayHint": "YOLO boxes overlaid on video (SSE) — slight lag vs burn-in.",
-    "detectionOverlayTitle": "Show live detection boxes",
+    "detectionOverlayHintDemo": "Boxes ON: YOLO SSE overlay on go2rtc (demo). OFF: clean video.",
+    "detectionOverlayHintFrigate": "Boxes ON: Frigate detect stream with burned-in bbox. OFF: clean go2rtc. Frigate does not compute business speed or Gemini cabin judgment.",
+    "detectionOverlayTitle": "Show Frigate detect stream with bounding boxes",
+    "detectionOverlayTitleDemo": "Show YOLO/ByteTrack boxes (demo)",
     "detectionOverlayOn": "AI boxes · ON",
     "detectionOverlayOff": "AI boxes · OFF"
   },
@@ -746,7 +752,7 @@
     "zoneKindPerimeter": "Perimeter — triggers intrusion",
     "zoneKindExit": "Controlled exit — triggers unauthorized exit",
     "zoneKindCorridor": "Corridor / vehicle lane",
-    "zoneKindParking": "Parking — triggers illegal parking",
+    "zoneKindParking": "Stopped vehicle — emits vehicle_stopped after dwell",
     "behaviorLabel": "Zone AI behavior",
     "behaviorTip": "Choose what the AI should do with this zone: standard detection, presence, perimeter, traffic-light color, speed measurement, phone/seatbelt model, etc. Each behavior shows its reliability level and settings.",
     "behaviorTipDynamic": "Dynamic list: product catalog + org-imported models. Greyed out = AI model not loaded or missing prerequisite.",
@@ -1022,7 +1028,7 @@
     },
     "liveView": {
       "player": "Main feed",
-      "playerDesc": "Select a camera and control PTZ — the stream is the source of detections."
+      "playerDesc": "go2rtc for clean video; AI boxes = Frigate MJPEG (IP) or YOLO overlay (demo)."
     },
     "cameras": {
       "list": "Camera list",
@@ -1030,7 +1036,7 @@
     },
     "zones": {
       "canvas": "Zone canvas",
-      "canvasDesc": "Draw zones and detection lines on the camera view."
+      "canvasDesc": "Draw polygons (min. 3 points) or counting lines. For abandoned objects: abandoned_object behavior + track_objects (Frigate bags); event is object_abandoned."
     },
     "events": {
       "timeline": "Timeline",

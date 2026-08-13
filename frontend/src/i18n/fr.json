@@ -18,6 +18,9 @@
     "audit": "Audit",
     "systemHealth": "Santé système",
     "settings": "Paramètres",
+    "docsOverview": "Overview",
+    "docsArchitectures": "Architectures",
+    "docsOpenNewTab": "Ouvrir dans un onglet",
     "logout": "Déconnexion",
     "collapse": "Réduire",
     "groups": {
@@ -26,7 +29,8 @@
       "security": "Sécurité",
       "admin": "Administration",
       "account": "Compte",
-      "demo": "Démo"
+      "demo": "Démo",
+      "docs": "Documentation"
     }
   },
   "setup": {
@@ -571,7 +575,6 @@
         "seatbelt_violation": "Ceinture non portée",
         "phone_driving": "Téléphone au volant",
         "sudden_stop": "Arrêt brusque",
-        "vehicle_corridor": "Corridor véhicule (plaque + vitesse)",
         "perimeter_breach": "Intrusion périmétrique",
         "unauthorized_exit": "Sortie non autorisée"
       },
@@ -696,7 +699,10 @@
     "streamError": "Impossible d'afficher l'image — vérifiez identifiants et que la caméra est sur le même réseau",
     "fallbackMse": "Repli MSE…",
     "detectionOverlayHint": "Cadres YOLO superposés sur la vidéo (SSE) — léger décalage possible.",
-    "detectionOverlayTitle": "Afficher les cadres de détection en direct",
+    "detectionOverlayHintDemo": "Cadres ON : overlay YOLO SSE sur go2rtc (démo). OFF : flux vidéo propre.",
+    "detectionOverlayHintFrigate": "Cadres ON : flux détecte Frigate (bbox brûlées). OFF : go2rtc sans cadres. Frigate ne calcule pas la vitesse métier ni le jugement cabine Gemini.",
+    "detectionOverlayTitle": "Afficher le flux Frigate avec cadres de détection",
+    "detectionOverlayTitleDemo": "Afficher les bbox YOLO/ByteTrack (démo)",
     "detectionOverlayOn": "Cadres IA · ON",
     "detectionOverlayOff": "Cadres IA · OFF"
   },
@@ -745,12 +751,12 @@
     "lineEmpty": "Aucune ligne",
     "lineEmptyHint": "2 clics sur la vidéo pour tracer une ligne",
     "zoneKind": "Type de zone (comportement IA)",
-    "zoneKindTip": "Le type sémantique indique à l'IA comment interpréter cette zone. « Périmètre » → intrusion. « Sortie contrôlée » → alerte sortie non autorisée. « Stationnement » → illicite si véhicule immobilisé. « Auto » = déduit du nom de la zone.",
+    "zoneKindTip": "Le type sémantique indique à l'IA comment interpréter cette zone. « Périmètre » → intrusion. « Sortie contrôlée » → sortie non autorisée. « Véhicule arrêté » → vehicle_stopped après durée. « Auto » = déduit du nom.",
     "zoneKindAuto": "Auto (déduit du nom)",
     "zoneKindPerimeter": "Périmètre — déclenche intrusion",
     "zoneKindExit": "Sortie contrôlée — déclenche sortie non autorisée",
     "zoneKindCorridor": "Couloir / voie véhicules",
-    "zoneKindParking": "Stationnement — déclenche stationnement illicite",
+    "zoneKindParking": "Véhicule arrêté — émet vehicle_stopped après durée",
     "behaviorLabel": "Comportement IA de la zone",
     "behaviorTip": "Choisissez ce que l'IA doit faire de cette zone : détection standard, présence, périmètre, couleur de feu, mesure de vitesse, modèle téléphone/ceinture, etc. Chaque comportement affiche son niveau de fiabilité et ses réglages.",
     "behaviorTipDynamic": "Liste dynamique : catalogue produit + modèles importés pour votre organisation. Grisé = modèle IA non chargé ou prérequis manquant.",
@@ -1020,9 +1026,9 @@
     },
     "map": {
       "modes": "Modes carte",
-      "modesDesc": "Carte réelle OSM, plan schématique ou globe 3D.",
+      "modesDesc": "Carte réelle OSM, plan schématique ou globe 3D animé (arcs, pulses d'alertes).",
       "canvas": "Placement SIG",
-      "canvasDesc": "Survolez une caméra pour l'aperçu live ; cliquez pour la fiche."
+      "canvasDesc": "Survolez une caméra pour l'aperçu live ; cliquez pour la fiche. En Globe : pulses sur alertes ouvertes."
     },
     "rules": {
       "catalog": "Catalogue",
@@ -1042,7 +1048,7 @@
     },
     "liveView": {
       "player": "Flux principal",
-      "playerDesc": "Sélectionnez une caméra et contrôlez le PTZ — le flux est la source des détections."
+      "playerDesc": "go2rtc pour l'image propre ; Cadres IA = Frigate MJPEG (caméra IP) ou overlay YOLO (démo)."
     },
     "cameras": {
       "list": "Liste caméras",
@@ -1052,7 +1058,7 @@
     },
     "zones": {
       "canvas": "Canevas zones",
-      "canvasDesc": "Cliquez sur la vidéo pour placer les coins de la zone (min. 3 points), puis « Fermer polygone » pour terminer. En mode Lignes, deux clics tracent une ligne de comptage. Nommez la zone avec le bon type sémantique pour activer les bonnes règles IA."
+      "canvasDesc": "Cliquez sur la vidéo pour placer les coins (min. 3), puis Fermer polygone. Pour objet abandonné : comportement abandoned_object + track_objects (sacs Frigate) ; l'événement est object_abandoned."
     },
     "events": {
       "filters": "Filtres",

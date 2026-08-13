@@ -148,6 +148,15 @@ export default function ZoneEdgeCalibration({
           </label>
         </div>
       )}
+      {onEntryEdgeChange && onExitEdgeChange
+        && entryEdgeIndex != null && exitEdgeIndex != null
+        && entryEdgeIndex === exitEdgeIndex && (
+        <p className="text-[10px] text-amber-400/90">
+          {t('zoneEditor.edgePairMustDiffer', {
+            defaultValue: 'Choisissez deux arêtes distinctes (entrée ≠ sortie).',
+          })}
+        </p>
+      )}
       <div className="text-[10px] text-cv-muted space-y-0.5 border-t border-cv-border/40 pt-2">
         <div>
           {t('zoneEditor.edgeCalibrationProgress', { filled, total: n })}

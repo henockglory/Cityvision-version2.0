@@ -14,10 +14,10 @@ EXPECTED_EVENTS=(
   running crowd_gathering person_stopped vehicle_stopped
   dwell_time_exceeded scene_density_high crowd_count_threshold
   vehicle_count_threshold speeding speed_below_minimum sudden_stop
-  perimeter_breach unauthorized_exit vehicle_corridor
+  perimeter_breach unauthorized_exit wrong_way
   face_detected face_unknown plate_detected
   object_abandoned person_vehicle_proximity
-  video_blur video_darkness behavior_anomaly
+  video_blur video_darkness
 )
 
 echo "==> Validation dÃ©tections live ($DURATION s)"
@@ -62,10 +62,10 @@ expected = [
   "running", "crowd_gathering", "person_stopped", "vehicle_stopped",
   "dwell_time_exceeded", "scene_density_high", "crowd_count_threshold",
   "vehicle_count_threshold", "speeding", "speed_below_minimum", "sudden_stop",
-  "perimeter_breach", "unauthorized_exit", "vehicle_corridor",
+  "perimeter_breach", "unauthorized_exit", "wrong_way",
   "face_detected", "face_unknown", "plate_detected",
   "object_abandoned", "person_vehicle_proximity",
-  "video_blur", "video_darkness", "behavior_anomaly",
+  "video_blur", "video_darkness",
 ]
 
 tmp = os.path.join(os.path.dirname(report_path), ".detected_events.tmp")

@@ -38,7 +38,7 @@
   {
     "id": "tpl-wrong-lane",
     "redirect_to": "tpl-wrong-way",
-    "_fusion_note": "[I.80] Doublon fusionné vers tpl-wrong-way (même événement wrong_way)."
+    "_fusion_note": "[honesty] Sens interdit = zone arêtes entry/exit (tpl-wrong-way)."
   },
   {
     "id": "tpl-stopped-traffic",

@@ -130,6 +130,24 @@ def edge_midpoint(poly: list[dict], i: int) -> tuple[float, float] | None:
     return (x1 + x2) / 2.0, (y1 + y2) / 2.0
 
 
+def nearest_edge_index(poly: list[dict], x: float, y: float) -> int | None:
+    """Index of the polygon edge whose midpoint is closest to (x, y) in norm coords."""
+    n = edge_count(poly)
+    if n < 3:
+        return None
+    best_i: int | None = None
+    best_d = float("inf")
+    for i in range(n):
+        mid = edge_midpoint(poly, i)
+        if mid is None:
+            continue
+        d = math.hypot(x - mid[0], y - mid[1])
+        if d < best_d:
+            best_d = d
+            best_i = i
+    return best_i
+
+
 def edge_pair_distance_m(
     poly: list[dict],
     entry_edge_index: int,

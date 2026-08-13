@@ -26,10 +26,40 @@ export function createGroup(op: 'AND' | 'OR' = 'AND', children: ConditionNode[] 
   return { op, children };
 }
 
+export function countEventTypeMembers(node: ConditionNode | undefined): number {
+  if (!node) return 0;
+  const op = String(node.op ?? '').toUpperCase();
+  if (op === 'RULE_SET' || op === 'RULE_SET_OR') {
+    const fromMeta = Array.isArray((node as { member_event_types?: unknown }).member_event_types)
+      ? ((node as { member_event_types?: unknown[] }).member_event_types ?? []).filter(Boolean).length
+      : 0;
+    if (fromMeta >= 2) return fromMeta;
+    let n = 0;
+    for (const c of node.children ?? []) {
+      if (String(c.field ?? '') === 'event_type' && c.value != null && String(c.value) !== '') n += 1;
+      else n += countEventTypeMembers(c);
+    }
+    return n;
+  }
+  if (isGroupNode(node)) {
+    return (node.children ?? []).reduce((acc, c) => acc + countEventTypeMembers(c), 0);
+  }
+  if (String(node.field ?? '') === 'event_type' && node.value != null && String(node.value) !== '') {
+    return 1;
+  }
+  return 0;
+}
+
 export function validateConditionTree(node: ConditionNode | undefined): string | null {
   if (!node) return 'Condition manquante';
   if (isGroupNode(node)) {
     if (!node.children?.length) return 'Groupe vide — ajoutez une condition ou supprimez le groupe';
+    const op = String(node.op ?? '').toUpperCase();
+    if (op === 'RULE_SET' || op === 'RULE_SET_OR') {
+      if (countEventTypeMembers(node) < 2) {
+        return 'Compteur scénario : sélectionnez au moins 2 types d\'événements membres (chips).';
+      }
+    }
     for (const c of node.children) {
       const err = validateConditionTree(c);
       if (err) return err;

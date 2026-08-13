@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard, Camera, MonitorPlay, Grid3x3, Map, PenTool, Workflow,
   Bell, Clock, Users, FileText, Activity, Settings, Sparkles,
-  ChevronLeft, ChevronRight, X,
+  BookOpen, Network, ChevronLeft, ChevronRight, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import EyeLogo from '@/components/EyeLogo';
@@ -17,6 +17,7 @@ import { useSound } from '@/hooks/useSound';
 const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Camera, MonitorPlay, Grid3x3, Map, PenTool, Workflow,
   Bell, Clock, Users, FileText, Activity, Settings, Sparkles,
+  BookOpen, Network,
 };
 
 interface SidebarProps {

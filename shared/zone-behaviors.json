@@ -111,11 +111,11 @@
       "id": "parking",
       "group": "traffic",
       "applies_to": "zone",
-      "label_fr": "Stationnement interdit",
-      "label_en": "No-parking",
+      "label_fr": "Véhicule arrêté (durée)",
+      "label_en": "Stopped vehicle (dwell)",
       "capability": "real",
-      "human_description_fr": "Alerte si un véhicule reste immobile dans la zone au-delà d'une durée.",
-      "human_description_en": "Alerts when a vehicle stays immobile in the zone beyond a duration.",
+      "human_description_fr": "Émet vehicle_stopped quand un véhicule reste dans la zone au-delà de la durée (même atome que la règle « Véhicule arrêté »).",
+      "human_description_en": "Emits vehicle_stopped when a vehicle stays in the zone beyond the duration (same atom as the Stopped vehicle rule).",
       "emits": [
         "vehicle_stopped"
       ],
@@ -243,6 +243,42 @@
         {
           "key": "class_filter",
           "type": "class_filter",
+          "label_fr": "Objet surveillé (local)",
+          "label_en": "Watched object (local)",
+          "default": "car",
+          "hint_fr": "Utilisé surtout si le bridge vitesse Frigate est OFF. Avec FRIGATE_SPEED_BRIDGE=1, c'est track_objects qui filtre les labels Frigate.",
+          "hint_en": "Used mainly when Frigate speed bridge is OFF. With FRIGATE_SPEED_BRIDGE=1, track_objects filters Frigate labels."
+        },
+        {
+          "key": "track_objects",
+          "type": "track_objects",
+          "label_fr": "Objets suivis par Frigate",
+          "label_en": "Objects tracked by Frigate",
+          "default": "car",
+          "hint_fr": "Filtre réel du bridge vitesse Frigate (voiture, moto, bus…). Préférez ce champ pour la mesure en production.",
+          "hint_en": "Actual Frigate speed-bridge filter (car, motorcycle, bus…). Prefer this field for production speed."
+        }
+      ]
+    },
+    {
+      "id": "wrong_way",
+      "group": "traffic",
+      "applies_to": "zone",
+      "label_fr": "Sens interdit (arêtes)",
+      "label_en": "Wrong-way (edges)",
+      "capability": "real",
+      "human_description_fr": "Définit le sens autorisé par arête d'entrée et arête de sortie. Un véhicule qui traverse dans l'autre sens émet wrong_way (bridge Frigate ou géométrie locale).",
+      "human_description_en": "Defines the allowed direction via entry and exit edges. A vehicle crossing the other way emits wrong_way (Frigate bridge or local geometry).",
+      "emits": [
+        "wrong_way"
+      ],
+      "requires": [
+        "polygon:entry_exit_edges"
+      ],
+      "config_fields": [
+        {
+          "key": "class_filter",
+          "type": "class_filter",
           "label_fr": "Objet surveillé",
           "label_en": "Watched object",
           "default": "car"
@@ -252,9 +288,9 @@
           "type": "track_objects",
           "label_fr": "Objets suivis par Frigate",
           "label_en": "Objects tracked by Frigate",
-          "default": "car",
-          "hint_fr": "Types d'objets que Frigate suit et mesure dans cette zone (voiture, moto, bus…).",
-          "hint_en": "Object types Frigate tracks and measures in this zone (car, motorcycle, bus…)."
+          "default": "car,truck,bus,motorcycle",
+          "hint_fr": "Labels Frigate pour cette zone (véhicules). Les arêtes entrée/sortie se règlent dans le panneau calibration.",
+          "hint_en": "Frigate labels for this zone (vehicles). Entry/exit edges are set in the calibration panel."
         }
       ]
     },
@@ -279,12 +315,14 @@
         {
           "key": "confidence",
           "type": "number",
-          "label_fr": "Confiance min",
-          "label_en": "Min confidence",
+          "label_fr": "Confiance min Gemini",
+          "label_en": "Min Gemini confidence",
           "default": 0.45,
           "min": 0.05,
           "max": 0.99,
-          "step": 0.05
+          "step": 0.05,
+          "hint_fr": "Seuil du jugement Gemini (cabine), pas le min_confidence des preuves (capture).",
+          "hint_en": "Gemini cabin judgment threshold — not evidence min_confidence (capture gate)."
         },
         {
           "key": "track_objects",
@@ -317,12 +355,14 @@
         {
           "key": "confidence",
           "type": "number",
-          "label_fr": "Confiance min",
-          "label_en": "Min confidence",
+          "label_fr": "Confiance min Gemini",
+          "label_en": "Min Gemini confidence",
           "default": 0.45,
           "min": 0.05,
           "max": 0.99,
-          "step": 0.05
+          "step": 0.05,
+          "hint_fr": "Seuil du jugement Gemini (téléphone), pas le min_confidence des preuves.",
+          "hint_en": "Gemini phone-use judgment threshold — not evidence min_confidence."
         },
         {
           "key": "track_objects",
@@ -355,12 +395,14 @@
         {
           "key": "confidence",
           "type": "number",
-          "label_fr": "Confiance min",
-          "label_en": "Min confidence",
+          "label_fr": "Confiance min Gemini",
+          "label_en": "Min Gemini confidence",
           "default": 0.45,
           "min": 0.05,
           "max": 0.99,
-          "step": 0.05
+          "step": 0.05,
+          "hint_fr": "Seuil du jugement Gemini (ceinture), pas le min_confidence des preuves.",
+          "hint_en": "Gemini seatbelt judgment threshold — not evidence min_confidence."
         },
         {
           "key": "track_objects",
@@ -454,6 +496,15 @@
           "default": 60,
           "min": 5,
           "max": 86400
+        },
+        {
+          "key": "track_objects",
+          "type": "track_objects",
+          "label_fr": "Objets suivis par Frigate",
+          "label_en": "Objects tracked by Frigate",
+          "default": "backpack,handbag,suitcase",
+          "hint_fr": "Types d'objets que Frigate suit pour abandon / retrait / disparition (sac, valise…).",
+          "hint_en": "Object types Frigate tracks for abandon / removal / disappearance (bag, suitcase…)."
         }
       ]
     }

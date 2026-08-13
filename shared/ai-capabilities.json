@@ -1001,7 +1001,7 @@
     "tpl-wrong-way": {
       "supported": true,
       "capability_id": "wrong_way",
-      "human_description": "Véhicule ou personne circulant à contre-sens.",
+      "human_description": "Sens interdit via zone polygone : arête d'entrée → arête de sortie ; le sens inverse émet wrong_way.",
       "configSchema": {
         "fields": [
           {
@@ -1011,30 +1011,14 @@
             "required": true
           },
           {
-            "key": "line_name",
-            "type": "line",
-            "label": "Ligne",
+            "key": "zone_name",
+            "type": "zone",
+            "label": "Zone (behavior wrong_way)",
             "required": true
-          },
-          {
-            "key": "direction",
-            "type": "enum",
-            "label": "Sens attendu",
-            "required": true,
-            "options": [
-              {
-                "value": "in",
-                "label": "Entrée seulement"
-              },
-              {
-                "value": "out",
-                "label": "Sortie seulement"
-              }
-            ],
-            "default": "in"
           }
         ]
-      }
+      },
+      "role_summary_fr": "Alerte quand un véhicule traverse la zone dans le sens inverse des arêtes entrée/sortie configurées."
     },
     "tpl-person-stopped": {
       "supported": true,

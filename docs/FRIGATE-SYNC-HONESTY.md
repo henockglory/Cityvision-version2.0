@@ -93,4 +93,6 @@ Scopes **national / enterprise / domestic** are UI navigation only ([catalog-nav
 
 ## Composites
 
-- `theft-composite`, `identity-correlation`, `traffic-pipeline`, observation N/OR = **rules-engine sequences** on DoD atoms — see `docs/COMPOSITES-ORCHESTRATION.md`.
+- `identity-correlation` = RULE_SET `face_watchlist_match` + `plate_detected` (120 s) — see `docs/COMPOSITES-ORCHESTRATION.md`.
+- Compteur scénario N/OR = observation composites (≥2 member events).
+- `traffic-pipeline` = **redirect** → `tpl-speeding-premium` (not a live composite).

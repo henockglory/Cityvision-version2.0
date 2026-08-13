@@ -40,9 +40,9 @@ Règles Gemini (ceinture, téléphone, feu, plaque, faces) = **`partial`** jusqu
 
 ## Corrélation identité
 
-Pas de prompt VLM « correlation ». Le moteur peut lier des events déjà émis (`face_*`, `plate_*`) → `correlation_match` si encore au catalogue.
+Pas de prompt VLM « correlation ». Catalogue : `tpl-identity-correlation` = **RULE_SET** `face_watchlist_match` + `plate_detected` (fenêtre 120 s). L’event historique `correlation_match` n’est plus la promesse produit sous ce template.
 
-Voir aussi [ENV-PLATFORM.md](./ENV-PLATFORM.md), [FRIGATE-SYNC-HONESTY.md](./FRIGATE-SYNC-HONESTY.md).
+Voir aussi [ENV-PLATFORM.md](./ENV-PLATFORM.md), [FRIGATE-SYNC-HONESTY.md](./FRIGATE-SYNC-HONESTY.md), [COMPOSITES-ORCHESTRATION.md](./COMPOSITES-ORCHESTRATION.md).
 
 ## Append 2026-08-02 — cabine vehicle_bbox, fusion OCR/face
 

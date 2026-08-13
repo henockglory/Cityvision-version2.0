@@ -20,7 +20,15 @@ def _rect_poly() -> list[dict]:
     ]
 
 
-def test_meters_per_norm_unit_from_edges() -> None:
+def test_nearest_edge_index_corners() -> None:
+    from citevision_ai.analytics.zone_geometry import nearest_edge_index
+
+    poly = _rect_poly()
+    # Near midpoint of edge 0 (top: 0.2,0.4 → 0.5,0.4)
+    assert nearest_edge_index(poly, 0.35, 0.40) == 0
+    # Near midpoint of edge 2 (bottom: 0.5,0.45 → 0.2,0.45)
+    assert nearest_edge_index(poly, 0.35, 0.45) == 2
+
     scale = meters_per_norm_unit(_rect_poly())
     assert scale is not None
     assert 30 < scale < 40

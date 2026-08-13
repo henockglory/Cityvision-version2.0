@@ -142,7 +142,8 @@ SLIDES = [
             ("Visage / liste surveillance (« liste noire »)", "A1 Face fusion"),
             ("Plaque / OCR / blocklist", "A8 Plate"),
             ("Zone enter / loiter / breach / stopped", "A5 Geometry"),
-            ("Ligne / sens interdit", "A6 Line"),
+            ("Ligne / franchissement", "A6 Line"),
+            ("Sens interdit (zone arêtes)", "A6b Wrong-way"),
             ("Seuil foule / comptage", "A7 Aggregate"),
             ("Objet abandonné / retiré", "A9 Objects"),
             ("Plusieurs events dans une fenêtre", "A10 Composite"),
@@ -204,7 +205,7 @@ flowchart LR
         "title": "Vitesse — pont Frigate speed",
         "blurb": "Track + zone de mesure → speed_kmh vs seuil → speeding. Preuve scène + sujet (+ plaque si pipeline plaque).",
         "same": "tpl-speeding · tpl-speeding-premium",
-        "combine": "tpl-traffic-pipeline (vitesse + feu + plaque)",
+        "combine": "tpl-speeding-premium + tpl-plate-detected (séparés)",
         "evidence": "Clip 6s + scene + subject + plate?",
         "debug": "zone speed_measurement en spatial + bridge speed ON (speed_emitted vs below_limit).",
         "mermaid": """%%{init: {'theme':'dark','themeVariables': {'primaryColor':'#1a2f2a','primaryTextColor':'#e8f0ec','primaryBorderColor':'#4a9b84','lineColor':'#8fb8a8','background':'#0e1416','mainBkg':'#1a2f2a'}}}%%
@@ -222,7 +223,7 @@ flowchart LR
         "title": "Feu rouge — géométrie + état feu",
         "blurb": "Véhicule ∩ zone ET feu rouge (HSV / vote). Sinon skipped_not_red. Plus exigeant qu’une simple présence.",
         "same": "tpl-red-light",
-        "combine": "traffic-pipeline avec A3 + A8",
+        "combine": "tpl-speeding-premium + plaque séparée",
         "evidence": "Clip 6s + scene + subject + plate",
         "debug": "Distinguer pas de voiture / feu pas rouge / refus VLM.",
         "mermaid": """%%{init: {'theme':'dark','themeVariables': {'primaryColor':'#1a2f2a','primaryTextColor':'#e8f0ec','primaryBorderColor':'#4a9b84','lineColor':'#8fb8a8','background':'#0e1416','mainBkg':'#1a2f2a'}}}%%
@@ -264,8 +265,8 @@ flowchart LR
     {
         "id": "a6",
         "eyebrow": "A6 · Archetype line",
-        "title": "Ligne — croisement & sens",
-        "blurb": "Ligne (pas zone) : line_cross / sens interdit. Base du comptage directionnel.",
+        "title": "Ligne — croisement & franchissement",
+        "blurb": "Ligne (pas zone) : line_cross / tpl-line-cross-forbidden. Comptage directionnel. Sens interdit routier = A6b.",
         "same": "tpl-line-cross · bidir · forbidden",
         "combine": "A7 agrégats sur crossings",
         "evidence": "Clip 6s + scene + subject",
@@ -274,9 +275,24 @@ flowchart LR
 flowchart LR
   F[Frigate track] --> L[line geometry]
   L -->|cross| Evt[line_cross]
-  L -->|forbidden| Forb[line_cross_forbidden]
   Evt --> R[rules-engine]
-  Forb --> R
+""",
+    },
+    {
+        "id": "a6b",
+        "eyebrow": "A6b · Sens interdit",
+        "title": "Sens interdit — arêtes entrée/sortie",
+        "blurb": "Zone wrong_way : entry_edge → exit_edge autorisé ; inverse → wrong_way (tpl-wrong-way).",
+        "same": "tpl-wrong-way · redirects wrong-lane/direction",
+        "combine": "A3 speed · A8 plate (séparés)",
+        "evidence": "Clip 6s + scene + subject",
+        "debug": "Zone behavior wrong_way, 2 arêtes distinctes, track véhicules.",
+        "mermaid": """%%{init: {'theme':'dark','themeVariables': {'primaryColor':'#1a2f2a','primaryTextColor':'#e8f0ec','primaryBorderColor':'#4a9b84','lineColor':'#8fb8a8','background':'#0e1416','mainBkg':'#1a2f2a'}}}%%
+flowchart LR
+  Z[zone wrong_way] --> E[enter edge]
+  E --> X[exit edge]
+  X -->|reverse| W[wrong_way]
+  W --> R[tpl-wrong-way]
 """,
     },
     {
@@ -285,7 +301,7 @@ flowchart LR
         "title": "Agrégats — seuils & densité",
         "blurb": "On agrège (count / densité / fenêtre). Seuil franchi → event. Foule, files, parking.",
         "same": "vehicle-count · crowd-count · crowd-density",
-        "combine": "observation N/OR",
+        "combine": "Compteur scénario N/OR",
         "evidence": "Clip 6s + scene",
         "debug": "Vérifier fenêtre + seuil bindings — souvent un faux bug IA.",
         "mermaid": """%%{init: {'theme':'dark','themeVariables': {'primaryColor':'#1a2f2a','primaryTextColor':'#e8f0ec','primaryBorderColor':'#4a9b84','lineColor':'#8fb8a8','background':'#0e1416','mainBkg':'#1a2f2a'}}}%%

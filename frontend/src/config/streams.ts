@@ -42,6 +42,11 @@ export function frigateCameraId(cameraUuid: string): string {
   return `cv_${cameraUuid}`;
 }
 
+/** Frigate detect MJPEG with burned-in bbox (proxy /frigate → :5000). Never embed Frigate SPA. */
+export function frigateDetectMjpegUrl(cameraUuid: string): string {
+  return `/frigate/api/${encodeURIComponent(frigateCameraId(cameraUuid))}?bbox=1`;
+}
+
 /** External Frigate UI link only — do not use as CiteVision player iframe src. */
 export function frigateLiveIframeUrl(frigateId: string, bbox: boolean): string {
   const bboxParam = bbox ? '1' : '0';

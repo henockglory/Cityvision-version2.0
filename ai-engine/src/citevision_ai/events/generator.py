@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from citevision_ai.analytics.zone_geometry import nearest_edge_index
 from citevision_ai.behavior.heuristics import BEHAVIOR_EVENT_TYPES, BehaviorLabel, BehaviorSignal
 from citevision_ai.detection.class_groups import matches_class_filter
 
@@ -135,6 +136,8 @@ class EventGenerator:
         self._zone_absence_alerted: set[tuple[str, str]] = set()
         self._known_tracks: dict[str, set[int]] = {}
         self._track_classes: dict[tuple[str, int], str] = {}
+        # wrong_way: (camera_id, track_id, zone_id) → enter edge index
+        self._wrong_way_enter_edge: dict[tuple[str, int, str], int] = {}
 
     def process_frame(
         self,
@@ -253,6 +256,7 @@ class EventGenerator:
             events.extend(
                 _semantic_zone_events(camera_id, track_id, zone, ts, class_name, entering=True)
             )
+            self._wrong_way_on_enter(camera_id, track_id, zone, cx, cy, class_name)
         elif not inside and zone_id in prev_zones:
             prev_zones.discard(zone_id)
             events.append(
@@ -263,7 +267,99 @@ class EventGenerator:
             events.extend(
                 _semantic_zone_events(camera_id, track_id, zone, ts, class_name, entering=False)
             )
+            ww_evt = self._maybe_wrong_way_exit(
+                camera_id, track_id, zone, ts, cx, cy, class_name,
+            )
+            if ww_evt:
+                events.append(ww_evt)
         return events
+
+    def _wrong_way_cfg(self, zone: dict) -> tuple[int, int] | None:
+        if str(zone.get("behavior") or "").strip().lower() != "wrong_way":
+            return None
+        cfg = zone.get("behavior_config") or {}
+        if isinstance(cfg, dict) and isinstance(cfg.get("config"), dict):
+            cfg = {**cfg, **(cfg.get("config") or {})}
+        try:
+            entry = int(cfg.get("entry_edge_index"))
+            exit_ = int(cfg.get("exit_edge_index"))
+        except (TypeError, ValueError):
+            return None
+        if entry == exit_:
+            return None
+        return entry, exit_
+
+    def _wrong_way_on_enter(
+        self,
+        camera_id: str,
+        track_id: int,
+        zone: dict,
+        cx: float,
+        cy: float,
+        class_name: str,
+    ) -> None:
+        pair = self._wrong_way_cfg(zone)
+        if pair is None:
+            return
+        cfg = zone.get("behavior_config") or {}
+        if isinstance(cfg, dict) and isinstance(cfg.get("config"), dict):
+            cfg = {**cfg, **(cfg.get("config") or {})}
+        class_filter = str(cfg.get("class_filter") or "car")
+        if not matches_class_filter(class_name, class_filter):
+            return
+        poly = zone.get("polygon") or []
+        edge = nearest_edge_index(poly, cx, cy)
+        if edge is None:
+            return
+        zone_id = zone["zone_id"]
+        self._wrong_way_enter_edge[(camera_id, track_id, zone_id)] = edge
+
+    def _maybe_wrong_way_exit(
+        self,
+        camera_id: str,
+        track_id: int,
+        zone: dict,
+        ts: str,
+        cx: float,
+        cy: float,
+        class_name: str,
+    ) -> dict | None:
+        pair = self._wrong_way_cfg(zone)
+        if pair is None:
+            return None
+        entry_cfg, exit_cfg = pair
+        cfg = zone.get("behavior_config") or {}
+        if isinstance(cfg, dict) and isinstance(cfg.get("config"), dict):
+            cfg = {**cfg, **(cfg.get("config") or {})}
+        class_filter = str(cfg.get("class_filter") or "car")
+        if not matches_class_filter(class_name, class_filter):
+            return None
+        zone_id = zone["zone_id"]
+        key = (camera_id, track_id, zone_id)
+        enter_edge = self._wrong_way_enter_edge.pop(key, None)
+        poly = zone.get("polygon") or []
+        exit_edge = nearest_edge_index(poly, cx, cy)
+        if enter_edge is None or exit_edge is None:
+            return None
+        if enter_edge == entry_cfg and exit_edge == exit_cfg:
+            return None
+        return self._make_event(
+            camera_id,
+            "wrong_way",
+            ts,
+            track_id,
+            zone_id=zone_id,
+            class_name=class_name,
+            severity="high",
+            metadata={
+                "enter_edge_index": enter_edge,
+                "exit_edge_index": exit_edge,
+                "allowed_entry_edge": entry_cfg,
+                "allowed_exit_edge": exit_cfg,
+                "detection_method": "local_wrong_way_edges",
+                "class_name": class_name,
+            },
+        )
 
     def _check_zone_presence(
         self,
@@ -420,7 +516,13 @@ class EventGenerator:
         ts: str,
         class_name: str,
     ) -> list[dict]:
+        class_filter = rule.get("class_filter", "any")
+        if not matches_class_filter(class_name, str(class_filter)):
+            return []
         line = rule["line"]
+        line_cf = line.get("class_filter")
+        if line_cf is not None and not matches_class_filter(class_name, str(line_cf)):
+            return []
         if not _crosses_line(prev, curr, line["start"], line["end"]):
             return []
         return [

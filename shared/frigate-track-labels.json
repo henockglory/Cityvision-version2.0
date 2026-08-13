@@ -1,0 +1,29 @@
+{
+  "default_vehicles": ["car", "truck", "motorcycle", "bus", "van"],
+  "object_surveillance": [
+    "backpack",
+    "handbag",
+    "suitcase",
+    "umbrella",
+    "bicycle",
+    "dog"
+  ],
+  "ui_selectable": [
+    "car",
+    "truck",
+    "bus",
+    "motorcycle",
+    "van",
+    "bicycle",
+    "person",
+    "backpack",
+    "handbag",
+    "suitcase",
+    "umbrella",
+    "dog",
+    "cat",
+    "boat",
+    "cell phone",
+    "laptop"
+  ]
+}

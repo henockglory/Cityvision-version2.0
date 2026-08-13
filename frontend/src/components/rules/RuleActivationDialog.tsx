@@ -57,6 +57,7 @@ import {
 import { orgApi } from '@/api/client';
 import {
   cloneCondition,
+  countEventTypeMembers,
   createGroup,
   createLeaf,
   type ConditionNode,
@@ -159,15 +160,8 @@ function WizardStepContext({ step, template, t }: {
   };
   const ctx = ctxMap[step];
   if (!ctx) return null;
-  const hasPartial = template.partial_status && template.partial_status !== 'full';
   return (
     <div className="cv-stack-sm mb-5">
-      {hasPartial && (
-        <div className="cv-callout text-amber-300 bg-amber-400/5 border border-amber-400/20">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-          <span>{template.partial_reason_fr ?? t('rules.studio.partialWarning', { defaultValue: 'Cette règle nécessite une configuration ou un module supplémentaire pour être pleinement opérationnelle.' })}</span>
-        </div>
-      )}
       <div className="cv-callout text-cv-muted bg-cv-accent/5 border border-cv-accent/15">
         <Info className="w-4 h-4 shrink-0 text-cv-accent" />
         <div className="space-y-1 min-w-0">
@@ -677,6 +671,17 @@ export default function RuleStudioDialog({
       if (v === undefined || v === null || v === '') {
         return `Le champ « ${f.label ?? f.key} » est requis.`;
       }
+    }
+    const rootOp = String(conditionTree?.op ?? '').toUpperCase();
+    if (
+      (rootOp === 'RULE_SET' || rootOp === 'RULE_SET_OR'
+        || tplId === 'tpl-observation-rule-set-n'
+        || tplId === 'tpl-observation-rule-set-or')
+      && countEventTypeMembers(conditionTree) < 2
+    ) {
+      return t('rules.studio.observationNeedMembers', {
+        defaultValue: 'Compteur scénario : ajoutez au moins 2 types d\'événements (chips) avant d\'enregistrer.',
+      });
     }
     return null;
   };

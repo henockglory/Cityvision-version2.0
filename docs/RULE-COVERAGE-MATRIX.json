@@ -558,7 +558,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
       "e2e_mode": "pytest_fallback",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "redirect",
+      "notes": "redirect → tpl-watchlist-match"
     },
     {
       "template_id": "tpl-falling",
@@ -695,12 +697,12 @@
     },
     {
       "template_id": "tpl-identity-correlation",
-      "name": "Corrélation identité",
+      "name": "Corrélation visage + plaque",
       "category": "identity",
       "catalog_files": [
         "identity.json"
       ],
-      "expected_event_type": "correlation_match",
+      "expected_event_type": null,
       "all_event_types": [
         "correlation_match"
       ],
@@ -710,7 +712,7 @@
       "has_config_schema": true,
       "ui_tab": "Disponibles",
       "ai_emits_event": true,
-      "ai_canonical_event": "correlation_match",
+      "ai_canonical_event": null,
       "implementation_status": "implémenté",
       "implementation_notes": "Chaîne IA branchée (YOLO/heuristiques)",
       "unsupported_message_fr": null,
@@ -718,7 +720,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
       "e2e_mode": "pytest_fallback",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "composite",
+      "notes": "RULE_SET face_watchlist_match + plate_detected (120s)"
     },
     {
       "template_id": "tpl-illegal-parking",
@@ -745,7 +749,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-bientot-templates.sh",
       "e2e_mode": "pytest_fallback",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "redirect",
+      "notes": "redirect → tpl-vehicle-stopped"
     },
     {
       "template_id": "tpl-immobility",
@@ -1102,7 +1108,7 @@
       "catalog_files": [
         "presence-motion.json"
       ],
-      "expected_event_type": "object_disappeared",
+      "expected_event_type": "object_removed",
       "all_event_types": [
         "object_disappeared"
       ],
@@ -1120,7 +1126,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
       "e2e_mode": "pytest_fallback",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "redirect",
+      "notes": "redirect → tpl-object-removed"
     },
     {
       "template_id": "tpl-object-removed",
@@ -1307,7 +1315,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-identity.sh",
       "e2e_mode": "live",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "redirect",
+      "notes": "redirect → tpl-plate-detected"
     },
     {
       "template_id": "tpl-plate-repeat",
@@ -1361,7 +1371,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
       "e2e_mode": "pytest_fallback",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "redirect",
+      "notes": "redirect → tpl-unknown-plate"
     },
     {
       "template_id": "tpl-plate-whitelist",
@@ -1822,17 +1834,17 @@
       "catalog_files": [
         "road-enforcement.json"
       ],
-      "expected_event_type": "vehicle_corridor",
+      "expected_event_type": "speeding",
       "all_event_types": [
         "vehicle_corridor"
       ],
-      "capability_id": "vehicle_corridor",
+      "capability_id": "speeding",
       "in_ai_capabilities": true,
       "capabilities_supported": true,
       "has_config_schema": true,
       "ui_tab": "Disponibles",
       "ai_emits_event": true,
-      "ai_canonical_event": "vehicle_corridor",
+      "ai_canonical_event": "speeding",
       "implementation_status": "implémenté",
       "implementation_notes": "Émis si PaddleOCR installé",
       "unsupported_message_fr": null,
@@ -1840,7 +1852,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
       "e2e_mode": "pytest_fallback",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "redirect",
+      "notes": "redirect → tpl-speeding-premium; vehicle_corridor drop publish"
     },
     {
       "template_id": "tpl-unauthorized-exit",
@@ -2163,7 +2177,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
       "e2e_mode": "pytest_fallback",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "redirect",
+      "notes": "redirect → tpl-wrong-way"
     },
     {
       "template_id": "tpl-wrong-lane",
@@ -2190,12 +2206,14 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-pytest-catalog.sh",
       "e2e_mode": "pytest_fallback",
-      "is_duplicate_catalog_entry": false
+      "is_duplicate_catalog_entry": false,
+      "status": "redirect",
+      "notes": "redirect → tpl-wrong-way"
     },
     {
       "template_id": "tpl-wrong-way",
       "name": "Sens interdit",
-      "category": "behavior",
+      "category": "road-enforcement",
       "catalog_files": [
         "behavior.json",
         "road-enforcement.json"
@@ -2218,7 +2236,9 @@
       "e2e_tested": true,
       "e2e_script": "verify-e2e-family-spatial.sh",
       "e2e_mode": "live",
-      "is_duplicate_catalog_entry": true
+      "is_duplicate_catalog_entry": true,
+      "status": "implémenté",
+      "notes": "Zone entry/exit edges → wrong_way (bridge or local)"
     },
     {
       "template_id": "tpl-zone-absence",

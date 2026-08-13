@@ -231,7 +231,13 @@ export default function EvidencePolicyForm({
           onChange={(e) => onChange({ ...policy, min_confidence: Number(e.target.value) / 100 })}
           className="cv-range w-full"
         />
-        <p className="text-xs text-cv-muted mt-1">{Math.round((policy.min_confidence ?? 0) * 100)} %</p>
+        <p className="text-xs text-cv-muted mt-1">
+          {Math.round((policy.min_confidence ?? 0) * 100)} % —{' '}
+          {lbl(
+            'rules.studio.minConfidenceHint',
+            'Seuil de capture de preuve uniquement (pas le jugement Gemini / détection YOLO).',
+          )}
+        </p>
       </div>
 
       <label className="flex items-center gap-2 text-xs text-cv-muted cursor-pointer">

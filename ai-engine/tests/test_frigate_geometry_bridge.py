@@ -154,3 +154,77 @@ def test_bridge_slow_vehicle_exit():
     }
     bridge._handle_event(after, before)
     assert any(e["event_type"] == "speed_below_minimum" for e in emitted)
+
+def test_bridge_wrong_way_reverse_emits():
+    emitted: list[dict] = []
+    zone_uuid = "dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee"
+    cam_uuid = "d2eb7076-c3b3-40fd-9b2c-0d119bb975c9"
+    poly = [
+        {"x": 0.2, "y": 0.3},
+        {"x": 0.8, "y": 0.3},
+        {"x": 0.8, "y": 0.7},
+        {"x": 0.2, "y": 0.7},
+    ]
+    spatial = {
+        "zones": [
+            {
+                "id": zone_uuid,
+                "zone_id": "WrongWay",
+                "behavior": "wrong_way",
+                "polygon": poly,
+                "behavior_config": {
+                    "entry_edge_index": 3,
+                    "exit_edge_index": 1,
+                    "class_filter": "car",
+                },
+            }
+        ]
+    }
+    bridge = FrigateEventBridge(
+        frigate_url="http://127.0.0.1:5000",
+        mqtt_host="127.0.0.1",
+        mqtt_port=1884,
+        spatial_resolver=lambda _c: spatial,
+        emit_event=lambda e: emitted.append(e),
+        geometry_enabled=True,
+    )
+    fz = f"cv_zone_{zone_uuid}"
+    enter = {
+        "id": "ww-ok",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "current_zones": [fz],
+        "entered_zones": [fz],
+        "data": {"box": [0.22, 0.45, 0.08, 0.12]},
+    }
+    bridge._handle_event(enter, {})
+    exit_ok = {
+        "id": "ww-ok",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "current_zones": [],
+        "data": {"box": [0.72, 0.45, 0.08, 0.12]},
+    }
+    bridge._handle_event(exit_ok, {"current_zones": [fz]})
+    assert not any(e["event_type"] == "wrong_way" for e in emitted)
+
+    enter_bad = {
+        "id": "ww-bad",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "current_zones": [fz],
+        "entered_zones": [fz],
+        "data": {"box": [0.72, 0.45, 0.08, 0.12]},
+    }
+    bridge._handle_event(enter_bad, {})
+    exit_bad = {
+        "id": "ww-bad",
+        "camera": f"cv_{cam_uuid}",
+        "label": "car",
+        "current_zones": [],
+        "data": {"box": [0.22, 0.45, 0.08, 0.12]},
+    }
+    bridge._handle_event(exit_bad, {"current_zones": [fz]})
+    hits = [e for e in emitted if e["event_type"] == "wrong_way"]
+    assert hits, emitted
+    assert hits[0]["metadata"]["detection_method"] == "frigate_wrong_way_edges"

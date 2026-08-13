@@ -38,6 +38,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import PremiumSelect from '@/components/ui/PremiumSelect';
 import ExplanatorySelect from '@/components/ui/ExplanatorySelect';
 import { getBehavior, type ZoneBehavior } from '@/lib/zoneBehaviors';
+import { FRIGATE_TRACK_LABELS } from '@/lib/frigateTrackLabels';
 import { behaviorMenuOptions, resolveBehaviorMeta } from '@/lib/behaviorMenu';
 import ZoneEdgeCalibration from '@/components/zones/ZoneEdgeCalibration';
 import ZoneRuleLinkPanel from '@/components/zones/ZoneRuleLinkPanel';
@@ -249,8 +250,9 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
     if (!el) return;
     const update = () => {
       // Subtract card padding (p-4 = 16px each side = 32px total).
+      // Fill available card width (STAGE_* stays logical Konva space via scaleX/Y).
       const available = Math.floor((el.clientWidth || STAGE_WIDTH) - 32);
-      const w = Math.max(280, Math.min(STAGE_WIDTH, available));
+      const w = Math.max(280, available);
       const h = Math.round(w * 9 / 16);  // strict 16:9
       setLayout({ width: w, height: h });
     };
@@ -1384,10 +1386,11 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
                       options={zoneBehaviorOptions}
                       searchable
                     />
-                    {selectedZone.behavior === 'speed_measurement'
+                    { (selectedZone.behavior === 'speed_measurement' || selectedZone.behavior === 'wrong_way')
                       && vertexCountFromPoints(selectedZone.points) >= 3 && (
                       <div ref={edgeCalibrationRef}>
-                        {vertexCountFromPoints(selectedZone.points) !== 4 && (
+                        {selectedZone.behavior === 'speed_measurement'
+                          && vertexCountFromPoints(selectedZone.points) !== 4 && (
                           <p className="text-xs text-amber-400/90 mb-2">
                             {t(
                               'zoneEditor.frigateSpeedFourPoints',
@@ -1395,7 +1398,16 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
                             )}
                           </p>
                         )}
-                        {vertexCountFromPoints(selectedZone.points) === 4
+                        {selectedZone.behavior === 'wrong_way' && (
+                          <p className="text-xs text-cv-muted mb-2">
+                            {t(
+                              'zoneEditor.wrongWayEdgesHint',
+                              'Sens autorisé = arête d\'entrée → arête de sortie. Le sens inverse émet wrong_way. Choisissez deux arêtes distinctes.',
+                            )}
+                          </p>
+                        )}
+                        {selectedZone.behavior === 'speed_measurement'
+                          && vertexCountFromPoints(selectedZone.points) === 4
                           && !(selectedZone.edgeDistancesM || []).filter((d) => d != null && d > 0).length && (
                           <p className="text-xs text-amber-400/90 mb-2">
                             {t(
@@ -1419,7 +1431,7 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
                               ? selectedZone.behaviorConfig.distance_m
                               : null
                           }
-                          requiresSpeedBehavior={false}
+                          requiresSpeedBehavior={selectedZone.behavior === 'speed_measurement'}
                           activeEdgeIndex={highlightedEdgeIndex}
                           onEdgeHighlight={setHighlightedEdgeIndex}
                           entryEdgeIndex={
@@ -1629,9 +1641,6 @@ function SpatialList({
 
 }
 
-/** Frigate object labels selectable per zone (track_objects / class_filter). */
-const FRIGATE_TRACK_LABELS = ['car', 'truck', 'bus', 'motorcycle', 'van', 'bicycle', 'person'] as const;
-
 function trackObjectsToList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((v) => String(v).trim()).filter(Boolean);
   if (typeof value === 'string') {
@@ -1764,7 +1773,7 @@ function BehaviorDetail({
                     value={String(value)}
                     onChange={(e) => onConfigChange(f.key, e.target.value)}
                   >
-                    {!FRIGATE_TRACK_LABELS.includes(String(value) as (typeof FRIGATE_TRACK_LABELS)[number]) && (
+                    {!FRIGATE_TRACK_LABELS.includes(String(value)) && (
                       <option value={String(value)}>{String(value)}</option>
                     )}
                     {FRIGATE_TRACK_LABELS.map((lab) => (

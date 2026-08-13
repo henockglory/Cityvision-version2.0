@@ -98,7 +98,17 @@ class MqttPublisher:
         if not connected:
             logger.debug("MQTT not connected; would publish to %s", topic)
             return False
-        result = self._client.publish(topic, json.dumps(payload), qos=1)
+        # Never attempt to JSON-encode raw media buffers.
+        clean = {
+            k: v for k, v in payload.items()
+            if not isinstance(v, (bytes, bytearray, memoryview))
+        }
+        try:
+            body = json.dumps(clean, default=str)
+        except TypeError as exc:
+            logger.warning("MQTT JSON encode failed topic=%s: %s", topic, exc)
+            return False
+        result = self._client.publish(topic, body, qos=1)
         return result.rc == mqtt.MQTT_ERR_SUCCESS
 
     def _try_connect_once(self) -> bool:

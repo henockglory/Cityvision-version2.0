@@ -23,6 +23,7 @@ const ZoneEditor = lazy(() => import('@/pages/ZoneEditor'));
 const VideoWall = lazy(() => import('@/pages/VideoWall'));
 const SystemHealth = lazy(() => import('@/pages/SystemHealth'));
 const DemoCenter = lazy(() => import('@/pages/DemoCenter'));
+const DocumentationFrame = lazy(() => import('@/pages/DocumentationFrame'));
 
 function LazyPage({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<LoadingState />}>{children}</Suspense>;
@@ -71,6 +72,22 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'demo', element: <LazyPage><DemoCenter /></LazyPage> },
+      {
+        path: 'docs/overview',
+        element: (
+          <LazyPage>
+            <DocumentationFrame doc="overview" />
+          </LazyPage>
+        ),
+      },
+      {
+        path: 'docs/architectures',
+        element: (
+          <LazyPage>
+            <DocumentationFrame doc="architectures" />
+          </LazyPage>
+        ),
+      },
       {
         path: 'cameras',
         element: (

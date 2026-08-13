@@ -13,7 +13,7 @@ import LiveEventStream from '@/components/dashboard/LiveEventStream';
 import LiveStreamPlayer from '@/components/live/LiveStreamPlayer';
 import { useCameras } from '@/hooks/api/queries';
 import { useSound } from '@/hooks/useSound';
-import { AI_ENGINE_HEALTH, go2rtcStreamSrc } from '@/config/streams';
+import { AI_ENGINE_HEALTH, go2rtcStreamSrc, isVirtualCamera } from '@/config/streams';
 import CameraObservationPanel from '@/components/observation/CameraObservationPanel';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 import { useAuthStore } from '@/stores/authStore';
@@ -93,31 +93,40 @@ export default function LiveView() {
 
   const selected = cameras.find((c) => c.id === activeId) ?? cameras[0];
   const streamSrc = go2rtcStreamSrc(selected);
+  const isDemoCam = isVirtualCamera(selected);
+  const overlayDisabled = isDemoCam && !aiStatus?.yolo;
+  const overlayHint = isDemoCam
+    ? t(
+        'liveView.detectionOverlayHintDemo',
+        'Cadres ON : overlay YOLO SSE sur go2rtc (démo). OFF : flux vidéo propre.',
+      )
+    : t(
+        'liveView.detectionOverlayHintFrigate',
+        'Cadres ON : flux détecte Frigate (bbox brûlées). OFF : go2rtc sans cadres. Frigate ne calcule pas la vitesse métier ni le jugement cabine Gemini.',
+      );
+  const overlayTitle = isDemoCam
+    ? t('liveView.detectionOverlayTitleDemo', 'Afficher les bbox YOLO/ByteTrack (démo)')
+    : t('liveView.detectionOverlayTitle', 'Afficher le flux Frigate avec cadres de détection');
 
   return (
     <div>
       <PageHeader title={t('liveView.title')} onHelpTour={startTour} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div id="live-view-player" className="lg:col-span-3">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-5 items-start">
+        <div id="live-view-player" className="lg:col-span-3 min-w-0">
           <div className="cv-card overflow-hidden border-cv-electric/25">
             <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-cv-border bg-cv-surface/40">
-              <p className="text-xs text-cv-muted">
-                {t(
-                  'liveView.detectionOverlayHintFrigate',
-                  'Cadres : overlay Frigate (live média) ou SSE YOLO CitéVision (go2rtc). Frigate ne calcule pas la vitesse métier ni le jugement cabine Gemini.',
-                )}
-              </p>
+              <p className="text-xs text-cv-muted min-w-0">{overlayHint}</p>
               <button
                 type="button"
                 onClick={toggleDetectionOverlay}
-                disabled={!aiStatus?.yolo}
+                disabled={overlayDisabled}
                 className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
                   detectionOverlay
                     ? 'bg-cv-accent/20 text-cv-accent border border-cv-accent/40'
                     : 'bg-cv-surface border border-cv-border text-cv-muted hover:text-cv-text'
-                } ${!aiStatus?.yolo ? 'opacity-50 cursor-not-allowed' : ''}`}
-                title={t('liveView.detectionOverlayTitle', 'Afficher les bbox YOLO/ByteTrack en direct')}
+                } ${overlayDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={overlayTitle}
               >
                 <Scan className="w-3.5 h-3.5" />
                 {detectionOverlay
@@ -126,7 +135,7 @@ export default function LiveView() {
               </button>
             </div>
             <LiveStreamPlayer
-              className="aspect-video w-full"
+              className="w-full h-[min(70vh,720px)] min-h-[320px] lg:h-[calc(100vh-11rem)] lg:max-h-[860px]"
               src={streamSrc}
               label={selected.name}
               cameraId={activeId}
@@ -152,7 +161,7 @@ export default function LiveView() {
           {activeId && <CameraObservationPanel cameraId={activeId} className="mt-4" />}
         </div>
 
-        <div id="live-view-sidebar" className="space-y-4">
+        <div id="live-view-sidebar" className="space-y-4 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
           <div className="cv-card p-4">
             <h3 className="font-display text-sm font-semibold mb-3">{t('liveView.selectCamera')}</h3>
             <div className="space-y-1 max-h-48 overflow-y-auto">

@@ -196,11 +196,11 @@
       ]
     },
     "liveView": {
-      "playerTip": "Le flux affiché est la même source que celle analysée par l'IA.",
+      "playerTip": "OFF = go2rtc (image propre). ON caméra IP = flux Frigate détecte avec bbox brûlées. ON démo = overlay YOLO SSE. Avec bridge géométrie Frigate, les events spatiaux locaux sont coupés (XOR).",
       "playerSteps": [
         "Sélectionnez une caméra dans la liste.",
-        "Attendez le badge LIVE.",
-        "Utilisez les contrôles PTZ si la caméra le supporte."
+        "Attendez le badge LIVE (go2rtc).",
+        "Activez Cadres IA pour voir les détections Frigate (IP) ou YOLO (démo)."
       ],
       "sidebar": "Liste des caméras",
       "sidebarDesc": "Toutes vos caméras accessibles en un clic. Le statut en ligne / hors ligne est indiqué par une pastille colorée.",
@@ -269,12 +269,12 @@
         "Ajustez les points en les glissant si besoin."
       ],
       "behavior": "Comportement IA",
-      "behaviorDesc": "Associez un type sémantique à la zone (vitesse, comptage, téléphone au volant, etc.). Ce choix détermine quelles règles du catalogue peuvent s'y brancher.",
-      "behaviorTip": "Les options du menu viennent des capacités IA réellement chargées sur votre serveur.",
+      "behaviorDesc": "Associez un type sémantique (vitesse, cabine, objet abandonné…). Pour « Objet abandonné », Frigate suit automatiquement sacs/valise/parapluie ; vous pouvez ajuster track_objects. L'événement émis est object_abandoned.",
+      "behaviorTip": "Objet abandonné / retiré / disparu pousse aussi les labels Frigate même sans zone dédiée si la règle catalogue est active.",
       "behaviorSteps": [
         "Ouvrez le sélecteur de comportement.",
-        "Lisez la description sous chaque option.",
-        "Enregistrez puis activez la règle correspondante."
+        "Pour un abandon : choisissez Objet abandonné, réglez la durée et les objets suivis.",
+        "Enregistrez puis activez la règle « Objet abandonné » (event object_abandoned)."
       ]
     },
     "events": {

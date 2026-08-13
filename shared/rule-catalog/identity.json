@@ -204,14 +204,33 @@
   },
   {
     "id": "tpl-identity-correlation",
-    "name": "Corrélation identité",
+    "name": "Corrélation visage + plaque",
     "category": "identity",
     "severity": "medium",
     "definition": {
       "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "correlation_match"
+        "op": "RULE_SET",
+        "min_matches": 2,
+        "window_seconds": 120,
+        "key_fields": [
+          "camera_id"
+        ],
+        "member_event_types": [
+          "face_watchlist_match",
+          "plate_detected"
+        ],
+        "children": [
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "face_watchlist_match"
+          },
+          {
+            "op": "eq",
+            "field": "event_type",
+            "value": "plate_detected"
+          }
+        ]
       },
       "actions": [
         {
@@ -220,13 +239,13 @@
         }
       ]
     },
-    "role_summary_fr": "Corrèle détections faciales et plaques pour identifier un profil combiné (composite rules-engine sur atomes DoD).",
+    "role_summary_fr": "Composite rules-engine : alerte quand face_watchlist_match et plate_detected coïncident dans une fenêtre de 120 s (même caméra).",
     "deployment_scopes": [
       "national",
       "enterprise",
       "domestic"
     ],
     "partial_status": "requires_external",
-    "partial_reason_fr": "Composite Phase 6 — badge real seulement après DoD face + plaque (docs/COMPOSITES-ORCHESTRATION.md)."
+    "partial_reason_fr": "Composite face + plaque — nécessite InsightFace/watchlist et OCR plaque actifs."
   }
 ]

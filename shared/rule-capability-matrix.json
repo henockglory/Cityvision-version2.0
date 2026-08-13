@@ -273,8 +273,8 @@
       "category": "road-enforcement",
       "status": "partial",
       "requirement": "requires_calibration",
-      "reason": "Pipeline multi-étapes : nécessite calibration vitesse + module ANPR (PaddleOCR)",
-      "event_type": null
+      "reason": "Redirect → tpl-speeding-premium (vehicle_corridor retiré).",
+      "event_type": "speeding"
     },
     {
       "id": "tpl-plate-pipeline",
@@ -282,8 +282,17 @@
       "category": "road-enforcement",
       "status": "partial",
       "requirement": "requires_external",
-      "reason": "Nécessite GEMINI_ENABLED (OCR cloud) ou PaddleOCR local — partial jusqu'à validate_rule.",
+      "reason": "Redirect → tpl-plate-detected.",
       "event_type": "plate_detected"
+    },
+    {
+      "id": "tpl-wrong-way",
+      "name": "Sens interdit",
+      "category": "road-enforcement",
+      "status": "real",
+      "requirement": null,
+      "reason": "Zone arêtes entrée/sortie → event wrong_way (bridge Frigate ou local).",
+      "event_type": "wrong_way"
     },
     {
       "id": "tpl-phone-driving",

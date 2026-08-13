@@ -196,11 +196,11 @@
       ]
     },
     "liveView": {
-      "playerTip": "The displayed stream is the same source analyzed by AI.",
+      "playerTip": "OFF = clean go2rtc video. ON for IP cameras = Frigate detect MJPEG with burned-in boxes. ON for demo = YOLO SSE overlay. With Frigate geometry bridge ON, local spatial emits are XOR-suppressed.",
       "playerSteps": [
         "Select a camera in the list.",
-        "Wait for the LIVE badge.",
-        "Use PTZ controls if supported."
+        "Wait for the LIVE badge (go2rtc).",
+        "Enable AI frames to see Frigate detections (IP) or YOLO (demo)."
       ],
       "sidebar": "Camera list",
       "sidebarDesc": "All cameras one click away. Online / offline status is shown with a colored dot.",
@@ -269,12 +269,12 @@
         "Drag points to adjust if needed."
       ],
       "behavior": "AI behavior",
-      "behaviorDesc": "Assign a semantic type (speed, counting, phone use, etc.). This determines which catalog rules can attach.",
-      "behaviorTip": "Menu options come from AI capabilities actually loaded on your server.",
+      "behaviorDesc": "Assign a semantic type (speed, cabin, abandoned object…). For Abandoned object, Frigate auto-tracks bags/suitcase/umbrella; adjust track_objects as needed. The emitted event is object_abandoned.",
+      "behaviorTip": "Abandoned / removed / disappeared rules also push Frigate track labels even without a dedicated zone when the catalog rule is active.",
       "behaviorSteps": [
         "Open the behavior selector.",
-        "Read the description under each option.",
-        "Save then enable the matching rule."
+        "For abandonment: choose Abandoned object, set duration and tracked objects.",
+        "Save then enable the Abandoned object rule (event object_abandoned)."
       ]
     },
     "events": {

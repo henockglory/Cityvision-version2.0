@@ -506,6 +506,7 @@
           <a href="#a4">A4 Feu rouge</a>
           <a href="#a5">A5 Géométrie zone</a>
           <a href="#a6">A6 Ligne</a>
+          <a href="#a6b">A6b Sens interdit</a>
           <a href="#a7">A7 Agrégats</a>
           <a href="#a8">A8 Plaque OCR</a>
           <a href="#a9">A9 Objets</a>
@@ -568,9 +569,10 @@
           <tr><td>Reconnaît un visage / liste de surveillance (« liste noire »)</td><td><code>A1</code> Face fusion</td></tr>
           <tr><td>Lit une plaque / blocklist / allowlist</td><td><code>A8</code> Plate OCR</td></tr>
           <tr><td>Zone enter, loitering, périmètre, stopped, absence</td><td><code>A5</code> Geometry</td></tr>
-          <tr><td>Traverse une ligne (comptage directionnel)</td><td><code>A6</code> Line</td></tr>
+          <tr><td>Traverse une ligne (comptage / franchissement interdit)</td><td><code>A6</code> Line</td></tr>
+          <tr><td>Sens interdit (zone arêtes entrée→sortie)</td><td><code>A6b</code> Wrong-way</td></tr>
           <tr><td>Seuil de foule / nombre de véhicules</td><td><code>A7</code> Aggregate</td></tr>
-          <tr><td>Objet abandonné / retiré / disparu</td><td><code>A9</code> Objects</td></tr>
+          <tr><td>Objet abandonné / retiré</td><td><code>A9</code> Objects</td></tr>
           <tr><td>Enchaîne plusieurs events dans une fenêtre</td><td><code>A10</code> Composite</td></tr>
           <tr><td>Flou / obscurité flux (hors Frigate)</td><td><code>A5</code>-like quality (signal local)</td></tr>
         </tbody>
@@ -729,8 +731,11 @@ flowchart LR
           </div>
           <div class="panel">
             <h4>Combine avec</h4>
-            <div class="chips"><span class="chip alt">tpl-traffic-pipeline</span></div>
-            <ul style="margin-top:0.7rem"><li>Vitesse + feu + plaque (A10).</li></ul>
+            <div class="chips">
+              <span class="chip alt">tpl-speeding-premium</span>
+              <span class="chip alt">tpl-plate-detected</span>
+            </div>
+            <ul style="margin-top:0.7rem"><li>Vitesse canonique + plaque en règles séparées (plus de traffic-pipeline).</li></ul>
           </div>
         </div>
         <p class="check"><strong>Debug&nbsp;:</strong> zone <code>speed_measurement</code> en spatial AI + bridge speed ON. Compteurs <code>speed_emitted</code> vs <code>speed_below_limit</code>.</p>
@@ -833,11 +838,12 @@ flowchart LR
     <article class="arch" id="a6">
       <div class="arch-head">
         <p class="arch-id">A6 · Archetype line</p>
-        <h3>Ligne — croisement &amp; sens interdit</h3>
+        <h3>Ligne — croisement &amp; franchissement</h3>
         <p class="blurb">
           Une <strong>ligne</strong> (pas une zone) découpe le plan. Le track Frigate qui la traverse
           émet <code>line_cross</code> (éventuellement filtré par direction / classe).
-          Sert au comptage directionnel et aux interdictions de sens.
+          Sert au comptage directionnel et aux interdictions de franchissement de ligne
+          (<code>tpl-line-cross-forbidden</code>). Le <strong>sens interdit routier</strong> est un autre pattern (A6b).
         </p>
       </div>
       <div class="arch-body">
@@ -846,9 +852,7 @@ flowchart LR
 flowchart LR
   F[Frigate track] --> L[line geometry]
   L -->|cross| Evt[line_cross]
-  L -->|forbidden dir| Forb[line_cross_forbidden]
   Evt --> R[rules-engine]
-  Forb --> R
   R --> Ev[clip 6s + scene + subject]
           </pre>
         </div>
@@ -869,6 +873,40 @@ flowchart LR
           </div>
         </div>
         <p class="check"><strong>Debug&nbsp;:</strong> ligne active en DB + présente côté spatial/Frigate. Une cam « ligne seule » n’active pas forcément les gates cabin/live — autre sujet (ingest).</p>
+      </div>
+    </article>
+
+    <!-- A6b -->
+    <article class="arch" id="a6b">
+      <div class="arch-head">
+        <p class="arch-id">A6b · Sens interdit (zone)</p>
+        <h3>Sens interdit — arêtes entrée / sortie</h3>
+        <p class="blurb">
+          Zone polygone (4+ points) avec <code>entry_edge_index</code> et <code>exit_edge_index</code>.
+          Sens autorisé = entrer par l’arête d’entrée et sortir par l’arête de sortie.
+          Le chemin inverse émet <code>wrong_way</code> (<code>tpl-wrong-way</code>) via bridge Frigate
+          ou géométrie locale (XOR <code>FRIGATE_GEOMETRY_BRIDGE</code>).
+        </p>
+      </div>
+      <div class="arch-body">
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  Z[zone wrong_way + edges] --> E[enter nearest edge]
+  E --> X[exit nearest edge]
+  X -->|not entry to exit| W[wrong_way]
+  W --> R[tpl-wrong-way + evidence]
+          </pre>
+        </div>
+        <div class="panel">
+          <h4>Catalogue</h4>
+          <div class="chips">
+            <span class="chip">tpl-wrong-way</span>
+            <span class="chip alt">tpl-wrong-lane → redirect</span>
+            <span class="chip alt">tpl-wrong-direction → redirect</span>
+          </div>
+        </div>
+        <p class="check"><strong>Debug&nbsp;:</strong> behavior zone <code>wrong_way</code>, deux arêtes distinctes, track véhicules Frigate, event <code>wrong_way</code> à la sortie.</p>
       </div>
     </article>
 
@@ -982,12 +1020,10 @@ flowchart LR
           <pre class="mermaid">
 flowchart LR
   F[Frigate / hybrid object] --> G[geometry + time]
-  G -->|left behind| Ab[abandoned_object]
+  G -->|left behind| Ab[object_abandoned]
   G -->|removed| Rm[object_removed]
-  G -->|gone| Di[object_disappeared]
   Ab --> R[rules-engine]
   Rm --> R
-  Di --> R
   R --> Ev[clip 6s + scene + object bbox]
           </pre>
         </div>
@@ -996,7 +1032,7 @@ flowchart LR
           <div class="chips">
             <span class="chip">tpl-abandoned-object</span>
             <span class="chip">tpl-object-removed</span>
-            <span class="chip">tpl-object-disappeared</span>
+            <span class="chip alt">tpl-object-disappeared → redirect</span>
           </div>
         </div>
         <p class="check"><strong>Debug&nbsp;:</strong> durée minimale d’abandon / disparition dans les bindings. Souvent trop courte en démo, trop longue en prod.</p>
@@ -1030,10 +1066,10 @@ flowchart LR
           <h4>Même fonctionnement</h4>
           <div class="chips">
             <span class="chip">tpl-identity-correlation</span>
-            <span class="chip">tpl-traffic-pipeline</span>
             <span class="chip">tpl-industrial-intrusion</span>
-            <span class="chip">observation N/OR</span>
+            <span class="chip">Compteur scénario N/OR</span>
             <span class="chip">intrusion + schedule</span>
+            <span class="chip alt">tpl-traffic-pipeline → redirect</span>
           </div>
           <p style="margin:0.75rem 0 0;color:var(--muted);font-size:0.9rem">
             Les composites restent <em>partial</em> tant que chaque atom n’a pas son DoD individuel.

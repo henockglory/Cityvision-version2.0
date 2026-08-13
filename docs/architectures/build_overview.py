@@ -95,12 +95,12 @@ ARCH_CASES: dict[str, list[str]] = {
     ],
     "line": [
         "Comptage entrée magasin — franchissement ligne porte principale.",
-        "Sens interdit — croisement ligne dans le mauvais sens.",
-        "Ligne continue routière — dépassement dangereux matérialisé.",
+        "Ligne continue routière — dépassement dangereux matérialisé (event line_cross).",
         "Quai métro — franchissement ligne sécurité bord de quai.",
         "Entrepôt — passage ligne jaune engins vs piétons.",
         "Stade — flux bidirectionnel portes A/B pour régulation foule.",
         "Frontière de zone — audit des croisements pendant la nuit.",
+        "Parc — ligne virtuelle pour compter les entrées sans alerte sens interdit.",
     ],
     "aggregate": [
         "Place publique — densité foule au-delà du seuil d'évacuation.",
@@ -181,6 +181,15 @@ KEYWORD_CASES: dict[str, list[str]] = {
     "intrusion": ARCH_CASES["geometry"],
     "loitering": ARCH_CASES["geometry"],
     "objet": ARCH_CASES["objects"],
+    "sens interdit": [
+        "Sens unique urbain — véhicule entre par l'arête sortie et sort par l'entrée (wrong_way).",
+        "Zone 4+ points calibrée — arêtes entry→exit = sens autorisé uniquement.",
+        "Pont Frigate géométrie — enter/exit MQTT + nearest edge → alerte tpl-wrong-way.",
+        "Sans bridge — EventGenerator local edge path (XOR avec FRIGATE_GEOMETRY_BRIDGE).",
+        "Preuve scène + sujet + clip après franchissement inverse.",
+        "Axe bus — voiture à contre-sens entre deux bords de chaussée dessinés.",
+        "Parking souterrain — rampe à sens unique matérialisée par polygone arêtes.",
+    ],
 }
 
 

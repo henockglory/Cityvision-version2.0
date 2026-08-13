@@ -1,80 +1,8 @@
 [
   {
     "id": "tpl-traffic-pipeline",
-    "name": "Pipeline voiture → plaque + vitesse",
-    "category": "road-enforcement",
-    "severity": "high",
-    "supported": true,
-    "tutorial": {
-      "legend": "Détection → Enrichissement OCR/vitesse → Condition → Alerte + preuves",
-      "steps": [
-        "Dessinez une zone sur la voie",
-        "Filtrez sur la classe « voiture »",
-        "Le pipeline active OCR plaque et estimation vitesse dans la zone",
-        "Définissez la condition (ex. vitesse > 50 km/h)",
-        "Configurez preuves et notifications"
-      ]
-    },
-    "definition": {
-      "priority": 150,
-      "suppress_lower": true,
-      "pipeline": {
-        "trigger": {
-          "event_type": "zone_presence",
-          "class_filter": "car"
-        },
-        "stages": [
-          {
-            "capability": "plate_ocr",
-            "budget": "high"
-          },
-          {
-            "capability": "speed_estimate"
-          },
-          {
-            "capability": "evidence_capture"
-          }
-        ]
-      },
-      "condition": {
-        "op": "AND",
-        "children": [
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "vehicle_corridor"
-          },
-          {
-            "op": "gt",
-            "field": "speed_kmh",
-            "value": 50
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "high"
-          }
-        },
-        {
-          "type": "record",
-          "config": {}
-        }
-      ],
-      "bindings": {
-        "template_id": "tpl-traffic-corridor",
-        "class_filter": "car"
-      }
-    },
-    "role_summary_fr": "Pipeline complet trafic : détection véhicule → vitesse → plaque → alerte enrichie.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "requires_external",
-    "partial_reason_fr": "Composite Phase 6 — real seulement après DoD vitesse+plaque (docs/COMPOSITES-ORCHESTRATION.md)."
+    "redirect_to": "tpl-speeding-premium",
+    "_fusion_note": "[honesty] vehicle_corridor mort (drop publish) — redirigé vers vitesse premium. Combiner speeding + plate séparément."
   },
   {
     "id": "tpl-speeding-premium",
@@ -140,31 +68,37 @@
     "partial_status": "full"
   },
   {
-    "id": "tpl-plate-pipeline",
-    "name": "Plaque détectée (OCR)",
+    "id": "tpl-wrong-way",
+    "name": "Sens interdit",
     "category": "road-enforcement",
-    "severity": "medium",
+    "severity": "high",
     "supported": true,
     "definition": {
       "condition": {
         "op": "eq",
         "field": "event_type",
-        "value": "plate_detected"
+        "value": "wrong_way"
       },
       "actions": [
         {
           "type": "alert",
-          "config": {}
+          "config": {
+            "severity": "high"
+          }
         }
       ]
     },
-    "role_summary_fr": "Capture et lecture de plaques via Gemini OCR (si GEMINI_ENABLED) ou PaddleOCR. Frigate LPR n'est pas la vérité métier.",
+    "role_summary_fr": "Zone 4+ points avec arêtes entrée/sortie : le sens autorisé est entrée→sortie ; l'inverse émet wrong_way (bridge Frigate ou géométrie locale).",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
-    "partial_status": "requires_external",
-    "partial_reason_fr": "Nécessite GEMINI_ENABLED (OCR cloud) ou PaddleOCR local — partial jusqu'à validate_rule."
+    "partial_status": "full"
+  },
+  {
+    "id": "tpl-plate-pipeline",
+    "redirect_to": "tpl-plate-detected",
+    "_fusion_note": "[honesty] Doublon OCR — redirigé vers tpl-plate-detected."
   },
   {
     "id": "tpl-congestion",
@@ -196,8 +130,8 @@
   },
   {
     "id": "tpl-accident-composite",
-    "redirect_to": "tpl-accident",
-    "_fusion_note": "[I.80] Doublon fusionné vers tpl-accident (même SEQUENCE sudden_stop → vehicle_stopped)."
+    "redirect_to": "tpl-sudden-stop",
+    "_fusion_note": "[honesty] tpl-accident absent — redirigé vers tpl-sudden-stop (atome réel). Pas de détecteur accident dédié."
   },
   {
     "id": "tpl-red-light",

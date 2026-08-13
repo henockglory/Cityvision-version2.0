@@ -2,78 +2,56 @@
   {
     "id": "tpl-speeding",
     "redirect_to": "tpl-speeding-premium",
-    "_fusion_note": "[I.80] Doublon fusionné vers tpl-speeding-premium (règle canonique de la démo, événement 'speeding' calibré). Cette variante « class_name=car AND speed_kmh>50 » faisait double emploi."
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-speeding-premium (règle vitesse canonique de la démo)."
   },
   {
-    "id": "tpl-sudden-stop",
-    "name": "Arrêt brusque",
-    "description": "Décélération brutale détectée",
-    "category": "speed",
-    "severity": "medium",
+    "id": "tpl-slow-vehicle",
+    "name": "Véhicule trop lent",
+    "category": "traffic",
+    "severity": "low",
     "definition": {
       "condition": {
         "op": "eq",
         "field": "event_type",
-        "value": "sudden_stop"
+        "value": "speed_below_minimum"
       },
       "actions": [
         {
           "type": "alert",
-          "config": {
-            "severity": "medium"
-          }
+          "config": {}
         }
       ]
     },
-    "role_summary_fr": "Alerte quand un véhicule freine brusquement — indicateur d'accident ou de situation d'urgence.",
-    "deployment_scopes": [
-      "national",
-      "enterprise"
-    ],
-    "partial_status": "requires_calibration",
-    "partial_reason_fr": "Nécessite une calibration caméra pour détecter les variations de vitesse"
-  },
-  {
-    "id": "tpl-traffic-jam",
-    "redirect_to": "tpl-congestion",
-    "_fusion_note": "[I.80] Doublon fusionné vers tpl-congestion. L'agrégat vehicle_count/avg_speed sur fenêtre n'est pas émis ; la congestion réelle s'appuie sur vehicle_count_threshold."
-  },
-  {
-    "id": "tpl-illegal-parking",
-    "name": "Stationnement illégal",
-    "description": "Véhicule stationnaire en zone interdite",
-    "category": "traffic",
-    "severity": "medium",
-    "definition": {
-      "condition": {
-        "op": "AND",
-        "children": [
-          {
-            "op": "eq",
-            "field": "event_type",
-            "value": "vehicle_stopped"
-          },
-          {
-            "op": "gt",
-            "field": "duration_seconds",
-            "value": 120
-          }
-        ]
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "medium"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Alerte si un véhicule stationne dans une zone interdite au-delà de la durée configurée.",
+    "role_summary_fr": "Détecte les véhicules qui roulent trop lentement — gêne ou comportement suspect.",
     "deployment_scopes": [
       "national",
       "enterprise"
     ],
     "partial_status": "full"
+  },
+  {
+    "id": "tpl-speed-threshold",
+    "redirect_to": "tpl-speeding-premium",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-speeding-premium. Le seuil de vitesse se configure sur la règle canonique."
+  },
+  {
+    "id": "tpl-wrong-lane",
+    "redirect_to": "tpl-wrong-way",
+    "_fusion_note": "[honesty] Sens interdit = zone arêtes entry/exit (tpl-wrong-way)."
+  },
+  {
+    "id": "tpl-stopped-traffic",
+    "redirect_to": "tpl-vehicle-stopped",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-vehicle-stopped."
+  },
+  {
+    "id": "tpl-illegal-parking",
+    "redirect_to": "tpl-vehicle-stopped",
+    "_fusion_note": "[honesty] Stationnement illégal retiré — alias de vehicle_stopped. Utiliser « Véhicule arrêté » + zone parking."
+  },
+  {
+    "id": "tpl-traffic-jam",
+    "redirect_to": "tpl-congestion",
+    "_fusion_note": "[I.80] Doublon fusionné vers tpl-congestion."
   }
 ]

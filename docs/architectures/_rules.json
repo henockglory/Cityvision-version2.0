@@ -31,15 +31,9 @@
   },
   {
     "id": "tpl-identity-correlation",
-    "name": "Corrélation identité",
+    "name": "Corrélation visage + plaque",
     "archetype": "composite",
-    "event_type": "correlation_match"
-  },
-  {
-    "id": "tpl-face-watchlist",
-    "name": "Personne liste noire",
-    "archetype": "face",
-    "event_type": "face_watchlist_match"
+    "event_type": null
   },
   {
     "id": "tpl-plate-whitelist",
@@ -62,12 +56,6 @@
   {
     "id": "tpl-unknown-plate",
     "name": "Plaque inconnue",
-    "archetype": "plate",
-    "event_type": "plate_unknown"
-  },
-  {
-    "id": "tpl-plate-unknown",
-    "name": "Plaque non enregistrée",
     "archetype": "plate",
     "event_type": "plate_unknown"
   },
@@ -120,12 +108,6 @@
     "event_type": null
   },
   {
-    "id": "tpl-object-disappeared",
-    "name": "Disparition d'objet",
-    "archetype": "objects",
-    "event_type": "object_disappeared"
-  },
-  {
     "id": "tpl-zone-presence",
     "name": "Présence dans une zone",
     "archetype": "geometry",
@@ -174,16 +156,10 @@
     "event_type": "line_cross"
   },
   {
-    "id": "tpl-traffic-pipeline",
-    "name": "Pipeline voiture → plaque + vitesse",
-    "archetype": "composite",
-    "event_type": null
-  },
-  {
-    "id": "tpl-plate-pipeline",
-    "name": "Plaque détectée (OCR)",
-    "archetype": "plate",
-    "event_type": "plate_detected"
+    "id": "tpl-wrong-way",
+    "name": "Sens interdit",
+    "archetype": "geometry",
+    "event_type": "wrong_way"
   },
   {
     "id": "tpl-phone-driving",
@@ -223,13 +199,13 @@
   },
   {
     "id": "tpl-observation-rule-set-n",
-    "name": "Comptage ensemble (N-sur-M)",
+    "name": "Compteur scénario (N types)",
     "archetype": "composite",
     "event_type": null
   },
   {
     "id": "tpl-observation-rule-set-or",
-    "name": "Comptage ensemble (OU)",
+    "name": "Compteur scénario (OU)",
     "archetype": "composite",
     "event_type": null
   },
@@ -296,12 +272,6 @@
   {
     "id": "tpl-pedestrian-zone",
     "name": "Piéton en zone véhicules",
-    "archetype": "geometry",
-    "event_type": null
-  },
-  {
-    "id": "tpl-illegal-parking",
-    "name": "Stationnement illégal",
     "archetype": "geometry",
     "event_type": null
   },

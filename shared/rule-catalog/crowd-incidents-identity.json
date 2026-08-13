@@ -1,69 +1,13 @@
 [
   {
     "id": "tpl-face-watchlist",
-    "name": "Personne liste noire",
-    "description": "Visage correspondant à la watchlist",
-    "category": "identity",
-    "severity": "critical",
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "face_watchlist_match"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "critical"
-          }
-        },
-        {
-          "type": "notify",
-          "config": {
-            "channel": "security"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Alerte critique si un visage correspondant à la liste de surveillance est reconnu par la caméra.",
-    "partial_status": "requires_external",
-    "partial_reason_fr": "InsightFace recommandé ; Gemini VLM optionnel (partial) si GEMINI_ENABLED — pas de claim full."
+    "redirect_to": "tpl-watchlist-match",
+    "_fusion_note": "[honesty] Doublon watchlist — redirigé vers tpl-watchlist-match."
   },
   {
     "id": "tpl-plate-unknown",
-    "name": "Plaque non enregistrée",
-    "description": "Véhicule avec plaque inconnue en zone restreinte",
-    "category": "identity",
-    "severity": "high",
-    "configSchema": {
-      "fields": [
-        {
-          "key": "camera_id",
-          "type": "camera",
-          "required": true,
-          "label": "Caméra"
-        }
-      ]
-    },
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "plate_unknown"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "high"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Signale un véhicule dont la plaque d'immatriculation n'est pas enregistrée dans la base.",
-    "partial_status": "requires_ocr",
-    "partial_reason_fr": "Nécessite le module PaddleOCR (non installé par défaut)"
+    "redirect_to": "tpl-unknown-plate",
+    "_fusion_note": "[honesty] Doublon plaque inconnue — redirigé vers tpl-unknown-plate."
   },
   {
     "id": "tpl-industrial-intrusion",

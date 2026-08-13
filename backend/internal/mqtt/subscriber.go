@@ -146,8 +146,11 @@ func (b *Broadcaster) HandleMQTTAlert(req *alerts.CreateAlertRequest) {
 	a, err := b.Alerts.CreateAlert(ctx, *req)
 	if err != nil {
 		if errors.Is(err, alerts.ErrIncompleteEvidence) {
+			slog.Default().Warn("mqtt alert rejected: incomplete evidence",
+				"org_id", req.OrgID.String(), "title", req.Title)
 			return
 		}
+		slog.Default().Warn("mqtt alert create failed", "error", err, "title", req.Title)
 		return
 	}
 	b.Hub.Broadcast(map[string]interface{}{

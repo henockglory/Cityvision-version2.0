@@ -155,8 +155,11 @@ Watchdogs → relance si crash ou ingest figé
 ### 5.2 Première connexion
 
 1. Ouvrir **http://localhost:5174/setup** (ou `/login` si déjà configuré).
-2. Créer l'organisation et le compte administrateur.
-3. Suivre le **tutoriel intégré** en 3 étapes : caméras → zones → règles.
+2. Sur `/login`, une intro vidéo Earthzoom (`/media/earthzoom.mp4`) joue les **0–9 s** puis **freeze** ; le formulaire CiteVision s’affiche par-dessus.
+3. Après identifiants OK, un outro **10–14 s** joue en plein écran (faux chargement), puis bascule vers le **Dashboard** `/`.
+4. Si `prefers-reduced-motion` : pas de cinéma — formulaire immédiat, navigation directe après auth.
+5. Créer l'organisation et le compte administrateur (setup).
+6. Suivre le **tutoriel intégré** en 3 étapes : caméras → zones → règles.
 
 ### 5.3 Exploitation au quotidien
 

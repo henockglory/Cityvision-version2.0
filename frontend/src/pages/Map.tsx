@@ -11,7 +11,7 @@ import CameraMapView, {
   type MapViewMode,
 } from '@/components/map/CameraMapView';
 import GlobeMapView from '@/components/map/GlobeMapView';
-import { useCameras, useUpdateCameraMap } from '@/hooks/api/queries';
+import { useAlerts, useCameras, useUpdateCameraMap } from '@/hooks/api/queries';
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
@@ -23,6 +23,7 @@ export default function MapPage() {
   const startTour = useAutoPageTour('map');
   const orgId = useAuthStore((s) => s.orgId);
   const { data: cameras = [], isLoading, isError, refetch } = useCameras();
+  const { data: alerts = [] } = useAlerts({ status: 'open', limit: 40 });
   const updateMap = useUpdateCameraMap();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -90,7 +91,7 @@ export default function MapPage() {
       }
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div id="map-canvas" className="lg:col-span-8 cv-card p-3 flex flex-col min-h-[460px]">
+        <div id="map-canvas" className="lg:col-span-8 cv-card p-3 flex flex-col min-h-[560px] lg:min-h-[calc(100vh-12rem)]">
           <div id="map-mode-tabs" className="flex gap-1 mb-3 p-1 bg-cv-deep/60 rounded-lg w-fit border border-cv-border/50 flex-wrap">
             {([
               { id: 'real' as const, label: 'Carte', icon: Map },
@@ -113,7 +114,12 @@ export default function MapPage() {
 
           <div className="flex-1 min-h-[400px]">
             {mapMode === 'globe' ? (
-              <GlobeMapView cameras={cameras} selectedId={selectedId} onSelect={setSelectedId} />
+              <GlobeMapView
+                cameras={cameras}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                alerts={alerts}
+              />
             ) : (
               <CameraMapView
                 mode={mapMode}

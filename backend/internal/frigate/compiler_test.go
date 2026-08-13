@@ -236,6 +236,41 @@ func TestUpsertCameraTracksPersonForFaceAggregate(t *testing.T) {
 	}
 }
 
+func TestUpsertCameraTracksBagsForAbandonedZone(t *testing.T) {
+	poly := json.RawMessage(`[{"x":0.1,"y":0.2},{"x":0.5,"y":0.2},{"x":0.5,"y":0.6}]`)
+	camID := uuid.New()
+	cam := &models.Camera{ID: camID}
+	zoneID := uuid.New()
+	bcfg := json.RawMessage(`{"behavior":"abandoned_object","config":{"duration_seconds":45}}`)
+	zones := []models.Zone{{
+		ID: zoneID, CameraID: &camID, Polygon: poly, BehaviorConfig: bcfg,
+	}}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{}, zones)
+	found := map[string]bool{}
+	for _, lab := range cc.Entry.Objects.Track {
+		found[lab] = true
+	}
+	for _, want := range []string{"car", "backpack", "handbag", "suitcase", "umbrella", "bicycle", "dog"} {
+		if !found[want] {
+			t.Fatalf("expected %s in objects.track for abandoned zone, got %v", want, cc.Entry.Objects.Track)
+		}
+	}
+}
+
+func TestUpsertCameraTracksBagsFromAggregate(t *testing.T) {
+	cam := &models.Camera{ID: uuid.New()}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{
+		TrackObjects: []string{"backpack", "suitcase"},
+	}, nil)
+	found := map[string]bool{}
+	for _, lab := range cc.Entry.Objects.Track {
+		found[lab] = true
+	}
+	if !found["car"] || !found["backpack"] || !found["suitcase"] {
+		t.Fatalf("expected vehicles + bag labels, got %v", cc.Entry.Objects.Track)
+	}
+}
+
 func TestUpsertCameraTracksPersonForCabinBehavior(t *testing.T) {
 	poly := json.RawMessage(`[{"x":0.1,"y":0.2},{"x":0.5,"y":0.2},{"x":0.5,"y":0.6}]`)
 	camID := uuid.New()

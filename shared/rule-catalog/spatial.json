@@ -144,7 +144,7 @@
   },
   {
     "id": "tpl-observation-rule-set-or",
-    "name": "Comptage ensemble (OU)",
+    "name": "Compteur scénario (OU)",
     "category": "spatial",
     "severity": "low",
     "supported": true,
@@ -162,7 +162,7 @@
         }
       ]
     },
-    "role_summary_fr": "Compte +1 dès qu'un des événements du groupe correspond (logique OU) — composite observation.",
+    "role_summary_fr": "Compteur scénario (OU) — composite rules-engine, pas un détecteur. +1 dès qu'un des types d'événements membres correspond.",
     "deployment_scopes": [
       "national",
       "enterprise",
@@ -173,7 +173,7 @@
   },
   {
     "id": "tpl-observation-rule-set-n",
-    "name": "Comptage ensemble (N-sur-M)",
+    "name": "Compteur scénario (N types)",
     "category": "spatial",
     "severity": "low",
     "supported": true,
@@ -198,7 +198,7 @@
         }
       ]
     },
-    "role_summary_fr": "Compte +1 quand au moins N types d'événements distincts ont été observés dans la fenêtre.",
+    "role_summary_fr": "Compteur scénario (N types dans une fenêtre) — composite rules-engine, pas un détecteur. +1 quand au moins N types d'événements distincts sont observés.",
     "deployment_scopes": [
       "national",
       "enterprise"

@@ -1,31 +1,8 @@
 [
   {
     "id": "tpl-object-disappeared",
-    "name": "Disparition d'objet",
-    "description": "Détecte la disparition d'un objet précédemment visible",
-    "category": "presence",
-    "severity": "medium",
-    "definition": {
-      "condition": {
-        "op": "eq",
-        "field": "event_type",
-        "value": "object_disappeared"
-      },
-      "actions": [
-        {
-          "type": "alert",
-          "config": {
-            "severity": "medium"
-          }
-        }
-      ]
-    },
-    "role_summary_fr": "Détecte la disparition d'un objet présent dans la scène — vol ou déplacement suspect.",
-    "deployment_scopes": [
-      "enterprise",
-      "domestic"
-    ],
-    "partial_status": "full"
+    "redirect_to": "tpl-object-removed",
+    "_fusion_note": "[honesty] Disparition = même emit que object_removed à la sortie de zone abandoned — retiré du catalogue."
   },
   {
     "id": "tpl-zone-presence",
