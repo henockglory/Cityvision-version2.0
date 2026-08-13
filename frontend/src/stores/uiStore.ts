@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { DEFAULT_ALERT_SOUND_ID } from '@/lib/alertSounds';
 import type { TourId } from '@/lib/tourRegistry';
 
 function applyTheme(theme: 'dark' | 'light') {
@@ -71,6 +72,10 @@ interface UiStore {
   soundMuted: boolean;
   soundUiEnabled: boolean;
   soundAlertsEnabled: boolean;
+  /** Bundled catalog id or `custom:<uuid>` */
+  alertSoundId: string;
+  /** 0–1 playback gain for alert tones */
+  alertSoundVolume: number;
   tooltipsEnabled: boolean;
   networkEffectEnabled: boolean;
   onboardingCompleted: boolean;
@@ -87,6 +92,8 @@ interface UiStore {
   toggleSound: () => void;
   toggleSoundUi: () => void;
   toggleSoundAlerts: () => void;
+  setAlertSoundId: (id: string) => void;
+  setAlertSoundVolume: (volume: number) => void;
   toggleTooltips: () => void;
   toggleNetworkEffect: () => void;
   completeOnboarding: () => void;
@@ -107,6 +114,8 @@ export const useUiStore = create<UiStore>()(
       soundMuted: false,
       soundUiEnabled: true,
       soundAlertsEnabled: true,
+      alertSoundId: DEFAULT_ALERT_SOUND_ID,
+      alertSoundVolume: 0.85,
       tooltipsEnabled: true,
       networkEffectEnabled: false,
       onboardingCompleted: false,
@@ -130,6 +139,9 @@ export const useUiStore = create<UiStore>()(
       toggleSound: () => set((s) => ({ soundMuted: !s.soundMuted })),
       toggleSoundUi: () => set((s) => ({ soundUiEnabled: !s.soundUiEnabled })),
       toggleSoundAlerts: () => set((s) => ({ soundAlertsEnabled: !s.soundAlertsEnabled })),
+      setAlertSoundId: (id) => set({ alertSoundId: id }),
+      setAlertSoundVolume: (volume) =>
+        set({ alertSoundVolume: Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 0.85)) }),
       toggleTooltips: () => set((s) => ({ tooltipsEnabled: !s.tooltipsEnabled })),
       toggleNetworkEffect: () => set((s) => ({ networkEffectEnabled: !s.networkEffectEnabled })),
       completeOnboarding: () => set({ onboardingCompleted: true }),
@@ -160,6 +172,8 @@ export const useUiStore = create<UiStore>()(
         soundMuted: state.soundMuted,
         soundUiEnabled: state.soundUiEnabled,
         soundAlertsEnabled: state.soundAlertsEnabled,
+        alertSoundId: state.alertSoundId,
+        alertSoundVolume: state.alertSoundVolume,
         tooltipsEnabled: state.tooltipsEnabled,
         networkEffectEnabled: state.networkEffectEnabled,
         onboardingCompleted: state.onboardingCompleted,

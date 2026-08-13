@@ -793,16 +793,18 @@ func (e *Executor) runWebhook(orgID string, rule evaluator.RuleDefinition, paylo
 		"class_name":        payload["class_name"],
 		"event_type":        payload["event_type"],
 	}
-	if preset, ok := cfg["preset"].(string); ok && preset != "" {
+	preset := ""
+	if p, ok := cfg["preset"].(string); ok && p != "" {
+		preset = p
 		webhookPayload["integration_preset"] = preset
 	}
 	body, _ := json.Marshal(map[string]interface{}{
 		"url":     url,
+		"preset":  preset,
 		"payload": webhookPayload,
 	})
 	ep := e.internalOrgURL(orgID, "/webhook")
-	e.postInternal(ep, body)
-	return true
+	return e.postInternalOK(ep, body)
 }
 
 func (e *Executor) runIncident(orgID string, rule evaluator.RuleDefinition, payload map[string]interface{}, act evaluator.Action) {

@@ -487,23 +487,33 @@ func statusFromMap(m map[string]interface{}) string {
 	return ""
 }
 
+// PatchEvidenceByCorrelation updates evidence and returns the enriched alert plus
+// the previous evidence_status (empty/pending if unset).
 func (s *Service) PatchEvidenceByCorrelation(
 	ctx context.Context,
 	orgID uuid.UUID,
 	correlationID string,
 	evidenceSnap json.RawMessage,
 	status string,
-) (*EnrichedAlert, error) {
+) (*EnrichedAlert, string, error) {
 	correlationID = strings.TrimSpace(correlationID)
 	if correlationID == "" {
-		return nil, ErrNotFound
+		return nil, "", ErrNotFound
 	}
 	if status == "" {
 		status = "complete"
 	}
 	var id uuid.UUID
+	var prevStatus *string
 	err := s.pool.QueryRow(ctx, `
-		SELECT id FROM alerts
+		SELECT id,
+			COALESCE(
+				NULLIF(metadata->>'evidence_status', ''),
+				NULLIF(evidence_snapshot->>'evidence_status', ''),
+				NULLIF(evidence_snapshot->'package'->'metadata'->>'evidence_status', ''),
+				''
+			)
+		FROM alerts
 		WHERE org_id = $1
 		  AND (
 		    metadata->>'alert_correlation_id' = $2
@@ -511,12 +521,16 @@ func (s *Service) PatchEvidenceByCorrelation(
 		    OR metadata->'package'->'metadata'->>'alert_correlation_id' = $2
 		  )
 		ORDER BY created_at DESC
-		LIMIT 1`, orgID, correlationID).Scan(&id)
+		LIMIT 1`, orgID, correlationID).Scan(&id, &prevStatus)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, "", ErrNotFound
 		}
-		return nil, err
+		return nil, "", err
+	}
+	prev := ""
+	if prevStatus != nil {
+		prev = strings.TrimSpace(*prevStatus)
 	}
 	_, err = s.pool.Exec(ctx, `
 		UPDATE alerts SET
@@ -536,9 +550,10 @@ func (s *Service) PatchEvidenceByCorrelation(
 		WHERE id = $3 AND org_id = $4`,
 		string(evidenceSnap), status, id, orgID)
 	if err != nil {
-		return nil, err
+		return nil, prev, err
 	}
-	return s.GetByID(ctx, orgID, id)
+	ea, err := s.GetByID(ctx, orgID, id)
+	return ea, prev, err
 }
 
 func (s *Service) AppendForwardLog(ctx context.Context, orgID, alertID uuid.UUID, entry map[string]interface{}) error {

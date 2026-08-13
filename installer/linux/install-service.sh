@@ -83,6 +83,12 @@ if [[ ! -f "$UNIT_PATH" ]]; then
   exit 1
 fi
 
+# Persist mode for the Settings panel (same files as Windows installer).
+mkdir -p "$ROOT/installer"
+printf '%s\n' "$START_MODE" > "$ROOT/installer/.service_start_mode"
+printf '%s\n' "${START_MODE}|systemd" > "$ROOT/installer/.startup_configured"
+chown "$USER_NAME:" "$ROOT/installer/.service_start_mode" "$ROOT/installer/.startup_configured" 2>/dev/null || true
+
 # ── Sudoers drop-in: allow the app user to control the service without a
 #    password prompt (needed for start/stop and auto/manual toggle from the UI).
 SYSTEMCTL_BIN="$(command -v systemctl || echo /usr/bin/systemctl)"
@@ -101,4 +107,4 @@ else
   echo "[OK]   Sudoers drop-in installed - UI can start/stop without password"
 fi
 
-echo "{\"service_ok\":true,\"start_mode\":\"$START_MODE\",\"service\":\"citevision.service\"}"
+echo "{\"service_ok\":true,\"start_mode\":\"$START_MODE\",\"service\":\"citevision.service\",\"mechanism\":\"systemd\"}"

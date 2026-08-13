@@ -73,8 +73,8 @@ func (a *API) SampleIntegrationWebhook(w http.ResponseWriter, r *http.Request) {
 		"headers_hint": headers,
 		"cloud_events": cloudEvents,
 		"body":         body,
-		"note_fr":      "Exemple fictif. Les preuves voyagent via les champs url dans evidence_snapshot (pas en binaire). n8n/Make/Zapier doivent GET ces URL ensuite.",
-		"note_en":      "Fictional sample. Evidence travels as url fields inside evidence_snapshot (not binary). n8n/Make/Zapier should GET those URLs next.",
+		"note_fr": "Exemple fictif (phase preuves complètes). En production : 1) webhook_phase=create à la création (evidence souvent pending) ; 2) webhook_phase=evidence_complete quand les preuves sont prêtes. Les preuves voyagent via url dans evidence_snapshot (pas en binaire) — GET ensuite avec auth.",
+		"note_en": "Fictional sample (evidence-complete phase). Live: 1) webhook_phase=create at alert creation (evidence often pending); 2) webhook_phase=evidence_complete when proofs are ready. Evidence travels as url fields in evidence_snapshot (not binary) — GET next with auth.",
 	})
 }
 
@@ -122,9 +122,13 @@ func sampleWebhookPayload(orgID, kind, preset string) map[string]interface{} {
 		base["alert_id"] = "00000000-0000-4000-8000-000000000001"
 		base["title"] = "Intrusion détectée — zone entrée"
 		base["severity"] = "high"
+		base["status"] = "open"
 		base["plate_number"] = ""
 		base["face_label"] = ""
 		base["routing_rule"] = "Critique → webhook"
+		base["webhook_phase"] = "evidence_complete"
+		base["evidence_status"] = "complete"
+		base["alert_correlation_id"] = "corr-demo-0001"
 		return base
 	}
 	base["rule_id"] = "00000000-0000-4000-8000-0000000000aa"

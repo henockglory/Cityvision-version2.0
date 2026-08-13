@@ -133,7 +133,12 @@ export default function AlertRoutingPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-cv-muted">
-        Les alertes sont automatiquement renvoyées selon ces règles à la création (e-mail SMTP + webhook).
+        Les alertes sont automatiquement renvoyées selon ces règles : e-mail SMTP + webhook à la création
+        (<code className="text-[11px]">webhook_phase=create</code>), puis un second webhook quand les preuves
+        passent à complete (<code className="text-[11px]">webhook_phase=evidence_complete</code>).
+        Filtrez dans n8n sur <code className="text-[11px]">webhook_phase</code> /{' '}
+        <code className="text-[11px]">evidence_status</code>. Les preuves voyagent en URL dans{' '}
+        <code className="text-[11px]">evidence_snapshot</code> (pas en binaire).
         {ruleList.filter((r) => r.enabled).length > 0 && (
           <span className="block mt-1 text-cv-accent font-medium">
             {ruleList.filter((r) => r.enabled).length} règle(s) active(s)

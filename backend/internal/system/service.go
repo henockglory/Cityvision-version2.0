@@ -126,7 +126,7 @@ func readStartMode(root string) string {
 	}
 	data, err := os.ReadFile(filepath.Join(root, "installer", ".service_start_mode"))
 	if err != nil {
-		return "auto"
+		return "manual"
 	}
 	mode := trimBOM(string(data))
 	if idx := strings.Index(mode, "|"); idx >= 0 {
@@ -135,7 +135,7 @@ func readStartMode(root string) string {
 	if mode == "auto" || mode == "manual" {
 		return mode
 	}
-	return "auto"
+	return "manual"
 }
 
 func readStartModeFromMarker(root string) string {
@@ -294,14 +294,17 @@ const (
 	windowsWatchdogTask  = "CiteVision-Watchdog"
 )
 
+func windowsHasAutoMechanism(root string) bool {
+	return scheduledTaskExists(windowsAutoStartTask) ||
+		windowsRegistryAutostartEnabled(root) ||
+		windowsStartupFolderAutostartEnabled()
+}
+
 func windowsStartupConfigured(root string) bool {
-	marker := filepath.Join(root, "installer", ".startup_configured")
-	if fileExists(marker) {
+	if windowsHasAutoMechanism(root) {
 		return true
 	}
-	if scheduledTaskExists(windowsAutoStartTask) {
-		return true
-	}
+	// Manual is "configured" only when preference file says manual (no phantom auto).
 	mode := readStartMode(root)
 	return mode == "manual" && fileExists(filepath.Join(root, "installer", ".service_start_mode"))
 }
@@ -315,25 +318,17 @@ func scheduledTaskExists(name string) bool {
 }
 
 func windowsEffectiveStartMode(root string, configured bool) string {
+	if windowsHasAutoMechanism(root) {
+		return "auto"
+	}
 	if !configured {
 		return ""
 	}
-	mode := readStartMode(root)
-	if mode == "manual" {
-		if scheduledTaskExists(windowsAutoStartTask) ||
-			windowsRegistryAutostartEnabled(root) ||
-			windowsStartupFolderAutostartEnabled() {
-			return "auto"
-		}
+	if readStartMode(root) == "manual" {
 		return "manual"
 	}
-	if scheduledTaskExists(windowsAutoStartTask) {
-		return "auto"
-	}
-	if windowsRegistryAutostartEnabled(root) || windowsStartupFolderAutostartEnabled() {
-		return "auto"
-	}
-	return mode
+	// Preference says auto but no OS logon/autostart mechanism — not effective.
+	return ""
 }
 
 func windowsRegistryAutostartEnabled(root string) bool {
@@ -365,22 +360,11 @@ func windowsStartupFolderAutostartEnabled() bool {
 }
 
 func windowsAutoWatchActive(root string) bool {
-	if readStartMode(root) != "auto" {
-		return false
-	}
-	if scheduledTaskExists(windowsAutoStartTask) {
-		return true
-	}
-	if windowsRegistryAutostartEnabled(root) {
-		return true
-	}
-	if windowsStartupFolderAutostartEnabled() {
-		return true
-	}
+	// Honest "relance automatique": watchdog task armed, or logon autostart present.
 	if scheduledTaskExists(windowsWatchdogTask) {
 		return true
 	}
-	return false
+	return windowsHasAutoMechanism(root) && readStartMode(root) == "auto"
 }
 
 func linuxEffectiveStartMode(registered bool) string {
@@ -414,21 +398,16 @@ func GetStatus() Status {
 	}
 	if platform == "windows" {
 		st.ServiceName = "CiteVision-Startup"
-		configured := windowsStartupConfigured(root)
-		st.ServiceRegistered = configured
+		registered := windowsStartupConfigured(root)
+		st.ServiceRegistered = registered
 		st.AppRunning = appHealthOK()
 		st.ServiceRunning = windowsAutoWatchActive(root)
-		st.StartModeEffective = windowsEffectiveStartMode(root, configured)
-		if st.StartModeEffective == "" {
-			st.StartModeEffective = readStartMode(root)
-		}
+		// Do not fall back to preference file — empty means not applied in OS.
+		st.StartModeEffective = windowsEffectiveStartMode(root, registered)
 		return st
 	}
 	st.ServiceRegistered, st.ServiceRunning = linuxServiceState()
 	st.StartModeEffective = linuxEffectiveStartMode(st.ServiceRegistered)
-	if st.StartModeEffective == "" {
-		st.StartModeEffective = configured
-	}
 	return st
 }
 
@@ -535,8 +514,7 @@ func parseStartupResultFile(path string) (bool, string) {
 func runInstallStartupPS1(root, mode string) error {
 	ps1 := filepath.Join(root, "installer", "windows", "install-startup.ps1")
 	if !fileExists(ps1) {
-		// Preference already saved by SetStartMode; missing script is non-blocking.
-		return nil
+		return fmt.Errorf("install-startup.ps1 not found: %s", ps1)
 	}
 	logsDir := filepath.Join(root, "logs")
 	_ = os.MkdirAll(logsDir, 0o755)
@@ -552,21 +530,32 @@ func runInstallStartupPS1(root, mode string) error {
 	}
 
 	var out []byte
+	var err error
 	if isWSL() {
 		cmdArgs := append([]string{"/c", powershellBinary()}, args...)
-		out, _ = exec.Command("cmd.exe", cmdArgs...).CombinedOutput()
+		out, err = exec.Command("cmd.exe", cmdArgs...).CombinedOutput()
 	} else {
-		out, _ = exec.Command(powershellBinary(), args...).CombinedOutput()
+		out, err = exec.Command(powershellBinary(), args...).CombinedOutput()
 	}
 
-	if ok, _ := parseStartupResultFile(resultFile); ok {
+	if ok, msg := parseStartupResultFile(resultFile); ok {
 		return nil
+	} else if msg != "" {
+		return fmt.Errorf("%s", msg)
 	}
-	if ok, _ := parseServicePS1Output(string(out)); ok {
+	if ok, msg := parseServicePS1Output(string(out)); ok {
 		return nil
+	} else if msg != "" {
+		return fmt.Errorf("%s", msg)
 	}
-	// Script is designed to always persist preference; never block the UI.
-	return nil
+	if err != nil {
+		text := strings.TrimSpace(string(out))
+		if text == "" {
+			text = err.Error()
+		}
+		return fmt.Errorf("%s", text)
+	}
+	return fmt.Errorf("startup configuration failed (no startup_ok in result)")
 }
 
 func stopAppStack(root string) error {
@@ -723,7 +712,7 @@ func applyLinuxServiceAction(root, action string) error {
 func applyLinuxStartMode(root, mode string) error {
 	script := filepath.Join(root, "installer", "linux", "install-service.sh")
 	if !fileExists(script) {
-		return fmt.Errorf("install script not found: %s", script)
+		return fmt.Errorf("install script not found: %s — run: sudo bash installer/linux/install-service.sh --root=%s --start-mode=%s", script, root, mode)
 	}
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return fmt.Errorf("systemd not available")
@@ -740,17 +729,23 @@ func applyLinuxStartMode(root, mode string) error {
 		fmt.Sprintf("--user=%s", username),
 		fmt.Sprintf("--start-mode=%s", mode),
 	).CombinedOutput()
+	text := strings.TrimSpace(string(out))
 	if err != nil {
-		text := strings.TrimSpace(string(out))
 		if text == "" {
 			text = err.Error()
 		}
-		return fmt.Errorf("%s", text)
+		return fmt.Errorf("%s (hint: sudo bash installer/linux/install-service.sh --root=%s --user=%s --start-mode=%s)", text, root, username, mode)
 	}
+	// Align preference files with Windows so the panel reads the same source.
+	if err := writeStartMode(root, mode); err != nil {
+		return err
+	}
+	marker := filepath.Join(root, "installer", ".startup_configured")
+	_ = os.WriteFile(marker, []byte(mode+"|systemd"), 0o644)
 	return nil
 }
 
-// SetStartMode persists the mode and applies it to the OS service manager.
+// SetStartMode persists the mode and applies it to the OS service manager (synchronous).
 func SetStartMode(mode string) (SetStartModeResult, error) {
 	if !ValidStartMode(mode) {
 		return SetStartModeResult{}, ErrInvalidStartMode
@@ -760,33 +755,55 @@ func SetStartMode(mode string) (SetStartModeResult, error) {
 		return SetStartModeResult{}, err
 	}
 
-	go func(r, m string) {
-		startModeApplyMu.Lock()
-		defer startModeApplyMu.Unlock()
-		if readStartMode(r) != m {
-			return
-		}
-		if effectivePlatform() == "windows" {
-			_ = applyWindowsStartMode(r, m)
-			return
-		}
-		_ = applyLinuxStartMode(r, m)
-	}(root, mode)
+	startModeApplyMu.Lock()
+	defer startModeApplyMu.Unlock()
 
-	modeLbl := "automatic"
+	var applyErr error
+	if effectivePlatform() == "windows" {
+		applyErr = applyWindowsStartMode(root, mode)
+	} else {
+		applyErr = applyLinuxStartMode(root, mode)
+	}
+
+	st := GetStatus()
+	modeLbl := "automatic (OS)"
 	if mode == "manual" {
 		modeLbl = "manual"
 	}
-	st := GetStatus()
-	st.StartMode = mode
-	st.StartModeEffective = mode
-	if mode == "manual" {
-		st.ServiceRunning = false
+	if applyErr != nil {
+		return SetStartModeResult{
+			OK:                 false,
+			StartMode:          st.StartMode,
+			StartModeEffective: st.StartModeEffective,
+			ServiceRegistered:  st.ServiceRegistered,
+			Message:            applyErr.Error(),
+		}, applyErr
+	}
+	// Require OS reality to match requested mode.
+	if st.StartModeEffective != mode {
+		msg := fmt.Sprintf("start mode apply incomplete: wanted %s, effective %q (registered=%v)", mode, st.StartModeEffective, st.ServiceRegistered)
+		return SetStartModeResult{
+			OK:                 false,
+			StartMode:          st.StartMode,
+			StartModeEffective: st.StartModeEffective,
+			ServiceRegistered:  st.ServiceRegistered,
+			Message:            msg,
+		}, fmt.Errorf("%s", msg)
+	}
+	if mode == "auto" && !st.ServiceRegistered {
+		msg := "automatic startup not registered in OS"
+		return SetStartModeResult{
+			OK:                 false,
+			StartMode:          st.StartMode,
+			StartModeEffective: st.StartModeEffective,
+			ServiceRegistered:  false,
+			Message:            msg,
+		}, fmt.Errorf("%s", msg)
 	}
 	return SetStartModeResult{
 		OK:                 true,
-		StartMode:          mode,
-		StartModeEffective: mode,
+		StartMode:          st.StartMode,
+		StartModeEffective: st.StartModeEffective,
 		ServiceRegistered:  st.ServiceRegistered,
 		Message:            fmt.Sprintf("Start mode set to %s", modeLbl),
 	}, nil

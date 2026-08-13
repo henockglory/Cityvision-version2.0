@@ -89,13 +89,24 @@ func (a *API) ForwardAlert(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.WebhookURL != "" {
+		evStatus := "pending"
+		if evSnap != nil {
+			if s, ok := evSnap["evidence_status"].(string); ok && s != "" {
+				evStatus = s
+			}
+		}
 		payload := map[string]interface{}{
 			"org_id":            orgID.String(),
 			"alert_id":          alertID.String(),
 			"title":             alert.Title,
 			"severity":          alert.Severity,
+			"status":            alert.Status,
 			"timestamp":         time.Now().UTC().Format(time.RFC3339),
+			"created_at":        alert.CreatedAt.UTC().Format(time.RFC3339),
+			"updated_at":        alert.UpdatedAt.UTC().Format(time.RFC3339),
 			"evidence_snapshot": evSnap,
+			"evidence_status":   evStatus,
+			"webhook_phase":     routing.WebhookPhaseManualForward,
 			"camera_id":         alert.CameraID,
 			"rule_name":         alert.RuleName,
 		}

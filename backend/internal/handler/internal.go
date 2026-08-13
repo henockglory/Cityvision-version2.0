@@ -292,7 +292,7 @@ func (a *API) InternalEnrichAlertEvidence(w http.ResponseWriter, r *http.Request
 	}
 	snap["evidence_status"] = status
 	raw, _ := json.Marshal(snap)
-	a2, err := a.Alerts.PatchEvidenceByCorrelation(r.Context(), orgID, req.AlertCorrelationID, raw, status)
+	a2, prevStatus, err := a.Alerts.PatchEvidenceByCorrelation(r.Context(), orgID, req.AlertCorrelationID, raw, status)
 	if err != nil {
 		if errors.Is(err, alerts.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "alert not found for correlation id")
@@ -306,6 +306,11 @@ func (a *API) InternalEnrichAlertEvidence(w http.ResponseWriter, r *http.Request
 			"type":  "alert_updated",
 			"alert": a2,
 		})
+	}
+	// Re-post routing webhooks once when evidence first becomes complete (n8n/Make get full URLs).
+	becameComplete := strings.EqualFold(status, "complete") && !strings.EqualFold(prevStatus, "complete")
+	if becameComplete && a.Routing != nil && a.Orgs != nil && a.Alerts != nil {
+		go a.Routing.DispatchAutoPhase(context.Background(), a.Orgs, a.Alerts, orgID, a2.ID, routing.WebhookPhaseEvidenceComplete)
 	}
 	writeJSON(w, http.StatusOK, a2)
 }
@@ -416,6 +421,7 @@ func (a *API) InternalEvidenceRequest(w http.ResponseWriter, r *http.Request) {
 func (a *API) InternalWebhook(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		URL     string                 `json:"url"`
+		Preset  string                 `json:"preset"`
 		Payload map[string]interface{} `json:"payload"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -430,9 +436,15 @@ func (a *API) InternalWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "url required")
 		return
 	}
+	preset := strings.TrimSpace(req.Preset)
+	if preset == "" && req.Payload != nil {
+		if p, ok := req.Payload["integration_preset"].(string); ok {
+			preset = strings.TrimSpace(p)
+		}
+	}
 	// Route through the hardened delivery path: SSRF validation, signing,
 	// retries with backoff and DLQ on failure (unifies the two webhook paths).
-	if err := routing.PostWebhook(url, req.Payload); err != nil {
+	if err := routing.PostWebhookPreset(url, preset, req.Payload); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}

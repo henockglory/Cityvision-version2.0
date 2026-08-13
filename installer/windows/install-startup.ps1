@@ -8,8 +8,10 @@
   manual - remove all autostart mechanisms
 
 .NOTES
-  Always exits 0 with startup_ok:true once the mode preference is persisted.
-  Uses scheduled tasks when possible; falls back to HKCU Run + Startup folder.
+  Auto mode: startup_ok:true only when a real OS autostart mechanism exists
+  (scheduled task and/or Run/Startup) and a watchdog is armed (task or inline-via-logon).
+  Manual mode: startup_ok:true after all autostart mechanisms are removed.
+  Preference-only is NOT success for auto.
 #>
 param(
     [ValidateSet('auto', 'manual')]
@@ -346,6 +348,41 @@ function Write-InstallerTextFile {
     }
 }
 
+function Test-AutoMechanismPresent {
+    try {
+        if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
+            if (Get-ScheduledTask -TaskName $TASK_AUTO -ErrorAction SilentlyContinue) { return $true }
+        }
+    } catch {}
+    try {
+        $null = schtasks.exe /Query /TN $TASK_AUTO 2>$null
+        if ($LASTEXITCODE -eq 0) { return $true }
+    } catch {}
+    try {
+        $v = (Get-ItemProperty -Path $RUN_KEY -Name $RUN_NAME -ErrorAction Stop).$RUN_NAME
+        if ($v) { return $true }
+    } catch {}
+    try {
+        $startup = [Environment]::GetFolderPath('Startup')
+        if ($startup -and (Test-Path (Join-Path $startup $STARTUP_LINK))) { return $true }
+    } catch {}
+    return $false
+}
+
+function Test-WatchdogArmed {
+    try {
+        if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
+            if (Get-ScheduledTask -TaskName $TASK_WATCH -ErrorAction SilentlyContinue) { return $true }
+        }
+    } catch {}
+    try {
+        $null = schtasks.exe /Query /TN $TASK_WATCH 2>$null
+        if ($LASTEXITCODE -eq 0) { return $true }
+    } catch {}
+    # Inline watchdog is started by the logon autostart script — acceptable when autostart exists.
+    return (Test-AutoMechanismPresent)
+}
+
 try {
     $modeFile = Join-Path $Root 'installer\.service_start_mode'
     $installerDir = Join-Path $Root 'installer'
@@ -355,26 +392,40 @@ try {
     $mechanism = ''
     if ($StartMode -eq 'manual') {
         Disable-AllAutoMechanisms
+        if (Test-AutoMechanismPresent) {
+            throw 'Manual mode failed: autostart mechanism still present'
+        }
         $mechanism = 'manual'
+        $marker = Join-Path $installerDir '.startup_configured'
+        Write-InstallerTextFile -Path $marker -Value "$StartMode|$mechanism"
+        Write-Log "Startup configured (mode: $StartMode, mechanism: $mechanism)"
+        Emit-Result -Ok $true -Mechanism $mechanism
     } else {
         $mechanism = Enable-AutoMode
-        if (-not $mechanism) { $mechanism = 'preference-only' }
+        Write-Log "Enable-AutoMode returned: $mechanism"
+        $hasAuto = Test-AutoMechanismPresent
+        $hasWatch = Test-WatchdogArmed
+        if (-not $hasAuto) {
+            throw "Auto mode failed: no OS autostart mechanism (task/Run/Startup). Got: $mechanism"
+        }
+        if (-not $hasWatch) {
+            throw "Auto mode failed: watchdog not armed. Got: $mechanism"
+        }
+        if ($mechanism -eq 'preference-only' -or [string]::IsNullOrWhiteSpace($mechanism)) {
+            throw 'Auto mode failed: preference-only is not a valid mechanism'
+        }
+        $marker = Join-Path $installerDir '.startup_configured'
+        Write-InstallerTextFile -Path $marker -Value "$StartMode|$mechanism"
+        Write-Log "Startup configured (mode: $StartMode, mechanism: $mechanism)"
+        Emit-Result -Ok $true -Mechanism $mechanism
     }
-
-    $marker = Join-Path $installerDir '.startup_configured'
-    Write-InstallerTextFile -Path $marker -Value "$StartMode|$mechanism"
-    Write-Log "Startup configured (mode: $StartMode, mechanism: $mechanism)"
-    Emit-Result -Ok $true -Mechanism $mechanism
 } catch {
     Write-Log "ERROR: $_"
     try {
         $modeFile = Join-Path $Root 'installer\.service_start_mode'
         Write-InstallerTextFile -Path $modeFile -Value $StartMode
-        $marker = Join-Path $Root 'installer\.startup_configured'
-        Write-InstallerTextFile -Path $marker -Value "$StartMode|partial"
     } catch {
-        Write-Log "ERROR (persist fallback): $_"
-        Emit-Result -Ok $false -Mechanism 'failed' -Err $_.Exception.Message -ExitCode 1
+        Write-Log "ERROR (persist preference): $_"
     }
-    Emit-Result -Ok $true -Mechanism 'partial' -Err $_.Exception.Message
+    Emit-Result -Ok $false -Mechanism 'failed' -Err $_.Exception.Message -ExitCode 1
 }

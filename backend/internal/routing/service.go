@@ -118,7 +118,23 @@ func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 	return nil
 }
 
+const (
+	WebhookPhaseCreate           = "create"
+	WebhookPhaseEvidenceComplete = "evidence_complete"
+	WebhookPhaseManualForward    = "manual_forward"
+)
+
+// DispatchAuto routes an alert at creation time (email + webhook).
 func (s *Service) DispatchAuto(ctx context.Context, orgSvc *org.Service, alertsSvc *alerts.Service, orgID uuid.UUID, alertID uuid.UUID) {
+	s.DispatchAutoPhase(ctx, orgSvc, alertsSvc, orgID, alertID, WebhookPhaseCreate)
+}
+
+// DispatchAutoPhase routes matching rules. On evidence_complete, only webhooks are
+// re-posted (emails stay create-only to avoid duplicate notifications).
+func (s *Service) DispatchAutoPhase(ctx context.Context, orgSvc *org.Service, alertsSvc *alerts.Service, orgID uuid.UUID, alertID uuid.UUID, phase string) {
+	if phase == "" {
+		phase = WebhookPhaseCreate
+	}
 	rules, err := s.List(ctx, orgID)
 	if err != nil || len(rules) == 0 {
 		return
@@ -132,6 +148,7 @@ func (s *Service) DispatchAuto(ctx context.Context, orgSvc *org.Service, alertsS
 		return
 	}
 	smtpCfg := notify.ParseSMTP(o.SMTPConfig)
+	sendEmail := phase == WebhookPhaseCreate
 
 	fields := extractMatchFields(enriched)
 	for _, rule := range rules {
@@ -143,53 +160,40 @@ func (s *Service) DispatchAuto(ctx context.Context, orgSvc *org.Service, alertsS
 		}
 		ch := parseChannels(rule.Channels)
 		logEntry := map[string]interface{}{
-			"timestamp":        time.Now().UTC().Format(time.RFC3339),
-			"source":           "auto_route",
-			"routing_rule_id":  rule.ID.String(),
+			"timestamp":         time.Now().UTC().Format(time.RFC3339),
+			"source":            "auto_route",
+			"routing_rule_id":   rule.ID.String(),
 			"routing_rule_name": rule.Name,
-			"channels":         []string{},
+			"webhook_phase":     phase,
+			"channels":          []string{},
 		}
 		var evSnap map[string]interface{}
 		_ = json.Unmarshal(enriched.EvidenceSnapshot, &evSnap)
 
-		for _, email := range ch.Emails {
-			if email == "" {
-				continue
-			}
-			subject := "CitéVision — " + enriched.Title
-			textBody := buildEmailBody(enriched, evSnap)
-			htmlBody, inline := s.buildHTMLEmail(ctx, enriched, evSnap, fields)
-			if htmlBody != "" {
-				if err := notify.SendAlertHTML(smtpCfg, email, subject, htmlBody, textBody, inline); err != nil {
-					// Fallback to plain text on HTML/SMTP failure.
+		if sendEmail {
+			for _, email := range ch.Emails {
+				if email == "" {
+					continue
+				}
+				subject := "CitéVision — " + enriched.Title
+				textBody := buildEmailBody(enriched, evSnap)
+				htmlBody, inline := s.buildHTMLEmail(ctx, enriched, evSnap, fields)
+				if htmlBody != "" {
+					if err := notify.SendAlertHTML(smtpCfg, email, subject, htmlBody, textBody, inline); err != nil {
+						// Fallback to plain text on HTML/SMTP failure.
+						_ = notify.SendAlert(smtpCfg, email, subject, textBody)
+					}
+				} else {
 					_ = notify.SendAlert(smtpCfg, email, subject, textBody)
 				}
-			} else {
-				_ = notify.SendAlert(smtpCfg, email, subject, textBody)
-			}
-			logEntry["channels"] = append(logEntry["channels"].([]string), "email")
-			if logEntry["email"] == nil {
-				logEntry["email"] = email
+				logEntry["channels"] = append(logEntry["channels"].([]string), "email")
+				if logEntry["email"] == nil {
+					logEntry["email"] = email
+				}
 			}
 		}
 		if ch.WebhookURL != "" {
-			payload := map[string]interface{}{
-				"org_id":            orgID.String(),
-				"alert_id":          alertID.String(),
-				"title":             enriched.Title,
-				"severity":          enriched.Severity,
-				"timestamp":         time.Now().UTC().Format(time.RFC3339),
-				"evidence_snapshot": evSnap,
-				"camera_id":         enriched.CameraID,
-				"rule_name":         enriched.RuleName,
-				"plate_number":      fields["plate_number"],
-				"face_label":        fields["face_label"],
-				"event_type":        fields["event_type"],
-				"routing_rule":      rule.Name,
-			}
-			if ch.WebhookPreset != "" {
-				payload["integration_preset"] = ch.WebhookPreset
-			}
+			payload := buildRoutingWebhookPayload(orgID, alertID, enriched, fields, rule.Name, ch.WebhookPreset, phase, evSnap)
 			if err := PostWebhookPreset(ch.WebhookURL, ch.WebhookPreset, payload); err == nil {
 				logEntry["channels"] = append(logEntry["channels"].([]string), "webhook")
 				logEntry["webhook_url"] = ch.WebhookURL
@@ -204,6 +208,93 @@ func (s *Service) DispatchAuto(ctx context.Context, orgSvc *org.Service, alertsS
 			_ = alertsSvc.AppendForwardLog(ctx, orgID, alertID, logEntry)
 		}
 	}
+}
+
+func buildRoutingWebhookPayload(
+	orgID, alertID uuid.UUID,
+	enriched *alerts.EnrichedAlert,
+	fields map[string]string,
+	routingRuleName, preset, phase string,
+	evSnap map[string]interface{},
+) map[string]interface{} {
+	if evSnap == nil {
+		evSnap = map[string]interface{}{}
+	}
+	evStatus := evidenceStatusFromSnapshot(evSnap)
+	corr := alertCorrelationID(enriched)
+	payload := map[string]interface{}{
+		"org_id":                orgID.String(),
+		"alert_id":              alertID.String(),
+		"title":                 enriched.Title,
+		"severity":              enriched.Severity,
+		"status":                enriched.Status,
+		"timestamp":             time.Now().UTC().Format(time.RFC3339),
+		"created_at":            enriched.CreatedAt.UTC().Format(time.RFC3339),
+		"updated_at":            enriched.UpdatedAt.UTC().Format(time.RFC3339),
+		"evidence_snapshot":     evSnap,
+		"evidence_status":       evStatus,
+		"webhook_phase":         phase,
+		"alert_correlation_id":  corr,
+		"camera_id":             enriched.CameraID,
+		"rule_name":             enriched.RuleName,
+		"plate_number":          fields["plate_number"],
+		"face_label":            fields["face_label"],
+		"event_type":            fields["event_type"],
+		"routing_rule":          routingRuleName,
+	}
+	if preset != "" {
+		payload["integration_preset"] = preset
+	}
+	return payload
+}
+
+func evidenceStatusFromSnapshot(evSnap map[string]interface{}) string {
+	if evSnap == nil {
+		return "pending"
+	}
+	if s, ok := evSnap["evidence_status"].(string); ok && strings.TrimSpace(s) != "" {
+		return strings.TrimSpace(s)
+	}
+	if pkg, ok := evSnap["package"].(map[string]interface{}); ok {
+		if meta, ok := pkg["metadata"].(map[string]interface{}); ok {
+			if s, ok := meta["evidence_status"].(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return "pending"
+}
+
+func alertCorrelationID(enriched *alerts.EnrichedAlert) string {
+	if enriched == nil {
+		return ""
+	}
+	var meta map[string]interface{}
+	_ = json.Unmarshal(enriched.Metadata, &meta)
+	if meta != nil {
+		if s, ok := meta["alert_correlation_id"].(string); ok {
+			return strings.TrimSpace(s)
+		}
+		if snap, ok := meta["evidence_snapshot"].(map[string]interface{}); ok {
+			if pkg, ok := snap["package"].(map[string]interface{}); ok {
+				if m, ok := pkg["metadata"].(map[string]interface{}); ok {
+					if s, ok := m["alert_correlation_id"].(string); ok {
+						return strings.TrimSpace(s)
+					}
+				}
+			}
+		}
+	}
+	var evSnap map[string]interface{}
+	_ = json.Unmarshal(enriched.EvidenceSnapshot, &evSnap)
+	if pkg, ok := evSnap["package"].(map[string]interface{}); ok {
+		if m, ok := pkg["metadata"].(map[string]interface{}); ok {
+			if s, ok := m["alert_correlation_id"].(string); ok {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
 }
 
 type channelConfig struct {

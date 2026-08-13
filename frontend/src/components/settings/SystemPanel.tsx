@@ -31,6 +31,7 @@ export default function SystemPanel() {
   const [uninstallOpen, setUninstallOpen] = useState(false);
   const [modeSaving, setModeSaving] = useState(false);
   const [modeSuccess, setModeSuccess] = useState('');
+  const [modeError, setModeError] = useState('');
   const [actionSaving, setActionSaving] = useState<'start' | 'stop' | null>(null);
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
@@ -48,29 +49,20 @@ export default function SystemPanel() {
     }
   }, [t]);
 
-  const refreshStatusQuiet = useCallback(async (preserveMode?: StartMode) => {
-    try {
-      const { data } = await systemApi.status();
-      setStatus((_prev) => {
-        if (!preserveMode) return data;
-        return {
-          ...data,
-          start_mode: preserveMode,
-          start_mode_effective: preserveMode,
-          service_running: preserveMode === 'auto' ? data.service_running : false,
-        };
-      });
-    } catch {
-      // Keep optimistic UI state if background refresh fails.
-    }
-  }, []);
-
   useEffect(() => {
     if (isAdmin) void loadStatus();
   }, [isAdmin, loadStatus]);
 
+  /** Button selection follows OS-effective mode (honest). Unconfigured → Manual. */
+  function effectiveSelectedMode(s: SystemStatus): StartMode {
+    const eff = (s.start_mode_effective || '').trim();
+    if (eff === 'auto' && s.service_registered) return 'auto';
+    return 'manual';
+  }
+
   async function handleStartModeChange(mode: StartMode) {
-    if (!status || mode === status.start_mode || modeSaving) return;
+    if (!status || modeSaving) return;
+    if (mode === effectiveSelectedMode(status)) return;
     const confirmMsg =
       mode === 'auto'
         ? t('system.startModeConfirmAuto')
@@ -79,31 +71,22 @@ export default function SystemPanel() {
 
     setModeSaving(true);
     setModeSuccess('');
+    setModeError('');
     try {
       const { data } = await systemApi.setStartMode(mode);
-      setStatus((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          start_mode: mode,
-          start_mode_effective: mode,
-          service_running: mode === 'auto' ? prev.service_running : false,
-        };
-      });
+      if (!data.ok) {
+        setModeError(data.message || t('system.startModeError'));
+        await loadStatus();
+        return;
+      }
       setModeSuccess(data.message || t('system.startModeSaved'));
-      void refreshStatusQuiet(mode);
-    } catch {
-      setStatus((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          start_mode: mode,
-          start_mode_effective: mode,
-          service_running: mode === 'auto' ? prev.service_running : false,
-        };
-      });
-      setModeSuccess(t('system.startModeSaved'));
-      void refreshStatusQuiet(mode);
+      await loadStatus();
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string; ok?: boolean } } };
+      const msg = ax.response?.data?.message
+        ?? (err instanceof Error ? err.message : String(err));
+      setModeError(`${t('system.startModeError')}: ${msg}`);
+      await loadStatus();
     } finally {
       setModeSaving(false);
     }
@@ -151,16 +134,18 @@ export default function SystemPanel() {
         ? t('system.platformLinux')
         : status?.platform ?? '—';
 
-  const effectiveMode = status?.start_mode_effective || status?.start_mode;
+  const effectiveMode = status?.start_mode_effective || '';
   const modeMismatch =
-    status &&
-    status.start_mode_effective &&
-    status.start_mode_effective !== status.start_mode;
+    Boolean(status) &&
+    Boolean(status!.start_mode) &&
+    Boolean(status!.start_mode_effective) &&
+    status!.start_mode_effective !== status!.start_mode;
 
   const appActive = Boolean(status?.app_running);
   const isWindows = status?.platform === 'windows';
   const canStart = !appActive;
   const canStop = appActive;
+  const selectedMode = status ? effectiveSelectedMode(status) : 'manual';
 
   const mechanismLabel =
     status?.platform === 'windows'
@@ -168,6 +153,16 @@ export default function SystemPanel() {
       : status?.platform === 'linux'
         ? t('system.mechanismLinux')
         : status?.service_name ?? '—';
+
+  const autoLabel = isWindows
+    ? t('system.startModeAutoWindows')
+    : t('system.startModeAutoLinux');
+  const runningLabel = isWindows
+    ? t('system.runningWindows')
+    : t('system.runningLinux');
+  const startModeHint = isWindows
+    ? t('system.startModeHintWindows')
+    : t('system.startModeHintLinux');
 
   return (
     <div className="space-y-6">
@@ -214,7 +209,7 @@ export default function SystemPanel() {
               </div>
               <div className="inline-flex rounded-lg border border-cv-border bg-cv-surface/50 p-1 gap-1">
                 {(['auto', 'manual'] as const).map((mode) => {
-                  const selected = status.start_mode === mode;
+                  const selected = selectedMode === mode;
                   const Icon = mode === 'auto' ? Zap : Hand;
                   return (
                     <button
@@ -229,21 +224,32 @@ export default function SystemPanel() {
                       }`}
                     >
                       <Icon className="w-4 h-4" />
-                      {mode === 'auto' ? t('system.startModeAuto') : t('system.startModeManual')}
+                      {mode === 'auto' ? autoLabel : t('system.startModeManual')}
                     </button>
                   );
                 })}
               </div>
-              <p className="text-xs text-cv-muted">{t('system.startModeHint')}</p>
+              <p className="text-xs text-cv-muted">{startModeHint}</p>
               {modeMismatch && (
                 <p className="text-xs text-amber-400">
                   {t('system.startModeMismatch', {
                     configured: status.start_mode,
-                    effective: effectiveMode,
+                    effective: effectiveMode || t('system.no'),
                   })}
                 </p>
               )}
+              {modeError && <p className="text-xs text-red-400">{modeError}</p>}
               {modeSuccess && <p className="text-xs text-emerald-400">{modeSuccess}</p>}
+
+              {!status.service_registered && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-1.5">
+                  <div className="flex items-center gap-2 text-sm font-medium text-amber-300">
+                    <AlertTriangle className="w-4 h-4" />
+                    {t('system.serviceNotRegisteredTitle')}
+                  </div>
+                  <p className="text-xs text-cv-muted">{t('system.serviceNotRegisteredCta')}</p>
+                </div>
+              )}
 
               <div className="rounded-lg border border-cv-border bg-cv-surface/30 p-4 space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-cv-text">
@@ -253,7 +259,7 @@ export default function SystemPanel() {
                 <div className="space-y-2.5 text-xs text-cv-muted">
                   <div>
                     <p className="font-medium text-cv-text mb-0.5">{t('system.startModeGuideAutoTitle')}</p>
-                    <p>{t('system.startModeGuideAutoBody')}</p>
+                    <p>{isWindows ? t('system.startModeGuideAutoBodyWindows') : t('system.startModeGuideAutoBodyLinux')}</p>
                   </div>
                   <div>
                     <p className="font-medium text-cv-text mb-0.5">{t('system.startModeGuideManualTitle')}</p>
@@ -280,7 +286,7 @@ export default function SystemPanel() {
               />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-              <span className="text-sm text-cv-muted">{t('system.running')}</span>
+              <span className="text-sm text-cv-muted" title={runningLabel}>{runningLabel}</span>
               <StatusBadge
                 ok={status.service_running}
                 label={status.service_running ? t('system.active') : t('system.stopped')}

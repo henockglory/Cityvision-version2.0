@@ -166,7 +166,7 @@ Watchdogs → relance si crash ou ingest figé
 - **Tableau de bord** — vue synthétique : caméras en ligne, alertes, événements 24 h, règles actives.
 - **Alertes temps réel** — WebSocket : pas besoin d'actualiser la page.
 - **Santé système** — état des services, GPU, providers ONNX réels exposés.
-- **Paramètres** — mode de démarrage, routage e-mail, politique de preuves par défaut, désinstallation.
+- **Paramètres** — mode de démarrage, routage e-mail / webhook, **son des alertes** (catalogue ≥20 tons courts + import audio local IndexedDB, volume), politique de preuves par défaut, désinstallation.
 
 ---
 
@@ -194,7 +194,7 @@ Watchdogs → relance si crash ou ingest figé
 1. **Catalogue de règles** — parcourez les familles : présence, intrusion, trafic, vitesse, identité, foule, sécurité, routier…
 2. **Activer une règle** — choisissez caméra, zone, seuils, horaires, sévérité.
 3. **Politique de preuves** — clip H.264 (6 s par défaut), images clés, plaque si contexte routier.
-4. **Routage** — e-mail SMTP, webhook (n8n, ticketing, SI tiers).
+4. **Routage** — e-mail SMTP à la création ; webhook (n8n, ticketing, SI tiers) à la création **et** quand les preuves passent à `complete` (`webhook_phase`). Détail : [WEBHOOK-INTEGRATION.md](WEBHOOK-INTEGRATION.md).
 
 *Une règle validée une fois prouve le mécanisme pour toutes les autres : même pipeline, même exigence de preuve.*
 
@@ -209,6 +209,7 @@ Watchdogs → relance si crash ou ingest figé
 - **Utilisateurs & rôles** — RBAC fin (organisation, permissions).
 - **Audit** — journal signé des actions sensibles.
 - **Paramètres système** — démarrage manuel/auto, arrêt/démarrage stack, désinstallation propre.
+- **Paramètres → Général** — activer/couper sons UI et alertes ; choisir le ton d’alerte (catalogue ou fichier personnalisé stocké dans ce navigateur, sans limite applicative) ; régler le volume.
 
 ---
 
@@ -247,7 +248,7 @@ CitéVision n'est pas « une fonction » : c'est un **éventail** que vous activ
 | Besoin | Ce que CitéVision fait |
 |--------|------------------------|
 | E-mail d'alerte premium | SMTP configurable, MailHog en démo |
-| Webhook / n8n | Payload structuré à la création d'alerte |
+| Webhook / n8n | Dual POST : `create` puis `evidence_complete` ; preuves en URL dans `evidence_snapshot` (pas en binaire) — voir [WEBHOOK-INTEGRATION.md](WEBHOOK-INTEGRATION.md) |
 | Preuves juridiques | MinIO, métadonnées, visionneuse intégrée |
 | Mur vidéo / ops center | Vue directe multi-flux WebRTC |
 

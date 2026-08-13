@@ -39,6 +39,10 @@ func (a *API) SystemSetStartMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		if res.Message == "" {
+			res.Message = err.Error()
+		}
+		res.OK = false
 		writeJSON(w, http.StatusInternalServerError, res)
 		return
 	}

@@ -56,7 +56,7 @@
 
 ## Sons et onboarding
 43. Clic robotique (mute toggle)
-44. Détection sonore sur alerte WS
+44. Détection sonore sur alerte WS — Paramètres → Général : choix du ton (catalogue ≥20), preview, volume, import custom IndexedDB (illimité local navigateur)
 45. Skip tour visible et fonctionnel
 46. Tour driver.js sans chevauchement bloquant
 

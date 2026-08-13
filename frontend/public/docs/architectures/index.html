@@ -1151,9 +1151,11 @@ flowchart TD
         <p class="arch-id">B3 · Sorties</p>
         <h3>Orchestration alerte → webhook / mail</h3>
         <p class="blurb">
-          Event MQTT → match rules-engine → alerte persistée → composition preuve async →
-          routing (webhook HTTP, mail). Si la politique exige des preuves complètes,
-          pas d’alerte « finale » tant que <code>evidence_status≠complete</code>.
+          Event MQTT → match rules-engine → alerte persistée → routing immédiat
+          (<code>webhook_phase=create</code> + mail SMTP) → composition preuve async →
+          second webhook (<code>webhook_phase=evidence_complete</code>) au premier passage
+          <code>evidence_status=complete</code>. Fail-closed : pas de snapshot inventé si preuves manquantes.
+          Contrat&nbsp;: <code>docs/WEBHOOK-INTEGRATION.md</code>.
         </p>
       </div>
       <div class="arch-body">
@@ -1162,14 +1164,14 @@ flowchart TD
 flowchart LR
   Ev[event MQTT] --> RE[rules-engine match]
   RE --> Al[alert DB]
+  Al --> CreateWH["webhook create"]
+  Al --> Mail[mail create-only]
   Al --> Evd[evidence async]
-  Evd -->|complete| Out[routing]
-  Out --> WH[webhook]
-  Out --> Mail[mail / Mailhog]
-  Evd -->|missing| Hold[pas de finale fail-closed]
+  Evd -->|complete| CompleteWH["webhook evidence_complete"]
+  Evd -->|missing| Hold[pas de snapshot inventé]
           </pre>
         </div>
-        <p class="check"><strong>Pragmatique&nbsp;:</strong> tester le webhook avec une alerte déjà <em>complete</em>. Un 200 webhook sur alerte sans clip n’est pas un DoD.</p>
+        <p class="check"><strong>Pragmatique&nbsp;:</strong> en n8n, filtrez sur <code>webhook_phase=evidence_complete</code> (ou <code>evidence_status=complete</code>). Un 200 sur <code>create</code> sans clip n’est pas un DoD preuves. Les preuves voyagent en URL dans <code>evidence_snapshot</code>.</p>
       </div>
     </article>
 

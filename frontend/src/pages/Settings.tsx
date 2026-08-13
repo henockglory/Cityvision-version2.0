@@ -12,6 +12,7 @@ import PlatePatternsPanel from '@/components/settings/PlatePatternsPanel';
 import EvidenceDefaultsPanel from '@/components/settings/EvidenceDefaultsPanel';
 import AlertRoutingPanel from '@/components/settings/AlertRoutingPanel';
 import SystemPanel from '@/components/settings/SystemPanel';
+import AlertSoundsPanel from '@/components/settings/AlertSoundsPanel';
 import IntegrationsStatusPanel from '@/components/settings/IntegrationsStatusPanel';
 import InfoTip from '@/components/ui/InfoTip';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -193,6 +194,7 @@ export default function Settings() {
                 </button>
               } />
               <Row label={t('settings.sound')} custom={<MuteToggle />} />
+              <AlertSoundsPanel />
               <div id="settings-tours" className="border-t border-cv-border pt-4 mt-2">
                 <p className="text-sm font-medium mb-2">{t('settings.toursTitle')}</p>
                 <Row

@@ -7,7 +7,7 @@
 5. **ONVIF discovery** — Phase 2 or Phase 3?
 6. **go2rtc deployment** — Sidecar vs embedded in video-engine?
 7. **Face watchlist storage** — Postgres pgvector vs dedicated vector DB?
-8. **Alert delivery** — MQTT only vs webhook + email from rules-engine?
+8. ~~**Alert delivery** — MQTT only vs webhook + email?~~ **Résolu** — MQTT = bus événements/alertes internes ; livraison externe = routage SMTP (create-only) + webhook dual-phase (`create` / `evidence_complete`) + action règle webhook. Voir [WEBHOOK-INTEGRATION.md](WEBHOOK-INTEGRATION.md).
 9. **Rule authoring UI** — Visual flow builder vs JSON editor?
 10. **Camera credential encryption** — AES key rotation strategy?
 
