@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
 import { buildEvidenceAssetUrl, normalizeEvidenceApiUrl } from '@/lib/evidence';
 import { EvidenceThumbnail } from '@/components/evidence/EvidenceMedia';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 
 type FaceEntry = {
   identifier?: string;
@@ -318,10 +319,14 @@ export default function SurveillanceListsPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="cv-label">Type de liste</label>
-          <select className="cv-input" value={listType} onChange={(e) => setListType(e.target.value as typeof listType)}>
-            <option value="face_watchlist">Liste visages surveillance</option>
-            <option value="plate_block">Plaques bloquées</option>
-          </select>
+          <PremiumSelect
+            value={listType}
+            onChange={(v) => setListType(v as typeof listType)}
+            options={[
+              { value: 'face_watchlist', label: 'Liste visages surveillance' },
+              { value: 'plate_block', label: 'Plaques bloquées' },
+            ]}
+          />
         </div>
         <div>
           <label className="cv-label">Nom de la liste</label>

@@ -16,6 +16,7 @@ import AlertSoundsPanel from '@/components/settings/AlertSoundsPanel';
 import IntegrationsStatusPanel from '@/components/settings/IntegrationsStatusPanel';
 import InfoTip from '@/components/ui/InfoTip';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import { authApi, orgApi, type OrganizationSettings } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -253,21 +254,20 @@ export default function Settings() {
               <div>
                 <label className="cv-label">Profil de déploiement</label>
                 <p className="text-[11px] text-cv-muted mb-1">Utilisé pour personnaliser le catalogue des règles.</p>
-                <select
-                  className="cv-input"
+                <PremiumSelect
                   value={String((org.notification_prefs as Record<string, unknown> | undefined)?.deployment_profile ?? 'enterprise')}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  onChange={(v) => {
                     setOrg({
                       ...org,
                       notification_prefs: { ...(org.notification_prefs ?? {}), deployment_profile: v },
                     });
                   }}
-                >
-                  <option value="national">Nationale</option>
-                  <option value="enterprise">Entreprise</option>
-                  <option value="domestic">Domestique</option>
-                </select>
+                  options={[
+                    { value: 'national', label: 'Nationale' },
+                    { value: 'enterprise', label: 'Entreprise' },
+                    { value: 'domestic', label: 'Domestique' },
+                  ]}
+                />
               </div>
               <button type="button" onClick={() => void saveOrg()} className="cv-btn-primary">Enregistrer</button>
             </Section>

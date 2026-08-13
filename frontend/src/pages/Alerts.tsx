@@ -13,6 +13,7 @@ import { WEBHOOK_PRESETS } from '@/lib/evidencePolicy';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import ModalPortal from '@/components/ui/ModalPortal';
 import { alertsApi, routingApi } from '@/api/client';
 import { useAlerts, useArchiveAlert, useCameras, useRules } from '@/hooks/api/queries';
@@ -109,34 +110,51 @@ export default function Alerts() {
             Sévérité
             <InfoTip helpKey="alertSeverity" content="Filtre par niveau d'urgence de l'alerte." />
           </label>
-          <select className="cv-input text-xs" value={severity} onChange={(e) => setSeverity(e.target.value)}>
-            <option value="">Toutes</option>
-            <option value="low">Faible</option>
-            <option value="medium">Moyenne</option>
-            <option value="high">Élevée</option>
-            <option value="critical">Critique</option>
-          </select>
+          <PremiumSelect
+            className="min-w-[140px]"
+            minWidth={160}
+            triggerClassName="text-xs py-2"
+            value={severity}
+            onChange={setSeverity}
+            options={[
+              { value: '', label: t('common.all', { defaultValue: 'Toutes' }) },
+              { value: 'low', label: 'Faible' },
+              { value: 'medium', label: 'Moyenne' },
+              { value: 'high', label: 'Élevée' },
+              { value: 'critical', label: 'Critique' },
+            ]}
+          />
         </div>
         <div>
           <label className="cv-label text-xs flex items-center gap-1">
             Caméra
             <InfoTip helpKey="alertCamera" content="Affiche uniquement les alertes d'une caméra précise." />
           </label>
-          <select className="cv-input text-xs" value={cameraId} onChange={(e) => setCameraId(e.target.value)}>
-            <option value="">Toutes</option>
-            {cameras.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <PremiumSelect
+            className="min-w-[160px]"
+            minWidth={180}
+            triggerClassName="text-xs py-2"
+            value={cameraId}
+            onChange={setCameraId}
+            options={[
+              { value: '', label: t('common.all', { defaultValue: 'Toutes' }) },
+              ...cameras.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
         </div>
         <div>
           <label className="cv-label text-xs">Règle</label>
-          <select className="cv-input text-xs" value={ruleId} onChange={(e) => setRuleId(e.target.value)}>
-            <option value="">Toutes</option>
-            {rules.map((r) => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </select>
+          <PremiumSelect
+            className="min-w-[160px]"
+            minWidth={180}
+            triggerClassName="text-xs py-2"
+            value={ruleId}
+            onChange={setRuleId}
+            options={[
+              { value: '', label: t('common.all', { defaultValue: 'Toutes' }) },
+              ...rules.map((r) => ({ value: r.id, label: r.name })),
+            ]}
+          />
         </div>
         <div>
           <label className="cv-label text-xs">Du</label>
@@ -371,15 +389,14 @@ export default function Alerts() {
                     <label className="cv-label text-xs flex items-center gap-1">
                       {t('evidence.forwardPreset')}
                     </label>
-                    <select
-                      className="cv-input w-full text-sm mt-1"
+                    <PremiumSelect
+                      className="w-full mt-1"
+                      minWidth={240}
+                      triggerClassName="text-sm"
                       value={forwardPreset}
-                      onChange={(e) => setForwardPreset(e.target.value)}
-                    >
-                      {WEBHOOK_PRESETS.map((p) => (
-                        <option key={p.id} value={p.id}>{p.label}</option>
-                      ))}
-                    </select>
+                      onChange={setForwardPreset}
+                      options={WEBHOOK_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+                    />
                   </div>
                   <div>
                     <label className="cv-label text-xs flex items-center gap-1">

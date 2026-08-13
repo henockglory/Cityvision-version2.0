@@ -8,6 +8,7 @@ import {
   createLeaf,
   isGroupNode,
 } from '@/lib/conditionTree';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 
 interface ConditionTreeEditorProps {
   value: ConditionNode;
@@ -60,17 +61,18 @@ export default function ConditionTreeEditor({ value, onChange }: ConditionTreeEd
         >
           <div className="flex items-center gap-2 flex-wrap">
             <GitBranch className="w-4 h-4 text-cv-accent shrink-0" />
-            <select
-              className="cv-input text-xs py-1 w-auto"
+            <PremiumSelect
+              className="w-auto min-w-[140px]"
+              minWidth={160}
+              triggerClassName="text-xs py-1"
               value={String(node.op ?? 'AND')}
-              onChange={(e) =>
-                updateAt(path, (n) => ({ ...n, op: e.target.value as 'AND' | 'OR' }))
-              }
-            >
-              <option value="AND">{t('rules.studio.opAnd')}</option>
-              <option value="OR">{t('rules.studio.opOr')}</option>
-              <option value="SEQUENCE">{t('rules.studio.opSequence', 'Séquence temporelle')}</option>
-            </select>
+              onChange={(v) => updateAt(path, (n) => ({ ...n, op: v }))}
+              options={[
+                { value: 'AND', label: t('rules.studio.opAnd') },
+                { value: 'OR', label: t('rules.studio.opOr') },
+                { value: 'SEQUENCE', label: t('rules.studio.opSequence', 'Séquence temporelle') },
+              ]}
+            />
             <button
               type="button"
               className="cv-btn-ghost text-xs py-1 px-2"
@@ -115,24 +117,22 @@ export default function ConditionTreeEditor({ value, onChange }: ConditionTreeEd
         className="flex flex-wrap items-center gap-2 p-2 rounded-lg border border-cv-border/60 bg-cv-surface/30"
         style={{ marginLeft: depth * 12 }}
       >
-        <select
-          className="cv-input text-xs py-1 flex-1 min-w-[120px]"
+        <PremiumSelect
+          className="flex-1 min-w-[120px]"
+          minWidth={160}
+          triggerClassName="text-xs py-1"
           value={String(node.field ?? '')}
-          onChange={(e) => updateAt(path, (n) => ({ ...n, field: e.target.value }))}
-        >
-          {CONDITION_FIELDS.map((f) => (
-            <option key={f.value} value={f.value}>{f.label}</option>
-          ))}
-        </select>
-        <select
-          className="cv-input text-xs py-1 w-28"
+          onChange={(v) => updateAt(path, (n) => ({ ...n, field: v }))}
+          options={CONDITION_FIELDS.map((f) => ({ value: f.value, label: f.label }))}
+        />
+        <PremiumSelect
+          className="w-28"
+          minWidth={110}
+          triggerClassName="text-xs py-1"
           value={String(node.op ?? 'eq')}
-          onChange={(e) => updateAt(path, (n) => ({ ...n, op: e.target.value }))}
-        >
-          {CONDITION_OPS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+          onChange={(v) => updateAt(path, (n) => ({ ...n, op: v }))}
+          options={CONDITION_OPS.map((o) => ({ value: o.value, label: o.label }))}
+        />
         <input
           className="cv-input text-xs py-1 flex-1 min-w-[80px]"
           value={node.value != null ? String(node.value) : ''}

@@ -5,6 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import AddUserDialog from '@/components/users/AddUserDialog';
 import { useUsers, useCreateUser, useUpdateUser } from '@/hooks/api/queries';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
@@ -142,18 +143,15 @@ export default function UsersPage() {
                   </td>
                   <td className="px-5 py-4 text-sm text-cv-muted">{user.email}</td>
                   <td className="px-5 py-4">
-                    <select
-                      className="cv-input text-xs py-1 max-w-[140px]"
+                    <PremiumSelect
+                      className="max-w-[160px]"
+                      minWidth={150}
+                      triggerClassName="text-xs py-1.5"
                       value={user.role}
                       disabled={busyId === user.id}
-                      onChange={(e) => void changeRole(user.id, e.target.value as UserRole)}
-                    >
-                      {ROLE_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => void changeRole(user.id, v as UserRole)}
+                      options={ROLE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                    />
                   </td>
                   <td className="px-5 py-4">
                     <span

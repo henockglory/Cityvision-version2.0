@@ -5,12 +5,12 @@ import PageHeader from '@/components/ui/PageHeader';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import { useAudit, useVerifyAuditChain } from '@/hooks/api/queries';
 import { useAutoPageTour } from '@/hooks/useAutoPageTour';
 import { useSound } from '@/hooks/useSound';
 
 const ACTION_FILTERS = [
-  '',
   'login',
   'logout',
   'rule.create',
@@ -96,21 +96,20 @@ export default function Audit() {
 
       <div className="flex items-center gap-3 mb-4">
         <Filter className="w-4 h-4 text-cv-muted" />
-        <select
-          className="cv-input max-w-xs text-sm"
+        <PremiumSelect
+          className="max-w-xs w-full"
+          minWidth={220}
+          aria-label={t('audit.action')}
           value={actionFilter}
-          onChange={(e) => {
+          onChange={(v) => {
             playClick();
-            setActionFilter(e.target.value);
+            setActionFilter(v);
           }}
-        >
-          <option value="">Toutes les actions</option>
-          {ACTION_FILTERS.filter(Boolean).map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: '', label: t('audit.allActions', { defaultValue: 'Toutes les actions' }) },
+            ...ACTION_FILTERS.map((a) => ({ value: a, label: a })),
+          ]}
+        />
       </div>
 
       {audit.length === 0 ? (

@@ -15,6 +15,7 @@ import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
 import ConfirmDialog, { ToastStack } from '@/components/ui/ConfirmDialog';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import {
   useCameras,
   useCreateCamera,
@@ -445,15 +446,14 @@ export default function Cameras() {
                   {t('cameras.wizard.vendorLabel')}
                   <span className="text-xs text-cv-muted font-normal">({t('cameras.wizard.vendorHint')})</span>
                 </label>
-                <select
-                  className="cv-input w-full"
+                <PremiumSelect
                   value={selectedVendor}
-                  onChange={(e) => setSelectedVendor(e.target.value as typeof selectedVendor)}
-                >
-                  {(['auto', 'hikvision', 'dahua', 'generic'] as const).map((v) => (
-                    <option key={v} value={v}>{t(`cameras.wizard.vendor.${v}`)}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setSelectedVendor(v as typeof selectedVendor)}
+                  options={(['auto', 'hikvision', 'dahua', 'generic'] as const).map((v) => ({
+                    value: v,
+                    label: t(`cameras.wizard.vendor.${v}`),
+                  }))}
+                />
                 {selectedVendor !== 'auto' && (
                   <p className={`text-xs mt-1 ${selectedVendor === 'generic' ? 'text-amber-400' : 'text-emerald-400'}`}>
                     {t(`cameras.wizard.vendorCoverage.${selectedVendor}`)}

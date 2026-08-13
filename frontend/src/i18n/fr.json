@@ -989,7 +989,13 @@
     "back": "Retour",
     "next": "Suivant",
     "retry": "Réessayer",
-    "close": "Fermer"
+    "close": "Fermer",
+    "ok": "OK",
+    "confirm": "Confirmer",
+    "choose": "— Choisir —",
+    "menu": "Menu",
+    "noResults": "Aucun résultat",
+    "all": "Toutes"
   },
   "roles": {
     "admin": "Administrateur",

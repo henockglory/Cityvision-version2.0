@@ -970,7 +970,13 @@
     "back": "Back",
     "next": "Next",
     "retry": "Retry",
-    "close": "Close"
+    "close": "Close",
+    "ok": "OK",
+    "confirm": "Confirm",
+    "choose": "— Choose —",
+    "menu": "Menu",
+    "noResults": "No results",
+    "all": "All"
   },
   "roles": {
     "admin": "Administrator",

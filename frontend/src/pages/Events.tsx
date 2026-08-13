@@ -6,6 +6,7 @@ import SplitLayout from '@/components/ui/SplitLayout';
 import LoadingState from '@/components/ui/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import ErrorState from '@/components/ErrorState';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import EvidenceViewer from '@/components/evidence/EvidenceViewer';
 import { EvidenceThumbnail } from '@/components/evidence/EvidenceMedia';
 import { useEvents, useCameras } from '@/hooks/api/queries';
@@ -119,34 +120,28 @@ export default function Events() {
       <div id="events-timeline" className="flex flex-col flex-1 min-h-0 overflow-hidden gap-4">
         <div id="events-filters" className="flex flex-wrap items-center gap-3 shrink-0">
           <Filter className="w-4 h-4 text-cv-muted" />
-          <select
-            className="cv-input text-sm max-w-[180px]"
+          <PremiumSelect
+            className="max-w-[180px] w-full"
+            minWidth={180}
+            triggerClassName="text-sm py-2"
             value={eventType}
-            onChange={(e) => {
-              playClick();
-              setEventType(e.target.value);
-            }}
-          >
-            <option value="">{t('events.allTypes')}</option>
-            {eventTypes.map((type) => (
-              <option key={type} value={type}>
-                {labelForEventType(type)}
-              </option>
-            ))}
-          </select>
-          <select
-            className="cv-input text-sm max-w-[200px]"
+            onChange={(v) => { playClick(); setEventType(v); }}
+            options={[
+              { value: '', label: t('events.allTypes') },
+              ...eventTypes.map((type) => ({ value: type, label: labelForEventType(type) })),
+            ]}
+          />
+          <PremiumSelect
+            className="max-w-[200px] w-full"
+            minWidth={200}
+            triggerClassName="text-sm py-2"
             value={cameraId}
-            onChange={(e) => {
-              playClick();
-              setCameraId(e.target.value);
-            }}
-          >
-            <option value="">{t('events.allCameras')}</option>
-            {cameras.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            onChange={(v) => { playClick(); setCameraId(v); }}
+            options={[
+              { value: '', label: t('events.allCameras') },
+              ...cameras.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
           {isAdminOrOperator && (
             <label className="flex items-center gap-2 text-xs text-cv-muted cursor-pointer">
               <input

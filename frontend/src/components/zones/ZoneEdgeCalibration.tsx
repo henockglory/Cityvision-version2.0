@@ -8,6 +8,7 @@ import {
   perimeterM,
   vertexCountFromPoints,
 } from '@/lib/zoneEdgeCalibration';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 
 export default function ZoneEdgeCalibration({
   points,
@@ -116,35 +117,37 @@ export default function ZoneEdgeCalibration({
         <div className="grid grid-cols-2 gap-2 text-[11px] border-t border-cv-border/40 pt-2">
           <label className="space-y-1">
             <span className="text-cv-muted">{t('zoneEditor.edgePairEntry', { defaultValue: 'Arête entrée' })}</span>
-            <select
-              className="cv-input w-full text-sm"
-              value={entryEdgeIndex ?? ''}
-              onChange={(e) => {
-                const v = e.target.value === '' ? null : Number(e.target.value);
+            <PremiumSelect
+              value={entryEdgeIndex == null ? '' : String(entryEdgeIndex)}
+              onChange={(raw) => {
+                const v = raw === '' ? null : Number(raw);
                 onEntryEdgeChange(Number.isFinite(v as number) ? (v as number) : null);
               }}
-            >
-              <option value="">{t('zoneEditor.edgePairUnset')}</option>
-              {Array.from({ length: n }, (_, i) => (
-                <option key={i} value={i}>{formatEdgeLabel(i, n)}</option>
-              ))}
-            </select>
+              options={[
+                { value: '', label: t('zoneEditor.edgePairUnset') },
+                ...Array.from({ length: n }, (_, i) => ({
+                  value: String(i),
+                  label: formatEdgeLabel(i, n),
+                })),
+              ]}
+            />
           </label>
           <label className="space-y-1">
             <span className="text-cv-muted">{t('zoneEditor.edgePairExit', { defaultValue: 'Arête sortie' })}</span>
-            <select
-              className="cv-input w-full text-sm"
-              value={exitEdgeIndex ?? ''}
-              onChange={(e) => {
-                const v = e.target.value === '' ? null : Number(e.target.value);
+            <PremiumSelect
+              value={exitEdgeIndex == null ? '' : String(exitEdgeIndex)}
+              onChange={(raw) => {
+                const v = raw === '' ? null : Number(raw);
                 onExitEdgeChange(Number.isFinite(v as number) ? (v as number) : null);
               }}
-            >
-              <option value="">{t('zoneEditor.edgePairUnset')}</option>
-              {Array.from({ length: n }, (_, i) => (
-                <option key={i} value={i}>{formatEdgeLabel(i, n)}</option>
-              ))}
-            </select>
+              options={[
+                { value: '', label: t('zoneEditor.edgePairUnset') },
+                ...Array.from({ length: n }, (_, i) => ({
+                  value: String(i),
+                  label: formatEdgeLabel(i, n),
+                })),
+              ]}
+            />
           </label>
         </div>
       )}

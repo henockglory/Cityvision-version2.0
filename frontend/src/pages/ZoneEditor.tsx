@@ -1768,20 +1768,16 @@ function BehaviorDetail({
               <div key={f.key} className="space-y-1">
                 <label className="text-[11px] text-cv-muted">{label}</label>
                 {f.type === 'class_filter' ? (
-                  <select
-                    className="cv-input w-full text-sm"
+                  <PremiumSelect
                     value={String(value)}
-                    onChange={(e) => onConfigChange(f.key, e.target.value)}
-                  >
-                    {!FRIGATE_TRACK_LABELS.includes(String(value)) && (
-                      <option value={String(value)}>{String(value)}</option>
-                    )}
-                    {FRIGATE_TRACK_LABELS.map((lab) => (
-                      <option key={lab} value={lab}>
-                        {lab}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => onConfigChange(f.key, v)}
+                    options={[
+                      ...(!FRIGATE_TRACK_LABELS.includes(String(value))
+                        ? [{ value: String(value), label: String(value) }]
+                        : []),
+                      ...FRIGATE_TRACK_LABELS.map((lab) => ({ value: lab, label: lab })),
+                    ]}
+                  />
                 ) : f.type === 'enum' || f.type === 'text' ? (
                   <input
                     className="cv-input w-full text-sm"

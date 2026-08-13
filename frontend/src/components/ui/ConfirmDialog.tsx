@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import DialogTourHelpButton from '@/components/ui/DialogTourHelpButton';
@@ -26,8 +27,8 @@ export default function ConfirmDialog({
   title,
   message,
   detail,
-  confirmLabel = 'Confirmer',
-  cancelLabel = 'Annuler',
+  confirmLabel,
+  cancelLabel,
   danger = false,
   loading = false,
   loadingLabel = '…',
@@ -35,8 +36,11 @@ export default function ConfirmDialog({
   onCancel,
   tourDisabled = false,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation();
   const Icon = danger ? Trash2 : AlertTriangle;
   const startTour = useDialogTour('confirmDialog', open && !tourDisabled);
+  const confirmText = confirmLabel ?? t('common.confirm', { defaultValue: 'Confirmer' });
+  const cancelText = cancelLabel ?? t('common.cancel', { defaultValue: 'Annuler' });
 
   return (
     <Modal
@@ -49,7 +53,7 @@ export default function ConfirmDialog({
       footer={
         <div id="confirm-dialog-actions" className="flex w-full gap-3 justify-end">
           <button type="button" onClick={onCancel} disabled={loading} className="cv-btn-secondary min-w-[5.5rem]">
-            {cancelLabel}
+            {cancelText}
           </button>
           <button
             type="button"
@@ -61,7 +65,7 @@ export default function ConfirmDialog({
             className={danger ? 'cv-btn-danger min-w-[5.5rem]' : 'cv-btn-primary min-w-[5.5rem]'}
           >
             {danger && <Trash2 className="w-4 h-4" />}
-            {loading ? loadingLabel : confirmLabel}
+            {loading ? loadingLabel : confirmText}
           </button>
         </div>
       }

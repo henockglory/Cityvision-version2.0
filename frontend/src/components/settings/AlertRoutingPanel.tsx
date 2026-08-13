@@ -9,6 +9,7 @@ import {
 import { useAuthStore } from '@/stores/authStore';
 import { WEBHOOK_PRESETS } from '@/lib/evidencePolicy';
 import WebhookPayloadPreview from '@/components/integrations/WebhookPayloadPreview';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 
 const MATCH_TYPES = [
   { id: 'any', label: 'Toute alerte' },
@@ -214,18 +215,17 @@ export default function AlertRoutingPanel() {
                 <div className="grid sm:grid-cols-2 gap-3 text-sm">
                   <div>
                     <label className="cv-label text-xs">Si</label>
-                    <select
-                      className="cv-input w-full text-xs mt-1"
+                    <PremiumSelect
+                      className="w-full mt-1"
+                      minWidth={200}
+                      triggerClassName="text-xs py-2"
                       value={match.type ?? 'any'}
-                      onChange={(e) => setRules((prev) => prev.map((r) => r.id === rule.id ? {
+                      onChange={(v) => setRules((prev) => prev.map((r) => r.id === rule.id ? {
                         ...r,
-                        match: { ...match, type: e.target.value },
+                        match: { ...match, type: v },
                       } : r))}
-                    >
-                      {MATCH_TYPES.map((t) => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                      ))}
-                    </select>
+                      options={MATCH_TYPES.map((mt) => ({ value: mt.id, label: mt.label }))}
+                    />
                     {match.type && match.type !== 'any' && (
                       <input
                         className="cv-input w-full text-xs mt-1"
@@ -250,18 +250,17 @@ export default function AlertRoutingPanel() {
                       } : r))}
                     />
                     <label className="cv-label text-xs mt-2 block">Webhook</label>
-                    <select
-                      className="cv-input w-full text-xs mt-1"
+                    <PremiumSelect
+                      className="w-full mt-1"
+                      minWidth={220}
+                      triggerClassName="text-xs py-2"
                       value={String(channels.webhook_preset ?? '')}
-                      onChange={(e) => setRules((prev) => prev.map((r) => r.id === rule.id ? {
+                      onChange={(v) => setRules((prev) => prev.map((r) => r.id === rule.id ? {
                         ...r,
-                        channels: { ...channels, webhook_preset: e.target.value },
+                        channels: { ...channels, webhook_preset: v },
                       } : r))}
-                    >
-                      {WEBHOOK_PRESETS.map((p) => (
-                        <option key={p.id} value={p.id}>{p.label}</option>
-                      ))}
-                    </select>
+                      options={WEBHOOK_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+                    />
                     <input
                       className="cv-input w-full text-xs mt-1"
                       placeholder="https://..."

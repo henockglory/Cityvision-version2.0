@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, X } from 'lucide-react';
 import InfoTip from '@/components/ui/InfoTip';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import DialogTourHelpButton from '@/components/ui/DialogTourHelpButton';
 import { useDialogTour } from '@/hooks/useDialogTour';
 import type { UserRole } from '@/types';
@@ -102,11 +103,15 @@ export default function AddUserDialog({ open, onClose, onSubmit }: AddUserDialog
               {t('users.role')}
               <InfoTip helpKey="userRole" content={t('users.dialog.roleHint')} />
             </label>
-            <select className="cv-input" value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-              <option value="admin">{t('users.dialog.roleAdmin')}</option>
-              <option value="operator">{t('users.dialog.roleOperator')}</option>
-              <option value="viewer">{t('users.dialog.roleViewer')}</option>
-            </select>
+            <PremiumSelect
+              value={role}
+              onChange={(v) => setRole(v as UserRole)}
+              options={[
+                { value: 'admin', label: t('users.dialog.roleAdmin') },
+                { value: 'operator', label: t('users.dialog.roleOperator') },
+                { value: 'viewer', label: t('users.dialog.roleViewer') },
+              ]}
+            />
           </div>
         </div>
 

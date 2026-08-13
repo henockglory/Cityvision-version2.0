@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import WizardSteps, { type WizardStep } from '@/components/ui/WizardSteps';
 import ExplanatorySelect from '@/components/ui/ExplanatorySelect';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import DialogTourHelpButton from '@/components/ui/DialogTourHelpButton';
 import { useDialogTour } from '@/hooks/useDialogTour';
 import {
@@ -284,19 +285,36 @@ export default function ModelImportWizard({ orgId, open, onClose, onSuccess }: M
                   })}
                 </span>
               </label>
-              <select className="cv-input text-sm" value={appliesTo} onChange={(e) => setAppliesTo(e.target.value as typeof appliesTo)}>
-                <option value="zone">Zone</option><option value="line">Ligne</option><option value="both">Les deux</option>
-              </select>
-              <select className="cv-input text-sm" value={inputSource} onChange={(e) => setInputSource(e.target.value as typeof inputSource)}>
-                <option value="crop_vehicle">Crop véhicule</option><option value="crop_zone">Crop zone</option><option value="full_frame">Image complète</option>
-              </select>
+              <PremiumSelect
+                value={appliesTo}
+                onChange={(v) => setAppliesTo(v as typeof appliesTo)}
+                options={[
+                  { value: 'zone', label: 'Zone' },
+                  { value: 'line', label: 'Ligne' },
+                  { value: 'both', label: 'Les deux' },
+                ]}
+              />
+              <PremiumSelect
+                value={inputSource}
+                onChange={(v) => setInputSource(v as typeof inputSource)}
+                options={[
+                  { value: 'crop_vehicle', label: 'Crop véhicule' },
+                  { value: 'crop_zone', label: 'Crop zone' },
+                  { value: 'full_frame', label: 'Image complète' },
+                ]}
+              />
             </div>
           )}
           {step === 4 && (
             <div id="model-import-step4">
-              <select className="cv-input text-sm" value={task} onChange={(e) => setTask(e.target.value as typeof task)}>
-                <option value="classification">Classification</option><option value="detection">Détection</option>
-              </select>
+              <PremiumSelect
+                value={task}
+                onChange={(v) => setTask(v as typeof task)}
+                options={[
+                  { value: 'classification', label: 'Classification' },
+                  { value: 'detection', label: 'Détection' },
+                ]}
+              />
               <input type="number" className="cv-input text-sm" value={inputSize} onChange={(e) => setInputSize(Number(e.target.value))} />
               <textarea className="cv-input text-sm font-mono" value={classesRaw} onChange={(e) => setClassesRaw(e.target.value)} />
               <textarea className="cv-input text-sm font-mono" value={positiveRaw} onChange={(e) => setPositiveRaw(e.target.value)} />

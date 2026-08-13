@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Film, Image, Target, ScanLine, Smile, Contact } from 'lucide-react';
 import InfoTip from '@/components/ui/InfoTip';
+import PremiumSelect from '@/components/ui/PremiumSelect';
 import type { EvidenceImageRole, EvidencePolicy } from '@/lib/evidencePolicy';
 import {
   EVIDENCE_IMAGE_ROLE_DEFAULTS,
@@ -148,20 +149,19 @@ export default function EvidencePolicyForm({
                     <span className="text-[11px] text-cv-muted shrink-0">
                       {t('rules.studio.imageSlot', { n: index + 1, defaultValue: `Image ${index + 1}` })}
                     </span>
-                    <select
-                      className="cv-input flex-1 text-xs py-1"
+                    <PremiumSelect
+                      className="flex-1"
+                      triggerClassName="text-xs py-1"
                       disabled={showEnabledToggle && !policy.enabled}
                       value={img.role}
-                      onChange={(e) =>
-                        onChange(setEvidenceImageRole(policy, index, e.target.value as EvidenceImageRole))
+                      onChange={(v) =>
+                        onChange(setEvidenceImageRole(policy, index, v as EvidenceImageRole))
                       }
-                    >
-                      {allowedRoles.map((role) => (
-                        <option key={role} value={role}>
-                          {roleLabel(role)}
-                        </option>
-                      ))}
-                    </select>
+                      options={allowedRoles.map((role) => ({
+                        value: role,
+                        label: roleLabel(role),
+                      }))}
+                    />
                   </div>
                   {hint && <p className="text-[10px] text-cv-muted pl-6">{hint}</p>}
                 </div>

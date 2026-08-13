@@ -16,6 +16,9 @@ interface PremiumSelectProps {
   triggerClassName?: string;
   minWidth?: number;
   zIndex?: number;
+  disabled?: boolean;
+  id?: string;
+  'aria-label'?: string;
 }
 
 /** Premium combobox matching the app theme — replaces native <select>. */
@@ -28,6 +31,9 @@ export default function PremiumSelect({
   triggerClassName = '',
   minWidth = 220,
   zIndex = 200,
+  disabled = false,
+  id,
+  'aria-label': ariaLabel,
 }: PremiumSelectProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -37,11 +43,14 @@ export default function PremiumSelect({
     <div className={`relative ${className}`}>
       <button
         ref={triggerRef}
+        id={id}
         type="button"
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`cv-input text-sm flex items-center justify-between gap-2 w-full cursor-pointer ${triggerClassName}`}
-        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        className={`cv-input text-sm flex items-center justify-between gap-2 w-full cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${triggerClassName}`}
+        onClick={() => { if (!disabled) setOpen((o) => !o); }}
       >
         <span className="text-left flex-1 whitespace-normal leading-snug">
           {selected?.label ?? placeholder}
