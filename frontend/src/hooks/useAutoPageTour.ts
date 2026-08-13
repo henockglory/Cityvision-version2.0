@@ -16,6 +16,9 @@ interface AutoPageTourOptions {
 
   prepareStep?: (selector: string) => void;
 
+  /** When true, skip auto-start (manual ? button still works). */
+  suspendAutoStart?: boolean;
+
 }
 
 
@@ -37,6 +40,8 @@ export function useAutoPageTour(tourId: TourId, options?: AutoPageTourOptions) {
   const startedRef = useRef(false);
 
   const prepareStep = options?.prepareStep;
+
+  const suspendAutoStart = options?.suspendAutoStart ?? false;
 
 
 
@@ -68,6 +73,8 @@ export function useAutoPageTour(tourId: TourId, options?: AutoPageTourOptions) {
 
     if ((window as unknown as { __CV_E2E__?: boolean }).__CV_E2E__) return;
 
+    if (suspendAutoStart) return;
+
     if (!toursEnabled || !toursAutoStart || completed || startedRef.current) return;
 
     const steps = getTourSteps(tourId, (k) => t(k));
@@ -80,7 +87,7 @@ export function useAutoPageTour(tourId: TourId, options?: AutoPageTourOptions) {
 
     return () => window.clearTimeout(timer);
 
-  }, [toursEnabled, toursAutoStart, completed, tourId, startTour, t]);
+  }, [toursEnabled, toursAutoStart, completed, tourId, startTour, t, suspendAutoStart]);
 
 
 

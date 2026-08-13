@@ -63,7 +63,9 @@
     "errorBackend": "Serveur injoignable — lancez bash scripts/start-linux.sh (WSL)",
     "errorSessionStore": "Session indisponible (Redis). Relancez Start-CiteVision.ps1 ou attendez le heal automatique.",
     "copyright": "© 2026 HOLOGRAM.CD — Tous droits réservés",
-    "support": "En cas de problème de connexion, contactez le service de support technique :"
+    "support": "En cas de problème de connexion, contactez le service de support technique :",
+    "entering": "Connexion à Citévision…",
+    "enteringHint": "Préparation de votre espace opérationnel"
   },
   "dashboard": {
     "title": "Synthèse opérationnelle",

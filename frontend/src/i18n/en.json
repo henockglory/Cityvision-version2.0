@@ -63,7 +63,9 @@
     "errorBackend": "Cannot reach server — start services with: bash scripts/start-linux.sh (WSL)",
     "errorSessionStore": "Session store unavailable (Redis). Re-run Start-CiteVision.ps1 or wait for automatic heal.",
     "copyright": "© 2026 HOLOGRAM.CD — All rights reserved",
-    "support": "If you experience connection issues, contact technical support:"
+    "support": "If you experience connection issues, contact technical support:",
+    "entering": "Signing in to Citévision…",
+    "enteringHint": "Preparing your operational workspace"
   },
   "dashboard": {
     "title": "Operational summary",

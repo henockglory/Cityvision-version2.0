@@ -35,7 +35,6 @@ export default function Login() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
   const { playClick, playSonar } = useSound();
-  const startTour = useAutoPageTour('login');
   const toursEnabled = useUiStore((s) => s.toursEnabled);
   const reducedMotion = usePrefersReducedMotion();
 
@@ -46,6 +45,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState<EarthzoomPhase>(() => (reducedMotion ? 'frozen' : 'intro'));
   const pendingAuthRef = useRef<PendingAuth | null>(null);
+
+  // Don't let the ? tour overlay interrupt Earthzoom intro / outro.
+  const startTour = useAutoPageTour('login', {
+    suspendAutoStart: !reducedMotion && phase !== 'frozen',
+  });
 
   const enterApp = useCallback(
     (auth: PendingAuth) => {
@@ -126,7 +130,7 @@ export default function Login() {
         />
       )}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-        {toursEnabled && (
+        {toursEnabled && phase === 'frozen' && (
           <Tooltip content={t('pageHeader.tourHint', 'Guide pas à pas : menus, champs et procédures expliqués simplement.')}>
             <button
               type="button"
@@ -140,6 +144,17 @@ export default function Login() {
         )}
         <ThemeToggle />
       </div>
+
+      {phase === 'outro' && !reducedMotion && (
+        <div className="relative z-10 text-center px-6 animate-fade-in">
+          <p className="font-display text-lg text-cv-text tracking-wide">
+            {t('login.entering', 'Connexion à Citévision…')}
+          </p>
+          <p className="text-sm text-cv-muted mt-2">
+            {t('login.enteringHint', 'Préparation de votre espace opérationnel')}
+          </p>
+        </div>
+      )}
 
       {showForm && (
         <div className="relative z-10 w-full max-w-md mx-auto px-4 animate-fade-in">
