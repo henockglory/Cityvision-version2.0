@@ -66,3 +66,39 @@ def test_run_paddle_on_jpeg_returns_none_when_backend_unloaded():
     backend.is_loaded = False
     with patch.object(plate_fusion, "get_paddle_backend", return_value=backend):
         assert plate_fusion.run_paddle_on_jpeg(b"\xff\xd8\xff") is None
+
+
+def test_matches_composition_standard_and_custom():
+    from citevision_ai.identity.plate_fusion import (
+        matches_composition,
+        set_plate_patterns,
+        resolve_zone_plate_pattern,
+    )
+
+    assert matches_composition("AB12CD")
+    assert not matches_composition("AB")
+    fr = r"^[A-Z]{2}[0-9]{4}[A-Z]{2}$"
+    assert matches_composition("AB1234CD", fr)
+    assert not matches_composition("AB12CD", fr)
+
+    set_plate_patterns(
+        [
+            {
+                "id": "p1",
+                "name": "FR",
+                "mode": "custom",
+                "regex": fr,
+                "is_default": True,
+            }
+        ]
+    )
+    # Empty zone → org default
+    assert resolve_zone_plate_pattern({}).pattern == fr
+    # Explicit standard ignores org default
+    assert (
+        resolve_zone_plate_pattern(
+            {"behavior_config": {"config": {"plate_pattern_id": "standard"}}}
+        )
+        is None
+    )
+    set_plate_patterns([])

@@ -24,7 +24,15 @@ import { useSound } from '@/hooks/useSound';
 import { useAuthStore, getAuthCredentials } from '@/stores/authStore';
 import { useUiStore, resolvePersistedZoneEditorCameraId, writeZoneEditorCameraSelection } from '@/stores/uiStore';
 
-import { zonesApi, capabilitiesApi, type BackendZone, type BackendLine, type CapabilitiesBehaviorMenuItem } from '@/api/client';
+import {
+  zonesApi,
+  capabilitiesApi,
+  platePatternsApi,
+  type BackendZone,
+  type BackendLine,
+  type CapabilitiesBehaviorMenuItem,
+  type PlatePattern,
+} from '@/api/client';
 
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import PremiumSelect from '@/components/ui/PremiumSelect';
@@ -39,6 +47,7 @@ import {
   derivedTravelDistanceM,
   edgeStagePoints,
   edgeVertexIndices,
+  formatEdgeLabel,
   midEdgeStageCoords,
   pointsToPolygon,
   polygonFromBackend,
@@ -1140,7 +1149,7 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
                             key="hi-edge-label"
                             x={midEdgeStageCoords(selectedZone.points, hi).x}
                             y={midEdgeStageCoords(selectedZone.points, hi).y - 10}
-                            text={`P${hi + 1}→P${((hi + 1) % n) + 1}`}
+                            text={formatEdgeLabel(hi, n)}
                             fontSize={14}
                             fontStyle="bold"
                             fill="#FFD54F"
@@ -1646,6 +1655,23 @@ function BehaviorDetail({
   capabilityLabel: string;
 }) {
   const { t } = useTranslation();
+  const orgId = useAuthStore((s) => s.orgId) ?? getAuthCredentials().orgId;
+  const [platePatterns, setPlatePatterns] = useState<PlatePattern[]>([]);
+  useEffect(() => {
+    if (!orgId || !behavior.config_fields.some((f) => f.type === 'plate_pattern')) return;
+    let cancelled = false;
+    void platePatternsApi
+      .list(orgId)
+      .then(({ data }) => {
+        if (!cancelled) setPlatePatterns(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPlatePatterns([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, behavior.id, behavior.config_fields]);
   const desc = lang === 'fr' ? behavior.human_description_fr : behavior.human_description_en;
   const capClass =
     behavior.capability === 'real'
@@ -1670,6 +1696,34 @@ function BehaviorDetail({
             const value = config[f.key] ?? f.default ?? '';
             const label = lang === 'fr' ? f.label_fr : f.label_en;
             const hint = lang === 'fr' ? f.hint_fr : f.hint_en;
+            if (f.type === 'plate_pattern') {
+              const options = [
+                {
+                  value: '',
+                  label: lang === 'fr' ? 'Défaut organisation' : 'Org default',
+                },
+                {
+                  value: 'standard',
+                  label: lang === 'fr' ? 'Standard (4–12 alphanum)' : 'Standard (4–12 alnum)',
+                },
+                ...platePatterns.map((p) => ({
+                  value: p.id,
+                  label: p.is_default ? `${p.name} ★` : p.name,
+                })),
+              ];
+              return (
+                <div key={f.key} className="space-y-1">
+                  <label className="text-[11px] text-cv-muted">{label}</label>
+                  <PremiumSelect
+                    value={String(value ?? '')}
+                    onChange={(v) => onConfigChange(f.key, v)}
+                    options={options}
+                    minWidth={240}
+                  />
+                  {hint && <p className="text-[10px] text-cv-muted/70 leading-relaxed">{hint}</p>}
+                </div>
+              );
+            }
             if (f.type === 'track_objects') {
               const selected = trackObjectsToList(config[f.key] ?? f.default);
               const toggle = (lab: string) => {

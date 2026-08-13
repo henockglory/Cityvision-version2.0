@@ -4,7 +4,7 @@ export type Capability = 'real' | 'partial' | 'beta';
 
 export interface BehaviorConfigField {
   key: string;
-  type: 'number' | 'class_filter' | 'text' | 'enum' | 'track_objects';
+  type: 'number' | 'class_filter' | 'text' | 'enum' | 'track_objects' | 'plate_pattern';
   label_fr: string;
   label_en: string;
   default?: number | string;

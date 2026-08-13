@@ -1210,8 +1210,8 @@ class FrigateTrackEvidence:
                 "track_id": evt.get("track_id"),
                 "event_type": evt.get("event_type") or evt.get("event"),
                 "clip_duration_sec": clip_duration,
-                "plate_number": plate_number or evt.get("plate_number"),
-                "plate_confidence": plate_confidence if plate_confidence else evt.get("plate_confidence"),
+                "plate_number": plate_number,
+                "plate_confidence": plate_confidence,
                 "missing_roles": missing_roles,
                 "evidence_status": status,
             }
@@ -2683,25 +2683,32 @@ class FrigateTrackEvidence:
         """Return plate JPEG + best OCR reading for the evidence slot.
 
         Readings are fused from Gemini + PaddleOCR (and Fast-ALPR when its
-        service is configured); the highest-confidence valid text wins. Text is
-        best-effort: when nothing readable, still attach the crop as visual
-        plate proof — never fabricate a plate (R.2).
+        service is configured); only composition-matching candidates are kept,
+        then the highest-confidence valid text wins. Text is best-effort: when
+        nothing readable, still attach the crop as visual plate proof — never
+        fabricate a plate (R.2).
         """
         if not plate_crop:
             return None, evt.get("plate_number"), evt.get("plate_confidence"), "none"
-        readings: list[tuple[str, float, str]] = []
+        from citevision_ai.identity.plate_fusion import (
+            filter_plate_candidates,
+            reading_from_gemini_verdict,
+            resolve_zone_plate_pattern,
+            run_paddle_on_jpeg,
+        )
+
+        pattern_re = resolve_zone_plate_pattern(evt if isinstance(evt, dict) else None)
+        raw_readings: list[tuple[str, float, str]] = []
         # PaddleOCR (local, always available when models loaded).
         try:
-            from citevision_ai.identity.plate_fusion import run_paddle_on_jpeg
-            paddle = run_paddle_on_jpeg(plate_crop)
+            paddle = run_paddle_on_jpeg(plate_crop, pattern_re)
             if paddle:
-                readings.append((paddle.text, float(paddle.confidence), "paddle"))
+                raw_readings.append((paddle.text, float(paddle.confidence), "paddle"))
         except Exception:
             logger.debug("plate paddle read failed", exc_info=True)
         # Gemini one-shot OCR (one call per violation event — events are rare).
         if settings.gemini_enabled and (settings.gemini_api_key or "").strip():
             try:
-                from citevision_ai.identity.plate_fusion import reading_from_gemini_verdict
                 from citevision_ai.vlm.gemini_client import GeminiClient
                 client = GeminiClient(
                     settings.gemini_api_key,
@@ -2709,9 +2716,9 @@ class FrigateTrackEvidence:
                     timeout=min(float(settings.gemini_timeout or 20.0), 20.0),
                 )
                 verdict = client.judge_jpeg(plate_crop, rule="plate_ocr")
-                gem = reading_from_gemini_verdict(verdict)
+                gem = reading_from_gemini_verdict(verdict, pattern_re)
                 if gem:
-                    readings.append((gem.text, float(gem.confidence), "gemini"))
+                    raw_readings.append((gem.text, float(gem.confidence), "gemini"))
             except Exception:
                 logger.debug("plate gemini read failed", exc_info=True)
         # Fast-ALPR HTTP service (legacy slot reader) as extra candidate.
@@ -2721,9 +2728,10 @@ class FrigateTrackEvidence:
                     plate_crop, settings.ocr_url, timeout=settings.ocr_timeout,
                 )
                 if plate and conf >= settings.plate_min_conf:
-                    readings.append((plate, float(conf), "fast_alpr"))
+                    raw_readings.append((plate, float(conf), "fast_alpr"))
             except Exception:
                 logger.debug("plate fast_alpr read failed", exc_info=True)
+        readings = filter_plate_candidates(raw_readings, pattern_re)
         if readings:
             # Agreement between two engines boosts confidence over either alone.
             by_text: dict[str, list[tuple[str, float, str]]] = {}
@@ -2740,7 +2748,11 @@ class FrigateTrackEvidence:
                 best_text, conf, source, len(readings),
             )
             return plate_crop, best_text, conf, source
-        return plate_crop, evt.get("plate_number"), evt.get("plate_confidence"), "unreadable"
+        # Drop prior plate_number if it no longer matches composition.
+        prior = evt.get("plate_number")
+        if prior and filter_plate_candidates([(str(prior), 1.0, "prior")], pattern_re):
+            return plate_crop, prior, evt.get("plate_confidence"), "unreadable"
+        return plate_crop, None, None, "unreadable"
 
     def _probe_duration(self, path: str) -> float | None:
         ffprobe = shutil.which("ffprobe")

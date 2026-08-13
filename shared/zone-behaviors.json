@@ -395,6 +395,15 @@
           "label_fr": "Objet surveillé",
           "label_en": "Watched object",
           "default": "car"
+        },
+        {
+          "key": "plate_pattern_id",
+          "type": "plate_pattern",
+          "label_fr": "Composition de plaque",
+          "label_en": "Plate composition",
+          "default": "",
+          "hint_fr": "Standard (4–12 alphanum) ou une composition nommée (Paramètres → Identité). Vide = défaut organisation.",
+          "hint_en": "Standard (4–12 alnum) or a named composition (Settings → Identity). Empty = org default."
         }
       ]
     },

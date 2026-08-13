@@ -213,6 +213,7 @@ class CameraStartRequest(BaseModel):
     calibration: dict[str, Any] = Field(default_factory=dict)
     watchlist: list[dict[str, Any]] = Field(default_factory=list)
     plates: list[dict[str, Any]] = Field(default_factory=list)
+    plate_patterns: list[dict[str, Any]] = Field(default_factory=list)
     analytics_thresholds: dict[str, Any] = Field(default_factory=dict)
     evidence_capture_rules: list[dict[str, Any]] = Field(default_factory=list)
     capability_profiles: list[dict[str, Any]] = Field(default_factory=list)
@@ -638,6 +639,7 @@ def start_camera(camera_id: str, body: CameraStartRequest) -> dict[str, Any]:
     pipeline.set_watchlist(body.watchlist)
     if body.plates:
         pipeline.set_plates(body.plates)
+    pipeline.set_plate_patterns(body.plate_patterns)
     if body.analytics_thresholds:
         pipeline.apply_runtime_config(camera_id, body.analytics_thresholds)
     if body.evidence_capture_rules:

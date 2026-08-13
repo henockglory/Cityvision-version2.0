@@ -42,15 +42,14 @@ _BEHAVIOR_TO_RULES: dict[str, list[str]] = {
 _VEHICLE_LABELS = frozenset({
     "car", "truck", "bus", "motorcycle", "motorbike", "van", "vehicle",
 })
+# Face already requires Frigate label == "person". Do NOT skip seatbelt/phone
+# zones: a person standing in those polygons must still be watchlist-matched.
 _FACE_SKIP_BEHAVIORS = frozenset({
     "speed_measurement",
     "red_light_observation",
     "traffic_light_color",
     "plate_ocr",
     "count_crossings",
-    "seatbelt",
-    "phone_use",
-    "driver_cabin",
 })
 _GEOMETRY_ENTER_BEHAVIORS = frozenset({
     "", "presence", "perimeter", "loitering", "parking", "abandoned_object",
@@ -1578,6 +1577,7 @@ class FrigateEventBridge:
                     "camera_id": camera_id,
                     "event_type": et,
                     "event": et,
+                    "class_name": "person",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "zone_id": zone_name,
                     "frigate_event_id": event_id,
@@ -1642,10 +1642,14 @@ class FrigateEventBridge:
             with self._stats_lock:
                 self._stats["snapshot_fail"] += 1
             return
-        from citevision_ai.identity.plate_fusion import run_paddle_on_jpeg
+        from citevision_ai.identity.plate_fusion import (
+            resolve_zone_plate_pattern,
+            run_paddle_on_jpeg,
+        )
         from citevision_ai.vlm.queue import VlmJob
 
-        paddle_reading = run_paddle_on_jpeg(jpeg)
+        pattern_re = resolve_zone_plate_pattern(zinfo)
+        paddle_reading = run_paddle_on_jpeg(jpeg, pattern_re)
         zone_name = str(zinfo.get("zone_id") or zinfo.get("name") or "")
         skeleton = {
             "event_id": str(uuid.uuid4()),
@@ -1671,6 +1675,7 @@ class FrigateEventBridge:
                 event_skeleton=skeleton,
                 paddle_plate_text=paddle_reading.text if paddle_reading else "",
                 paddle_plate_confidence=float(paddle_reading.confidence) if paddle_reading else 0.0,
+                plate_pattern_regex=pattern_re.pattern if pattern_re is not None else "",
             )
         )
         if ok:

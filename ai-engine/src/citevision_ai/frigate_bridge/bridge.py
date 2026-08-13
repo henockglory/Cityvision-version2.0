@@ -42,15 +42,14 @@ _BEHAVIOR_TO_RULES: dict[str, list[str]] = {
 _VEHICLE_LABELS = frozenset({
     "car", "truck", "bus", "motorcycle", "motorbike", "van", "vehicle",
 })
+# Face already requires Frigate label == "person". Do NOT skip seatbelt/phone
+# zones: a person standing in those polygons must still be watchlist-matched.
 _FACE_SKIP_BEHAVIORS = frozenset({
     "speed_measurement",
     "red_light_observation",
     "traffic_light_color",
     "plate_ocr",
     "count_crossings",
-    "seatbelt",
-    "phone_use",
-    "driver_cabin",
 })
 _GEOMETRY_ENTER_BEHAVIORS = frozenset({
     "", "presence", "perimeter", "loitering", "parking", "abandoned_object",
@@ -1653,6 +1652,21 @@ class FrigateEventBridge:
         if fused.get("score") is not None:
             base_meta["confidence"] = fused.get("score")
 
+        # Match enrollment JPEG for evidence package (best-effort).
+        ref_jpeg: bytes | None = None
+        want_lab = str(fused.get("label") or "").strip()
+        want_id = str(fused.get("identifier") or "").strip()
+        if want_lab or want_id:
+            for lab, data in refs:
+                if (want_lab and lab == want_lab) or (want_id and lab == want_id):
+                    ref_jpeg = data
+                    break
+            if ref_jpeg is None:
+                for lab, data in refs:
+                    if want_lab and want_lab in lab:
+                        ref_jpeg = data
+                        break
+
         # Always emit face_detected audit when any voter saw a face / match attempt.
         if face_clear or et in ("face_watchlist_match", "face_unknown"):
             if not self._dedupe(f"face:{event_id}:face_detected", ttl=90.0):
@@ -1661,13 +1675,17 @@ class FrigateEventBridge:
                     "camera_id": camera_id,
                     "event_type": "face_detected",
                     "event": "face_detected",
+                    "class_name": "person",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "zone_id": zone_name,
                     "frigate_event_id": event_id,
                     "bbox": box,
                     "severity": "info",
                     "metadata": {**base_meta, "detection_method": method},
+                    "_face_crop_jpeg": jpeg,
                 }
+                if ref_jpeg:
+                    det_evt["_face_reference_jpeg"] = ref_jpeg
                 if self._emit:
                     try:
                         self._emit(det_evt)
@@ -1680,13 +1698,17 @@ class FrigateEventBridge:
                 "camera_id": camera_id,
                 "event_type": et,
                 "event": et,
+                "class_name": "person",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "zone_id": zone_name,
                 "frigate_event_id": event_id,
                 "bbox": box,
                 "severity": "critical" if et == "face_watchlist_match" else "warning",
                 "metadata": dict(base_meta),
+                "_face_crop_jpeg": jpeg,
             }
+            if ref_jpeg:
+                evt["_face_reference_jpeg"] = ref_jpeg
             if self._emit:
                 try:
                     self._emit(evt)
@@ -1747,10 +1769,14 @@ class FrigateEventBridge:
             with self._stats_lock:
                 self._stats["snapshot_fail"] += 1
             return
-        from citevision_ai.identity.plate_fusion import run_paddle_on_jpeg
+        from citevision_ai.identity.plate_fusion import (
+            resolve_zone_plate_pattern,
+            run_paddle_on_jpeg,
+        )
         from citevision_ai.vlm.queue import VlmJob
 
-        paddle_reading = run_paddle_on_jpeg(jpeg)
+        pattern_re = resolve_zone_plate_pattern(zinfo)
+        paddle_reading = run_paddle_on_jpeg(jpeg, pattern_re)
         zone_name = str(zinfo.get("zone_id") or zinfo.get("name") or "")
         skeleton = {
             "event_id": str(uuid.uuid4()),
@@ -1776,6 +1802,7 @@ class FrigateEventBridge:
                 event_skeleton=skeleton,
                 paddle_plate_text=paddle_reading.text if paddle_reading else "",
                 paddle_plate_confidence=float(paddle_reading.confidence) if paddle_reading else 0.0,
+                plate_pattern_regex=pattern_re.pattern if pattern_re is not None else "",
             )
         )
         if ok:

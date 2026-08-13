@@ -59,6 +59,7 @@ type StartCameraRequest struct {
 	Calibration          map[string]interface{}   `json:"calibration"`
 	Watchlist            []map[string]interface{} `json:"watchlist"`
 	Plates               []map[string]interface{} `json:"plates"`
+	PlatePatterns        []map[string]interface{} `json:"plate_patterns,omitempty"`
 	AnalyticsThresholds  AnalyticsThresholds      `json:"analytics_thresholds,omitempty"`
 	EvidenceCaptureRules []map[string]interface{} `json:"evidence_capture_rules,omitempty"`
 	CapabilityProfiles   []map[string]interface{} `json:"capability_profiles,omitempty"`
@@ -617,6 +618,7 @@ func (o *Orchestrator) sync(ctx context.Context) {
 			Calibration:          calib,
 			Watchlist:            o.buildWatchlist(ctx, orgID),
 			Plates:               o.buildPlates(ctx, orgID),
+			PlatePatterns:        o.buildPlatePatterns(ctx, orgID),
 			AIFps:                8,
 			AnalyticsThresholds:  thresholds,
 			EvidenceCaptureRules: evidenceRules,
@@ -1229,6 +1231,37 @@ func (o *Orchestrator) buildPlates(ctx context.Context, orgID uuid.UUID) []map[s
 				},
 			})
 		}
+	}
+	if out == nil {
+		out = []map[string]interface{}{}
+	}
+	return out
+}
+
+func (o *Orchestrator) buildPlatePatterns(ctx context.Context, orgID uuid.UUID) []map[string]interface{} {
+	rows, err := o.pool.Query(ctx, `
+		SELECT id::text, name, mode, regex, is_default
+		FROM plate_patterns WHERE org_id = $1
+		ORDER BY is_default DESC, name ASC`, orgID)
+	if err != nil {
+		// Table may not exist yet during rolling migrate — non-fatal.
+		return []map[string]interface{}{}
+	}
+	defer rows.Close()
+	var out []map[string]interface{}
+	for rows.Next() {
+		var id, name, mode, regex string
+		var isDefault bool
+		if err := rows.Scan(&id, &name, &mode, &regex, &isDefault); err != nil {
+			continue
+		}
+		out = append(out, map[string]interface{}{
+			"id":         id,
+			"name":       name,
+			"mode":       mode,
+			"regex":      regex,
+			"is_default": isDefault,
+		})
 	}
 	if out == nil {
 		out = []map[string]interface{}{}

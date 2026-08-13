@@ -362,6 +362,49 @@ export interface SurveillanceList {
   is_active: boolean;
 }
 
+export interface PlateSegment {
+  charset: 'A-Z' | '0-9' | 'A-Z0-9' | string;
+  count: number;
+}
+
+export interface PlatePattern {
+  id: string;
+  org_id: string;
+  name: string;
+  mode: 'standard' | 'custom' | string;
+  composition: PlateSegment[];
+  regex: string;
+  is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const platePatternsApi = {
+  list: (orgId: string) =>
+    api.get<PlatePattern[]>(`/orgs/${orgId}/plate-patterns`),
+  create: (
+    orgId: string,
+    body: {
+      name: string;
+      mode: string;
+      composition: PlateSegment[];
+      is_default?: boolean;
+    },
+  ) => api.post<PlatePattern>(`/orgs/${orgId}/plate-patterns`, body),
+  update: (
+    orgId: string,
+    patternId: string,
+    body: {
+      name?: string;
+      mode?: string;
+      composition?: PlateSegment[];
+      is_default?: boolean;
+    },
+  ) => api.patch<PlatePattern>(`/orgs/${orgId}/plate-patterns/${patternId}`, body),
+  delete: (orgId: string, patternId: string) =>
+    api.delete(`/orgs/${orgId}/plate-patterns/${patternId}`),
+};
+
 export const rulesApi = {
   list: (orgId: string) => api.get<Rule[]>(`/orgs/${orgId}/rules`),
   catalog: (orgId: string) => api.get<import('@/types').RuleCatalogTemplate[]>(`/orgs/${orgId}/rules/catalog`),

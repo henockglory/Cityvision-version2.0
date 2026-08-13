@@ -128,3 +128,10 @@ export function edgeVertexIndices(edgeIndex: number, vertexCount: number): [numb
   const i = edgeIndex % vertexCount;
   return [i, (i + 1) % vertexCount];
 }
+
+/** 1-based label for edge i → (i+1) mod n, e.g. "P1-P2", "P4-P1". */
+export function formatEdgeLabel(edgeIndex: number, vertexCount: number): string {
+  if (vertexCount < 2) return '—';
+  const [a, b] = edgeVertexIndices(edgeIndex, vertexCount);
+  return `P${a + 1}-P${b + 1}`;
+}

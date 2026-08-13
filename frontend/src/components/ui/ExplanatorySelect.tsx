@@ -190,7 +190,7 @@ export default function ExplanatorySelect({
               </div>
             </div>
           )}
-          <div ref={listRef} className="max-h-72 overflow-y-auto py-1">
+          <div ref={listRef} className="py-1">
             {flatFiltered.length === 0 && (
               <p className="px-3 py-4 text-xs text-cv-muted text-center">{emptyLabel ?? 'Aucun résultat'}</p>
             )}

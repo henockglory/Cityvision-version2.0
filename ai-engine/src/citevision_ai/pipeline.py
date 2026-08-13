@@ -692,6 +692,11 @@ class PipelineService:
     def set_plates(self, entries: list[dict[str, Any]]) -> None:
         self.plate_engine.set_plates(entries)
 
+    def set_plate_patterns(self, patterns: list[dict[str, Any]] | None) -> None:
+        from citevision_ai.identity.plate_fusion import set_plate_patterns
+
+        set_plate_patterns(patterns)
+
     # Zone behaviors that must never spawn parasitic loitering / dwell rules.
     _LOITERING_SKIP_BEHAVIORS = frozenset({
         "speed_measurement", "traffic_light", "red_light", "phone_use",

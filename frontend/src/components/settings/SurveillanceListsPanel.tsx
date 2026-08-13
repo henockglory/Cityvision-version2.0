@@ -1,17 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Plus, Trash2, UserSearch } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Plus, Trash2, UserSearch, ImageOff } from 'lucide-react';
 import { identityApi, type SurveillanceList } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useSound } from '@/hooks/useSound';
+import { buildEvidenceAssetUrl, normalizeEvidenceApiUrl } from '@/lib/evidence';
+import { EvidenceThumbnail } from '@/components/evidence/EvidenceMedia';
 
 type FaceEntry = {
   identifier?: string;
   label?: string;
   metadata?: {
     photo_url?: string;
+    photo_object_key?: string;
     has_photo?: boolean;
     frigate_sync?: string;
     embedding?: unknown[];
+    entry_id?: string;
   };
 };
 
@@ -41,6 +45,52 @@ function humanizeEnrollError(raw: string, status?: number): string {
     return 'Délai dépassé / réseau — réessayez (InsightFace peut prendre quelques secondes).';
   }
   return raw || 'Ajout impossible.';
+}
+
+/** Resolve authenticated API path for a watchlist enrollment photo. */
+function watchlistPhotoApiUrl(entry: FaceEntry, orgId: string | null | undefined): string | undefined {
+  if (!orgId) return undefined;
+  const key = String(entry.metadata?.photo_object_key || '').trim();
+  if (key) return buildEvidenceAssetUrl(orgId, key);
+  const raw = String(entry.metadata?.photo_url || '').trim();
+  if (!raw) return undefined;
+  return normalizeEvidenceApiUrl(raw);
+}
+
+function LocalFilePreview({ file, label }: { file: File; label?: string }) {
+  const url = useMemo(() => URL.createObjectURL(file), [file]);
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  return (
+    <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-cv-accent/50 bg-cv-deep/40 shrink-0">
+      <img src={url} alt={label || file.name} className="w-full h-full object-cover" />
+      <span className="absolute bottom-0 inset-x-0 text-[9px] leading-tight px-0.5 py-0.5 bg-black/65 text-white truncate">
+        à enrôler
+      </span>
+    </div>
+  );
+}
+
+function WatchlistFaceThumb({
+  apiUrl,
+  label,
+}: {
+  apiUrl: string | undefined;
+  label: string;
+}) {
+  if (!apiUrl) {
+    return (
+      <div className="w-16 h-16 rounded-lg border border-cv-border bg-cv-deep/40 flex flex-col items-center justify-center gap-0.5 text-cv-muted">
+        <ImageOff className="w-4 h-4" />
+        <span className="text-[9px]">sans photo</span>
+      </div>
+    );
+  }
+  return (
+    <div className="w-16 h-16 rounded-lg overflow-hidden border border-cv-border bg-cv-deep/40 shrink-0">
+      <EvidenceThumbnail apiUrl={apiUrl} className="w-full h-full object-cover" />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
 }
 
 export default function SurveillanceListsPanel() {
@@ -262,7 +312,7 @@ export default function SurveillanceListsPanel() {
     <div className="space-y-4">
       <p className="text-sm text-cv-muted">
         Listes requises pour les règles identité. Pour les visages : photo + nom, puis cliquez
-        « Enrôler photo » (Frigate → InsightFace → Gemini).
+        « Enrôler photo » (Frigate → InsightFace → Gemini). Les miniatures affichent le contenu réel de la liste.
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -311,6 +361,8 @@ export default function SurveillanceListsPanel() {
           {lists.map((list) => {
             const busy = busyList === list.id;
             const row = statusByList[list.id];
+            const pendingFile = fileByList[list.id];
+            const faces = faceEntries(list);
             return (
               <div key={list.id} className="p-3 rounded-lg border border-cv-border space-y-2">
                 <div className="flex items-center justify-between gap-2">
@@ -328,32 +380,39 @@ export default function SurveillanceListsPanel() {
                   </button>
                 </div>
 
-                {list.list_type === 'face_watchlist' && faceEntries(list).length > 0 && (
-                  <ul className="space-y-1.5">
-                    {faceEntries(list).map((entry, idx) => {
-                      const hasEmb = Array.isArray(entry.metadata?.embedding) && entry.metadata!.embedding!.length > 0;
-                      return (
-                        <li key={`${entry.identifier || idx}`} className="flex items-center gap-2 text-xs text-cv-muted">
-                          {entry.metadata?.photo_url ? (
-                            <img
-                              src={entry.metadata.photo_url}
-                              alt={entry.label || 'visage'}
-                              className="w-8 h-8 rounded object-cover border border-cv-border"
-                            />
-                          ) : (
-                            <span className="w-8 h-8 rounded border border-cv-border inline-flex items-center justify-center">
-                              {hasEmb ? '✓' : '–'}
+                {list.list_type === 'face_watchlist' && (faces.length > 0 || pendingFile) && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] text-cv-muted">Aperçu des identités</p>
+                    <ul className="flex flex-wrap gap-3">
+                      {faces.map((entry, idx) => {
+                        const hasEmb = Array.isArray(entry.metadata?.embedding) && entry.metadata!.embedding!.length > 0;
+                        const label = entry.label || entry.identifier || 'sans nom';
+                        const apiUrl = watchlistPhotoApiUrl(entry, orgId);
+                        return (
+                          <li
+                            key={`${entry.identifier || entry.metadata?.entry_id || idx}`}
+                            className="flex flex-col items-center gap-1 w-[4.5rem]"
+                            title={`${label}${hasEmb ? ' · embedding OK' : ''}${entry.metadata?.frigate_sync ? ` · frigate:${entry.metadata.frigate_sync}` : ''}`}
+                          >
+                            <WatchlistFaceThumb apiUrl={apiUrl} label={label} />
+                            <span className="text-[10px] text-cv-text truncate w-full text-center">{label}</span>
+                            <span className="text-[9px] text-cv-muted truncate w-full text-center">
+                              {hasEmb ? 'OK' : 'sans emb.'}
+                              {entry.metadata?.frigate_sync === 'ok' ? ' · Frigate' : ''}
                             </span>
-                          )}
-                          <span className="truncate text-cv-text">{entry.label || entry.identifier || 'sans nom'}</span>
-                          <span className="shrink-0">
-                            {hasEmb ? 'embedding' : 'sans embedding'}
-                            {entry.metadata?.frigate_sync ? ` · frigate:${entry.metadata.frigate_sync}` : ''}
+                          </li>
+                        );
+                      })}
+                      {pendingFile && (
+                        <li className="flex flex-col items-center gap-1 w-[4.5rem]">
+                          <LocalFilePreview file={pendingFile} label={entryByList[list.id]} />
+                          <span className="text-[10px] text-cv-accent truncate w-full text-center">
+                            {entryByList[list.id]?.trim() || pendingFile.name.replace(/\.[^.]+$/, '')}
                           </span>
                         </li>
-                      );
-                    })}
-                  </ul>
+                      )}
+                    </ul>
+                  </div>
                 )}
 
                 <div className="flex flex-col sm:flex-row gap-2">

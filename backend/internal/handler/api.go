@@ -1231,6 +1231,92 @@ func (a *API) DeleteSurveillanceList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+func (a *API) ListPlatePatterns(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	list, err := a.Identity.ListPlatePatterns(r.Context(), orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list failed")
+		return
+	}
+	if list == nil {
+		list = []identity.PlatePattern{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (a *API) CreatePlatePattern(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	var req identity.PlatePatternCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	p, err := a.Identity.CreatePlatePattern(r.Context(), orgID, req)
+	if errors.Is(err, identity.ErrPatternInvalid) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "create failed")
+		return
+	}
+	if a.Orchestrator != nil {
+		a.Orchestrator.InvalidateConfigHashes()
+	}
+	writeJSON(w, http.StatusCreated, p)
+}
+
+func (a *API) UpdatePlatePattern(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "patternID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req identity.PlatePatternUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	p, err := a.Identity.UpdatePlatePattern(r.Context(), orgID, id, req)
+	if errors.Is(err, identity.ErrPatternNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if errors.Is(err, identity.ErrPatternInvalid) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	if a.Orchestrator != nil {
+		a.Orchestrator.InvalidateConfigHashes()
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (a *API) DeletePlatePattern(w http.ResponseWriter, r *http.Request) {
+	orgID := middleware.GetOrgID(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "patternID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := a.Identity.DeletePlatePattern(r.Context(), orgID, id); errors.Is(err, identity.ErrPatternNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	if a.Orchestrator != nil {
+		a.Orchestrator.InvalidateConfigHashes()
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 func (a *API) AddSurveillanceListEntry(w http.ResponseWriter, r *http.Request) {
 	orgID := middleware.GetOrgID(r.Context())
 	listID, err := uuid.Parse(chi.URLParam(r, "listID"))

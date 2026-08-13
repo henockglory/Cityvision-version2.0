@@ -4,6 +4,7 @@ import {
   calibratedEdgeCount,
   derivedTravelDistanceM,
   edgePixelLength,
+  formatEdgeLabel,
   perimeterM,
   vertexCountFromPoints,
 } from '@/lib/zoneEdgeCalibration';
@@ -50,51 +51,15 @@ export default function ZoneEdgeCalibration({
         </p>
       )}
       <p className="text-[10px] text-cv-muted leading-relaxed">{t('zoneEditor.edgeCalibrationHint')}</p>
-      {onEntryEdgeChange && onExitEdgeChange && (
-        <div className="grid grid-cols-2 gap-2 text-[11px]">
-          <label className="space-y-1">
-            <span className="text-cv-muted">{t('zoneEditor.edgePairEntry', { defaultValue: 'Arête entrée' })}</span>
-            <select
-              className="cv-input w-full text-sm"
-              value={entryEdgeIndex ?? ''}
-              onChange={(e) => {
-                const v = e.target.value === '' ? null : Number(e.target.value);
-                onEntryEdgeChange(Number.isFinite(v as number) ? (v as number) : null);
-              }}
-            >
-              <option value="">{t('zoneEditor.edgePairUnset', { defaultValue: '—' })}</option>
-              {Array.from({ length: n }, (_, i) => (
-                <option key={i} value={i}>{t('zoneEditor.edgeLabel', { from: i + 1, to: ((i + 1) % n) + 1 })}</option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-cv-muted">{t('zoneEditor.edgePairExit', { defaultValue: 'Arête sortie' })}</span>
-            <select
-              className="cv-input w-full text-sm"
-              value={exitEdgeIndex ?? ''}
-              onChange={(e) => {
-                const v = e.target.value === '' ? null : Number(e.target.value);
-                onExitEdgeChange(Number.isFinite(v as number) ? (v as number) : null);
-              }}
-            >
-              <option value="">{t('zoneEditor.edgePairUnset', { defaultValue: '—' })}</option>
-              {Array.from({ length: n }, (_, i) => (
-                <option key={i} value={i}>{t('zoneEditor.edgeLabel', { from: i + 1, to: ((i + 1) % n) + 1 })}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
       <div
         className="space-y-1.5 max-h-48 overflow-y-auto pr-1"
         onMouseLeave={() => onEdgeHighlight?.(null)}
       >
         {Array.from({ length: n }, (_, i) => {
-          const j = (i + 1) % n;
           const pxLen = edgePixelLength(points, i);
           const val = edgeDistancesM[i];
           const isActive = activeEdgeIndex === i;
+          const label = formatEdgeLabel(i, n);
           return (
             <div
               key={i}
@@ -106,12 +71,13 @@ export default function ZoneEdgeCalibration({
             >
               <button
                 type="button"
-                className={`shrink-0 w-16 text-left font-medium tabular-nums ${
+                className={`shrink-0 min-w-[4.5rem] text-left font-medium tabular-nums ${
                   isActive ? 'text-cv-accent' : 'text-cv-muted'
                 }`}
                 onClick={() => onEdgeHighlight?.(i)}
+                title={label}
               >
-                {t('zoneEditor.edgeLabel', { from: i + 1, to: j + 1 })}
+                {label}
               </button>
               <input
                 type="number"
@@ -146,6 +112,42 @@ export default function ZoneEdgeCalibration({
           );
         })}
       </div>
+      {onEntryEdgeChange && onExitEdgeChange && (
+        <div className="grid grid-cols-2 gap-2 text-[11px] border-t border-cv-border/40 pt-2">
+          <label className="space-y-1">
+            <span className="text-cv-muted">{t('zoneEditor.edgePairEntry', { defaultValue: 'Arête entrée' })}</span>
+            <select
+              className="cv-input w-full text-sm"
+              value={entryEdgeIndex ?? ''}
+              onChange={(e) => {
+                const v = e.target.value === '' ? null : Number(e.target.value);
+                onEntryEdgeChange(Number.isFinite(v as number) ? (v as number) : null);
+              }}
+            >
+              <option value="">{t('zoneEditor.edgePairUnset')}</option>
+              {Array.from({ length: n }, (_, i) => (
+                <option key={i} value={i}>{formatEdgeLabel(i, n)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-cv-muted">{t('zoneEditor.edgePairExit', { defaultValue: 'Arête sortie' })}</span>
+            <select
+              className="cv-input w-full text-sm"
+              value={exitEdgeIndex ?? ''}
+              onChange={(e) => {
+                const v = e.target.value === '' ? null : Number(e.target.value);
+                onExitEdgeChange(Number.isFinite(v as number) ? (v as number) : null);
+              }}
+            >
+              <option value="">{t('zoneEditor.edgePairUnset')}</option>
+              {Array.from({ length: n }, (_, i) => (
+                <option key={i} value={i}>{formatEdgeLabel(i, n)}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
       <div className="text-[10px] text-cv-muted space-y-0.5 border-t border-cv-border/40 pt-2">
         <div>
           {t('zoneEditor.edgeCalibrationProgress', { filled, total: n })}

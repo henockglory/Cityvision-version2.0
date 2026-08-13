@@ -439,6 +439,15 @@ func main() {
 						})
 					})
 
+					r.Route("/plate-patterns", func(r chi.Router) {
+						r.With(middleware.RequirePermission(rbacSvc, "rules:read")).Get("/", api.ListPlatePatterns)
+						r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Post("/", api.CreatePlatePattern)
+						r.Route("/{patternID}", func(r chi.Router) {
+							r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Patch("/", api.UpdatePlatePattern)
+							r.With(middleware.RequirePermission(rbacSvc, "rules:write")).Delete("/", api.DeletePlatePattern)
+						})
+					})
+
 					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Post("/events/ingest", api.IngestEvent)
 					r.With(middleware.RequirePermission(rbacSvc, "events:read")).Get("/events", api.ListEvents)
 					r.With(middleware.RequireAnyPermission(rbacSvc, "events:read", "alerts:read")).Get("/evidence/asset", api.ServeEvidenceAsset)

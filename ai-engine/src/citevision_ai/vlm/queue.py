@@ -34,6 +34,7 @@ class VlmJob:
     shadow_only: bool = False
     paddle_plate_text: str = ""
     paddle_plate_confidence: float = 0.0
+    plate_pattern_regex: str = ""
 
 
 def _cabin_dump_root() -> Path | None:
@@ -283,18 +284,22 @@ class VlmQueue:
             from citevision_ai.identity.plate_fusion import (
                 PlateReading,
                 fuse_plate_readings,
+                matches_composition,
                 reading_from_gemini_verdict,
             )
 
+            pattern_re = (job.plate_pattern_regex or "").strip() or None
             paddle_hint = None
-            if job.paddle_plate_text:
+            if job.paddle_plate_text and matches_composition(
+                str(job.paddle_plate_text), pattern_re
+            ):
                 paddle_hint = PlateReading(
                     text=str(job.paddle_plate_text),
                     confidence=float(job.paddle_plate_confidence or 0.0),
                     source="paddle",
                 )
             winner, plate_fusion_meta = fuse_plate_readings(
-                reading_from_gemini_verdict(verdict),
+                reading_from_gemini_verdict(verdict, pattern_re),
                 paddle_hint,
             )
             if winner and float(winner.confidence) >= float(job.min_confidence):
@@ -303,6 +308,35 @@ class VlmQueue:
             emit_ok = bool(fused_plate_text)
         else:
             emit_ok = should_emit(verdict, min_confidence=job.min_confidence)
+
+        force_no = False
+        # Temporary demo: emit a few cabin alerts even when Gemini says NO so
+        # operators can validate that evidence shows the exact Gemini crop.
+        # Set VLM_CABIN_FORCE_EMIT_NO_MAX=0 (or unset) to restore production gate.
+        if (
+            not emit_ok
+            and job.rule in _CABIN_RULES
+            and not getattr(verdict, "error", "")
+        ):
+            try:
+                force_budget = int(os.environ.get("VLM_CABIN_FORCE_EMIT_NO_MAX", "0") or 0)
+            except (TypeError, ValueError):
+                force_budget = 0
+            if force_budget > 0:
+                with self._lock:
+                    n = int(self._stats.get("cabin_force_no_emitted") or 0)
+                    if n < force_budget:
+                        emit_ok = True
+                        force_no = True
+                        self._stats["cabin_force_no_emitted"] = n + 1
+                        logger.warning(
+                            "vlm_cabin_FORCE_EMIT_NO rule=%s %d/%d conf=%.2f reason=%s",
+                            job.rule,
+                            n + 1,
+                            force_budget,
+                            float(getattr(verdict, "confidence", 0.0) or 0.0),
+                            (getattr(verdict, "reason_short", "") or "")[:80],
+                        )
 
         red_light_hsv_override = False
         if not emit_ok and job.rule == "red_light_violation":
@@ -471,6 +505,13 @@ class VlmQueue:
                 job.rule, extra_context=job.extra_context,
             )[:2000]
             meta["vlm_crop_path"] = dump_path
+            meta["crop_mode"] = meta.get("crop_mode") or "frigate_vehicle_bbox"
+            # Exact bytes Gemini judged — pipeline attaches as scene+subject.
+            evt["_vlm_crop_jpeg"] = job.jpeg
+        if force_no:
+            meta["force_emit_demo"] = True
+            meta["vlm_original_violation"] = False
+            meta["vlm_force_reason"] = "VLM_CABIN_FORCE_EMIT_NO_MAX"
         if red_light_hsv_override:
             meta["vlm_hsv_override"] = True
             meta["vlm_original_violation"] = bool(getattr(verdict, "violation", False))

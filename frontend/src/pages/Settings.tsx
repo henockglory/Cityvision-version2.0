@@ -8,6 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import ThemeToggle from '@/components/ThemeToggle';
 import MuteToggle from '@/components/MuteToggle';
 import SurveillanceListsPanel from '@/components/settings/SurveillanceListsPanel';
+import PlatePatternsPanel from '@/components/settings/PlatePatternsPanel';
 import EvidenceDefaultsPanel from '@/components/settings/EvidenceDefaultsPanel';
 import AlertRoutingPanel from '@/components/settings/AlertRoutingPanel';
 import SystemPanel from '@/components/settings/SystemPanel';
@@ -379,9 +380,14 @@ export default function Settings() {
           )}
 
           {tab === 'identity' && (
-            <Section title="Listes de surveillance" icon={UserSearch}>
-              <SurveillanceListsPanel />
-            </Section>
+            <>
+              <Section title="Listes de surveillance" icon={UserSearch}>
+                <SurveillanceListsPanel />
+              </Section>
+              <Section title="Compositions de plaque" icon={UserSearch}>
+                <PlatePatternsPanel />
+              </Section>
+            </>
           )}
 
           {tab === 'system' && (
