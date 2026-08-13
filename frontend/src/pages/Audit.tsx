@@ -64,7 +64,7 @@ export default function Audit() {
   }
 
   return (
-    <div>
+    <div className="cv-section-stack">
       <PageHeader
         title={t('audit.title')}
         subtitle={t('audit.subtitle', 'Journal immuable signé — traçabilité complète')}

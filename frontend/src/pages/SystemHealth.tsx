@@ -163,9 +163,9 @@ export default function SystemHealth() {
   }
 
   return (
-    <div>
+    <div className="cv-section-stack">
       <PageHeader title={t('systemHealth.title')} onHelpTour={startTour} />
-      <h2 className="font-display text-sm font-semibold text-cv-muted uppercase tracking-wider mb-3">
+      <h2 className="font-display text-sm font-semibold text-cv-muted uppercase tracking-wider">
         {t('systemHealth.services')}
       </h2>
       <div id="health-services" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 cv-section-grid">
@@ -174,7 +174,7 @@ export default function SystemHealth() {
         ))}
       </div>
 
-      <h2 className="font-display text-sm font-semibold text-cv-muted uppercase tracking-wider mt-8 mb-3 flex items-center justify-between gap-3 flex-wrap">
+      <h2 className="font-display text-sm font-semibold text-cv-muted uppercase tracking-wider flex items-center justify-between gap-3 flex-wrap">
         <span>{t('systemHealth.aiModels')}</span>
         {orgId && (
           <button type="button" data-tour="import-model" className="cv-btn-primary text-xs inline-flex items-center gap-1.5" onClick={openWizard}>

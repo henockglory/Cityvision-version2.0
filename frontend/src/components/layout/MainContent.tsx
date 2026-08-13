@@ -15,7 +15,7 @@ export default function MainContent({ children }: MainContentProps) {
         collapsed ? 'lg:pl-[72px]' : 'lg:pl-64'
       }`}
     >
-      <div className="p-4 md:p-6 lg:p-8 max-w-[1920px] mx-auto space-y-6">{children}</div>
+      <div className="p-5 md:p-7 lg:p-9 max-w-[1920px] mx-auto flex flex-col gap-6 md:gap-8">{children}</div>
     </main>
   );
 }

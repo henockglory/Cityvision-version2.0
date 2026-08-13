@@ -328,7 +328,7 @@ export default function Cameras() {
   }
 
   return (
-    <div>
+    <div className="cv-section-stack">
       <PageHeader
         title={t('cameras.title')}
         onHelpTour={startTour}
@@ -346,7 +346,7 @@ export default function Cameras() {
       />
 
       {showWizard && (
-        <div id="camera-wizard" className="cv-card p-6 mb-6 border-cv-accent/30 shadow-glow animate-fade-in">
+        <div id="camera-wizard" className="cv-card p-6 border-cv-accent/30 shadow-glow animate-fade-in">
           <div className="flex justify-end mb-2">
             <DialogTourHelpButton onClick={() => startWizardTour()} />
           </div>

@@ -942,7 +942,7 @@ export default function ZoneEditor(props: ZoneEditorProps = {}) {
 
   return (
 
-    <div>
+    <div className="cv-section-stack">
 
       {!embedded && (
       <PageHeader

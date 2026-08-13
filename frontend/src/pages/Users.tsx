@@ -70,7 +70,7 @@ export default function UsersPage() {
   }
 
   return (
-    <div>
+    <div className="cv-section-stack">
       <AddUserDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}

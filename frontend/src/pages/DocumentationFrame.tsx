@@ -33,7 +33,7 @@ export default function DocumentationFrame({ doc }: DocumentationFrameProps) {
   const title = t(meta.titleKey, meta.titleFallback);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="cv-section-stack">
       <PageHeader
         title={title}
         actions={

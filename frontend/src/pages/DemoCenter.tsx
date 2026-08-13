@@ -502,7 +502,7 @@ export default function DemoCenter() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-12 cv-demo-center">
+    <div className="max-w-7xl mx-auto cv-section-stack pb-12 cv-demo-center">
       <DemoEditableHeader settings={demoSettings.data} onRefresh={() => void refresh()} onHelpTour={startDemoTour} />
 
       <div id="demo-status" className="flex flex-wrap items-center gap-2 text-xs">

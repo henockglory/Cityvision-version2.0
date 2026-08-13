@@ -109,7 +109,7 @@ export default function LiveView() {
     : t('liveView.detectionOverlayTitle', 'Afficher le flux Frigate avec cadres de détection');
 
   return (
-    <div>
+    <div className="cv-section-stack">
       <PageHeader title={t('liveView.title')} onHelpTour={startTour} />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 cv-section-grid items-start">

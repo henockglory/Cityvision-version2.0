@@ -136,7 +136,7 @@ export default function MapPage() {
           </div>
         </div>
 
-        <div className="lg:col-span-4 space-y-3">
+        <div className="lg:col-span-4 cv-section-stack">
           <div className="cv-card p-4">
             <h3 className="font-display text-sm font-semibold mb-3 flex items-center gap-2">
               <MapPin className="w-4 h-4 text-cv-accent shrink-0" />

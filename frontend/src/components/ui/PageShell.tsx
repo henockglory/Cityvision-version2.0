@@ -29,11 +29,11 @@ export default function PageShell({
     <div
       className={`animate-fade-in ${
         fillViewport
-          ? 'flex flex-col h-[calc(100dvh-7rem)] max-h-[calc(100dvh-7rem)] overflow-hidden gap-6 md:gap-7'
-          : 'space-y-6 md:space-y-7'
+          ? 'flex flex-col h-[calc(100dvh-7rem)] max-h-[calc(100dvh-7rem)] overflow-hidden gap-6 md:gap-8'
+          : 'flex flex-col gap-6 md:gap-8'
       } ${className}`}
     >
-      <div className={fillViewport ? 'shrink-0' : undefined}>
+      <div className="shrink-0">
         <PageHeader
           title={title}
           subtitle={subtitle}
@@ -43,7 +43,16 @@ export default function PageShell({
         />
         {toolbar && <div className="flex flex-wrap items-center gap-3 mt-5 md:mt-6">{toolbar}</div>}
       </div>
-      <div className={fillViewport ? 'flex flex-col flex-1 min-h-0 overflow-hidden gap-6 md:gap-7' : undefined}>{children}</div>
+      {/* gap must live HERE — wrapping children without gap collapsed every section */}
+      <div
+        className={
+          fillViewport
+            ? 'flex flex-col flex-1 min-h-0 overflow-hidden gap-6 md:gap-8'
+            : 'flex flex-col gap-6 md:gap-8'
+        }
+      >
+        {children}
+      </div>
     </div>
   );
 }
