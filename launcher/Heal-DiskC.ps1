@@ -58,9 +58,10 @@ for i in $(seq 1 40); do
 done
 docker start citevision-v2-postgres citevision-v2-minio 2>/dev/null || true
 sleep 2
-echo "=== stop media consumers ==="
-pkill -f 'uvicorn citevision_ai.main|citevision-api|rules-engine' 2>/dev/null || true
-docker stop citevision-v2-frigate 2>/dev/null || true
+echo "=== stop media consumers (preserve .env + Gemini keyfiles) ==="
+pkill -f 'uvicorn citevision_ai.main|citevision-api|rules-engine|frigate_watchdog|watch-infra-ports|watch-business-readiness|watch-ai-ingest|watch-rules-engine|watch-backend' 2>/dev/null || true
+docker stop citevision-v2-frigate citevision-v2-go2rtc 2>/dev/null || true
+docker rm -f citevision-v2-go2rtc 2>/dev/null || true
 sleep 1
 echo "=== truncate alerts/events ==="
 docker exec citevision-v2-postgres psql -U citevision -d citevision -c "TRUNCATE TABLE alerts RESTART IDENTITY CASCADE;" 2>/dev/null || true

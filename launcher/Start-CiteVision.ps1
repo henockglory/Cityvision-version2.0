@@ -23,6 +23,22 @@ function ConvertTo-WslPath {
   return ($full -replace '\\', '/')
 }
 
+function Resolve-CiteVisionProductRoot {
+  # Installer tree (C:\Citevision) is often a stale copy of the git workspace.
+  # Prefer %USERPROFILE%\citevision-v2 when present so Start never downgrades WSL scripts.
+  if (-not [string]::IsNullOrWhiteSpace($env:CITEVISION_PRODUCT_ROOT) -and
+      (Test-Path -LiteralPath (Join-Path $env:CITEVISION_PRODUCT_ROOT 'scripts\lib\start-full-stack.sh'))) {
+    return [System.IO.Path]::GetFullPath($env:CITEVISION_PRODUCT_ROOT)
+  }
+  $installerRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+  $devRoot = Join-Path $env:USERPROFILE 'citevision-v2'
+  $marker = 'scripts\lib\start-full-stack.sh'
+  if (Test-Path -LiteralPath (Join-Path $devRoot $marker)) {
+    return [System.IO.Path]::GetFullPath($devRoot)
+  }
+  return $installerRoot
+}
+
 try {
   $WslRoot = Resolve-CiteVisionWslRoot
 } catch {
@@ -30,11 +46,12 @@ try {
   exit 1
 }
 
-$ProductRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$ProductRoot = Resolve-CiteVisionProductRoot
 $WslProductRoot = ConvertTo-WslPath $ProductRoot
 
 Write-Host ""
 Write-Host ("CiteVision START - WSL {0}" -f $WslRoot) -ForegroundColor Cyan
+Write-Host ("Product mirror (refresh SRC): {0}" -f $ProductRoot) -ForegroundColor DarkGray
 Write-Host ""
 
 Write-Host "[1/4] Runtime check" -ForegroundColor Cyan
@@ -84,6 +101,8 @@ copy_one scripts/lib/start-full-stack.sh
 copy_one scripts/lib/business-readiness.sh
 copy_one scripts/lib/env-utils.sh
 copy_one scripts/lib/service-heal.sh
+copy_one scripts/lib/probe-gemini.sh
+copy_one scripts/lib/set-gemini-key.sh
 copy_one scripts/ensure-demo-pipeline.sh
 copy_one scripts/ensure-ai-stack.sh
 copy_one scripts/health_check_all.sh
@@ -91,6 +110,8 @@ copy_one scripts/frigate_watchdog.sh
 copy_one scripts/watch-infra-ports.sh
 copy_one scripts/watch-ai-ingest.sh
 copy_one scripts/watch-business-readiness.sh
+copy_one scripts/watch-rules-engine.sh
+copy_one scripts/_start-rules-engine.sh
 copy_one scripts/watch-api.sh
 copy_one scripts/watch-ai.sh
 copy_one scripts/watch-rules.sh

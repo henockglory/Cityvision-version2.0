@@ -110,6 +110,11 @@ func (c *Compiler) BuildConfig(
 		go2rtc = map[string]interface{}{}
 	}
 	go2rtc["streams"] = go2rtcStreams
+	// Host-network Frigate must not steal demo go2rtc ports (1984/8554/8555).
+	// Keep dedicated Frigate-embedded ports aligned with infra/frigate.base.yaml.
+	go2rtc["api"] = map[string]interface{}{"listen": ":1985"}
+	go2rtc["rtsp"] = map[string]interface{}{"listen": ":8557"}
+	go2rtc["webrtc"] = map[string]interface{}{"listen": ":8556"}
 	base["go2rtc"] = go2rtc
 	// Frigate 0.17+ requires global lpr.enabled when any camera has lpr.enabled.
 	for _, entry := range camMap {

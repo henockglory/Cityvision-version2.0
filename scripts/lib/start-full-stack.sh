@@ -34,6 +34,8 @@ echo "ROOT=$ROOT"
 
 ENV_FILE="$(ensure_env_file "$ROOT")"
 sync_project_root "$ROOT"
+# Restore GEMINI_API_KEY from ~/.citevision_gemini_key.tmp after git reset / stale .env.
+ensure_gemini_key_env "$ROOT" "$ENV_FILE" 2>/dev/null || true
 ensure_demo_runtime_env "$ROOT" "$ENV_FILE"
 # Permanent Frigate-primary bridges (VLM + speed + geometry) before any service start.
 ensure_demo_validation_env "$ROOT" "$ENV_FILE" 2>/dev/null || true
@@ -68,10 +70,61 @@ fi
 
 bash "$ROOT/scripts/ensure-video-storage.sh" 2>/dev/null || true
 
-# Stale docker-proxy / half-recreated go2rtc often holds 8555 and blocks compose.
+# Frigate host-net go2rtc defaults to :8555 unless webrtc.listen=:8556 is set.
+# That steals the demo go2rtc publish and Start fails with "8555 address already in use".
+ensure_frigate_releases_demo_go2rtc_ports() {
+  local cfg="$ROOT/infra/frigate-config/config.yml"
+  local need_restart=0
+  if [[ -f "$cfg" ]]; then
+    if ! grep -qE 'listen:[[:space:]]*"?:8556"?' "$cfg" 2>/dev/null; then
+      echo "[INFO] patch Frigate go2rtc webrtc→:8556 (free demo :8555)"
+      FRIGATE_CFG="$cfg" python3 - <<'PY' || true
+from pathlib import Path
+import os, re
+p = Path(os.environ["FRIGATE_CFG"])
+text = p.read_text(encoding="utf-8", errors="replace")
+if re.search(r'listen:\s*"?:8556"?', text):
+    raise SystemExit(0)
+# Inject / replace webrtc listen under go2rtc block.
+if re.search(r'(?m)^\s*webrtc:\s*$', text):
+    text = re.sub(r'(?m)^(\s*webrtc:\s*\n)(\s*listen:\s*).*$',
+                  r'\1\2":8556"', text, count=1)
+else:
+    text = re.sub(r'(?m)^(go2rtc:\s*\n)',
+                  r'\1  webrtc:\n    listen: ":8556"\n', text, count=1)
+# Keep api/rtsp on dedicated ports when present.
+if "listen: :1985" not in text and 'listen: ":1985"' not in text:
+    text = re.sub(r'(?m)^(go2rtc:\s*\n)',
+                  r'\1  api:\n    listen: ":1985"\n', text, count=1)
+p.write_text(text, encoding="utf-8")
+print("patched", p)
+PY
+      need_restart=1
+    fi
+  fi
+  if ss -ltn 2>/dev/null | grep -qE '[:.]8555[[:space:]]' \
+    && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx citevision-v2-frigate; then
+    need_restart=1
+  fi
+  if [[ "$need_restart" -eq 1 ]]; then
+    echo "[INFO] restart Frigate so host :8555 is released for demo go2rtc"
+    docker restart citevision-v2-frigate >/dev/null 2>&1 || true
+    local i
+    for i in $(seq 1 60); do
+      if ! ss -ltn 2>/dev/null | grep -qE '[:.]8555[[:space:]]'; then
+        echo "[OK] host :8555 free"
+        break
+      fi
+      sleep 1
+    done
+  fi
+}
+
+# Stale docker-proxy / Frigate host-net often holds 8555 and blocks compose.
 heal_go2rtc() {
   local attempt out
   echo "[INFO] heal go2rtc (free 1984/8554/8555 + recreate)"
+  ensure_frigate_releases_demo_go2rtc_ports || true
   for attempt in 1 2 3; do
     docker rm -f citevision-v2-go2rtc 2>/dev/null || true
     free_port 1984 8554 8555 2>/dev/null || true
@@ -87,6 +140,7 @@ heal_go2rtc() {
     fi
     if printf '%s' "$out" | grep -qi 'address already in use'; then
       echo "[WARN] go2rtc bind still busy — retry ${attempt}/3"
+      ensure_frigate_releases_demo_go2rtc_ports || true
       continue
     fi
     break
@@ -246,6 +300,12 @@ if ! wait_http_ok "http://127.0.0.1:5000/api/version" 90; then
 fi
 export SKIP_FRIGATE_EVENTS_WAIT=1
 bash "$ROOT/scripts/_heal_frigate_now.sh" 2>&1 | tail -20 || true
+# Rebuild may rewrite config without webrtc:8556 (old binary) — re-assert demo ports.
+ensure_frigate_releases_demo_go2rtc_ports || true
+if ! curl -sf --max-time 3 "http://127.0.0.1:1984/api" >/dev/null 2>&1; then
+  echo "[WARN] go2rtc lost after Frigate heal — recreate"
+  heal_go2rtc || true
+fi
 echo "[OK] Frigate $(curl -sf http://127.0.0.1:5000/api/version 2>/dev/null || echo up)"
 
 # Ingest / demo pipeline + business readiness (spatial AI / rules / Frigate zones / go2rtc).

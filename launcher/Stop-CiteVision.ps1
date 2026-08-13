@@ -66,6 +66,8 @@ LOGDIR="$ROOT/logs"
 
 echo "=== CiteVision STOP ALL $(date -Is) ==="
 echo "ROOT=$ROOT"
+# Never touch .env / Gemini keyfiles — Stop must not erase GEMINI_API_KEY.
+rm -f "$LOGDIR/rules-engine.restart-request" 2>/dev/null || true
 
 echo "=== [1/6] disable demo rules ==="
 docker exec citevision-v2-postgres psql -U citevision -d citevision -c \
@@ -73,14 +75,14 @@ docker exec citevision-v2-postgres psql -U citevision -d citevision -c \
   || echo "[WARN] postgres unavailable for disable rules"
 
 echo "=== [2/6] stop watchdogs / frontend / AI / rules / backend ==="
-for svc in watch-demo-stack watch-backend watch-ai-ingest watch-rules-engine watch-infra-ports watch-business-readiness frontend ai-engine rules-engine backend; do
+for svc in watch-demo-stack watch-backend watch-ai-ingest watch-rules-engine watch-infra-ports watch-business-readiness frigate-watchdog frontend ai-engine rules-engine backend; do
   if [[ -f "$LOGDIR/${svc}.pid" ]]; then
     pid=$(cat "$LOGDIR/${svc}.pid" 2>/dev/null || true)
     if [[ -n "${pid:-}" ]]; then kill "$pid" 2>/dev/null || true; fi
     rm -f "$LOGDIR/${svc}.pid"
   fi
 done
-pkill -f 'watch-backend|watch-ai-ingest|watch-demo-stack|watch-rules-engine|watch-infra-ports|watch-business-readiness' 2>/dev/null || true
+pkill -f 'watch-backend|watch-ai-ingest|watch-demo-stack|watch-rules-engine|watch-infra-ports|watch-business-readiness|frigate_watchdog|frigate-watchdog' 2>/dev/null || true
 pkill -f 'vite|ensure-frontend' 2>/dev/null || true
 pkill -f 'uvicorn citevision_ai.main' 2>/dev/null || true
 pkill -f 'citevision-ai|run-ai-engine' 2>/dev/null || true
@@ -94,6 +96,14 @@ echo "[OK] app processes stopped"
 
 echo "=== [3/6] stop Frigate + go2rtc + OCR ==="
 docker stop citevision-v2-frigate citevision-v2-go2rtc citevision-v2-ocr 2>/dev/null || true
+# rm go2rtc so orphan docker-proxy cannot hold 1984/8554/8555 for next Start
+docker rm -f citevision-v2-go2rtc 2>/dev/null || true
+if declare -F free_port >/dev/null 2>&1; then
+  free_port 1984 8554 8555 2>/dev/null || true
+fi
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k 1984/tcp 8554/tcp 8555/tcp 8555/udp 2>/dev/null || true
+fi
 
 echo "=== [4/6] stop infra containers ==="
 docker stop citevision-v2-mailhog citevision-v2-minio citevision-v2-mosquitto \
@@ -102,10 +112,11 @@ docker stop citevision-v2-mailhog citevision-v2-minio citevision-v2-mosquitto \
 
 echo "=== [5/6] verify ports ==="
 still=0
-for p in 5174 8081 8001 8010 5000 1984; do
+for p in 5174 8081 8001 8010 5000 1984 8554 8555; do
   if curl -sf --max-time 1 "http://127.0.0.1:${p}/" >/dev/null 2>&1 \
      || curl -sf --max-time 1 "http://127.0.0.1:${p}/health" >/dev/null 2>&1 \
-     || curl -sf --max-time 1 "http://127.0.0.1:${p}/api/version" >/dev/null 2>&1; then
+     || curl -sf --max-time 1 "http://127.0.0.1:${p}/api/version" >/dev/null 2>&1 \
+     || curl -sf --max-time 1 "http://127.0.0.1:${p}/api" >/dev/null 2>&1; then
     echo "[WARN] port $p still answering"
     still=1
   fi
@@ -119,6 +130,7 @@ docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | head -20 || echo "dock
 echo ""
 echo "=== STOP DONE - dockerd WSL left running ==="
 echo "Restart: launcher\\Start-CiteVision.ps1"
+echo "[OK] .env / Gemini keyfiles preserved"
 exit 0
 '@
 
