@@ -111,23 +111,37 @@ if (Test-Path `$modeFile) {
     if (`$mode -eq 'manual') { exit 0 }
 }
 
-function Test-Healthy {
+function Test-UrlHealthy([string]`$Uri) {
     try {
-        `$r = Invoke-WebRequest -Uri 'http://127.0.0.1:8081/health' -UseBasicParsing -TimeoutSec 4
+        `$r = Invoke-WebRequest -Uri `$Uri -UseBasicParsing -TimeoutSec 4
         return (`$r.StatusCode -ge 200 -and `$r.StatusCode -lt 500)
     } catch { return `$false }
 }
+function Test-WinApiHealthy {
+    if (Test-UrlHealthy 'http://127.0.0.1:8081/health') { return `$true }
+    if (Test-UrlHealthy 'http://[::1]:8081/health') { return `$true }
+    return `$false
+}
+function Test-WslApiHealthy {
+    & wsl.exe -- bash -lc "curl -sf --max-time 3 http://127.0.0.1:8081/health >/dev/null 2>&1" | Out-Null
+    return (`$LASTEXITCODE -eq 0)
+}
 
-if (-not (Test-Healthy)) {
-    . (Join-Path `$Root 'installer\windows\Resolve-CiteVisionWslRoot.ps1')
-    try {
-        `$useRoot = Resolve-CiteVisionWslRoot
-    } catch {
-        exit 1
+`$winOk = Test-WinApiHealthy
+if (-not `$winOk) {
+    if (Test-WslApiHealthy) {
+        & wsl.exe -- bash -lc "curl -sf --max-time 2 http://127.0.0.1:8081/health >/dev/null 2>&1 || true" | Out-Null
+    } else {
+        . (Join-Path `$Root 'installer\windows\Resolve-CiteVisionWslRoot.ps1')
+        try {
+            `$useRoot = Resolve-CiteVisionWslRoot
+        } catch {
+            exit 1
+        }
+        if (`$useRoot -match '^/mnt/') { exit 1 }
+        `$bashCmd = ("cd '{0}'; bash scripts/start-linux.sh" -f `$useRoot)
+        & wsl.exe -- bash -lc `$bashCmd
     }
-    if (`$useRoot -match '^/mnt/') { exit 1 }
-    `$bashCmd = ("cd '{0}'; bash scripts/start-linux.sh" -f `$useRoot)
-    & wsl.exe -- bash -lc `$bashCmd
 }
 
 `$loopScript = Join-Path `$Root 'installer\windows\citevision-watchdog-loop.ps1'
