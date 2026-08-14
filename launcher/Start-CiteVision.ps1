@@ -91,7 +91,12 @@ copy_one() {
   local d="$DST/$rel"
   if [[ -f "$s" ]]; then
     mkdir -p "$(dirname "$d")"
-    cp -f "$s" "$d" 2>/dev/null || true
+    # Always strip CR: Windows /mnt/c copies often inject CRLF and break bash watchdogs.
+    if [[ "$rel" == *.sh || "$rel" == *.py || "$rel" == *.mjs ]]; then
+      sed 's/\r$//' "$s" >"$d" 2>/dev/null || cp -f "$s" "$d" 2>/dev/null || true
+    else
+      cp -f "$s" "$d" 2>/dev/null || true
+    fi
     echo "[OK] refreshed $rel"
   else
     echo "[INFO] skip missing $rel"

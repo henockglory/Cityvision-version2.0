@@ -150,6 +150,11 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res);
 });
 
+server.on('error', (err) => {
+  console.error(`[FAIL] UI listen ${HOST}:${PORT}:`, err && err.code ? err.code : err);
+  process.exit(1);
+});
+
 server.listen(PORT, HOST, () => {
   console.log(`[OK] citevision static UI http://${HOST}:${PORT} (dist=${DIST})`);
 });
