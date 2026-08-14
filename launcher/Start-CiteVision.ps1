@@ -214,6 +214,14 @@ if ($rc -ne 0) {
 Write-Host "[5/5] Windows UI + /health/platform" -ForegroundColor Cyan
 $uiOk = $false
 $platformUrl = 'http://127.0.0.1:5174/health/platform'
+function Test-WslPlatformOk {
+  $cmd = @'
+curl -sf --max-time 5 http://127.0.0.1:5174/health/platform 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); detail=((d.get("components") or {}).get("ai_engine") or {}).get("detail") or {}; raise SystemExit(0 if str(detail.get("models_all_ok","")).lower()=="true" else 1)'
+'@
+  wsl -d $Distro -- bash -lc $cmd 2>$null | Out-Null
+  return ($LASTEXITCODE -eq 0)
+}
+
 for ($i = 1; $i -le 45; $i++) {
   try {
     $resp = Invoke-WebRequest -Uri $platformUrl -UseBasicParsing -TimeoutSec 5
@@ -229,6 +237,21 @@ for ($i = 1; $i -le 45; $i++) {
     wsl -d $Distro -- bash -lc $healCmd 2>$null | Out-Null
     # Touch from WSL then Windows to re-bind localhostForwarding after UI restart.
     wsl -d $Distro -- bash -lc 'curl -sf --max-time 3 http://127.0.0.1:5174/ >/dev/null' 2>$null | Out-Null
+
+    # After Heal-DiskC / stuck wslrelay: WSL UI can be healthy while Windows localhostForwarding is dead.
+    # Detect early (attempt 10+) and recycle WSL once so a fresh relay is created.
+    if ($i -ge 10 -and $env:CV_LOCALHOST_HEAL_DONE -ne '1') {
+      $wslOk = Test-WslPlatformOk
+      if ($wslOk) {
+        Write-Host "[WARN] WSL UI is healthy but Windows localhost:5174 is broken (stale wslrelay)." -ForegroundColor Yellow
+        Write-Host "       Resetting WSL localhostForwarding once, then restarting the stack..." -ForegroundColor Yellow
+        $env:CV_LOCALHOST_HEAL_DONE = '1'
+        wsl --shutdown
+        Start-Sleep -Seconds 5
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath
+        exit $LASTEXITCODE
+      }
+    }
   }
   Start-Sleep -Seconds 2
 }
