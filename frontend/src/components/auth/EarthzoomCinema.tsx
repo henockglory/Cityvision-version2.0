@@ -28,11 +28,9 @@ function seekVideo(v: HTMLVideoElement, t: number): Promise<void> {
       resolve();
     };
     v.addEventListener('seeked', finish);
-    const timer = window.setTimeout(finish, 600);
+    const timer = window.setTimeout(finish, 700);
     try {
-      const anyV = v as HTMLVideoElement & { fastSeek?: (time: number) => void };
-      if (typeof anyV.fastSeek === 'function') anyV.fastSeek(t);
-      else v.currentTime = t;
+      v.currentTime = t;
     } catch {
       finish();
     }
@@ -41,11 +39,13 @@ function seekVideo(v: HTMLVideoElement, t: number): Promise<void> {
 
 /**
  * Full-bleed muted Earthzoom clip for login:
- * - intro: play 0→9s then freeze on that frame (login form overlays)
- * - outro: play 10→14s after successful auth (fake loading), then hand off to app
+ * - intro video: play 0→9s then freeze (login form overlays)
+ * - outro video: separate element + media fragment #t=10.71,14 so playback
+ *   never rewinds to 0 when credentials succeed
  */
 export default function EarthzoomCinema({ phase, onIntroFrozen, onOutroEnded }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const introRef = useRef<HTMLVideoElement>(null);
+  const outroRef = useRef<HTMLVideoElement>(null);
   const introFrozenRef = useRef(false);
   const outroEndedRef = useRef(false);
   const genRef = useRef(0);
@@ -55,7 +55,7 @@ export default function EarthzoomCinema({ phase, onIntroFrozen, onOutroEnded }: 
   onOutroEndedRef.current = onOutroEnded;
 
   const freezeIntro = useCallback(async () => {
-    const v = videoRef.current;
+    const v = introRef.current;
     if (!v || introFrozenRef.current) return;
     introFrozenRef.current = true;
     try {
@@ -75,7 +75,7 @@ export default function EarthzoomCinema({ phase, onIntroFrozen, onOutroEnded }: 
   const finishOutro = useCallback(() => {
     if (outroEndedRef.current) return;
     outroEndedRef.current = true;
-    const v = videoRef.current;
+    const v = outroRef.current;
     if (v) {
       try {
         v.pause();
@@ -86,8 +86,9 @@ export default function EarthzoomCinema({ phase, onIntroFrozen, onOutroEnded }: 
     onOutroEndedRef.current();
   }, []);
 
+  // Intro / freeze on the primary element.
   useEffect(() => {
-    const v = videoRef.current;
+    const v = introRef.current;
     if (!v) return;
     const gen = ++genRef.current;
     const alive = () => genRef.current === gen;
@@ -114,84 +115,84 @@ export default function EarthzoomCinema({ phase, onIntroFrozen, onOutroEnded }: 
         /* ignore */
       }
       void seekVideo(v, EARTHZOOM_INTRO_END);
-      return;
     }
+  }, [phase, freezeIntro]);
 
-    if (phase === 'outro') {
-      outroEndedRef.current = false;
-      void (async () => {
-        try {
-          v.pause();
-        } catch {
-          /* ignore */
-        }
-        // Critical: wait for seek to ~10s BEFORE play(), otherwise browsers restart at 0.
-        await seekVideo(v, EARTHZOOM_OUTRO_START);
-        if (!alive() || outroEndedRef.current) return;
-
-        // Hard verify — never start playback near t=0 during outro.
-        if (v.currentTime < EARTHZOOM_OUTRO_START - 0.35) {
-          await seekVideo(v, EARTHZOOM_OUTRO_START);
-          if (!alive() || outroEndedRef.current) return;
-        }
-
-        try {
-          await v.play();
-        } catch {
-          if (alive()) finishOutro();
-          return;
-        }
-
-        // If the engine still rewound, snap back once without restarting the whole clip.
-        window.setTimeout(() => {
-          if (!alive() || outroEndedRef.current || !videoRef.current) return;
-          if (videoRef.current.currentTime < EARTHZOOM_OUTRO_START - 0.35) {
-            try {
-              videoRef.current.currentTime = EARTHZOOM_OUTRO_START;
-            } catch {
-              /* ignore */
-            }
-          }
-        }, 120);
-      })();
-
-      const failSafe = window.setTimeout(
-        () => {
-          if (alive()) finishOutro();
-        },
-        (EARTHZOOM_OUTRO_END - EARTHZOOM_OUTRO_START + 3) * 1000,
-      );
-      return () => window.clearTimeout(failSafe);
-    }
-  }, [phase, freezeIntro, finishOutro]);
-
+  // Outro on a dedicated element so we never fight the intro timeline.
   useEffect(() => {
-    const v = videoRef.current;
+    if (phase !== 'outro') return;
+    const v = outroRef.current;
     if (!v) return;
 
+    outroEndedRef.current = false;
+    let cancelled = false;
+
+    const startOutro = async () => {
+      // Media fragment already targets 10.71–14; still force currentTime as belt-and-braces.
+      try {
+        if (v.readyState < 1) {
+          await new Promise<void>((resolve) => {
+            v.addEventListener('loadedmetadata', () => resolve(), { once: true });
+            window.setTimeout(() => resolve(), 800);
+          });
+        }
+        if (cancelled) return;
+        await seekVideo(v, EARTHZOOM_OUTRO_START);
+        if (cancelled || outroEndedRef.current) return;
+        if (v.currentTime < EARTHZOOM_OUTRO_START - 0.5) {
+          v.currentTime = EARTHZOOM_OUTRO_START;
+          await seekVideo(v, EARTHZOOM_OUTRO_START);
+        }
+        if (cancelled || outroEndedRef.current) return;
+        await v.play();
+      } catch {
+        if (!cancelled) finishOutro();
+      }
+    };
+
+    void startOutro();
+
+    const onTime = () => {
+      if (cancelled || outroEndedRef.current) return;
+      if (v.currentTime >= EARTHZOOM_OUTRO_END) finishOutro();
+    };
+    const onEnded = () => {
+      if (!cancelled) finishOutro();
+    };
+    const poll = window.setInterval(onTime, 80);
+    const failSafe = window.setTimeout(
+      () => {
+        if (!cancelled) finishOutro();
+      },
+      (EARTHZOOM_OUTRO_END - EARTHZOOM_OUTRO_START + 3) * 1000,
+    );
+    v.addEventListener('timeupdate', onTime);
+    v.addEventListener('ended', onEnded);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+      window.clearTimeout(failSafe);
+      v.removeEventListener('timeupdate', onTime);
+      v.removeEventListener('ended', onEnded);
+      try {
+        v.pause();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [phase, finishOutro]);
+
+  // Intro cut at 9s.
+  useEffect(() => {
+    const v = introRef.current;
+    if (!v || phase !== 'intro') return;
     const onTick = () => {
-      if (phase === 'intro' && !introFrozenRef.current && v.currentTime >= EARTHZOOM_INTRO_END) {
+      if (!introFrozenRef.current && v.currentTime >= EARTHZOOM_INTRO_END) {
         void freezeIntro();
       }
-      if (phase === 'outro' && !outroEndedRef.current) {
-        // Keep outro pinned in the 10→14 window if the browser jumps backward.
-        if (v.currentTime < EARTHZOOM_OUTRO_START - 0.5 && v.currentTime < 5) {
-          try {
-            v.currentTime = EARTHZOOM_OUTRO_START;
-          } catch {
-            /* ignore */
-          }
-          return;
-        }
-        if (v.currentTime >= EARTHZOOM_OUTRO_END) finishOutro();
-      }
     };
-
-    const onEnded = () => {
-      if (phase === 'intro') void freezeIntro();
-      if (phase === 'outro') finishOutro();
-    };
-
+    const onEnded = () => void freezeIntro();
     const poll = window.setInterval(onTick, 80);
     v.addEventListener('timeupdate', onTick);
     v.addEventListener('ended', onEnded);
@@ -200,14 +201,30 @@ export default function EarthzoomCinema({ phase, onIntroFrozen, onOutroEnded }: 
       v.removeEventListener('timeupdate', onTick);
       v.removeEventListener('ended', onEnded);
     };
-  }, [phase, freezeIntro, finishOutro]);
+  }, [phase, freezeIntro]);
+
+  const showOutro = phase === 'outro';
+  const outroSrc = `${EARTHZOOM_SRC}#t=${EARTHZOOM_OUTRO_START},${EARTHZOOM_OUTRO_END}`;
 
   return (
     <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden>
       <video
-        ref={videoRef}
-        className="absolute inset-0 h-full w-full object-cover"
+        ref={introRef}
+        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+          showOutro ? 'opacity-0' : 'opacity-100'
+        }`}
         src={EARTHZOOM_SRC}
+        muted
+        playsInline
+        preload="auto"
+        disablePictureInPicture
+      />
+      <video
+        ref={outroRef}
+        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+          showOutro ? 'opacity-100' : 'opacity-0'
+        }`}
+        src={outroSrc}
         muted
         playsInline
         preload="auto"
