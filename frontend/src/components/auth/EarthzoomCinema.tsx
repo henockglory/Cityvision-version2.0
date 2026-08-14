@@ -13,6 +13,32 @@ type Props = {
   onOutroEnded: () => void;
 };
 
+function seekVideo(v: HTMLVideoElement, t: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (Math.abs(v.currentTime - t) <= 0.12) {
+      resolve();
+      return;
+    }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      v.removeEventListener('seeked', finish);
+      window.clearTimeout(timer);
+      resolve();
+    };
+    v.addEventListener('seeked', finish);
+    const timer = window.setTimeout(finish, 600);
+    try {
+      const anyV = v as HTMLVideoElement & { fastSeek?: (time: number) => void };
+      if (typeof anyV.fastSeek === 'function') anyV.fastSeek(t);
+      else v.currentTime = t;
+    } catch {
+      finish();
+    }
+  });
+}
+
 /**
  * Full-bleed muted Earthzoom clip for login:
  * - intro: play 0→9s then freeze on that frame (login form overlays)
@@ -22,44 +48,28 @@ export default function EarthzoomCinema({ phase, onIntroFrozen, onOutroEnded }: 
   const videoRef = useRef<HTMLVideoElement>(null);
   const introFrozenRef = useRef(false);
   const outroEndedRef = useRef(false);
+  const genRef = useRef(0);
   const onIntroFrozenRef = useRef(onIntroFrozen);
   const onOutroEndedRef = useRef(onOutroEnded);
   onIntroFrozenRef.current = onIntroFrozen;
   onOutroEndedRef.current = onOutroEnded;
 
-  const freezeIntro = useCallback(() => {
+  const freezeIntro = useCallback(async () => {
     const v = videoRef.current;
     if (!v || introFrozenRef.current) return;
     introFrozenRef.current = true;
-    let settled = false;
-    const settle = () => {
-      if (settled) return;
-      settled = true;
-      try {
-        v.pause();
-      } catch {
-        /* ignore */
-      }
-      onIntroFrozenRef.current();
-    };
     try {
-      if (Math.abs(v.currentTime - EARTHZOOM_INTRO_END) > 0.08) {
-        const onSeeked = () => {
-          v.removeEventListener('seeked', onSeeked);
-          settle();
-        };
-        v.addEventListener('seeked', onSeeked);
-        v.currentTime = EARTHZOOM_INTRO_END;
-        window.setTimeout(() => {
-          v.removeEventListener('seeked', onSeeked);
-          settle();
-        }, 200);
-        return;
-      }
+      v.pause();
     } catch {
-      /* seek may fail before metadata */
+      /* ignore */
     }
-    settle();
+    await seekVideo(v, EARTHZOOM_INTRO_END);
+    try {
+      v.pause();
+    } catch {
+      /* ignore */
+    }
+    onIntroFrozenRef.current();
   }, []);
 
   const finishOutro = useCallback(() => {
@@ -76,122 +86,118 @@ export default function EarthzoomCinema({ phase, onIntroFrozen, onOutroEnded }: 
     onOutroEndedRef.current();
   }, []);
 
-  const playFrom = useCallback((startAt: number, onFail: () => void) => {
-    const v = videoRef.current;
-    if (!v) {
-      onFail();
-      return;
-    }
-
-    let started = false;
-    const tryPlay = () => {
-      if (started) return;
-      started = true;
-      void v.play().catch(() => {
-        started = false;
-        // One retry after canplay — don't abort cinema on the first rejection.
-        const retry = () => {
-          if (started) return;
-          started = true;
-          void v.play().catch(() => onFail());
-        };
-        v.addEventListener('canplay', retry, { once: true });
-        window.setTimeout(() => {
-          v.removeEventListener('canplay', retry);
-          if (!started) onFail();
-        }, 1500);
-      });
-    };
-
-    const seekThenPlay = () => {
-      const onSeeked = () => {
-        v.removeEventListener('seeked', onSeeked);
-        tryPlay();
-      };
-      v.addEventListener('seeked', onSeeked);
-      try {
-        v.currentTime = startAt;
-      } catch {
-        v.removeEventListener('seeked', onSeeked);
-        tryPlay();
-        return;
-      }
-      // Already at target (or seek completed sync).
-      window.setTimeout(() => {
-        if (Math.abs(v.currentTime - startAt) < 0.25) {
-          v.removeEventListener('seeked', onSeeked);
-          tryPlay();
-        }
-      }, 80);
-    };
-
-    if (v.readyState >= 1) seekThenPlay();
-    else v.addEventListener('loadedmetadata', seekThenPlay, { once: true });
-  }, []);
-
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
+    const gen = ++genRef.current;
+    const alive = () => genRef.current === gen;
 
     if (phase === 'intro') {
       introFrozenRef.current = false;
       outroEndedRef.current = false;
-      playFrom(0, () => {
-        // Autoplay hard-blocked: still land on the intended freeze frame + form.
-        freezeIntro();
-      });
+      void (async () => {
+        await seekVideo(v, 0);
+        if (!alive()) return;
+        try {
+          await v.play();
+        } catch {
+          if (alive()) void freezeIntro();
+        }
+      })();
       return;
     }
 
     if (phase === 'frozen') {
       try {
         v.pause();
-        if (Math.abs(v.currentTime - EARTHZOOM_INTRO_END) > 0.15) {
-          v.currentTime = EARTHZOOM_INTRO_END;
-        }
       } catch {
         /* ignore */
       }
+      void seekVideo(v, EARTHZOOM_INTRO_END);
       return;
     }
 
     if (phase === 'outro') {
       outroEndedRef.current = false;
-      playFrom(EARTHZOOM_OUTRO_START, finishOutro);
+      void (async () => {
+        try {
+          v.pause();
+        } catch {
+          /* ignore */
+        }
+        // Critical: wait for seek to ~10s BEFORE play(), otherwise browsers restart at 0.
+        await seekVideo(v, EARTHZOOM_OUTRO_START);
+        if (!alive() || outroEndedRef.current) return;
+
+        // Hard verify — never start playback near t=0 during outro.
+        if (v.currentTime < EARTHZOOM_OUTRO_START - 0.35) {
+          await seekVideo(v, EARTHZOOM_OUTRO_START);
+          if (!alive() || outroEndedRef.current) return;
+        }
+
+        try {
+          await v.play();
+        } catch {
+          if (alive()) finishOutro();
+          return;
+        }
+
+        // If the engine still rewound, snap back once without restarting the whole clip.
+        window.setTimeout(() => {
+          if (!alive() || outroEndedRef.current || !videoRef.current) return;
+          if (videoRef.current.currentTime < EARTHZOOM_OUTRO_START - 0.35) {
+            try {
+              videoRef.current.currentTime = EARTHZOOM_OUTRO_START;
+            } catch {
+              /* ignore */
+            }
+          }
+        }, 120);
+      })();
+
       const failSafe = window.setTimeout(
-        finishOutro,
-        (EARTHZOOM_OUTRO_END - EARTHZOOM_OUTRO_START + 2.5) * 1000,
+        () => {
+          if (alive()) finishOutro();
+        },
+        (EARTHZOOM_OUTRO_END - EARTHZOOM_OUTRO_START + 3) * 1000,
       );
       return () => window.clearTimeout(failSafe);
     }
-  }, [phase, playFrom, freezeIntro, finishOutro]);
+  }, [phase, freezeIntro, finishOutro]);
 
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
 
-    const onTimeUpdate = () => {
+    const onTick = () => {
       if (phase === 'intro' && !introFrozenRef.current && v.currentTime >= EARTHZOOM_INTRO_END) {
-        freezeIntro();
+        void freezeIntro();
       }
-      if (phase === 'outro' && !outroEndedRef.current && v.currentTime >= EARTHZOOM_OUTRO_END) {
-        finishOutro();
+      if (phase === 'outro' && !outroEndedRef.current) {
+        // Keep outro pinned in the 10→14 window if the browser jumps backward.
+        if (v.currentTime < EARTHZOOM_OUTRO_START - 0.5 && v.currentTime < 5) {
+          try {
+            v.currentTime = EARTHZOOM_OUTRO_START;
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+        if (v.currentTime >= EARTHZOOM_OUTRO_END) finishOutro();
       }
     };
 
     const onEnded = () => {
-      if (phase === 'intro') freezeIntro();
+      if (phase === 'intro') void freezeIntro();
       if (phase === 'outro') finishOutro();
     };
 
-    // Poll: timeupdate can be sparse near the cut points.
-    const poll = window.setInterval(onTimeUpdate, 100);
-
-    v.addEventListener('timeupdate', onTimeUpdate);
+    const poll = window.setInterval(onTick, 80);
+    v.addEventListener('timeupdate', onTick);
     v.addEventListener('ended', onEnded);
     return () => {
       window.clearInterval(poll);
-      v.removeEventListener('timeupdate', onTimeUpdate);
+      v.removeEventListener('timeupdate', onTick);
       v.removeEventListener('ended', onEnded);
     };
   }, [phase, freezeIntro, finishOutro]);
