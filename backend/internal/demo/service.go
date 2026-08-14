@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	MaxVideosPerOrg   = 5
+	MaxVideosPerOrg   = 10
 	RetentionMinutes   = 60
 	MaxDemoEventsTotal = 2000
 	DefaultNavLabel   = "Démo Kinshasa"
@@ -34,7 +34,7 @@ const (
 
 var (
 	ErrVideoNotFound  = errors.New("demo video not found")
-	ErrVideoLimit     = errors.New("demo video library full (max 5)")
+	ErrVideoLimit     = errors.New("demo video library full (max 10)")
 	ErrInvalidVideo   = errors.New("only mp4 videos are supported")
 )
 

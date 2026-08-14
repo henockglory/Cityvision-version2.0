@@ -21,7 +21,7 @@ interface DemoVideoPanelProps {
   onEditZones?: (videoId: string) => void;
 }
 
-const MAX_VIDEOS = 5;
+const MAX_VIDEOS = 10;
 const LARGE_FILE_BYTES = 500 * 1024 * 1024;
 
 function formatBytes(n: number): string {
