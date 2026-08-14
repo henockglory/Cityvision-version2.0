@@ -14,10 +14,18 @@ BACKEND_PORT="${API_PORT:-8081}"
 INTERVAL="${WATCH_BACKEND_INTERVAL:-20}"
 
 mkdir -p "$LOGDIR"
-echo "[watch-backend] monitoring http://localhost:$BACKEND_PORT/health every ${INTERVAL}s"
+echo "[watch-backend] monitoring http://127.0.0.1:$BACKEND_PORT/health every ${INTERVAL}s"
+# Prefer IPv4: on WSL, localhost can resolve to ::1 while the API listens on 127.0.0.1 only,
+# which caused false "API down" heals that killed mono-camera 1-hit validation.
 
 while true; do
-  if ! curl -sf "http://localhost:$BACKEND_PORT/health" >/dev/null 2>&1; then
+  if ! curl -sf "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null 2>&1; then
+    # Confirm with a second probe before heal (avoid flapping on brief blips).
+    sleep 2
+    if curl -sf "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null 2>&1; then
+      sleep "$INTERVAL"
+      continue
+    fi
     echo "[watch-backend] API down — restarting backend only ($(date -Iseconds))"
     stop_from_pid "$LOGDIR/backend.pid"
     free_port "$BACKEND_PORT"
@@ -33,7 +41,7 @@ while true; do
     fi
     if [[ -x "$ROOT/backend/bin/citevision-api" ]]; then
       start_bg backend "$ROOT/backend" "$ROOT/backend/bin/citevision-api" "$LOGDIR" "$ENV_FILE"
-      wait_http_ok "http://localhost:$BACKEND_PORT/health" 90 || true
+      wait_http_ok "http://127.0.0.1:$BACKEND_PORT/health" 90 || true
       bash "$ROOT/scripts/ensure-demo-pipeline.sh" || true
     else
       echo "[watch-backend] binary missing — run bash scripts/restart-api-frontend.sh" >&2

@@ -46,17 +46,20 @@ func patches() ([]zonePatch, []linePatch) {
 			// Lower motion threshold + any vehicle class for demo video pacing.
 			config: map[string]interface{}{"class_filter": "any", "min_speed_px": 0.1},
 		},
+		// Live validated zone name (not Zone_distance_parcourue).
 		{
 			cameraMatch: "ligne continue",
-			zoneName:    "Zone_distance_parcourue",
+			zoneName:    "Zone_distance_parcourue2",
 			behavior:    "speed_measurement",
 			config: map[string]interface{}{
-				"distance_m":         8.0,
-				"edge_distances_m":   []interface{}{8.0, 2.0, 8.0, 2.0},
-				"speed_limit_kmh":    8,
-				"cooldown_sec":       8.0,
-				"spatial_dedup_sec":  8.0,
-				"class_filter":       "any",
+				"distance_m":        20.0,
+				"edge_distances_m":  []interface{}{20.0, 20.0, 20.0, 20.0},
+				"speed_limit_kmh":   1,
+				"entry_edge_index":  3,
+				"class_filter":      "car",
+				"track_objects":     "car",
+				"cooldown_sec":      8.0,
+				"spatial_dedup_sec": 8.0,
 			},
 		},
 		// [P.130] The user drew TWO cabin zones (Zone_bbox + Zone_bbox2), one per
@@ -73,10 +76,53 @@ func patches() ([]zonePatch, []linePatch) {
 			behavior:    "seatbelt",
 			config:      map[string]interface{}{"confidence": 0.35},
 		},
+		// Hologram / Okapi demo uploads (validation 1-hit).
+		{
+			cameraMatch: "okapi",
+			zoneName:    "lecture_plaque",
+			behavior:    "plate_ocr",
+			config:      map[string]interface{}{"class_filter": "car", "plate_pattern_id": ""},
+		},
+		{
+			cameraMatch: "in_out",
+			zoneName:    "Zone_surveillee",
+			behavior:    "perimeter",
+			config:      map[string]interface{}{"class_filter": "person", "track_objects": "person"},
+		},
+		{
+			cameraMatch: "zoom_entree",
+			zoneName:    "Zone_seatbelt",
+			behavior:    "seatbelt",
+			config: map[string]interface{}{
+				"confidence":    0.35,
+				"class_filter":  "car",
+				"track_objects": "car,truck,bus,motorcycle",
+			},
+		},
+		{
+			// Shortest-name match: "entree_hologram" must not pick Zoom_Entree_Hologram.
+			cameraMatch: "entree_hologram",
+			zoneName:    "Zone_sens_interdit",
+			behavior:    "wrong_way",
+			config: map[string]interface{}{
+				"entry_edge_index": 0, // P1-P2
+				"exit_edge_index":  2, // P3-P4
+				"class_filter":     "car",
+				"track_objects":    "car,truck,bus,motorcycle",
+			},
+		},
 	}
 	lines := []linePatch{
 		{cameraMatch: "décompte", lineName: "Ligne_count", active: true},
 	}
+	// Counting camera must not carry a competing speed_measurement zone.
+	zones = append(zones, zonePatch{
+		cameraMatch: "décompte",
+		zoneName:    "Zone 1",
+		behavior:    "",
+		config:      map[string]interface{}{},
+		optional:    true,
+	})
 	// Optional ANPR zones — skipped if not drawn in DB.
 	zones = append(zones,
 		zonePatch{
@@ -108,7 +154,7 @@ func main() {
 		if _, err := fmt.Sscanf(v, "%f", &dist); err == nil && dist > 0 {
 			z, l := patches()
 			for i := range z {
-				if z[i].zoneName == "Zone_distance_parcourue" {
+				if z[i].zoneName == "Zone_distance_parcourue2" || z[i].zoneName == "Zone_distance_parcourue" {
 					z[i].config["distance_m"] = dist
 				}
 			}
@@ -250,10 +296,19 @@ func loadCameras(ctx context.Context, pool *pgxpool.Pool, orgID uuid.UUID) ([]ca
 
 func matchCamera(cams []camInfo, substr string) uuid.UUID {
 	s := strings.ToLower(substr)
+	bestID := uuid.Nil
+	bestLen := int(^uint(0) >> 1)
 	for _, c := range cams {
-		if strings.Contains(strings.ToLower(c.name), s) {
-			return c.id
+		n := strings.ToLower(c.name)
+		if !strings.Contains(n, s) {
+			continue
+		}
+		// Prefer the shortest matching name so "entree_hologram" binds
+		// Démo — Entree_Hologram rather than Démo — Zoom_Entree_Hologram.
+		if len(n) < bestLen {
+			bestLen = len(n)
+			bestID = c.id
 		}
 	}
-	return uuid.Nil
+	return bestID
 }

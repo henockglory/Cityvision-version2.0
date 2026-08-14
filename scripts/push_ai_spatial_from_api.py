@@ -11,7 +11,8 @@ AI = os.environ.get("AI_ENGINE_URL", "http://127.0.0.1:8001")
 # [P.131] No hardcoded IDs/creds — resolved live from /auth/me, env overridable.
 ORG = os.environ.get("DEMO_ORG_ID", "")
 EMAIL = os.environ.get("ADMIN_EMAIL", "glory.henock@hologram.cd")
-PASS = os.environ.get("ADMIN_PASSWORD", "Henockglory@03")
+# Live demo password (QUICKSTART / validate-demo-handoff). Override via ADMIN_PASSWORD.
+PASS = os.environ.get("ADMIN_PASSWORD", "Hologram2026!")
 
 
 def req(method: str, url: str, body: dict | None = None, token: str | None = None) -> object:
