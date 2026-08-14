@@ -1812,7 +1812,9 @@ class FrigateEventBridge:
 
         pattern_re = resolve_zone_plate_pattern(zinfo)
         paddle_reading = run_paddle_on_jpeg(jpeg, pattern_re)
-        zone_name = str(zinfo.get("zone_id") or zinfo.get("name") or "")
+        # Prefer human zone name so seed conditions (zone_id=lecture_plaque) match.
+        zone_name = str(zinfo.get("name") or "").strip() or str(zinfo.get("zone_id") or "").strip()
+        label = str(after.get("label") or "car").lower().strip() or "car"
         skeleton = {
             "event_id": str(uuid.uuid4()),
             "camera_id": camera_id,
@@ -1820,6 +1822,7 @@ class FrigateEventBridge:
             "event": "plate_detected",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "zone_id": zone_name,
+            "class_name": label,
             "frigate_event_id": event_id,
             "bbox": box,
             "severity": "info",
@@ -1827,6 +1830,8 @@ class FrigateEventBridge:
                 "detection_method": "gemini_paddle_fusion",
                 "bridge_source": "frigate",
                 "frigate_event_id": event_id,
+                "frigate_label": after.get("label") or label,
+                "bbox_source": "frigate",
             },
         }
         ok = self._vlm_queue.try_enqueue(
