@@ -5,11 +5,12 @@ export const EARTHZOOM_SRC = '/media/earthzoom.mp4';
 export const EARTHZOOM_INTRO_END = 9;
 
 /**
- * Outro window after successful login (fake loading).
- * Start is aligned to the nearest video keyframe (~10.71s) so browsers
- * can seek/play reliably — seeking to exactly 10 often rewound to t=0.
+ * After successful login the same video resumes from the freeze (~INTRO_END)
+ * and plays through to OUTRO_END (fake loading). We do not seek to 10s:
+ * this MP4 only has keyframes at ~0 / 5.37 / 10.71 and seeking often failed
+ * or flashed t=0, which made the outro disappear entirely.
  */
-export const EARTHZOOM_OUTRO_START = 10.71;
+export const EARTHZOOM_OUTRO_START = 9;
 export const EARTHZOOM_OUTRO_END = 14;
 
 export type EarthzoomPhase = 'intro' | 'frozen' | 'outro';
