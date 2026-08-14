@@ -160,13 +160,12 @@ ensure_frigate_paths_env() {
 ensure_gemini_key_env() {
   local root="${1:-.}"
   local env_path="${2:-$root/.env}"
+  # Keyfile from Set-CiteVisionGeminiKey is durable SoT. If .env has a different
+  # present-but-stale key (len>=20), prefer keyfile so AI/VLM start with a working key.
   python3 - <<PY
 from pathlib import Path
 import os
 
-root = Path(${root@Q} if False else "$root")
-env_path = Path(${env_path@Q} if False else "$env_path")
-root = Path("$root")
 env_path = Path("$env_path")
 text = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
 key = ""
@@ -174,26 +173,29 @@ for line in text.splitlines():
     if line.startswith("GEMINI_API_KEY="):
         key = line.split("=", 1)[1].strip().strip('"').strip("'")
         break
+kf = Path(os.environ.get("GEMINI_KEY_FILE", str(Path.home() / ".citevision_gemini_key.tmp")))
+kf_key = kf.read_text(encoding="utf-8").strip() if kf.is_file() else ""
+
+def write_key(new_key: str) -> None:
+    lines, seen = [], False
+    for line in text.splitlines():
+        if line.startswith("GEMINI_API_KEY="):
+            lines.append(f"GEMINI_API_KEY={new_key}")
+            seen = True
+        else:
+            lines.append(line)
+    if not seen:
+        lines.append(f"GEMINI_API_KEY={new_key}")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+# Prefer durable keyfile when it differs from a present env key (stale AIza shadowing AQ.).
+if len(kf_key) >= 20 and (len(key) < 20 or key != kf_key):
+    write_key(kf_key)
+    print("gemini_key=restored_from_file")
+    raise SystemExit(0)
 if len(key) >= 20:
     print("gemini_key=present")
     raise SystemExit(0)
-kf = Path(os.environ.get("GEMINI_KEY_FILE", str(Path.home() / ".citevision_gemini_key.tmp")))
-if kf.is_file():
-    key = kf.read_text(encoding="utf-8").strip()
-    if len(key) >= 20:
-        lines, seen = text.splitlines(), False
-        out = []
-        for line in lines:
-            if line.startswith("GEMINI_API_KEY="):
-                out.append(f"GEMINI_API_KEY={key}")
-                seen = True
-            else:
-                out.append(line)
-        if not seen:
-            out.append(f"GEMINI_API_KEY={key}")
-        env_path.write_text("\n".join(out) + "\n", encoding="utf-8")
-        print("gemini_key=restored_from_file")
-        raise SystemExit(0)
 print("gemini_key=MISSING")
 raise SystemExit(1)
 PY
