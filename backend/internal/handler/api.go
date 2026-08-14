@@ -331,7 +331,8 @@ func (a *API) DeleteCamera(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		slog.Error("camera delete failed", "org_id", orgID, "camera_id", cid, "error", err)
+		writeError(w, http.StatusInternalServerError, "delete failed: "+err.Error())
 		return
 	}
 	if claims := middleware.GetClaims(r.Context()); claims != nil {

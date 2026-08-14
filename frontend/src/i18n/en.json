@@ -175,6 +175,8 @@
       "connectionSuccess": "Connection successful",
       "connectionFailed": "Cannot display video — check credentials and that the camera is on the same network",
       "previewFailed": "Cannot display video — check credentials and that the camera is on the same network",
+      "previewDeferred": "Camera saved — live preview may take a few seconds (transcode). You can finish and open Live.",
+      "savedButStreamWeak": "Camera saved, but the stream test is weak for now — finish and retry from the camera card.",
       "scanError": "Network scan failed — retry or enter the RTSP URL manually",
       "scanTimeout": "Scan timed out — retry or enter the RTSP URL manually",
       "probeTimeout": "Connection test timed out — check that the camera is online and on the same network",

@@ -233,8 +233,11 @@ export default function Cameras() {
         const { data } = await createMutation.mutateAsync(payload);
         cam = data as Camera;
       }
+      // Camera row is persisted — never treat later preview hiccups as a create refusal.
       setCreatedCameraId(cam.id);
       setCameraName(name);
+      setWizardError('');
+      void refetch();
 
       const testResult = await testMutation.mutateAsync(cam.id);
       if (testResult.data.video_ok) {
@@ -246,10 +249,15 @@ export default function Cameras() {
           setStreamVersion((v) => ({ ...v, [cam.id]: (v[cam.id] ?? 0) + 1 }));
         } catch {
           setPreviewOk(false);
-          setWizardError(t('cameras.wizard.previewFailed'));
+          // Soft warning only: live HEVC/transcode can lag; camera remains usable.
+          pushToast(t('cameras.wizard.previewDeferred'));
         }
+        setStep(4);
       } else {
-        setWizardError(t('cameras.wizard.connectionFailed'));
+        setTestOk(false);
+        setPreviewOk(false);
+        pushToast(t('cameras.wizard.savedButStreamWeak'));
+        setStep(4);
       }
     } catch (err) {
       if (isAxiosError(err) && err.response?.status === 400) {
@@ -599,7 +607,10 @@ export default function Cameras() {
                 <VideoPlaceholder label={selectedDevice?.ip ?? cameraName} live={false} />
               )}
               {!previewOk && testOk && (
-                <p className="text-sm text-red-400 text-center mt-3">{t('cameras.wizard.previewFailed')}</p>
+                <p className="text-sm text-amber-400 text-center mt-3">{t('cameras.wizard.previewDeferred')}</p>
+              )}
+              {createdCameraId && !testOk && (
+                <p className="text-sm text-amber-400 text-center mt-3">{t('cameras.wizard.savedButStreamWeak')}</p>
               )}
             </div>
           )}
@@ -617,9 +628,9 @@ export default function Cameras() {
               type="button"
               disabled={
                 (step === 1 && !selectedDevice && !manualRtspUrl.trim()) ||
-                (step === 2 && !testOk) ||
+                (step === 2 && !testOk && !createdCameraId) ||
                 (step === 3 && !createdCameraId) ||
-                (step === 4 && !previewOk)
+                (step === 4 && !createdCameraId)
               }
               onClick={() => {
                 playClick();
