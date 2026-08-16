@@ -148,6 +148,168 @@ def nearest_edge_index(poly: list[dict], x: float, y: float) -> int | None:
     return best_i
 
 
+def point_to_edge_distance(poly: list[dict], i: int, x: float, y: float) -> float:
+    """Distance from (x, y) to polygon edge i (segment, not midpoint)."""
+    n = edge_count(poly)
+    if i < 0 or i >= n:
+        return float("inf")
+    ax, ay = _vertex(poly, i)
+    bx, by = _vertex(poly, (i + 1) % n)
+    vx, vy = bx - ax, by - ay
+    len2 = vx * vx + vy * vy
+    if len2 <= 1e-18:
+        return math.hypot(x - ax, y - ay)
+    t = max(0.0, min(1.0, ((x - ax) * vx + (y - ay) * vy) / len2))
+    return math.hypot(x - (ax + t * vx), y - (ay + t * vy))
+
+
+def nearest_edge_if_close(
+    poly: list[dict],
+    x: float,
+    y: float,
+    *,
+    max_dist: float = 0.08,
+) -> int | None:
+    """Edge index only when (x, y) is actually next to that edge — not merely nearest.
+
+    Using 'nearest of 4' on a car already inside the zone tags the wrong neighbour
+    when two vehicles sit side by side.
+    """
+    n = edge_count(poly)
+    if n < 3:
+        return None
+    best_i: int | None = None
+    best_d = float("inf")
+    for i in range(n):
+        d = point_to_edge_distance(poly, i, x, y)
+        if d < best_d:
+            best_d = d
+            best_i = i
+    if best_i is None or best_d > max_dist:
+        return None
+    return best_i
+
+
+def _ccw(ax: float, ay: float, bx: float, by: float, cx: float, cy: float) -> float:
+    return (cy - ay) * (bx - ax) - (cx - ax) * (by - ay)
+
+
+def _point_on_segment(
+    ax: float, ay: float, bx: float, by: float, px: float, py: float, *, eps: float = 1e-9
+) -> bool:
+    if abs(_ccw(ax, ay, bx, by, px, py)) > eps:
+        return False
+    return (
+        min(ax, bx) - eps <= px <= max(ax, bx) + eps
+        and min(ay, by) - eps <= py <= max(ay, by) + eps
+    )
+
+
+def segments_intersect(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    c: tuple[float, float],
+    d: tuple[float, float],
+    *,
+    eps: float = 1e-9,
+) -> bool:
+    """True if ab and cd share a point (proper cross or endpoint on the other segment)."""
+    ax, ay = a
+    bx, by = b
+    cx, cy = c
+    dx, dy = d
+    o1 = _ccw(ax, ay, bx, by, cx, cy)
+    o2 = _ccw(ax, ay, bx, by, dx, dy)
+    o3 = _ccw(cx, cy, dx, dy, ax, ay)
+    o4 = _ccw(cx, cy, dx, dy, bx, by)
+    if (o1 * o2 < -eps) and (o3 * o4 < -eps):
+        return True
+    if abs(o1) <= eps and _point_on_segment(ax, ay, bx, by, cx, cy, eps=eps):
+        return True
+    if abs(o2) <= eps and _point_on_segment(ax, ay, bx, by, dx, dy, eps=eps):
+        return True
+    if abs(o3) <= eps and _point_on_segment(cx, cy, dx, dy, ax, ay, eps=eps):
+        return True
+    if abs(o4) <= eps and _point_on_segment(cx, cy, dx, dy, bx, by, eps=eps):
+        return True
+    return False
+
+
+def _segment_intersection_t(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    c: tuple[float, float],
+    d: tuple[float, float],
+) -> float:
+    """Parametric t of ab at the intersection with cd (0 at a, 1 at b)."""
+    ax, ay = a
+    bx, by = b
+    cx, cy = c
+    dx, dy = d
+    den = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx)
+    if abs(den) < 1e-15:
+        vx, vy = bx - ax, by - ay
+        denom = vx * vx + vy * vy
+        if denom <= 1e-18:
+            return 0.0
+
+        def t_of(px: float, py: float) -> float:
+            return ((px - ax) * vx + (py - ay) * vy) / denom
+
+        return min(t_of(cx, cy), t_of(dx, dy))
+    return ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / den
+
+
+def edges_crossed_by_segment(
+    poly: list[dict],
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+) -> list[int]:
+    """Polygon edge indices crossed by (x1,y1)→(x2,y2), ordered along the trajectory."""
+    n = edge_count(poly)
+    if n < 3:
+        return []
+    a = (x1, y1)
+    b = (x2, y2)
+    if math.hypot(x2 - x1, y2 - y1) <= 1e-12:
+        return []
+    hits: list[tuple[float, int]] = []
+    for i in range(n):
+        c = _vertex(poly, i)
+        d = _vertex(poly, (i + 1) % n)
+        if segments_intersect(a, b, c, d):
+            hits.append((_segment_intersection_t(a, b, c, d), i))
+    hits.sort(key=lambda item: item[0])
+    return [i for _, i in hits]
+
+
+def append_edge_crossing(crossed: list[int], edge: int | None) -> None:
+    """Append an edge index if it is new relative to the last recorded crossing."""
+    if edge is None:
+        return
+    if not crossed or crossed[-1] != edge:
+        crossed.append(int(edge))
+
+
+def is_wrong_way_ordered(
+    crossed: list[int],
+    entry_edge_index: int,
+    exit_edge_index: int,
+) -> bool:
+    """Wrong-way iff exit edge (P3-P4) is first seen before entry edge (P1-P2).
+
+    Other edges between the two do not cancel. Missing either edge is not wrong-way.
+    """
+    try:
+        i_exit = crossed.index(int(exit_edge_index))
+        i_entry = crossed.index(int(entry_edge_index))
+    except ValueError:
+        return False
+    return i_exit < i_entry
+
+
 def edge_pair_distance_m(
     poly: list[dict],
     entry_edge_index: int,

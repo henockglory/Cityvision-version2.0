@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import queue
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -281,42 +282,45 @@ class VlmQueue:
         fused_plate_text = ""
         fused_plate_conf = 0.0
         if job.rule == "plate_ocr":
-            from citevision_ai.identity.plate_fusion import (
-                PlateReading,
-                fuse_plate_readings,
-                matches_composition,
-                reading_from_gemini_verdict,
-            )
+            def _alnum_plate(raw: str) -> str:
+                return re.sub(r"[^A-Z0-9]", "", str(raw or "").upper())[:16]
 
-            pattern_re = (job.plate_pattern_regex or "").strip() or None
-            paddle_hint = None
-            if job.paddle_plate_text and matches_composition(
-                str(job.paddle_plate_text), pattern_re
-            ):
-                paddle_hint = PlateReading(
-                    text=str(job.paddle_plate_text),
-                    confidence=float(job.paddle_plate_confidence or 0.0),
-                    source="paddle",
-                )
-            winner, plate_fusion_meta = fuse_plate_readings(
-                reading_from_gemini_verdict(verdict, pattern_re),
-                paddle_hint,
-            )
-            if winner and float(winner.confidence) >= float(job.min_confidence):
-                fused_plate_text = winner.text
-                fused_plate_conf = float(winner.confidence)
-            emit_ok = bool(fused_plate_text)
+            gemini_text = _alnum_plate(getattr(verdict, "plate_text", "") or "")
+            paddle_text = _alnum_plate(job.paddle_plate_text)
+            fused_plate_text = gemini_text or paddle_text
+            if gemini_text:
+                fused_plate_conf = float(getattr(verdict, "confidence", 0.0) or 0.0)
+            else:
+                fused_plate_conf = float(job.paddle_plate_confidence or 0.0)
+            if fused_plate_text and fused_plate_conf < 0.15:
+                fused_plate_conf = 0.15
+            plate_fusion_meta = {
+                "ocr_gemini": gemini_text,
+                "ocr_paddle": paddle_text,
+                "ocr_best_effort": True,
+            }
+            # Emit Gemini's best guess even if composition / readable / conf miss.
+            emit_ok = bool(fused_plate_text) and not (getattr(verdict, "error", "") or "")
+            if not emit_ok and paddle_text and (getattr(verdict, "error", "") or ""):
+                fused_plate_text = paddle_text
+                emit_ok = True
         else:
             emit_ok = should_emit(verdict, min_confidence=job.min_confidence)
 
         force_no = False
         # Temporary demo: emit a few cabin alerts even when Gemini says NO so
         # operators can validate that evidence shows the exact Gemini crop.
+        # Never force-emit an empty cabin (person_visible=false).
         # Set VLM_CABIN_FORCE_EMIT_NO_MAX=0 (or unset) to restore production gate.
+        person_ok = bool(
+            getattr(verdict, "person_visible", False)
+            or getattr(verdict, "visible", False)
+        )
         if (
             not emit_ok
             and job.rule in _CABIN_RULES
             and not getattr(verdict, "error", "")
+            and person_ok
         ):
             try:
                 force_budget = int(os.environ.get("VLM_CABIN_FORCE_EMIT_NO_MAX", "0") or 0)
@@ -358,8 +362,11 @@ class VlmQueue:
 
         cabin_no = (
             job.rule in _CABIN_RULES
-            and not bool(getattr(verdict, "violation", False))
             and not getattr(verdict, "error", "")
+            and (
+                not bool(getattr(verdict, "violation", False))
+                or not person_ok
+            )
         )
         if job.rule in _CABIN_RULES:
             if emit_ok:
@@ -506,6 +513,7 @@ class VlmQueue:
             )[:2000]
             meta["vlm_crop_path"] = dump_path
             meta["crop_mode"] = meta.get("crop_mode") or "frigate_vehicle_bbox"
+            meta["person_visible"] = person_ok
             # Exact bytes Gemini judged — pipeline attaches as scene+subject.
             evt["_vlm_crop_jpeg"] = job.jpeg
         if force_no:

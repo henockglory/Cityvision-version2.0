@@ -205,14 +205,15 @@ def fetch_subject_jpeg(
     wait_sec: float = 25.0,
 ) -> tuple[bytes | None, dict[str, float] | None, dict[str, Any] | None]:
     """Return (jpeg_crop, norm_bbox, event_dict). Fail-closed → (None, …)."""
+    mqtt_box = _box_from_event(event_payload) if isinstance(event_payload, dict) else None
     ev = event_payload
     if ev is None or not (ev.get("has_snapshot") or (ev.get("data") or {}).get("has_snapshot")):
         ev = wait_snapshot_ready(frigate_url, event_id, timeout_sec=wait_sec) or ev
     raw = download_snapshot_jpeg(frigate_url, event_id)
     if not raw:
         return None, None, ev
-    box = _box_from_event(ev) if isinstance(ev, dict) else None
-    crop = crop_jpeg_from_snapshot(raw, box)
+    box = mqtt_box or (_box_from_event(ev) if isinstance(ev, dict) else None)
+    crop = crop_jpeg_from_snapshot(raw, box, min_side=384)
     return crop, box, ev
 
 
@@ -227,14 +228,17 @@ def fetch_cabin_jpeg(
     """Vehicle-in-zone → full Frigate vehicle bbox crop for Gemini seatbelt/phone.
 
     Cabine policy: ``vehicle_bbox`` only (never driver_roi / cabin sub-crop).
+    Always crop the MQTT bbox of THIS track — waiting for snapshot must not
+    replace it with a neighbour's later box.
     """
+    mqtt_box = _box_from_event(event_payload) if isinstance(event_payload, dict) else None
     ev = event_payload
     if ev is None or not (ev.get("has_snapshot") or (ev.get("data") or {}).get("has_snapshot")):
         ev = wait_snapshot_ready(frigate_url, event_id, timeout_sec=wait_sec) or ev
     raw = download_snapshot_jpeg(frigate_url, event_id)
     if not raw:
         return None, None, ev
-    vehicle_box = _box_from_event(ev) if isinstance(ev, dict) else None
+    vehicle_box = mqtt_box or (_box_from_event(ev) if isinstance(ev, dict) else None)
     if not vehicle_box:
         return None, None, ev
     # No size gate: every tracked vehicle in the zone goes to Gemini; the

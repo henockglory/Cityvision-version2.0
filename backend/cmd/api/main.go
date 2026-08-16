@@ -185,11 +185,11 @@ func main() {
 		if !frigateSync.Enabled() {
 			return nil
 		}
-		return frigateSync.RebuildAll(ctx)
+		return frigateSync.RebuildAllHot(ctx)
 	})
 	orch.SetFrigateHooks(ingest.FrigateHooks{
 		Rebuild: func(ctx context.Context) error {
-			return frigateSync.RebuildAll(ctx)
+			return frigateSync.RebuildAllHot(ctx)
 		},
 		WaitFresh: func(ctx context.Context, cameraID string, maxAgeSec float64) error {
 			return frigateSync.WaitFresh(ctx, cameraID, maxAgeSec)

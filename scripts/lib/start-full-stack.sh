@@ -223,6 +223,11 @@ sleep 1
 bash "$ROOT/scripts/ensure-rules-sync-env.sh" --static-only 2>/dev/null || true
 load_dotenv "$ENV_FILE"
 
+# Rebuild API if Frigate Go sources are newer than the binary (compiler record ON).
+if ! bash "$ROOT/scripts/lib/ensure-backend-bin.sh"; then
+  echo "[FAIL] cannot build citevision-api" >&2
+  exit 1
+fi
 # Prefer prebuilt binary when present (faster / matches _restart_backend)
 if [[ -x "$ROOT/backend/bin/citevision-api" ]]; then
   python3 "$ROOT/scripts/_restart_backend.py" || true
@@ -286,6 +291,8 @@ if [[ "$_ai_models_ok" != "1" ]]; then
   bash "$ROOT/scripts/ensure-ai-stack.sh" --fix --restart-ai \
     --health-url="http://127.0.0.1:${AI_PORT}/health" --max-attempts=3 || true
 fi
+# copy_one can refresh evidence Python while a healthy AI keeps the old module.
+bash "$ROOT/scripts/lib/ensure-ai-src-fresh.sh" || true
 echo "[OK] AI :${AI_PORT}"
 
 # --- Frigate heal + demo pipeline ---
@@ -300,6 +307,8 @@ if ! curl -sf --max-time 90 -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/int
   -H "X-Internal-Key: $KEY"; then
   echo "[WARN] frigate/rebuild timed out or failed — continuing (wait/recreate below)"
 fi
+# Demo clips need per-camera record.enabled; heal YAML+reload if compiler/binary missed it.
+bash "$ROOT/scripts/lib/heal-frigate-record.sh" || true
 
 if ! wait_http_ok "http://127.0.0.1:5000/api/version" 90; then
   echo "[WARN] Frigate down - recreate"

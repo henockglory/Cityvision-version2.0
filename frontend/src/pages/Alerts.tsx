@@ -35,7 +35,7 @@ export default function Alerts() {
   const [toDate, setToDate] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [showIncomplete, setShowIncomplete] = useState(false);
+  const [showIncomplete, setShowIncomplete] = useState(true);
 
   const filters: AlertFilters = useMemo(() => {
     const f: AlertFilters = { limit: 200 };

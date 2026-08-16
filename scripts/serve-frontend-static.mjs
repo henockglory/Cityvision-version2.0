@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream';
+import net from 'node:net';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -153,6 +154,33 @@ const server = http.createServer((req, res) => {
 server.on('error', (err) => {
   console.error(`[FAIL] UI listen ${HOST}:${PORT}:`, err && err.code ? err.code : err);
   process.exit(1);
+});
+
+server.on('upgrade', (req, clientSocket, head) => {
+  const incoming = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+  const rule = matchProxy(incoming.pathname);
+  if (!rule) {
+    clientSocket.destroy();
+    return;
+  }
+  const targetBase = new URL(rule.target);
+  const destPath = rewritePath(incoming.pathname + incoming.search, rule);
+  const port = Number(targetBase.port || (targetBase.protocol === 'https:' ? 443 : 80));
+  const upstream = net.connect(port, targetBase.hostname, () => {
+    const hdrs = { ...req.headers, host: targetBase.host };
+    let raw = `GET ${destPath} HTTP/1.1\r\n`;
+    for (const [k, v] of Object.entries(hdrs)) {
+      if (v == null) continue;
+      raw += `${k}: ${Array.isArray(v) ? v.join(', ') : v}\r\n`;
+    }
+    raw += '\r\n';
+    upstream.write(raw);
+    if (head && head.length) upstream.write(head);
+    upstream.pipe(clientSocket);
+    clientSocket.pipe(upstream);
+  });
+  upstream.on('error', () => clientSocket.destroy());
+  clientSocket.on('error', () => upstream.destroy());
 });
 
 server.listen(PORT, HOST, () => {

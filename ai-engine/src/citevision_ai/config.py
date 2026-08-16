@@ -160,6 +160,15 @@ class Settings(BaseSettings):
     demo_loop_guard: bool = True
     # Isolated 1-hit feu test: fail-closed — no ia_overlay / soft-accept for red_light.
     feu_1hit_strict: bool = Field(default=False, validation_alias=AliasChoices("FEU_1HIT_STRICT"))
+    # Protocole 3 / strict validation: no speed unsealed window-clip as "complete" proof.
+    frigate_evidence_strict: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "frigate_evidence_strict",
+            "FRIGATE_EVIDENCE_STRICT",
+            "CITEVISION_FRIGATE_EVIDENCE_STRICT",
+        ),
+    )
 
     # Frigate track evidence (ported from citevision_videoverbalisation)
     frigate_event_match_sec: float = 12.0

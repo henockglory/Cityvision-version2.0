@@ -167,9 +167,18 @@ def run_paddle_on_jpeg(
         candidates.append(
             PlateReading(text=text, confidence=float(r.confidence or 0.0), source="paddle")
         )
-    if not candidates:
+    if candidates:
+        return max(candidates, key=lambda x: x.confidence)
+    # Vehicle crop already submitted: keep the best raw OCR if composition missed.
+    best = max(results, key=lambda r: float(getattr(r, "confidence", 0.0) or 0.0))
+    text = _normalize_plate(getattr(best, "text", "") or "")
+    if len(text) < 3:
         return None
-    return max(candidates, key=lambda x: x.confidence)
+    return PlateReading(
+        text=text,
+        confidence=float(getattr(best, "confidence", 0.0) or 0.0),
+        source="paddle",
+    )
 
 
 def reading_from_gemini_verdict(

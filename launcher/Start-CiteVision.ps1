@@ -74,7 +74,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[OK] Runtime ready" -ForegroundColor Green
 
 # Bounded refresh only (never hang Start on /mnt rsync of whole trees).
-Write-Host "[2/5] Refresh start scripts (max 25s)" -ForegroundColor Cyan
+Write-Host "[2/5] Refresh start scripts (max 45s)" -ForegroundColor Cyan
 $syncBash = @'
 #!/usr/bin/env bash
 set -uo pipefail
@@ -106,6 +106,10 @@ copy_one scripts/lib/start-full-stack.sh
 copy_one scripts/lib/business-readiness.sh
 copy_one scripts/lib/env-utils.sh
 copy_one scripts/lib/service-heal.sh
+copy_one scripts/lib/ensure-backend-bin.sh
+copy_one scripts/lib/frontend-dist-stamp.sh
+copy_one scripts/lib/heal-frigate-record.sh
+copy_one scripts/lib/ensure-ai-src-fresh.sh
 copy_one scripts/lib/frigate_detect_gate.py
 copy_one scripts/lib/probe-gemini.sh
 copy_one scripts/lib/set-gemini-key.sh
@@ -113,6 +117,9 @@ copy_one scripts/ensure-demo-pipeline.sh
 copy_one scripts/ensure-ai-stack.sh
 copy_one scripts/ensure-frontend.sh
 copy_one scripts/serve-frontend-static.mjs
+copy_one frontend/src/hooks/useAlertWebSocket.ts
+copy_one frontend/src/hooks/api/queries.ts
+copy_one frontend/src/pages/Alerts.tsx
 copy_one scripts/watch-frontend.sh
 copy_one scripts/watch-backend.sh
 copy_one scripts/lib/platform-models-ok.py
@@ -132,8 +139,18 @@ copy_one scripts/validate_demo_five_rules.py
 copy_one scripts/_p7_reactive.sh
 # Hyper-reactive demo pipeline (Frigate focus + fast evidence + lf_or_g feu)
 copy_one ai-engine/src/citevision_ai/frigate_bridge/bridge.py
+copy_one ai-engine/src/citevision_ai/frigate_bridge/snapshot.py
+copy_one ai-engine/src/citevision_ai/bridge.py
 copy_one ai-engine/src/citevision_ai/pipeline.py
+copy_one ai-engine/src/citevision_ai/identity/plate_fusion.py
+copy_one ai-engine/src/citevision_ai/identity/plate.py
+copy_one ai-engine/src/citevision_ai/utils/paddle_ocr_compat.py
 copy_one ai-engine/src/citevision_ai/evidence/frigate_track_evidence.py
+copy_one ai-engine/src/citevision_ai/evidence/capture.py
+copy_one ai-engine/src/citevision_ai/evidence/gate.py
+copy_one ai-engine/src/citevision_ai/analytics/zone_geometry.py
+copy_one ai-engine/src/citevision_ai/vlm/gemini_client.py
+copy_one ai-engine/src/citevision_ai/vlm/queue.py
 copy_one ai-engine/src/citevision_ai/road_enforcement/red_light_vote.py
 copy_one backend/internal/frigate/detect_gate.go
 copy_one backend/internal/frigate/sync.go
@@ -153,7 +170,7 @@ $syncTmp = Join-Path $env:TEMP "citevision-start-sync.sh"
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($syncTmp, ($syncBash -replace "`r`n", "`n" -replace "`r", "`n"), $utf8NoBom)
 $syncWsl = ConvertTo-WslPath $syncTmp
-$syncCmd = ('sed "s/\r$//" "{0}" > /tmp/citevision-start-sync.sh; chmod +x /tmp/citevision-start-sync.sh; CV_SRC={1} CV_DST={2} timeout 25 bash /tmp/citevision-start-sync.sh || echo "[WARN] refresh timed out - continuing with runtime copy"' -f $syncWsl, $WslProductRoot, $WslRoot)
+$syncCmd = ('sed "s/\r$//" "{0}" > /tmp/citevision-start-sync.sh; chmod +x /tmp/citevision-start-sync.sh; CV_SRC={1} CV_DST={2} timeout 45 bash /tmp/citevision-start-sync.sh || echo "[WARN] refresh timed out - continuing with runtime copy"' -f $syncWsl, $WslProductRoot, $WslRoot)
 wsl -d $Distro -- bash -lc $syncCmd
 Write-Host "[OK] Refresh step finished" -ForegroundColor Green
 Write-Host ""

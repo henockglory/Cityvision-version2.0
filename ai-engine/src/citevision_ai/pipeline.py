@@ -233,7 +233,8 @@ class PipelineService:
         face_on = bool(settings.frigate_vlm_bridge)
         speed_on = bool(settings.frigate_speed_bridge)
         geometry_on = bool(settings.frigate_geometry_bridge)
-        if not vlm_on and not speed_on and not geometry_on and not face_on:
+        plate_on = bool(getattr(settings, "frigate_plate_ocr", True))
+        if not vlm_on and not speed_on and not geometry_on and not face_on and not plate_on:
             return
         from citevision_ai.frigate_bridge import FrigateEventBridge
 
@@ -284,7 +285,7 @@ class PipelineService:
             vlm_enabled=vlm_on,
             speed_enabled=speed_on,
             face_enabled=face_on,
-            plate_enabled=vlm_on,
+            plate_enabled=plate_on,
             geometry_enabled=geometry_on,
             snapshot_wait_sec=float(settings.frigate_bridge_snapshot_wait_sec or 25.0),
             watchlist_resolver=lambda: list(getattr(self.face_engine, "_watchlist", None) or []),
@@ -298,8 +299,9 @@ class PipelineService:
         )
         if vlm_on or face_on:
             self.face_engine.set_frigate_bridge_active(True)
-        if vlm_on:
+        if plate_on:
             self.plate_engine.set_frigate_bridge_active(True)
+        if vlm_on:
             self.secondary.set_frigate_bridge_active(True)
         self._frigate_bridge.start()
         logger.info(
@@ -413,8 +415,13 @@ class PipelineService:
             meta["status"] = status
             meta["plate_number"] = plate
             evt["metadata"] = meta
+            tid_raw = evt.get("track_id")
+            try:
+                tid = int(tid_raw)
+            except (TypeError, ValueError):
+                tid = -1
             self.plate_engine._remember_plate(
-                camera_id, int(evt.get("track_id") or -1), plate,
+                camera_id, tid, plate,
                 float(evt.get("plate_confidence") or evt.get("confidence") or 0.0),
             )
             self.plate_engine.remember_sighting(camera_id, plate)

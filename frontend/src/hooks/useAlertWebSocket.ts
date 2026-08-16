@@ -4,6 +4,22 @@ import { useAuthStore } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
 import { queryKeys } from '@/hooks/api/queries';
 import { useSound } from '@/hooks/useSound';
+import { mapAlert } from '@/api/mappers';
+import type { Alert } from '@/types';
+
+function upsertAlertCache(qc: ReturnType<typeof useQueryClient>, mapped: Alert, isNew: boolean) {
+  qc.setQueriesData({ queryKey: queryKeys.alerts }, (old) => {
+    if (!Array.isArray(old)) return old;
+    const idx = old.findIndex((a: Alert) => a?.id === mapped.id);
+    if (idx >= 0) {
+      const next = old.slice();
+      next[idx] = { ...old[idx], ...mapped };
+      return next;
+    }
+    if (isNew) return [mapped, ...old];
+    return old;
+  });
+}
 
 export function useAlertWebSocket() {
   const token = useAuthStore((s) => s.token);
@@ -31,11 +47,22 @@ export function useAlertWebSocket() {
     ws.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data as string);
-        if (data.type === 'alert') {
-          if (!mutedRef.current) playDetection();
-          void qc.invalidateQueries({ queryKey: queryKeys.alerts });
-          void qc.invalidateQueries({ queryKey: queryKeys.dashboard });
+        const kind = String(data?.type || '');
+        if (kind !== 'alert' && kind !== 'alert_updated') return;
+        const raw = data.alert;
+        if (raw && typeof raw === 'object') {
+          try {
+            const mapped = mapAlert(raw);
+            upsertAlertCache(qc, mapped, kind === 'alert');
+          } catch {
+            /* refetch below */
+          }
         }
+        if (kind === 'alert' && !mutedRef.current) {
+          playDetection();
+        }
+        void qc.invalidateQueries({ queryKey: queryKeys.alerts });
+        void qc.invalidateQueries({ queryKey: queryKeys.dashboard });
       } catch {
         /* ignore */
       }

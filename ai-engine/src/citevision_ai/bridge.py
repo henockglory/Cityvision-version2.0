@@ -16,7 +16,12 @@ from typing import Any, Callable
 import paho.mqtt.client as mqtt
 
 from citevision_ai.frigate_bridge.ids import parse_camera_uuid, parse_zone_uuid
-from citevision_ai.analytics.zone_geometry import nearest_edge_index
+from citevision_ai.analytics.zone_geometry import (
+    append_edge_crossing,
+    edges_crossed_by_segment,
+    is_wrong_way_ordered,
+    nearest_edge_if_close,
+)
 from citevision_ai.frigate_bridge.snapshot import (
     classify_snapshot_light_state,
     download_snapshot_jpeg,
@@ -130,8 +135,8 @@ class FrigateEventBridge:
         self._zone_last_seen: dict[str, float] = {}
         # proximity: last emit per pair
         self._proximity_seen: dict[str, float] = {}
-        # wrong_way: enter edge index per event:zone_key
-        self._wrong_way_enter_edge: dict[str, int] = {}
+        # wrong_way: ordered edge crossings per event:zone_key
+        self._wrong_way_state: dict[str, dict[str, Any]] = {}
         # count snapshots for density
         self._zone_track_counts: dict[str, set[str]] = {}
         self._stats: dict[str, Any] = {
@@ -436,12 +441,10 @@ class FrigateEventBridge:
                 and behavior == "wrong_way"
                 and self._label_allowed(label, zinfo)
             ):
-                zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
-                dkey = f"{event_id}:{zone_key}"
-                if dkey not in self._wrong_way_enter_edge and (
-                    fz in entered or fz in current or fz in active_zone_ids
-                ):
-                    self._wrong_way_on_enter(camera_id, event_id, after, zinfo)
+                if fz in entered or fz in current or fz in active_zone_ids:
+                    self._maybe_wrong_way_progress(
+                        camera_id, event_id, after, zinfo, label,
+                    )
 
         # Geometry: zone exit emits (controlled_exit / zone_exit)
         if self._geometry_enabled:
@@ -459,7 +462,9 @@ class FrigateEventBridge:
                 if behavior == "abandoned_object" or label in _OBJECT_LIKE_LABELS:
                     self._maybe_object_removed(camera_id, event_id, after, zinfo, behavior, label)
                 if behavior == "wrong_way":
-                    self._maybe_wrong_way_exit(camera_id, event_id, after, zinfo, label)
+                    self._maybe_wrong_way_progress(
+                        camera_id, event_id, after, zinfo, label, leaving=True,
+                    )
 
         # Speed: peak tracking in-zone (shadow / diagnostics only when exit mode).
         # Label filtering is per-zone via _label_allowed (track_objects config,
@@ -660,8 +665,10 @@ class FrigateEventBridge:
             )
         except (TypeError, ValueError):
             return None
-        if box.get("norm") or max(vals) <= 1.5:
-            return box
+        if max(vals) <= 1.5:
+            out = dict(box)
+            out["norm"] = True
+            return out
         w, h = self._detect_wh(str(after.get("camera") or ""))
         return {
             "x": vals[0] / w,
@@ -1734,17 +1741,7 @@ class FrigateEventBridge:
             return default
 
     def _geom_box(self, after: dict[str, Any]) -> dict[str, Any] | None:
-        data = after.get("data") if isinstance(after.get("data"), dict) else {}
-        data_box = data.get("box") if isinstance(data, dict) else None
-        if isinstance(data_box, (list, tuple)) and len(data_box) >= 4:
-            return {
-                "x": float(data_box[0]),
-                "y": float(data_box[1]),
-                "width": float(data_box[2]),
-                "height": float(data_box[3]),
-                "norm": True,
-            }
-        return None
+        return self._vehicle_bbox_norm(after)
 
     def _emit_geometry(
         self,
@@ -1779,6 +1776,8 @@ class FrigateEventBridge:
             "zone_id": zone_name,
             "frigate_event_id": event_id,
             "bbox": self._geom_box(after),
+            "bbox_ts": self._bbox_ts_from_after(after, time.time()),
+            "track_id": event_id,
             "severity": severity,
             "metadata": meta,
         }
@@ -1803,15 +1802,25 @@ class FrigateEventBridge:
         tracks = self._zone_track_counts.setdefault(f"{camera_id}:{zone_key}", set())
         tracks.add(event_id)
 
-        # Enter emits
+        # Enter / already-in-zone emits
         entered = set(self._zone_list(after.get("entered_zones")))
+        current = set(self._zone_list(after.get("current_zones")))
         fz_ids = {f"cv_zone_{zone_key}", zone_key}
         just_entered = bool(entered & fz_ids) or bool(
             entered and any(zone_key in str(x) for x in entered)
         )
-        if just_entered or behavior == "perimeter":
+        in_zone = bool(current & fz_ids) or bool(
+            current and any(zone_key in str(x) for x in current)
+        )
+        if not in_zone:
+            in_zone = self._bbox_center_in_zone(self._vehicle_bbox_norm(after), zinfo)
+        geom_ttl = 4.0 if str(os.environ.get("DEMO_MODE", "")).strip().lower() in (
+            "1", "true", "yes",
+        ) else 60.0
+        already_there = label in _PERSON_LABELS and behavior == "perimeter" and in_zone
+        if just_entered or behavior == "perimeter" or already_there:
             if behavior == "perimeter":
-                if not self._dedupe(f"geom:{event_id}:perimeter_breach:{zone_key}", ttl=60.0):
+                if not self._dedupe(f"geom:{camera_id}:{zone_key}:perimeter_breach", ttl=geom_ttl):
                     self._emit_geometry(
                         camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
                         event_type="perimeter_breach", severity="critical",
@@ -1917,38 +1926,30 @@ class FrigateEventBridge:
     def _poly_dicts(self, zinfo: dict[str, Any]) -> list[dict[str, float]]:
         return [{"x": x, "y": y} for x, y in self._zone_points(zinfo)]
 
-    def _wrong_way_on_enter(
-        self,
-        camera_id: str,
-        event_id: str,
-        after: dict[str, Any],
-        zinfo: dict[str, Any],
-    ) -> None:
-        cfg = self._behavior_cfg(zinfo)
+    def _wrong_way_xy_from_after(self, after: dict[str, Any]) -> tuple[float, float] | None:
+        box = self._vehicle_bbox_norm(after)
+        if not box:
+            return None
         try:
-            entry_cfg = int(cfg.get("entry_edge_index"))
-            exit_cfg = int(cfg.get("exit_edge_index"))
+            x = float(box.get("x") or 0)
+            y = float(box.get("y") or 0)
+            w = float(box.get("width") or 0)
+            h = float(box.get("height") or 0)
         except (TypeError, ValueError):
-            return
-        if entry_cfg == exit_cfg:
-            return
-        xy = self._anchor_xy_from_after(after)
-        if xy is None:
-            return
-        poly = self._poly_dicts(zinfo)
-        edge = nearest_edge_index(poly, xy[0], xy[1])
-        if edge is None:
-            return
-        zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
-        self._wrong_way_enter_edge[f"{event_id}:{zone_key}"] = edge
+            return None
+        if w <= 0 or h <= 0:
+            return None
+        return x + w / 2.0, y + h / 2.0
 
-    def _maybe_wrong_way_exit(
+    def _maybe_wrong_way_progress(
         self,
         camera_id: str,
         event_id: str,
         after: dict[str, Any],
         zinfo: dict[str, Any],
         label: str,
+        *,
+        leaving: bool = False,
     ) -> None:
         cfg = self._behavior_cfg(zinfo)
         try:
@@ -1958,30 +1959,58 @@ class FrigateEventBridge:
             return
         if entry_cfg == exit_cfg:
             return
+        xy = self._wrong_way_xy_from_after(after)
+        if xy is None:
+            if leaving:
+                zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+                self._wrong_way_state.pop(f"{event_id}:{zone_key}", None)
+            return
+        poly = self._poly_dicts(zinfo)
         zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
         dkey = f"{event_id}:{zone_key}"
-        enter_edge = self._wrong_way_enter_edge.pop(dkey, None)
-        xy = self._anchor_xy_from_after(after)
-        poly = self._poly_dicts(zinfo)
-        exit_edge = nearest_edge_index(poly, xy[0], xy[1]) if xy else None
-        if enter_edge is None or exit_edge is None:
-            return
-        if enter_edge == entry_cfg and exit_edge == exit_cfg:
+        state = self._wrong_way_state.get(dkey)
+        if state is None:
+            state = {"last_xy": xy, "crossed": []}
+            self._wrong_way_state[dkey] = state
+            append_edge_crossing(state["crossed"], nearest_edge_if_close(poly, xy[0], xy[1]))
+        else:
+            last = state.get("last_xy")
+            if last is not None:
+                for edge in edges_crossed_by_segment(poly, last[0], last[1], xy[0], xy[1]):
+                    append_edge_crossing(state["crossed"], edge)
+            append_edge_crossing(state["crossed"], nearest_edge_if_close(poly, xy[0], xy[1]))
+            state["last_xy"] = xy
+
+        if not is_wrong_way_ordered(state["crossed"], entry_cfg, exit_cfg):
+            if leaving:
+                self._wrong_way_state.pop(dkey, None)
             return
         if self._dedupe(f"geom:{event_id}:wrong_way:{zone_key}", ttl=90.0):
+            if leaving:
+                self._wrong_way_state.pop(dkey, None)
             return
+        emit_label = str(label or after.get("label") or "car").lower().strip() or "car"
+        if emit_label == "motorbike":
+            emit_label = "motorcycle"
+        if emit_label in ("truck", "bus", "van", "vehicle"):
+            emit_label = "car"
+        crossed = list(state["crossed"])
         self._emit_geometry(
             camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
             event_type="wrong_way", severity="high",
             extra_meta={
-                "object_label": label,
-                "enter_edge_index": enter_edge,
-                "exit_edge_index": exit_edge,
+                "object_label": emit_label,
+                "class_name": emit_label,
+                "crossed_edge_indexes": crossed,
+                "enter_edge_index": crossed[0] if crossed else None,
+                "exit_edge_index": crossed[-1] if crossed else None,
                 "allowed_entry_edge": entry_cfg,
                 "allowed_exit_edge": exit_cfg,
-                "detection_method": "frigate_wrong_way_edges",
+                "detection_method": "frigate_wrong_way_ordered_edges",
             },
         )
+        if leaving:
+            self._wrong_way_state.pop(dkey, None)
 
     def _maybe_zone_absence(self, camera_id: str, zone_by_uuid: dict[str, dict[str, Any]]) -> None:
         now = time.monotonic()

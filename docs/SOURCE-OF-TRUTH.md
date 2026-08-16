@@ -4,14 +4,18 @@
 > Objectif : éviter qu'une modification faite côté Windows ne soit jamais prise en compte
 > par le runtime WSL (cause historique de « je corrige mais rien ne change »).
 
-## 1. Les deux emplacements
+## 1. Les emplacements
 
 | Rôle | Chemin | Nature |
 |------|--------|--------|
-| **Source de vérité du code** (git) | `C:\Users\gheno\citevision` — vu depuis WSL : `/mnt/c/Users/gheno/citevision` | Dépôt Git. **Toute modification de code se fait ici.** |
-| **Runtime d'exécution** | `~/citevision-v2` dans WSL `Ubuntu-24.04` | Copie déployée qui exécute réellement backend, AI engine, rules-engine, frontend. |
+| **Dépôt de travail / ship** | `C:\Users\gheno\citevision-v2` — vu depuis WSL : `/mnt/c/Users/gheno/citevision-v2` | Arbre Cursor. **Éditer et committer ici**, puis pousser `origin` + `v2`. |
+| **Miroir GitHub (installateur)** | `C:\Users\gheno\citevision` — `/mnt/c/Users/gheno/citevision` | Aligné sur `origin/main` après chaque ship. Ne pas y éditer en premier. |
+| **Runtime d'exécution** | `~/citevision-v2` dans WSL `Ubuntu-24.04` | Copie déployée qui exécute backend, AI engine, rules-engine, frontend static `:5174`. |
+| **Miroirs installateur / sandbox** | `C:\Citevision`, `C:\Users\gheno\citevision_optimized` | Alignés après ship (rsync + `git reset --hard origin/main`). |
 
-**Règle d'or :** une modification n'est **« livrée »** que lorsqu'elle a été **synchronisée vers `~/citevision-v2`** puis que le service concerné a été **redémarré**. Tant que ce n'est pas fait, le runtime exécute l'ancienne version.
+**Règle d'or :** une modification n'est **« livrée »** que lorsqu'elle a été **synchronisée vers `~/citevision-v2`** puis que le service concerné a été **redémarré** (Start rebuild `frontend/dist` et `backend/bin/citevision-api` si les sources ont changé). Tant que ce n'est pas fait, le runtime exécute l'ancienne version.
+
+Ne pas lancer `scripts/sync-all-targets.sh` depuis un runtime WSL périmé : il ferait `rsync --delete` **depuis** WSL vers Windows et effacerait les correctifs du dépôt de travail.
 
 ## 2. Distribution WSL de référence
 
@@ -29,14 +33,18 @@ Le déploiement copie les fichiers du dépôt Windows vers le runtime. Référen
 > ⚠️ Ces scripts font aussi `sed -i 's/\r$//'` pour retirer les fins de ligne CRLF Windows :
 > ne jamais exécuter directement les `.sh` du dépôt Windows dans WSL sans cette normalisation.
 
+Remotes Git (tous les clones) :
+- `origin` → `https://github.com/henockglory/Cityvision-version2.0.git`
+- `v2` → `https://github.com/henockglory/Cityvision-v2.git`
+
 ## 4. Procédure standard après une modification de code
 
-1. **Éditer** dans `C:\Users\gheno\citevision` (dépôt Git).
-2. **Synchroniser** vers le runtime :
+1. **Éditer** dans `C:\Users\gheno\citevision-v2` (dépôt de travail).
+2. **Synchroniser** vers le runtime WSL `~/citevision-v2` (rsync Windows → WSL, **sans** `--delete` depuis un WSL périmé) :
    - Modèle IA / pipeline Python / `shared/*.json` → `bash scripts/_deploy_and_install_ai.sh`
-   - Backend Go / frontend / infra → `bash scripts/_fast_deploy.sh` (ou build + `restart-api-frontend.sh`)
-3. **Redémarrer** le service concerné (voir scripts `restart-*.sh`).
-4. **Vérifier** via `/health` (backend 8081, AI 8001, rules 8010) et l'UI (5174).
+   - Backend Go / frontend / infra → Start (`ensure-frontend` + `ensure-backend-bin`) ou `bash scripts/_fast_deploy.sh`
+3. **Redémarrer** le service concerné (voir scripts `restart-*.sh`) — Start relance l'IA si `frigate_track_evidence.py` est plus récent que le process.
+4. **Vérifier** via `/health` (backend 8081, AI 8001, rules 8010) et l'UI static (5174).
 
 ## 5. Ce qui NE vit PAS dans le dépôt (donc jamais « livrable » par git)
 
@@ -54,6 +62,6 @@ Le déploiement copie les fichiers du dépôt Windows vers le runtime. Référen
 | Backend API | 8081 |
 | AI engine | 8001 |
 | Rules engine | 8010 |
-| Frontend (Vite) | 5174 |
+| Frontend (static product UI) | 5174 |
 | go2rtc | 1984 |
 | MailHog (UI) | 8025 |

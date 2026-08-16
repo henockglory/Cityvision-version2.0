@@ -38,7 +38,9 @@ def configure_paddle_runtime() -> None:
 def default_paddle_ocr_kwargs(**overrides: Any) -> dict[str, Any]:
     """Shared PaddleOCR init — enable_mkldnn=False avoids PIR/oneDNN crash on CPU."""
     kw: dict[str, Any] = {
-        "use_textline_orientation": True,
+        "use_textline_orientation": False,
+        "use_doc_orientation_classify": False,
+        "use_doc_unwarping": False,
         "lang": "en",
         "enable_mkldnn": False,
     }
@@ -88,20 +90,48 @@ def parse_ocr_lines(result: Any) -> list[tuple[str, float, list]]:
     lines: list[tuple[str, float, list]] = []
     if not result:
         return lines
+
+    def _from_payload(item: Any) -> None:
+        if item is None:
+            return
+        if isinstance(item, dict):
+            texts = item.get("rec_texts") or item.get("texts") or []
+            scores = item.get("rec_scores") or item.get("scores") or []
+        else:
+            texts = getattr(item, "rec_texts", None) or getattr(item, "texts", None) or []
+            scores = getattr(item, "rec_scores", None) or getattr(item, "scores", None) or []
+        if not texts:
+            return
+        for i, t in enumerate(texts):
+            if not t:
+                continue
+            try:
+                conf = float(scores[i]) if i < len(scores) else 1.0
+            except (TypeError, ValueError, IndexError):
+                conf = 1.0
+            lines.append((str(t), conf, []))
+
     # v2: [[ [box, (text, conf)], ... ]]
     if isinstance(result, list) and result and isinstance(result[0], list):
-        batch = result[0] or []
-        for line in batch:
-            if not line or len(line) < 2:
-                continue
-            box, meta = line[0], line[1]
-            text = str(meta[0])
-            conf = float(meta[1])
-            lines.append((text, conf, box))
+        first = result[0]
+        if first and isinstance(first[0], (list, tuple)) and len(first[0]) >= 2 and not isinstance(first[0][0], str):
+            batch = first or []
+            for line in batch:
+                if not line or len(line) < 2:
+                    continue
+                box, meta = line[0], line[1]
+                try:
+                    text = str(meta[0])
+                    conf = float(meta[1])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                lines.append((text, conf, box))
+            return lines
+        for item in result:
+            _from_payload(item)
         return lines
-    # v3 dict / object payloads — best-effort
     if isinstance(result, dict):
-        for item in result.get("rec_texts") or result.get("texts") or []:
-            if isinstance(item, str):
-                lines.append((item, 1.0, []))
+        _from_payload(result)
+        return lines
+    _from_payload(result)
     return lines

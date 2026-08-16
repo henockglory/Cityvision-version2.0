@@ -21,7 +21,6 @@ from citevision_ai.config import settings
 from citevision_ai.evidence import abort_stats
 from citevision_ai.evidence.capture import (
     bbox_from_event,
-    bbox_rear_plate_region,
     bbox_region_has_content,
     bbox_valid,
     capture_images_from_policy,
@@ -49,6 +48,36 @@ from citevision_ai.evidence.gate import default_evidence_policy
 from citevision_ai.evidence.ocr_client import recognize_plate_jpeg
 
 logger = logging.getLogger(__name__)
+
+# #region agent log
+_DBG_COMPOSE = 0
+
+
+def _agent_dbg(hid: str, loc: str, msg: str, data: dict[str, Any]) -> None:
+    try:
+        rec = {
+            "sessionId": "2693ab",
+            "runId": "pre-fix",
+            "hypothesisId": hid,
+            "location": loc,
+            "message": msg,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        line = json.dumps(rec, default=str) + "\n"
+        for p in (
+            "/mnt/c/Users/gheno/citevision-v2/debug-2693ab.log",
+            "/home/gheno/citevision-v2/debug-2693ab.log",
+            "/mnt/c/Users/gheno/.cursor/projects/C-Users-gheno-AppData-Local-Temp-f29b3dff-d65a-43d9-ad45-44968ec6c6da/debug-2693ab.log",
+        ):
+            try:
+                with open(p, "a", encoding="utf-8") as f:
+                    f.write(line)
+            except Exception:
+                pass
+    except Exception:
+        pass
+# #endregion
 
 SUBJECT_MIN_TEXTURE = 50.0
 RED_LIGHT_SUBJECT_MIN_TEXTURE = float(os.environ.get("RED_LIGHT_SUBJECT_MIN_TEXTURE", "50") or 50)
@@ -651,6 +680,30 @@ class FrigateTrackEvidence:
                         "frigate_track: bridge-bound speeding fetch missing cam=%s id=%s",
                         camera_id[:8], bound_id[:24],
                     )
+            # Wrong-way: never re-bind to the latest other car on the camera.
+            if bridge_sourced and event_type0 == "wrong_way":
+                bound_ev = self.fetch_event(bound_id)
+                if bound_ev:
+                    if not isinstance(evt.get("bbox_ts"), (int, float)):
+                        frig_ts = best_frigate_ts(bound_ev)
+                        if frig_ts is not None:
+                            evt["bbox_ts"] = float(frig_ts)
+                            anchor = float(frig_ts)
+                    align_delta = min_time_delta(anchor, bound_ev)
+                    composed = self._compose_from_matched(
+                        bound_ev, align_delta, policy, evt, camera_id, org_id,
+                    )
+                    if composed is not None:
+                        logger.info(
+                            "frigate_track: bridge-bound wrong_way capture cam=%s event=%s delta=%.2fs",
+                            camera_id[:8], bound_id[:24], align_delta,
+                        )
+                        return composed
+                logger.info(
+                    "frigate_track: wrong_way keep bound id=%s — no neighbour fallback",
+                    bound_id[:24],
+                )
+                return None
             bound_ev = self.fetch_event(bound_id)
             align_delta = min_time_delta(anchor, bound_ev) if bound_ev else 0.0
             if self._accept_correlation(evt, bound_ev, align_delta, camera_id):
@@ -719,7 +772,9 @@ class FrigateTrackEvidence:
                 # Demo: allow identity-agnostic Frigate media for road rules when
                 # compose overlays the IA offender bbox (soft IoU / scene gates).
                 et = str(evt.get("event_type") or "")
-                if et in ("red_light_violation", "speeding"):
+                if et == "wrong_way":
+                    fallback = None
+                elif et in ("red_light_violation", "speeding"):
                     if not settings.demo_relaxed_evidence():
                         logger.warning(
                             "frigate_track: skip demo vehicle fallback for %s cam=%s "
@@ -837,6 +892,7 @@ class FrigateTrackEvidence:
         camera_id: str,
         org_id: str,
     ) -> dict[str, Any] | None:
+        global _DBG_COMPOSE
         event_id = str(matched.get("id") or "")
         if not event_id:
             return None
@@ -844,6 +900,20 @@ class FrigateTrackEvidence:
         event_type = str(evt.get("event_type") or "")
         is_red = event_type == "red_light_violation"
         is_speed = event_type == "speeding"
+        is_plate = "plate" in event_type
+        is_wrong_way = event_type == "wrong_way"
+        is_perimeter = event_type in ("perimeter_breach", "unauthorized_exit")
+        is_count = event_type in (
+            "line_cross", "vehicle_count_threshold", "crowd_count_threshold",
+        )
+        want_clip = float(policy.get("clip_seconds") or 0) > 0
+        # Snapshot.jpg stills + clip must be the same instant (not a live go2rtc grab
+        # or the centre of a longer track). Wrong-way / red extract stills FROM the clip.
+        # Counting demo policy has clip_seconds=0 — alignment only runs if a clip is requested.
+        align_clip_to_stills = want_clip and (
+            is_plate or is_perimeter or is_speed or is_count
+        )
+        stills_clip_pre = 3.5 if is_plate else 2.0
         require_subject = is_red or is_speed
         hard_max = self._hard_align_max_sec(event_type)
         anchor = evt.get("bbox_ts")
@@ -948,7 +1018,10 @@ class FrigateTrackEvidence:
                         if k in fresh
                     },
                 }
-            meta = self._wait_for_event_media(event_id)
+            if align_clip_to_stills:
+                meta = fresh or dict(matched or {})
+            else:
+                meta = self._wait_for_event_media(event_id)
             align_delta = min_time_delta(anchor, matched)
 
         # §3.1 demo_loop_guard — absolute align for every demo rule (not only red_light).
@@ -992,20 +1065,74 @@ class FrigateTrackEvidence:
             )
 
         # Ensure window-clip path has a Frigate camera id when event meta is sparse.
-        if isinstance(meta, dict) and not meta.get("camera"):
+        if not isinstance(meta, dict):
+            meta = dict(matched or {})
+        if fid:
+            meta = {**meta, "camera": fid}
+        elif not meta.get("camera"):
             meta = {**meta, "camera": fid}
 
-        clip_bytes = self._download_event_clip(event_id, meta)
+        clip_bytes = None
+        clip_origin_ts: float | None = None
+        clip_source = ""
+        stills_instant = self._stills_instant_ts(matched, evt, anchor)
+        if align_clip_to_stills:
+            # Same Frigate event as snapshot.jpg — one short try, then stills-mp4.
+            # Do NOT poll recordings for ~90s: that saturates the 4 retro slots
+            # and alerts ship with no evidence.
+            clip_bytes = self._download_event_clip(event_id, meta, fail_fast=True)
+            if clip_bytes:
+                clip_source = "frigate_event"
+                try:
+                    clip_origin_ts = float(matched.get("start_time"))
+                except (TypeError, ValueError):
+                    clip_origin_ts = None
+            if not clip_bytes:
+                clip_bytes, clip_origin_ts = self._download_aligned_window_clip(
+                    event_id, meta, policy, stills_instant, pre_sec=stills_clip_pre,
+                )
+                if clip_bytes:
+                    clip_source = "frigate_aligned_window"
+            if not clip_bytes:
+                snap = self._event_snapshot_jpeg(event_id)
+                encoded = self._encode_stills_clip(
+                    snap, float(policy.get("clip_seconds") or CLIP_DURATION_SEC),
+                )
+                if encoded:
+                    clip_bytes = encoded
+                    clip_source = "stills_mp4"
+                    logger.info(
+                        "frigate_track: stills-mp4 clip et=%s event=%s bytes=%d",
+                        event_type, event_id[:24], len(encoded),
+                    )
+        elif not clip_bytes:
+            clip_bytes = self._download_event_clip(event_id, meta)
+            if clip_bytes:
+                clip_source = clip_source or "frigate_event"
+            if clip_origin_ts is None:
+                try:
+                    clip_origin_ts = float(matched.get("start_time"))
+                except (TypeError, ValueError):
+                    clip_origin_ts = None
         raw_clip_bytes = clip_bytes
         if not clip_bytes and float(policy.get("clip_seconds") or 0) > 0:
-            # Frigate often reports has_clip=true while segments were discarded
-            # (maintainer saturation). Pull a short MP4 from go2rtc as last resort.
-            clip_bytes = self._download_go2rtc_clip(
-                camera_id=camera_id,
-                meta=meta if isinstance(meta, dict) else {},
-                seconds=float(policy.get("clip_seconds") or CLIP_DURATION_SEC),
-            )
-            raw_clip_bytes = clip_bytes
+            if align_clip_to_stills:
+                logger.warning(
+                    "frigate_track: skip go2rtc live clip (scene-align) et=%s event=%s",
+                    event_type, event_id[:24],
+                )
+            else:
+                # Frigate often reports has_clip=true while segments were discarded
+                # (maintainer saturation). Pull a short MP4 from go2rtc as last resort.
+                clip_bytes = self._download_go2rtc_clip(
+                    camera_id=camera_id,
+                    meta=meta if isinstance(meta, dict) else {},
+                    seconds=float(policy.get("clip_seconds") or CLIP_DURATION_SEC),
+                )
+                raw_clip_bytes = clip_bytes
+                clip_origin_ts = None
+                if clip_bytes:
+                    clip_source = "go2rtc_live"
         if is_red and not clip_bytes:
             return self._missing(
                 abort_stats.ABORT_NO_CLIP,
@@ -1014,24 +1141,26 @@ class FrigateTrackEvidence:
                 event_id=event_id,
                 extra={"reason": "red_needs_clip"},
             )
-        if is_speed and not clip_bytes:
-            if evidence_strict:
-                return self._missing(
-                    abort_stats.ABORT_NO_CLIP,
-                    camera_id=camera_id,
-                    evt=evt,
-                    event_id=event_id,
-                    extra={
-                        "reason": "speed_strict_needs_clip",
-                        "frigate_evidence_strict": True,
-                        "unsealed": speed_unsealed,
-                    },
-                )
-            # Snapshot-only partial is acceptable for unsealed/demo tracks —
-            # better than leaving the alert without any proof.
-            logger.warning(
-                "frigate_track: speed snapshot-only (no clip) event=%s cam=%s unsealed=%s",
-                event_id[:24], camera_id[:8], speed_unsealed,
+        # Geometry / road packs with clip_seconds>0 under strict: never ship partial
+        # without a clip (credibility — same as protocole 3 complete).
+        # Aligned rules may still encode a stills-mp4 after snapshot.jpg.
+        if (
+            evidence_strict
+            and not is_red
+            and not align_clip_to_stills
+            and want_clip
+            and not clip_bytes
+        ):
+            return self._missing(
+                abort_stats.ABORT_NO_CLIP,
+                camera_id=camera_id,
+                evt=evt,
+                event_id=event_id,
+                extra={
+                    "reason": "strict_needs_clip",
+                    "frigate_evidence_strict": True,
+                    "event_type": event_type,
+                },
             )
         # Geometry / road packs with clip_seconds>0 under strict: never ship partial
         # without a clip (credibility — same as protocole 3 complete).
@@ -1055,8 +1184,10 @@ class FrigateTrackEvidence:
             )
 
         target_clip_sec = float(policy.get("clip_seconds") or CLIP_DURATION_SEC)
-        if clip_bytes and target_clip_sec > 0:
-            clip_bytes = self._trim_clip_bytes(clip_bytes, target_clip_sec)
+        if clip_bytes and target_clip_sec > 0 and not is_wrong_way and not align_clip_to_stills:
+            clip_bytes = self._trim_clip_bytes(
+                clip_bytes, target_clip_sec, keep_start=False,
+            )
 
         # Sprint 1 — red_light: clip red-frame is PRIMARY scene strategy (not fallback).
         scene_bytes = None
@@ -1071,7 +1202,51 @@ class FrigateTrackEvidence:
         capture_frame_ts = None
         capture_frame_pts = None
 
-        if is_red and raw_clip_bytes:
+        if is_wrong_way:
+            source_clip = raw_clip_bytes or clip_bytes
+            if not source_clip:
+                return self._missing(
+                    abort_stats.ABORT_NO_CLIP,
+                    camera_id=camera_id,
+                    evt=evt,
+                    event_id=event_id,
+                    extra={"reason": "wrong_way_needs_clip"},
+                )
+            selected = self._wrong_way_stills_from_clip(
+                source_clip, matched, evt, camera_id, anchor, policy,
+            )
+            if selected is None:
+                return self._missing(
+                    abort_stats.ABORT_SUBJECT_EMPTY,
+                    camera_id=camera_id,
+                    evt=evt,
+                    event_id=event_id,
+                    extra={"reason": "wrong_way_stills_from_clip"},
+                )
+            (
+                scene_bytes,
+                subject_bytes,
+                plate_crop,
+                norm_bbox,
+                capture_frame_ts,
+                capture_frame_pts,
+            ) = selected
+            clean_bytes = scene_bytes
+            frigate_bbox_embedded = False
+            bbox_quality_ok = True
+            ocr_frames = [scene_bytes] if scene_bytes else []
+            if capture_frame_pts is not None:
+                trimmed = self._trim_clip_around_pts(
+                    source_clip, float(capture_frame_pts), target_clip_sec,
+                )
+                if trimmed:
+                    clip_bytes = trimmed
+            logger.info(
+                "frigate_track: wrong_way stills from clip cam=%s event=%s pts=%s",
+                camera_id[:8], event_id[:24],
+                round(float(capture_frame_pts), 3) if capture_frame_pts is not None else None,
+            )
+        elif is_red and raw_clip_bytes:
             # Red-light proof must use the Frigate MQTT box captured at T, not a
             # later/representative Frigate event bbox that may point to another frame.
             mqtt_bbox = bbox_from_event(evt)
@@ -1167,6 +1342,43 @@ class FrigateTrackEvidence:
                     align_delta,
                 )
             )
+            if align_clip_to_stills and clip_bytes and clip_origin_ts is not None:
+                pts = float(stills_instant) - float(clip_origin_ts)
+                trimmed = self._trim_clip_around_pts(
+                    clip_bytes, pts, target_clip_sec, pre_sec=stills_clip_pre,
+                )
+                if trimmed:
+                    clip_bytes = trimmed
+                logger.info(
+                    "frigate_track: clip aligned to stills et=%s pts=%.2f origin=%.3f",
+                    event_type, pts, float(clip_origin_ts),
+                )
+            if align_clip_to_stills and not clip_bytes:
+                still = scene_bytes or clean_bytes or subject_bytes
+                encoded = self._encode_stills_clip(still, target_clip_sec)
+                if encoded:
+                    clip_bytes = encoded
+                    clip_source = "stills_mp4"
+                    logger.info(
+                        "frigate_track: stills-mp4 clip et=%s event=%s bytes=%d",
+                        event_type, event_id[:24], len(encoded),
+                    )
+
+        # #region agent log
+        if str(evt.get("event_type") or "") == "wrong_way" and _DBG_COMPOSE < 15:
+            _DBG_COMPOSE += 1
+            _agent_dbg("H2", "frigate_track_evidence.py:_compose_from_matched", "ww_compose", {
+                "compose_id": str(event_id or "")[:24],
+                "bound": str(evt.get("frigate_event_id") or "")[:24],
+                "matched_id": str(matched.get("id") or "")[:24],
+                "matched_box": _frigate_box_from_event(matched),
+                "evt_bbox": bbox_from_event(evt),
+                "clip_n": len(clip_bytes or b""),
+                "scene_n": len(scene_bytes or b""),
+                "subject_n": len(subject_bytes or b""),
+                "ids_equal": str(event_id or "") == str(evt.get("frigate_event_id") or ""),
+            })
+        # #endregion
 
         if scene_bytes is None:
             if is_red:
@@ -1263,6 +1475,8 @@ class FrigateTrackEvidence:
 
         ia_bbox = bbox_from_event(evt)
         bbox_source = "frigate_mqtt" if frigate_bbox_embedded else "emission_track"
+        if is_wrong_way:
+            bbox_source = "alert_offender"
         meta_out = {
                 "bbox": norm_bbox,
                 "bbox_ts": anchor,
@@ -1286,11 +1500,14 @@ class FrigateTrackEvidence:
                 "track_id": evt.get("track_id"),
                 "event_type": evt.get("event_type") or evt.get("event"),
                 "clip_duration_sec": clip_duration,
+                "clip_source": clip_source or ("frigate_clip" if clip_bytes else ""),
                 "plate_number": plate_number,
                 "plate_confidence": plate_confidence,
                 "missing_roles": missing_roles,
                 "evidence_status": status,
             }
+        if is_wrong_way:
+            meta_out["stills_source"] = "clip_offender_bbox"
         meta_in = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
         if is_speed:
             meta_out["detection_method"] = str(meta_in.get("detection_method") or "frigate_speed")
@@ -2512,7 +2729,13 @@ class FrigateTrackEvidence:
         logger.debug("frigate fetch failed url=%s %s", url, last_err)
         return None
 
-    def _download_event_clip(self, event_id: str, meta: dict[str, Any]) -> bytes | None:
+    def _download_event_clip(
+        self,
+        event_id: str,
+        meta: dict[str, Any],
+        *,
+        fail_fast: bool = False,
+    ) -> bytes | None:
         try:
             from citevision_ai.observability.rule_blockers import blockers
             blockers.inc("frigate_clip_http")
@@ -2525,10 +2748,10 @@ class FrigateTrackEvidence:
         # Young events frequently return HTTP 400 until the segment is sealed —
         # retry longer than the generic snapshot path. Demo: fail fast so the
         # go2rtc live pull (reliable, ~5s) runs inside the evidence window.
-        if demo:
-            attempts = 2
-            delay = 0.8
-            timeout = 6
+        if fail_fast or demo:
+            attempts = 1 if fail_fast else 2
+            delay = 0.4 if fail_fast else 0.8
+            timeout = 5 if fail_fast else 6
         else:
             attempts = max(12, int(settings.frigate_clip_retries) * 2)
             delay = max(1.0, float(settings.frigate_clip_retry_delay))
@@ -2546,6 +2769,8 @@ class FrigateTrackEvidence:
                 event_id[:24], len(data),
             )
             return data
+        if fail_fast:
+            return None
         cam = str(meta.get("camera") or "")
         start = meta.get("start_time")
         end = meta.get("end_time")
@@ -2570,6 +2795,118 @@ class FrigateTrackEvidence:
         logger.warning("frigate_track: clip unavailable event=%s", event_id[:24])
         return None
 
+    def _stills_instant_ts(
+        self,
+        matched: dict[str, Any],
+        evt: dict[str, Any],
+        anchor: float,
+    ) -> float:
+        """Wall/Frigate time of the snapshot stills (must sit inside the shipped clip)."""
+        data = matched.get("data") if isinstance(matched.get("data"), dict) else {}
+        meta = evt.get("metadata") if isinstance(evt.get("metadata"), dict) else {}
+        for src in (data, matched, meta, evt):
+            if not isinstance(src, dict):
+                continue
+            for key in ("snapshot_time", "frame_time", "bbox_ts"):
+                raw = src.get(key)
+                try:
+                    val = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                if val > 1e8:
+                    return val
+        try:
+            return float(anchor)
+        except (TypeError, ValueError):
+            return time.time()
+
+    def _download_aligned_window_clip(
+        self,
+        event_id: str,
+        meta: dict[str, Any],
+        policy: dict[str, Any],
+        instant_ts: float,
+        *,
+        pre_sec: float,
+    ) -> tuple[bytes | None, float | None]:
+        """Recording window that includes the stills instant (with pre-roll)."""
+        cam = str(meta.get("camera") or "")
+        if not cam or not isinstance(instant_ts, (int, float)):
+            return None, None
+        try:
+            target = max(6.0, float(policy.get("clip_seconds") or CLIP_DURATION_SEC))
+        except (TypeError, ValueError):
+            target = 6.0
+        pre = min(max(1.0, float(pre_sec)), max(1.0, target - 1.5))
+        s = max(0.0, float(instant_ts) - pre)
+        e = s + target
+        win = f"{self._base}/api/{cam}/start/{s:.3f}/end/{e:.3f}/clip.mp4"
+        demo = self._demo_mode()
+        data = self._read_bytes_retry(
+            win,
+            attempts=1 if demo else 2,
+            delay=0.4,
+            timeout=5 if demo else 8,
+            min_bytes=settings.frigate_clip_min_bytes,
+        )
+        if data:
+            logger.info(
+                "frigate_track: aligned window clip ok cam=%s event=%s bytes=%d "
+                "window=%.1f-%.1f instant=%.3f pre=%.1f",
+                cam[:20], event_id[:24], len(data), s, e, float(instant_ts), pre,
+            )
+            return data, s
+        logger.warning(
+            "frigate_track: aligned window clip miss cam=%s event=%s window=%.1f-%.1f",
+            cam[:20], event_id[:24], s, e,
+        )
+        return None, None
+
+    def _download_plate_approach_clip(
+        self,
+        event_id: str,
+        meta: dict[str, Any],
+        policy: dict[str, Any],
+    ) -> bytes | None:
+        """Recording window that starts before Frigate's first detection.
+
+        The native event clip begins when the track is created, so the car is
+        already in frame. Pre-roll lets the operator see it enter the zone.
+        """
+        cam = str(meta.get("camera") or "")
+        start = meta.get("start_time")
+        end = meta.get("end_time")
+        if not cam or not isinstance(start, (int, float)):
+            return None
+        try:
+            target = max(8.0, float(policy.get("clip_seconds") or 10.0))
+        except (TypeError, ValueError):
+            target = 10.0
+        pre = 3.5
+        post = 2.0
+        s = max(0.0, float(start) - pre)
+        if isinstance(end, (int, float)):
+            e = max(s + 4.0, float(end) + post)
+        else:
+            e = s + target
+        if e - s > target + 0.5:
+            e = s + target
+        win = f"{self._base}/api/{cam}/start/{s:.3f}/end/{e:.3f}/clip.mp4"
+        demo = self._demo_mode()
+        data = self._read_bytes_retry(
+            win,
+            attempts=2 if demo else 6,
+            delay=0.8 if demo else 1.0,
+            timeout=10 if demo else 20,
+            min_bytes=settings.frigate_clip_min_bytes,
+        )
+        if data:
+            logger.info(
+                "frigate_track: plate approach clip ok cam=%s event=%s bytes=%d window=%.1f-%.1f",
+                cam[:20], event_id[:24], len(data), s, e,
+            )
+        return data
+
     def _download_go2rtc_clip(
         self,
         *,
@@ -2581,7 +2918,9 @@ class FrigateTrackEvidence:
         import subprocess
 
         # Prefer a short clip first — long pulls often time out under load.
-        seconds = max(2.0, min(6.0, float(seconds or CLIP_DURATION_SEC)))
+        # Plate evidence asks for ~10s so the car is seen entering the zone.
+        cap = 12.0 if float(seconds or 0) > 6.0 else 6.0
+        seconds = max(2.0, min(cap, float(seconds or CLIP_DURATION_SEC)))
         candidates: list[str] = []
         # Prefer explicit go2rtc stream name from camera metadata / frigate path.
         for key in ("go2rtc_src", "go2rtc_stream", "demo_stream"):
@@ -2705,6 +3044,218 @@ class FrigateTrackEvidence:
             "frigate_track: go2rtc clip unavailable camera=%s candidates=%s",
             camera_id[:8], candidates[:4],
         )
+        return None
+
+    def _wrong_way_stills_from_clip(
+        self,
+        clip_bytes: bytes,
+        matched: dict[str, Any],
+        evt: dict[str, Any],
+        camera_id: str,
+        anchor: float,
+        policy: dict[str, Any],
+    ) -> tuple[bytes, bytes, bytes | None, dict[str, float], float | None, float | None] | None:
+        """Scene + subject from the shipped clip, cropped with the alert car bbox.
+
+        Never use Frigate snapshot.jpg here: that still is a different track/instant
+        and boxes the neighbour while the full-scene clip shows the wrong-way car.
+        """
+        offender = bbox_from_event(evt)
+        if not offender or not clip_bytes:
+            return None
+        tmp_path = ""
+        cap = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                tmp.write(clip_bytes)
+                tmp_path = tmp.name
+            cap = cv2.VideoCapture(tmp_path)
+            if not cap.isOpened():
+                return None
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 10.0)
+            duration = self._probe_duration(tmp_path) or (
+                float(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0) / max(fps, 1.0)
+            )
+            if duration <= 0:
+                duration = 3.0
+            # Native Frigate event clip starts at start_time. Do NOT add
+            # frigate_clip_pad_before (0.4s): that pushes the stills frame
+            # ahead of the MQTT box so the box lags the car by ~0.4s.
+            start_raw = matched.get("start_time")
+            try:
+                start_f = float(start_raw) if start_raw is not None else None
+            except (TypeError, ValueError):
+                start_f = None
+            try:
+                anchor_ts = float(evt.get("bbox_ts") or anchor)
+            except (TypeError, ValueError):
+                anchor_ts = float(anchor)
+            clip_start_ts = start_f
+            if start_f is not None:
+                target_pts = anchor_ts - start_f
+            else:
+                target_pts, dur2, clip_start_ts, _dbg = self._red_light_anchor_pts(
+                    tmp_path, matched, evt, camera_id, anchor,
+                )
+                if dur2:
+                    duration = dur2
+                pad = float(getattr(settings, "frigate_clip_pad_before", 0.4) or 0.4)
+                if target_pts is not None:
+                    target_pts = float(target_pts) - pad
+            if target_pts is None:
+                target_pts = min(max(0.0, duration * 0.45), max(0.0, duration - 0.05))
+            target_pts = min(max(0.0, float(target_pts)), max(0.0, duration - 0.02))
+            # Prefer a slightly earlier frame (decoder/keyframe lag) over a late one.
+            start_pts = max(0.0, target_pts - 0.55)
+            end_pts = min(duration, target_pts + 0.12)
+            images_spec = policy.get("images") or default_evidence_policy()["images"]
+            best: tuple[float, bytes, bytes, dict[str, float], float | None, float] | None = None
+            cap.set(cv2.CAP_PROP_POS_MSEC, start_pts * 1000.0)
+            step = max(1, int(round(fps * 0.12)))
+            frame_idx = int(round(start_pts * fps))
+            end_frame = int(round(end_pts * fps))
+            while frame_idx <= end_frame:
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    break
+                pts = frame_idx / max(fps, 1.0)
+                h, w = frame.shape[:2]
+                box = normalize_bbox(offender, w, h)
+                if not box or not bbox_region_has_content(frame, box):
+                    next_frame = frame_idx + step
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, next_frame)
+                    frame_idx = next_frame
+                    continue
+                scene_jpeg, subject_jpeg, _ = capture_images_from_policy(
+                    frame, box, images_spec, JPEG_QUALITY, draw_bbox=True,
+                )
+                tex = subject_jpeg_texture(subject_jpeg)
+                if not scene_jpeg or not subject_jpeg or tex is None:
+                    next_frame = frame_idx + step
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, next_frame)
+                    frame_idx = next_frame
+                    continue
+                closeness = 1.0 / (1.0 + abs(pts - target_pts))
+                late = max(0.0, pts - target_pts)
+                score = float(tex) + closeness * 20.0 - late * 50.0
+                wall_ts = (clip_start_ts + pts) if clip_start_ts is not None else None
+                if best is None or score > best[0]:
+                    best = (score, scene_jpeg, subject_jpeg, box, wall_ts, pts)
+                next_frame = frame_idx + step
+                cap.set(cv2.CAP_PROP_POS_FRAMES, next_frame)
+                frame_idx = next_frame
+            if best is None:
+                return None
+            _score, scene_jpeg, subject_jpeg, box, wall_ts, pts = best
+            return scene_jpeg, subject_jpeg, None, box, wall_ts, pts
+        except Exception:
+            logger.exception("wrong_way stills from clip failed")
+            return None
+        finally:
+            if cap is not None:
+                cap.release()
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+    def _trim_clip_around_pts(
+        self,
+        clip_bytes: bytes,
+        center_pts: float,
+        target_sec: float,
+        *,
+        pre_sec: float | None = None,
+    ) -> bytes | None:
+        """Keep a window of the clip centred on the stills frame (same instant)."""
+        if target_sec <= 0 or not clip_bytes:
+            return clip_bytes
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            return clip_bytes
+        tmp = tempfile.mkdtemp(prefix="cv_ft_ww_")
+        inp = os.path.join(tmp, "in.mp4")
+        out = os.path.join(tmp, "out.mp4")
+        try:
+            with open(inp, "wb") as f:
+                f.write(clip_bytes)
+            dur = self._probe_duration(inp)
+            if dur is None:
+                return clip_bytes
+            if dur <= target_sec + 0.15:
+                return clip_bytes
+            if pre_sec is not None:
+                pre = min(max(0.4, float(pre_sec)), max(0.4, float(target_sec) - 0.4))
+            else:
+                pre = min(2.5, max(1.0, float(target_sec) * 0.4))
+            start = max(0.0, float(center_pts) - pre)
+            if start + target_sec > dur:
+                start = max(0.0, dur - target_sec)
+            cmd = [
+                ffmpeg, "-y", "-ss", f"{start:.3f}", "-i", inp,
+                "-t", f"{float(target_sec):.3f}",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-an", "-movflags", "+faststart",
+                out,
+            ]
+            subprocess.run(cmd, capture_output=True, timeout=30, check=True)
+            with open(out, "rb") as f:
+                trimmed = f.read()
+            if len(trimmed) >= settings.frigate_clip_min_bytes:
+                return trimmed
+            return clip_bytes
+        except (OSError, subprocess.SubprocessError):
+            return clip_bytes
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def _encode_stills_clip(self, jpeg: bytes | None, target_sec: float) -> bytes | None:
+        """MP4 of the proof stills so the clip is the same scene as snapshot.jpg."""
+        if not jpeg or target_sec <= 0:
+            return None
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            return None
+        tmp = tempfile.mkdtemp(prefix="cv_ft_stills_")
+        inp = os.path.join(tmp, "still.jpg")
+        out = os.path.join(tmp, "out.mp4")
+        try:
+            with open(inp, "wb") as f:
+                f.write(jpeg)
+            dur = max(3.0, min(8.0, float(target_sec)))
+            cmd = [
+                ffmpeg, "-y", "-loop", "1", "-i", inp,
+                "-t", f"{dur:.3f}",
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart",
+                out,
+            ]
+            subprocess.run(cmd, capture_output=True, timeout=20, check=True)
+            with open(out, "rb") as f:
+                data = f.read()
+            if len(data) >= max(2000, int(settings.frigate_clip_min_bytes) // 4):
+                return data
+            return None
+        except (OSError, subprocess.SubprocessError):
+            return None
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def _event_snapshot_jpeg(self, event_id: str) -> bytes | None:
+        """Best-effort Frigate still used to encode a same-scene clip."""
+        base = f"{self._base}/api/events/{event_id}"
+        for url, min_b in (
+            (f"{base}/snapshot.jpg?bbox=1", 2000),
+            (f"{base}/snapshot.jpg", 1500),
+            (f"{base}/thumbnail.jpg", 500),
+        ):
+            data = self._read_bytes_retry(
+                url, attempts=2, delay=0.3, timeout=6, min_bytes=min_b,
+            )
+            if data:
+                return data
         return None
 
     def _build_images(
@@ -2840,7 +3391,9 @@ class FrigateTrackEvidence:
             shutil.rmtree(tmp, ignore_errors=True)
         return frames
 
-    def _trim_clip_bytes(self, clip_bytes: bytes, target_sec: float) -> bytes:
+    def _trim_clip_bytes(
+        self, clip_bytes: bytes, target_sec: float, *, keep_start: bool = False,
+    ) -> bytes:
         if target_sec <= 0:
             return clip_bytes
         ffmpeg = shutil.which("ffmpeg")
@@ -2855,7 +3408,8 @@ class FrigateTrackEvidence:
             dur = self._probe_duration(inp)
             if dur is None or dur <= target_sec + 0.15:
                 return clip_bytes
-            start = max(0.0, (dur - target_sec) / 2.0)
+            # Plate: keep the approach (start of the window). Other rules: center.
+            start = 0.0 if keep_start else max(0.0, (dur - target_sec) / 2.0)
             cmd = [
                 ffmpeg, "-y", "-ss", f"{start:.3f}", "-i", inp,
                 "-t", f"{target_sec:.3f}",
@@ -2880,30 +3434,15 @@ class FrigateTrackEvidence:
         norm_bbox: dict[str, float],
         images_spec: list[dict[str, Any]],
     ) -> bytes | None:
-        """Crop rear plate band inside the vehicle bbox only (never full scene)."""
+        """Vehicle bbox only — plate location is not a fixed region of the crop."""
         plate_spec = next((s for s in images_spec if s.get("role") == "plate"), None)
-        zoom = float(plate_spec.get("zoom") or 1.8) if plate_spec else 1.8
-        padding = float(plate_spec.get("padding_pct") or 6) if plate_spec else 6.0
-        plate_bbox = bbox_rear_plate_region(norm_bbox)
-        if plate_bbox:
-            jpeg = encode_subject_jpeg(
-                frame, plate_bbox, JPEG_QUALITY,
-                padding_pct=padding, zoom=zoom, crop="bbox", fallback_full=False,
-            )
-            if jpeg:
-                return jpeg
-        if norm_bbox:
-            jpeg = encode_subject_jpeg(
-                frame, norm_bbox, JPEG_QUALITY,
-                padding_pct=4, zoom=4.0, crop="bbox", fallback_full=False,
-            )
-            if jpeg:
-                return jpeg
-            return encode_subject_jpeg(
-                frame, norm_bbox, JPEG_QUALITY,
-                padding_pct=0, zoom=2.5, crop="bbox", fallback_full=True,
-            )
-        return None
+        padding = float(plate_spec.get("padding_pct") or 8) if plate_spec else 8.0
+        if not norm_bbox:
+            return None
+        return encode_subject_jpeg(
+            frame, norm_bbox, JPEG_QUALITY,
+            padding_pct=padding, zoom=1.0, crop="bbox", fallback_full=False,
+        )
 
     def _ocr_plate(
         self,

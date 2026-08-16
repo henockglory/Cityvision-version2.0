@@ -29,8 +29,18 @@ d=json.load(sys.stdin)
 sys.exit(0 if isinstance(d, dict) and "components" in d else 1)' 2>/dev/null
 }
 
+dist_stale() {
+  bash "$ROOT/scripts/lib/frontend-dist-stamp.sh" stale >/dev/null 2>&1
+}
+
 if curl -sf "http://127.0.0.1:5174/" >/dev/null 2>&1; then
-  if demo_stack_ok && platform_proxy_ok; then
+  if dist_stale; then
+    echo "[WARN] UI up but frontend dist stamp stale — rebuild + restart"
+    stop_from_pid "$LOGDIR/frontend.pid" 2>/dev/null || true
+    pkill -f 'serve-frontend-static.mjs|vite.*5174' 2>/dev/null || true
+    free_port 5174 5175 5176 5177 2>/dev/null || true
+    sleep 1
+  elif demo_stack_ok && platform_proxy_ok; then
     echo "[OK] Frontend already up http://localhost:5174 (mode=$MODE)"
     exit 0
   fi
@@ -54,10 +64,10 @@ if curl -sf "http://127.0.0.1:5174/" >/dev/null 2>&1; then
 fi
 
 ensure_dist() {
-  if [[ -f "$ROOT/frontend/dist/index.html" ]]; then
+  if [[ -f "$ROOT/frontend/dist/index.html" ]] && ! dist_stale; then
     return 0
   fi
-  echo "[INFO] building frontend/dist (one-time, replaces Vite HMR)..."
+  echo "[INFO] building frontend/dist (sources newer than .cv-dist-stamp)..."
   if [[ "$(uname -s)" == "Linux" ]] && [[ ! -d "$ROOT/frontend/node_modules/@rollup/rollup-linux-x64-gnu" ]]; then
     (cd "$ROOT/frontend" && npm install @rollup/rollup-linux-x64-gnu --no-save --silent) || true
   fi
@@ -66,6 +76,7 @@ ensure_dist() {
     echo "[FAIL] frontend build failed" >&2
     return 1
   }
+  bash "$ROOT/scripts/lib/frontend-dist-stamp.sh" write || true
 }
 
 start_frontend() {

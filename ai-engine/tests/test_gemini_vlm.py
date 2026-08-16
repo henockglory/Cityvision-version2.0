@@ -12,6 +12,7 @@ from citevision_ai.vlm.gemini_client import (
     GeminiClient,
     GeminiVerdict,
     _extract_json_object,
+    _parse_verdict,
     should_emit,
 )
 from citevision_ai.vlm.queue import VlmJob, VlmQueue
@@ -23,25 +24,63 @@ def test_extract_json_object_plain():
     assert data["violation"] is True
 
 
-def test_extract_json_object_fenced():
-    data = _extract_json_object('```json\n{"violation": false, "rule": "x"}\n```')
-    assert data is not None
-    assert data["violation"] is False
+def test_parse_verdict_empty_cabin_cannot_violate():
+    v = _parse_verdict(
+        {
+            "person_visible": False,
+            "violation": True,
+            "rule": "seatbelt_violation",
+            "confidence": 0.99,
+            "reason_short": "no belt",
+        },
+        expected_rule="seatbelt_violation",
+        latency_ms=1.0,
+    )
+    assert v.person_visible is False
+    assert v.violation is False
+    assert not should_emit(v, min_confidence=0.1)
 
 
-def test_should_emit_cabin_ignores_visible_and_unclear():
-    """Cabine: oui/non sur violation seule — pas de gate visible/unclear/min_confidence."""
+def test_parse_verdict_person_then_no_belt():
+    v = _parse_verdict(
+        {
+            "person_visible": True,
+            "violation": True,
+            "rule": "seatbelt_violation",
+            "confidence": 0.88,
+            "reason_short": "no shoulder belt",
+        },
+        expected_rule="seatbelt_violation",
+        latency_ms=1.0,
+    )
+    assert v.person_visible is True
+    assert v.violation is True
+    assert should_emit(v, min_confidence=0.45)
+
+
+def test_should_emit_cabin_requires_person_visible():
+    """Cabine: pas d'alerte si aucune personne n'est visible, même si violation=true."""
+    assert not should_emit(
+        GeminiVerdict(
+            violation=True, rule="seatbelt_violation", confidence=0.9,
+            visible=False, reason_short="empty cabin", signals=[], latency_ms=10, raw_ok=True,
+            person_visible=False,
+        ),
+        min_confidence=0.45,
+    )
     assert should_emit(
         GeminiVerdict(
             violation=True, rule="seatbelt_violation", confidence=0.9,
-            visible=False, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
+            visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
+            person_visible=True,
         ),
         min_confidence=0.45,
     )
     assert should_emit(
         GeminiVerdict(
             violation=True, rule="phone_use_violation", confidence=0.8,
-            visible=False, reason_short="ok", signals=["unclear"], latency_ms=10, raw_ok=True,
+            visible=True, reason_short="ok", signals=["unclear"], latency_ms=10, raw_ok=True,
+            person_visible=True,
         ),
         min_confidence=0.45,
     )
@@ -49,13 +88,15 @@ def test_should_emit_cabin_ignores_visible_and_unclear():
         GeminiVerdict(
             violation=True, rule="seatbelt_violation", confidence=0.2,
             visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
+            person_visible=True,
         ),
         min_confidence=0.45,
     )
     assert not should_emit(
         GeminiVerdict(
             violation=False, rule="seatbelt_violation", confidence=0.9,
-            visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=True,
+            visible=True, reason_short="belt worn", signals=[], latency_ms=10, raw_ok=True,
+            person_visible=True,
         ),
         min_confidence=0.45,
     )
@@ -63,7 +104,7 @@ def test_should_emit_cabin_ignores_visible_and_unclear():
         GeminiVerdict(
             violation=True, rule="seatbelt_violation", confidence=0.9,
             visible=True, reason_short="ok", signals=[], latency_ms=10, raw_ok=False,
-            error="http",
+            error="http", person_visible=True,
         ),
         min_confidence=0.45,
     )
@@ -107,6 +148,7 @@ def test_judge_jpeg_parses_mock_response():
                         {
                             "text": json.dumps(
                                 {
+                                    "person_visible": True,
                                     "violation": True,
                                     "rule": "seatbelt_violation",
                                     "confidence": 0.88,
@@ -136,6 +178,7 @@ def test_judge_jpeg_parses_mock_response():
         v = client.judge_jpeg(b"\xff\xd8fakejpeg", rule="seatbelt_violation")
     assert v.raw_ok
     assert v.violation is True
+    assert v.person_visible is True
     assert v.confidence == pytest.approx(0.88)
     assert should_emit(v, min_confidence=0.45)
 
@@ -186,6 +229,7 @@ def test_vlm_queue_emits_on_positive_verdict():
     q.stop()
     assert len(emitted) == 1
     assert emitted[0]["metadata"]["detection_method"] == "gemini_vlm"
+    assert emitted[0]["metadata"]["person_visible"] is True
     assert emitted[0]["confidence"] == pytest.approx(0.91)
 
 
@@ -285,7 +329,8 @@ def test_vlm_queue_cabin_yes_dumps_and_emits(tmp_path, monkeypatch):
     client.configured = True
     client.model = "gemini-3.6-flash"
     client.judge_jpeg.return_value = GeminiVerdict(
-        True, "phone_use_violation", 0.88, False, "phone at ear", [], 11.0, True,
+        True, "phone_use_violation", 0.88, True, "phone at ear", [], 11.0, True,
+        person_visible=True,
     )
     emitted: list[dict] = []
     q = VlmQueue(client, maxsize=8, max_age_sec=30.0, min_interval_sec=0.0)

@@ -16,7 +16,14 @@ from typing import Any, Callable
 import paho.mqtt.client as mqtt
 
 from citevision_ai.frigate_bridge.ids import parse_camera_uuid, parse_zone_uuid
-from citevision_ai.analytics.zone_geometry import nearest_edge_index
+from citevision_ai.analytics.zone_geometry import (
+    append_edge_crossing,
+    edges_crossed_by_segment,
+    is_wrong_way_ordered,
+    nearest_edge_if_close,
+    nearest_edge_index,
+)
+from citevision_ai.detection.class_groups import matches_class_filter
 from citevision_ai.frigate_bridge.snapshot import (
     classify_snapshot_light_state,
     download_snapshot_jpeg,
@@ -27,6 +34,36 @@ from citevision_ai.frigate_bridge.snapshot import (
 )
 
 logger = logging.getLogger(__name__)
+
+# #region agent log
+_DBG_COUNTS: dict[str, int] = {"plate_mqtt": 0, "plate_try": 0, "ww": 0, "cabin": 0}
+
+
+def _agent_dbg(hid: str, loc: str, msg: str, data: dict[str, Any]) -> None:
+    try:
+        rec = {
+            "sessionId": "2693ab",
+            "runId": "pre-fix",
+            "hypothesisId": hid,
+            "location": loc,
+            "message": msg,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        line = json.dumps(rec, default=str) + "\n"
+        for p in (
+            "/mnt/c/Users/gheno/citevision-v2/debug-2693ab.log",
+            "/home/gheno/citevision-v2/debug-2693ab.log",
+            "/mnt/c/Users/gheno/.cursor/projects/C-Users-gheno-AppData-Local-Temp-f29b3dff-d65a-43d9-ad45-44968ec6c6da/debug-2693ab.log",
+        ):
+            try:
+                with open(p, "a", encoding="utf-8") as f:
+                    f.write(line)
+            except Exception:
+                pass
+    except Exception:
+        pass
+# #endregion
 
 EmitCallback = Callable[[dict[str, Any]], None]
 SpatialResolver = Callable[[str], dict[str, Any] | None]
@@ -189,7 +226,9 @@ class FrigateEventBridge:
         self._speed_peak: dict[str, float] = {}
         # Last good in-zone vehicle bbox per event:zone (exit MQTT often drops box).
         self._speed_bbox: dict[str, dict[str, Any]] = {}
-        # wrong_way: enter edge index per event:zone_key
+        # wrong_way: ordered edge crossings per event:zone_key
+        self._wrong_way_state: dict[str, dict[str, Any]] = {}
+        # Demo hyper-reactive: enter-edge index so wrong-way can fire without a full traverse.
         self._wrong_way_enter_edge: dict[str, int] = {}
         # Frigate detect resolution per camera (cv_-prefixed name) — MQTT boxes
         # are detect-resolution pixels, NOT 1920x1080.
@@ -423,6 +462,40 @@ class FrigateEventBridge:
             | current
             | self._infer_active_zones_from_bbox(after, zone_by_uuid)
         )
+        # #region agent log
+        plate_zinfos = []
+        for z in zones:
+            if not isinstance(z, dict):
+                continue
+            b = str(z.get("behavior") or z.get("zone_kind") or "")
+            bcfg = z.get("behavior_config")
+            if not b and isinstance(bcfg, dict):
+                b = str(bcfg.get("behavior") or "")
+            if b == "plate_ocr":
+                plate_zinfos.append(z)
+        if plate_zinfos and label in _VEHICLE_LABELS and _DBG_COUNTS["plate_mqtt"] < 25:
+            _DBG_COUNTS["plate_mqtt"] += 1
+            pz = plate_zinfos[0]
+            _agent_dbg("H3", "bridge.py:_handle_event", "plate_mqtt_vehicle", {
+                "cam": camera_id[:8],
+                "eid": event_id[:24],
+                "label": label,
+                "plate_enabled": bool(self._plate_enabled),
+                "allowed": self._label_allowed(label, pz),
+                "mqtt_current": list(current)[:8],
+                "entered": list(entered)[:8],
+                "inferred_n": len(self._infer_active_zones_from_bbox(after, zone_by_uuid)),
+                "active_n": len(active_zone_ids),
+                "has_lpr": bool(str(
+                    ((after.get("data") or {}) if isinstance(after.get("data"), dict) else {}).get(
+                        "recognized_license_plate"
+                    )
+                    or after.get("recognized_license_plate")
+                    or ""
+                ).strip()),
+                "box": self._vehicle_bbox_norm(after),
+            })
+        # #endregion
         for fz in active_zone_ids:
             zuuid = parse_zone_uuid(fz)
             if not zuuid:
@@ -459,8 +532,6 @@ class FrigateEventBridge:
                 self._maybe_red_light(camera_id, event_id, after, zinfo, zone_by_uuid)
             if self._face_enabled and label == "person" and behavior not in _FACE_SKIP_BEHAVIORS:
                 self._maybe_face(camera_id, event_id, after, zinfo)
-            if self._plate_enabled and self._label_allowed(label, zinfo) and behavior == "plate_ocr":
-                self._maybe_plate(camera_id, event_id, after, zinfo)
             if self._geometry_enabled and self._label_allowed(
                 label, zinfo, allow_person_default=(behavior in ("presence", "perimeter", "loitering", "")),
             ):
@@ -473,38 +544,24 @@ class FrigateEventBridge:
                 and behavior == "wrong_way"
                 and self._label_allowed(label, zinfo)
             ):
-                # First sighting in zone (enter MQTT or already-current without prior edge).
-                zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
-                dkey = f"{event_id}:{zone_key}"
-                if dkey not in self._wrong_way_enter_edge and (
-                    fz in entered or fz in current or fz in active_zone_ids
-                ):
-                    self._wrong_way_on_enter(camera_id, event_id, after, zinfo)
-
-        # Plate fallback: Frigate LPR often fires with empty current_zones.
-        # If any plate_ocr zone exists on this camera, still try emit.
-        if self._plate_enabled and label in _VEHICLE_LABELS:
-            data0 = after.get("data") if isinstance(after.get("data"), dict) else {}
-            has_lpr = bool(
-                str(
-                    data0.get("recognized_license_plate")
-                    or after.get("recognized_license_plate")
-                    or ""
-                ).strip()
-            )
-            if has_lpr:
-                plate_zones: list[dict[str, Any]] = []
-                for z in zones:
-                    if not isinstance(z, dict):
-                        continue
-                    b = str(z.get("behavior") or z.get("zone_kind") or "")
-                    bcfg = z.get("behavior_config")
-                    if not b and isinstance(bcfg, dict):
-                        b = str(bcfg.get("behavior") or "")
-                    if b == "plate_ocr":
-                        plate_zones.append(z)
-                if plate_zones:
-                    self._maybe_plate(camera_id, event_id, after, plate_zones[0])
+                if fz in entered or fz in current or fz in active_zone_ids:
+                    zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+                    dkey = f"{event_id}:{zone_key}"
+                    if dkey not in self._wrong_way_enter_edge:
+                        self._wrong_way_on_enter(camera_id, event_id, after, zinfo)
+                    self._maybe_wrong_way_progress(
+                        camera_id, event_id, after, zinfo, label,
+                    )
+            # Plate OCR: only vehicles whose Frigate track is in the plate_ocr
+            # zone (MQTT current/entered or bbox-centre inferred). Crop = that
+            # track's vehicle bbox. Never OCR a neighbour outside the zone.
+            if (
+                self._plate_enabled
+                and self._zone_behavior(zinfo) == "plate_ocr"
+                and label in _VEHICLE_LABELS
+                and self._label_allowed(label, zinfo)
+            ):
+                self._maybe_plate(camera_id, event_id, after, zinfo)
 
         # Geometry: zone exit emits (controlled_exit / zone_exit)
         if self._geometry_enabled:
@@ -522,7 +579,9 @@ class FrigateEventBridge:
                 if behavior == "abandoned_object" or label in _OBJECT_LIKE_LABELS:
                     self._maybe_object_removed(camera_id, event_id, after, zinfo, behavior, label)
                 if behavior == "wrong_way":
-                    self._maybe_wrong_way_exit(camera_id, event_id, after, zinfo, label)
+                    self._maybe_wrong_way_progress(
+                        camera_id, event_id, after, zinfo, label, leaving=True,
+                    )
 
         # Speed: peak tracking in-zone (shadow / diagnostics only when exit mode).
         # Label filtering is per-zone via _label_allowed (track_objects config,
@@ -561,6 +620,23 @@ class FrigateEventBridge:
             self._maybe_zone_counts(camera_id, zone_by_uuid)
 
         self._retry_cached_red_light_tracks(skip_event_id=event_id)
+
+    @staticmethod
+    def _zones_with_behavior(zones: list[Any], behavior: str) -> list[dict[str, Any]]:
+        want = (behavior or "").strip()
+        out: list[dict[str, Any]] = []
+        if not want:
+            return out
+        for z in zones:
+            if not isinstance(z, dict):
+                continue
+            b = str(z.get("behavior") or z.get("zone_kind") or "")
+            bcfg = z.get("behavior_config")
+            if not b and isinstance(bcfg, dict):
+                b = str(bcfg.get("behavior") or "")
+            if b == want:
+                out.append(z)
+        return out
 
     def _index_zones(self, zones: list[Any]) -> dict[str, dict[str, Any]]:
         """Index by DB uuid so Frigate ``cv_zone_<uuid>`` resolves via parse_zone_uuid."""
@@ -723,8 +799,10 @@ class FrigateEventBridge:
             )
         except (TypeError, ValueError):
             return None
-        if box.get("norm") or max(vals) <= 1.5:
-            return box
+        if max(vals) <= 1.5:
+            out = dict(box)
+            out["norm"] = True
+            return out
         w, h = self._detect_wh(str(after.get("camera") or ""))
         return {
             "x": vals[0] / w,
@@ -1130,6 +1208,14 @@ class FrigateEventBridge:
         lab = (label or "").strip().lower()
         if lab == "motorbike":
             lab = "motorcycle"
+        cfg = self._behavior_cfg(zinfo)
+        class_filter = str(cfg.get("class_filter") or "").strip().lower()
+        if class_filter and class_filter not in ("any", "*"):
+            # Lecture plaque / ceinture: voitures, pas motos — even if track_objects is wide.
+            if class_filter == "car" and lab in ("motorcycle", "motorbike"):
+                return False
+            if not matches_class_filter(lab, class_filter):
+                return False
         allowed = self._track_labels_for_zone(zinfo)
         if allowed is not None:
             return lab in allowed
@@ -1137,8 +1223,6 @@ class FrigateEventBridge:
             return True
         if allow_person_default and lab == "person":
             return True
-        # Abandoned zones: Frigate compiler always tracks bags; allow them even when
-        # track_objects is unset (vehicle-only default would otherwise block).
         behavior = str(zinfo.get("behavior") or zinfo.get("zone_kind") or "")
         if behavior == "abandoned_object" and lab in _OBJECT_LIKE_LABELS:
             return True
@@ -1174,57 +1258,6 @@ class FrigateEventBridge:
         except (TypeError, ValueError):
             dedupe_ttl = 60.0
         box = self._vehicle_bbox_norm(after)
-
-        # Demo hyper-reactive seatbelt: emit BEFORE snapshot wait (was ~18s+).
-        demo_force = (
-            str(os.environ.get("DEMO_MODE", "")).strip() in ("1", "true", "TRUE", "yes")
-            and str(os.environ.get("FRIGATE_CABIN_LOCAL", "1")).strip()
-            in ("1", "true", "TRUE", "yes")
-        )
-        if demo_force and self._emit is not None and "seatbelt_violation" in rules:
-            dedupe_key = f"cabin:{event_id}:seatbelt_violation"
-            # Demo: the camera is warm before the rule enables, so a pre-enable
-            # force emit must not block the post-enable alert for 60s (run15:
-            # Ceinture at 72s). Short TTL lets the same track re-emit fast.
-            force_ttl = 4.0 if demo_force else max(1.0, dedupe_ttl)
-            if not self._dedupe(dedupe_key, ttl=force_ttl):
-                force_evt = {
-                    "event_id": str(uuid.uuid4()),
-                    "camera_id": camera_id,
-                    "event_type": "seatbelt_violation",
-                    "event": "seatbelt_violation",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "zone_id": zone_name,
-                    "track_id": event_id,
-                    "frigate_event_id": event_id,
-                    "class_name": after.get("label") or None,
-                    "bbox": box,
-                    "severity": "medium",
-                    "metadata": {
-                        "detection_method": "demo_cabin_force",
-                        "cabin_force": True,
-                        "bridge_source": "frigate",
-                        "frigate_event_id": event_id,
-                        "track_id": event_id,
-                        "frigate_label": after.get("label"),
-                        "zone_behavior": behavior,
-                        "crop_mode": meta_crop_mode,
-                        "vlm_prompt_rule": "seatbelt_violation",
-                    },
-                }
-                try:
-                    self._emit(force_evt)
-                    with self._stats_lock:
-                        self._stats["cabin_enqueued"] = int(self._stats.get("cabin_enqueued") or 0) + 1
-                    logger.warning(
-                        "frigate_bridge cabin_FORCE_EMIT camera=%s event=%s rule=seatbelt_violation",
-                        camera_id[:8], event_id[:12],
-                    )
-                except Exception:
-                    logger.exception("cabin force emit failed")
-            rules = [r for r in rules if r != "seatbelt_violation"]
-            if not rules:
-                return
 
         jpeg, box2, _ev = fetch_cabin_jpeg(
             self._frigate_url,
@@ -1297,6 +1330,19 @@ class FrigateEventBridge:
                     "frigate_bridge cabin_enqueued camera=%s event=%s rule=%s",
                     camera_id[:8], event_id[:12], rule,
                 )
+            # #region agent log
+            if rule == "seatbelt_violation" and _DBG_COUNTS["cabin"] < 20:
+                _DBG_COUNTS["cabin"] += 1
+                _agent_dbg("H5", "bridge.py:_maybe_cabin", "cabin_enqueue", {
+                    "cam": camera_id[:8],
+                    "eid": event_id[:24],
+                    "rule": rule,
+                    "ok": bool(ok),
+                    "vlm_queue": self._vlm_queue is not None,
+                    "jpeg_n": len(jpeg or b""),
+                    "box": box,
+                })
+            # #endregion
 
     def _maybe_red_light(
         self,
@@ -1970,7 +2016,11 @@ class FrigateEventBridge:
                 return False
             # Seed Démo · Lecture plaque filters class_name=car — map all vehicles to car
             # for demo force so truck/bus tracks still create alerts under 10s.
-            emit_label = "car" if method == "demo_plate_force" else label
+            emit_label = (
+                "car"
+                if label in _VEHICLE_LABELS and label not in ("motorcycle", "motorbike")
+                else label
+            )
             evt = {
                 "event_id": str(uuid.uuid4()),
                 "camera_id": camera_id,
@@ -1981,6 +2031,8 @@ class FrigateEventBridge:
                 "class_name": emit_label,
                 "frigate_event_id": event_id,
                 "bbox": box,
+                "bbox_ts": self._bbox_ts_from_after(after, time.time()),
+                "track_id": -1,
                 "plate_number": text,
                 "plate_text": text,
                 "plate_confidence": float(conf),
@@ -2010,111 +2062,106 @@ class FrigateEventBridge:
             if _emit_local(frigate_plate, frigate_conf, "frigate_lpr", self._vehicle_bbox_norm(after)):
                 return
 
-        # Demo: emit immediately on any vehicle in plate_ocr zone (LPR/OCR optional).
-        # Waiting for Paddle/Gemini was routinely blowing the 10s enable→alert SLO.
-        if demo_mode and local_ok and self._emit is not None:
-            base = str(os.environ.get("FRIGATE_PLATE_DEMO_TEXT", "OKAPI")).strip().upper() or "OKAPI"
-            force = f"{base}{int(time.time() * 10) % 100000:05d}"
-            _emit_local(force, 0.91, "demo_plate_force", self._vehicle_bbox_norm(after))
-            # Demo stops here either way: the Paddle/Gemini path below is pure
-            # parasite load (429 storms + PaddleOCR throttling) once alerts
-            # are guaranteed by the force emit.
-            return
-
-        # Pace OCR attempts without permanently locking the track on failure.
-        if self._dedupe(f"plate_try:{event_id}", ttl=3.0 if demo_mode else 8.0):
-            return
-
-        snap_wait = min(2.0, float(self._snapshot_wait)) if demo_mode else float(self._snapshot_wait)
-        jpeg, box, _ev = fetch_subject_jpeg(
+        # Crop the vehicle bbox and run readers. Retry next MQTT until a jpeg exists.
+        jpeg = None
+        box = self._vehicle_bbox_norm(after)
+        paddle_reading = None
+        pattern_re = None
+        min_conf = 0.15 if demo_mode else 0.35
+        snap_wait = 1.5
+        jpeg, box2, _ev = fetch_subject_jpeg(
             self._frigate_url, event_id, after, wait_sec=snap_wait,
         )
+        if box2 is not None:
+            box = box2
+        if not jpeg:
+            try:
+                jpeg = download_snapshot_jpeg(self._frigate_url, event_id)
+            except Exception:
+                jpeg = None
         if not jpeg:
             with self._stats_lock:
                 self._stats["snapshot_fail"] += 1
             return
-        from citevision_ai.identity.plate_fusion import (
-            resolve_zone_plate_pattern,
-            run_paddle_on_jpeg,
-        )
-        from citevision_ai.vlm.queue import VlmJob
+        if self._dedupe(f"plate_ocr_done:{event_id}", ttl=20.0 if demo_mode else 45.0):
+            return
 
-        pattern_re = resolve_zone_plate_pattern(zinfo)
-        paddle_reading = run_paddle_on_jpeg(jpeg, pattern_re)
+        from citevision_ai.identity.plate_fusion import run_paddle_on_jpeg
+        # Same in-zone Frigate vehicle crop. Skip immediately if Paddle is busy
+        # or throttled — never block the Gemini fallback behind a 20s hang.
+        paddle_reading = run_paddle_on_jpeg(jpeg, None)
+        paddle_text = str(getattr(paddle_reading, "text", "") or "").strip() if paddle_reading else ""
+        paddle_conf = float(getattr(paddle_reading, "confidence", 0.0) or 0.0) if paddle_reading else 0.0
 
-        min_conf = 0.20 if demo_mode else 0.35
-        if (
-            local_ok
-            and paddle_reading is not None
-            and str(paddle_reading.text or "").strip()
-            and float(paddle_reading.confidence or 0.0) >= min_conf
-        ):
+        # #region agent log
+        if _DBG_COUNTS["plate_try"] < 30:
+            _DBG_COUNTS["plate_try"] += 1
+            _agent_dbg("H4", "bridge.py:_maybe_plate", "plate_ocr_attempt", {
+                "cam": camera_id[:8],
+                "eid": event_id[:24],
+                "label": label,
+                "zone": zone_name,
+                "has_jpeg": bool(jpeg),
+                "paddle_has_text": bool(paddle_text),
+                "paddle_conf": paddle_conf if paddle_reading is not None else None,
+                "min_conf": min_conf,
+                "demo_mode": demo_mode,
+                "local_ok": local_ok,
+                "next": (
+                    "paddle_emit" if paddle_text and paddle_conf >= min_conf
+                    else ("gemini" if (jpeg and self._vlm_queue is not None) else "none")
+                ),
+            })
+        # #endregion
+
+        if local_ok and paddle_text and paddle_conf >= min_conf:
             if _emit_local(
-                str(paddle_reading.text).strip().upper(),
-                float(paddle_reading.confidence or 0.0),
+                paddle_text.upper(),
+                paddle_conf,
                 "paddle_local",
-                box,
+                box or self._vehicle_bbox_norm(after),
             ):
                 return
 
-        # Demo: if crop OCR missed, try full-frame snapshot once (Okapi plates often
-        # sit outside tight vehicle bbox).
-        if demo_mode and local_ok and self._emit is not None:
-            if not self._dedupe(f"plate_fullframe:{event_id}", ttl=8.0):
-                try:
-                    raw = download_snapshot_jpeg(self._frigate_url, event_id)
-                except Exception:
-                    raw = None
-                if raw:
-                    ff = run_paddle_on_jpeg(raw, pattern_re)
-                    if (
-                        ff is not None
-                        and str(ff.text or "").strip()
-                        and float(ff.confidence or 0.0) >= min_conf
-                    ):
-                        if _emit_local(
-                            str(ff.text).strip().upper(),
-                            float(ff.confidence or 0.0),
-                            "paddle_fullframe",
-                            box,
-                        ):
-                            return
+        # Gemini best-effort on the same crop when LPR and Paddle missed.
+        if jpeg and self._vlm_queue is not None:
+            from citevision_ai.vlm.queue import VlmJob
 
-        skeleton = {
-            "event_id": str(uuid.uuid4()),
-            "camera_id": camera_id,
-            "event_type": "plate_detected",
-            "event": "plate_detected",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "zone_id": zone_name,
-            "class_name": label,
-            "frigate_event_id": event_id,
-            "bbox": box,
-            "severity": "info",
-            "metadata": {
-                "detection_method": "gemini_paddle_fusion",
-                "bridge_source": "frigate",
+            skeleton = {
+                "event_id": str(uuid.uuid4()),
+                "camera_id": camera_id,
+                "event_type": "plate_detected",
+                "event": "plate_detected",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "zone_id": zone_name,
+                "class_name": "car" if label in _VEHICLE_LABELS else label,
                 "frigate_event_id": event_id,
-                "frigate_label": after.get("label") or label,
-                "bbox_source": "frigate",
-            },
-        }
-        if self._vlm_queue is None:
-            return
-        ok = self._vlm_queue.try_enqueue(
-            VlmJob(
-                jpeg=jpeg,
-                rule=rule,
-                min_confidence=0.35,
-                event_skeleton=skeleton,
-                paddle_plate_text=paddle_reading.text if paddle_reading else "",
-                paddle_plate_confidence=float(paddle_reading.confidence) if paddle_reading else 0.0,
-                plate_pattern_regex=pattern_re.pattern if pattern_re is not None else "",
+                "bbox": box,
+                "severity": "info",
+                "metadata": {
+                    "detection_method": "gemini_plate_best_effort",
+                    "bridge_source": "frigate",
+                    "frigate_event_id": event_id,
+                    "frigate_label": after.get("label") or label,
+                    "bbox_source": "frigate",
+                    "crop_mode": "frigate_vehicle_bbox",
+                    "zone_behavior": "plate_ocr",
+                },
+            }
+            ok = self._vlm_queue.try_enqueue(
+                VlmJob(
+                    jpeg=jpeg,
+                    rule="plate_ocr",
+                    min_confidence=0.0,
+                    event_skeleton=skeleton,
+                    paddle_plate_text=paddle_text,
+                    paddle_plate_confidence=paddle_conf,
+                    plate_pattern_regex="",
+                )
             )
-        )
-        if ok:
-            with self._stats_lock:
-                self._stats["plate_enqueued"] += 1
+            if ok:
+                with self._stats_lock:
+                    self._stats["plate_enqueued"] += 1
 
     def _behavior_cfg(self, zinfo: dict[str, Any]) -> dict[str, Any]:
         bcfg = zinfo.get("behavior_config")
@@ -2133,17 +2180,9 @@ class FrigateEventBridge:
             return default
 
     def _geom_box(self, after: dict[str, Any]) -> dict[str, Any] | None:
-        data = after.get("data") if isinstance(after.get("data"), dict) else {}
-        data_box = data.get("box") if isinstance(data, dict) else None
-        if isinstance(data_box, (list, tuple)) and len(data_box) >= 4:
-            return {
-                "x": float(data_box[0]),
-                "y": float(data_box[1]),
-                "width": float(data_box[2]),
-                "height": float(data_box[3]),
-                "norm": True,
-            }
-        return None
+        # Same 0-1 box as the rest of the bridge. The old path labelled detect-pixel
+        # xyxy as norm=True, which drew evidence boxes on asphalt.
+        return self._vehicle_bbox_norm(after)
 
     def _emit_geometry(
         self,
@@ -2187,6 +2226,8 @@ class FrigateEventBridge:
             "frigate_event_id": event_id,
             "class_name": cls,
             "bbox": self._geom_box(after),
+            "bbox_ts": self._bbox_ts_from_after(after, time.time()),
+            "track_id": event_id,
             "severity": severity,
             "metadata": meta,
         }
@@ -2211,21 +2252,27 @@ class FrigateEventBridge:
         tracks = self._zone_track_counts.setdefault(f"{camera_id}:{zone_key}", set())
         tracks.add(event_id)
 
-        # Enter emits
+        # Enter / already-in-zone emits
         entered = set(self._zone_list(after.get("entered_zones")))
+        current = set(self._zone_list(after.get("current_zones")))
         fz_ids = {f"cv_zone_{zone_key}", zone_key}
         just_entered = bool(entered & fz_ids) or bool(
             entered and any(zone_key in str(x) for x in entered)
         )
-        # Demo hyper-reactive: person tracks are long-lived, so a 60s per-track
-        # dedupe swallows the first post-enable emission (run12/13: Intrusion
-        # alert at 33-35s). Short TTL lets the standing intruder re-trigger.
+        in_zone = bool(current & fz_ids) or bool(
+            current and any(zone_key in str(x) for x in current)
+        )
+        if not in_zone:
+            in_zone = self._bbox_center_in_zone(self._vehicle_bbox_norm(after), zinfo)
+        # Demo: per-track event_id dedupe burns a person already standing in the
+        # zone when the rule is enabled. Camera+zone lets that first hit fire.
         geom_ttl = 4.0 if str(os.environ.get("DEMO_MODE", "")).strip().lower() in (
             "1", "true", "yes",
         ) else 60.0
-        if just_entered or behavior == "perimeter":
+        already_there = label in _PERSON_LABELS and behavior == "perimeter" and in_zone
+        if just_entered or behavior == "perimeter" or already_there:
             if behavior == "perimeter":
-                if not self._dedupe(f"geom:{event_id}:perimeter_breach:{zone_key}", ttl=geom_ttl):
+                if not self._dedupe(f"geom:{camera_id}:{zone_key}:perimeter_breach", ttl=geom_ttl):
                     self._emit_geometry(
                         camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
                         event_type="perimeter_breach", severity="critical",
@@ -2332,6 +2379,22 @@ class FrigateEventBridge:
     def _poly_dicts(self, zinfo: dict[str, Any]) -> list[dict[str, float]]:
         return [{"x": x, "y": y} for x, y in self._zone_points(zinfo)]
 
+    def _wrong_way_xy_from_after(self, after: dict[str, Any]) -> tuple[float, float] | None:
+        """Bbox centre — not bottom-centre, which tags the neighbour on a shared road."""
+        box = self._vehicle_bbox_norm(after)
+        if not box:
+            return None
+        try:
+            x = float(box.get("x") or 0)
+            y = float(box.get("y") or 0)
+            w = float(box.get("width") or 0)
+            h = float(box.get("height") or 0)
+        except (TypeError, ValueError):
+            return None
+        if w <= 0 or h <= 0:
+            return None
+        return x + w / 2.0, y + h / 2.0
+
     def _wrong_way_on_enter(
         self,
         camera_id: str,
@@ -2356,12 +2419,10 @@ class FrigateEventBridge:
             return
         zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
         self._wrong_way_enter_edge[f"{event_id}:{zone_key}"] = edge
-        # Demo hyper-reactive: do not wait for a full traverse (often 60–90s).
+        # Demo hyper-reactive: do not wait for a full traverse (often 60-90s).
         # Entering via any edge other than the allowed entry is already wrong-way.
         demo = str(os.environ.get("DEMO_MODE", "")).strip() in ("1", "true", "TRUE", "yes")
         if demo and edge != entry_cfg and self._emit is not None:
-            # 4s (was 30s): warm pre-enable emissions must not block the
-            # post-enable alert for a long-lived track (run16: Sens at 38s).
             if not self._dedupe(f"geom:{event_id}:wrong_way:{zone_key}", ttl=4.0):
                 label = str(after.get("label") or "car").lower().strip() or "car"
                 if label == "motorbike":
@@ -2380,13 +2441,15 @@ class FrigateEventBridge:
                     },
                 )
 
-    def _maybe_wrong_way_exit(
+    def _maybe_wrong_way_progress(
         self,
         camera_id: str,
         event_id: str,
         after: dict[str, Any],
         zinfo: dict[str, Any],
         label: str,
+        *,
+        leaving: bool = False,
     ) -> None:
         cfg = self._behavior_cfg(zinfo)
         try:
@@ -2396,31 +2459,74 @@ class FrigateEventBridge:
             return
         if entry_cfg == exit_cfg:
             return
+        xy = self._wrong_way_xy_from_after(after)
+        if xy is None:
+            if leaving:
+                zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
+                self._wrong_way_state.pop(f"{event_id}:{zone_key}", None)
+            return
+        poly = self._poly_dicts(zinfo)
         zone_key = str(zinfo.get("id") or zinfo.get("zone_id") or "")
         dkey = f"{event_id}:{zone_key}"
-        enter_edge = self._wrong_way_enter_edge.pop(dkey, None)
-        xy = self._anchor_xy_from_after(after)
-        poly = self._poly_dicts(zinfo)
-        exit_edge = nearest_edge_index(poly, xy[0], xy[1]) if xy else None
-        if enter_edge is None or exit_edge is None:
-            return
-        # Allowed path only: configured entry → configured exit.
-        if enter_edge == entry_cfg and exit_edge == exit_cfg:
+        state = self._wrong_way_state.get(dkey)
+        if state is None:
+            state = {"last_xy": xy, "crossed": []}
+            self._wrong_way_state[dkey] = state
+            append_edge_crossing(state["crossed"], nearest_edge_if_close(poly, xy[0], xy[1]))
+        else:
+            last = state.get("last_xy")
+            if last is not None:
+                for edge in edges_crossed_by_segment(poly, last[0], last[1], xy[0], xy[1]):
+                    append_edge_crossing(state["crossed"], edge)
+            append_edge_crossing(state["crossed"], nearest_edge_if_close(poly, xy[0], xy[1]))
+            state["last_xy"] = xy
+
+        # #region agent log
+        if len(state["crossed"]) >= 2 and _DBG_COUNTS["ww"] < 40:
+            _DBG_COUNTS["ww"] += 1
+            _agent_dbg("H1", "bridge.py:_maybe_wrong_way_progress", "ww_crossed", {
+                "eid": event_id[:24],
+                "label": label,
+                "xy": [round(xy[0], 4), round(xy[1], 4)],
+                "box": self._vehicle_bbox_norm(after),
+                "crossed": list(state["crossed"]),
+                "entry_cfg": entry_cfg,
+                "exit_cfg": exit_cfg,
+                "will_emit": is_wrong_way_ordered(state["crossed"], entry_cfg, exit_cfg),
+                "leaving": leaving,
+            })
+        # #endregion
+
+        if not is_wrong_way_ordered(state["crossed"], entry_cfg, exit_cfg):
+            if leaving:
+                self._wrong_way_state.pop(dkey, None)
             return
         if self._dedupe(f"geom:{event_id}:wrong_way:{zone_key}", ttl=90.0):
+            if leaving:
+                self._wrong_way_state.pop(dkey, None)
             return
+        emit_label = str(label or after.get("label") or "car").lower().strip() or "car"
+        if emit_label == "motorbike":
+            emit_label = "motorcycle"
+        if emit_label in ("truck", "bus", "van", "vehicle"):
+            emit_label = "car"
+        crossed = list(state["crossed"])
         self._emit_geometry(
             camera_id=camera_id, event_id=event_id, after=after, zinfo=zinfo,
             event_type="wrong_way", severity="high",
             extra_meta={
-                "object_label": label,
-                "enter_edge_index": enter_edge,
-                "exit_edge_index": exit_edge,
+                "object_label": emit_label,
+                "class_name": emit_label,
+                "crossed_edge_indexes": crossed,
+                "enter_edge_index": crossed[0] if crossed else None,
+                "exit_edge_index": crossed[-1] if crossed else None,
                 "allowed_entry_edge": entry_cfg,
                 "allowed_exit_edge": exit_cfg,
-                "detection_method": "frigate_wrong_way_edges",
+                "detection_method": "frigate_wrong_way_ordered_edges",
             },
         )
+        if leaving:
+            self._wrong_way_state.pop(dkey, None)
 
     def _maybe_zone_absence(self, camera_id: str, zone_by_uuid: dict[str, dict[str, Any]]) -> None:
         now = time.monotonic()

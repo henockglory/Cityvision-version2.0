@@ -49,7 +49,7 @@ func TestUpsertCameraZonesFromPolygon(t *testing.T) {
 	zoneID := uuid.New()
 	zones := []models.Zone{{ID: zoneID, CameraID: &camID, Polygon: poly}}
 	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{
-		RecordEnabled: true, SnapshotsEnabled: true,
+		DetectEnabled: true, RecordEnabled: true, SnapshotsEnabled: true,
 	}, zones)
 	if len(cc.Entry.Zones) != 1 {
 		t.Fatalf("expected 1 zone, got %d", len(cc.Entry.Zones))
@@ -151,7 +151,7 @@ func TestUpsertCameraSpeedDistancesFourPoints(t *testing.T) {
 		ID: zoneID, CameraID: &camID, Polygon: poly, BehaviorConfig: bcfg,
 	}}
 	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{
-		RecordEnabled: true, SnapshotsEnabled: true,
+		DetectEnabled: true, RecordEnabled: true, SnapshotsEnabled: true,
 	}, zones)
 	zn := ZoneID(zoneID.String())
 	ze, ok := cc.Entry.Zones[zn]
@@ -260,7 +260,7 @@ func TestUpsertCameraTracksBagsForAbandonedZone(t *testing.T) {
 func TestUpsertCameraTracksBagsFromAggregate(t *testing.T) {
 	cam := &models.Camera{ID: uuid.New()}
 	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{
-		TrackObjects: []string{"backpack", "suitcase"},
+		DetectEnabled: true, TrackObjects: []string{"backpack", "suitcase"},
 	}, nil)
 	found := map[string]bool{}
 	for _, lab := range cc.Entry.Objects.Track {
@@ -296,10 +296,33 @@ func TestUpsertCameraStrictFrigateForcesRecord(t *testing.T) {
 	t.Setenv("FRIGATE_EVIDENCE", "true")
 	t.Setenv("FRIGATE_DEMO_MODE", "true")
 	t.Setenv("DEMO_EVIDENCE_BACKEND", "strict_frigate")
-	cam := &models.Camera{ID: uuid.New()}
-	agg := EvidenceAggregate{RecordEnabled: false, SnapshotsEnabled: false}
+	vid := uuid.New()
+	meta, _ := json.Marshal(map[string]interface{}{
+		"demo": true, "go2rtc_src": "demo-x", "demo_video_id": vid.String(),
+	})
+	cam := &models.Camera{ID: uuid.New(), Metadata: meta}
+	agg := EvidenceAggregate{DetectEnabled: true, RecordEnabled: false, SnapshotsEnabled: false}
 	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, agg, nil)
 	if !cc.Entry.Record.Enabled || !cc.Entry.Snapshots.Enabled {
-		t.Fatal("strict_frigate demo must force record+snapshots")
+		t.Fatal("demo go2rtc with DetectEnabled must enable record+snapshots")
+	}
+	if !cc.Entry.Detect.Enabled {
+		t.Fatal("detect should follow DetectEnabled=true")
+	}
+	// YAML record stays on; idle cameras are MQTT-stopped (detect gate).
+	ccOff := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{}, nil)
+	if !ccOff.Entry.Record.Enabled {
+		t.Fatal("demo go2rtc YAML record must stay on so MQTT-woken cams can seal clips")
+	}
+	if ccOff.Entry.Detect.Enabled {
+		t.Fatal("detect should follow DetectEnabled=false")
+	}
+}
+
+func TestUpsertCameraDetectDisabledWithoutRules(t *testing.T) {
+	cam := &models.Camera{ID: uuid.New()}
+	cc := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{}, nil)
+	if cc.Entry.Detect.Enabled {
+		t.Fatal("detect must be OFF when DetectEnabled=false")
 	}
 }

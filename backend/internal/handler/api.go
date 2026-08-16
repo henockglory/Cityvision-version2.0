@@ -861,9 +861,15 @@ func (a *API) CreateRule(w http.ResponseWriter, r *http.Request) {
 		ResourceType: "rule", ResourceID: &rid,
 		IPAddress: parseIP(r), UserAgent: r.UserAgent(),
 	})
-	if a.Frigate != nil && a.Frigate.Enabled() {
-		a.Frigate.SyncAfterRuleChange(r.Context(), orgID)
+	if camID, ok := frigate.CameraIDFromRuleDefinition(rule.Definition); ok && a.Frigate != nil {
+		// Hot-path: MQTT detect boost only (no rebuild in request path).
+		a.Frigate.FocusDetectForCamera(r.Context(), orgID, camID)
 	}
+	if a.Frigate != nil && a.Frigate.Enabled() {
+		// YAML/detect sync async — Frigate rebuild must never block CreateRule.
+		go a.Frigate.SyncAfterRuleChange(context.Background(), orgID)
+	}
+	a.prioritizeEnabledRule(r.Context(), orgID, rule.Definition, false) // detect already focused
 	writeJSON(w, http.StatusCreated, rule)
 }
 
@@ -958,8 +964,16 @@ func (a *API) UpdateRule(w http.ResponseWriter, r *http.Request) {
 			go a.Orchestrator.TriggerRulesSyncNow(context.Background())
 		}
 	}
+	if req.IsEnabled != nil && *req.IsEnabled {
+		if camID, ok := frigate.CameraIDFromRuleDefinition(rule.Definition); ok && a.Frigate != nil {
+			// Hot-path: MQTT detect boost only (no rebuild in request path).
+			a.Frigate.FocusDetectForCamera(r.Context(), orgID, camID)
+		}
+		a.prioritizeEnabledRule(r.Context(), orgID, rule.Definition, false)
+	}
 	if a.Frigate != nil && a.Frigate.Enabled() {
-		a.Frigate.SyncAfterRuleChange(r.Context(), orgID)
+		// YAML/detect sync async — Frigate rebuild must never block UpdateRule.
+		go a.Frigate.SyncAfterRuleChange(context.Background(), orgID)
 	}
 	writeJSON(w, http.StatusOK, rule)
 }
@@ -1552,6 +1566,63 @@ func (a *API) UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// prioritizeEnabledRule switches demo active_video and stops AI parasites for the rule camera.
+// When focusDetect is true, also MQTT-boosts Frigate detect (otherwise FocusDetectForCamera already did).
+func (a *API) prioritizeEnabledRule(ctx context.Context, orgID uuid.UUID, def json.RawMessage, focusDetect bool) {
+	camID, ok := frigate.CameraIDFromRuleDefinition(def)
+	if !ok {
+		return
+	}
+	if focusDetect && a.Frigate != nil {
+		a.Frigate.FocusDetectForCamera(ctx, orgID, camID)
+	}
+	demoMode := strings.TrimSpace(os.Getenv("DEMO_MODE")) == "1"
+	if demoMode && a.Demo != nil {
+		alreadyActive := false
+		if st, err := a.Demo.GetSettings(ctx, orgID); err == nil && st != nil {
+			if st.ActiveCameraID != nil && *st.ActiveCameraID == camID {
+				alreadyActive = true
+			}
+		}
+		if vid, err := a.Demo.ActivateDemoForCamera(ctx, orgID, camID); err == nil {
+			// Skip switch-heal when camera/video already active — heal restarts
+			// ingest and adds 15–30s before the first alert (SLO miss).
+			if !alreadyActive && a.Orchestrator != nil {
+				vidCopy := vid
+				camCopy := camID
+				a.Orchestrator.StartDemoSwitchHealAsync(
+					a.Demo, orgID, nil, &camCopy, &vidCopy,
+				)
+			}
+		}
+	}
+	if a.Orchestrator != nil {
+		go a.stopAIParasiteCameras(context.Background(), camID)
+	}
+}
+
+func (a *API) stopAIParasiteCameras(ctx context.Context, keep uuid.UUID) {
+	if a.Orchestrator == nil {
+		return
+	}
+	// Best-effort: stop other running AI workers so GPU/VLM serve the active rule.
+	running, err := a.Orchestrator.ListRunningAICameras(ctx)
+	if err != nil || len(running) == 0 {
+		return
+	}
+	keepStr := keep.String()
+	keepPrefix := keepStr
+	if len(keepPrefix) > 8 {
+		keepPrefix = keepPrefix[:8]
+	}
+	for id := range running {
+		if id == keepStr || (keepPrefix != "" && strings.HasPrefix(id, keepPrefix)) {
+			continue
+		}
+		_ = a.Orchestrator.StopAICamera(ctx, id)
+	}
+}
 
 func parseIP(r *http.Request) net.IP {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

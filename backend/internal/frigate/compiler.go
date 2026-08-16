@@ -219,18 +219,15 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 		// Demo: snapshots on events only; record follows rule aggregate (event clips).
 		entry.Snapshots.Enabled = agg.SnapshotsEnabled || agg.RecordEnabled
 	}
-	// Demo go2rtc: always keep snapshots; record ONLY when this camera has an
-	// enabled rule (DetectEnabled). Recording all demo cams at once saturates
-	// Frigate's record maintainer → discarded segments → clip.mp4 HTTP 400
-	// ("No recordings found") even when has_clip=true. Clips fall back to go2rtc.
+	// Demo go2rtc: always keep snapshots. Record stays enabled in YAML so a
+	// MQTT-woken camera can seal event clips of the same moment as snapshot.jpg.
+	// Idle cameras are stopped via MQTT enabled/set OFF (detect gate) and do not record.
 	if isDemoGo2rtcCamera(cam.Metadata) {
 		entry.Snapshots.Enabled = true
-		if agg.DetectEnabled {
-			entry.Record.Enabled = true
-		} else if strings.EqualFold(strings.TrimSpace(os.Getenv("DEMO_EVIDENCE_STRICT")), "1") ||
-			strings.EqualFold(strings.TrimSpace(os.Getenv("DEMO_EVIDENCE_BACKEND")), "strict_frigate") {
-			entry.Record.Enabled = false
-		}
+		// Keep record enabled in YAML so the MQTT-woken camera can seal event
+		// clips of the same moment as snapshot.jpg. Idle cameras are stopped
+		// via MQTT enabled/set OFF (detect gate) and do not record.
+		entry.Record.Enabled = true
 		// NOTE: do NOT set enabled:false in config — Frigate refuses MQTT
 		// enabled/set ON for config-disabled cameras ("Camera must be enabled
 		// in the config"). Idle cameras are stopped via MQTT enabled/set OFF

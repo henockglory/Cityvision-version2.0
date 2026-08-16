@@ -645,6 +645,144 @@ else
 fi
 echo
 
+echo "--- auto-fix stamps (WS / dist / Go / record / ffmpeg) ---"
+_stamp_gate() {
+  if [[ "${STRICT_INSTALL_HEALTH:-0}" == "1" ]]; then
+    fail "$1"
+  else
+    warn "$1"
+  fi
+}
+
+if grep -q "server.on('upgrade'" "$ROOT/scripts/serve-frontend-static.mjs" 2>/dev/null; then
+  ok "serve-frontend-static.mjs WebSocket upgrade proxy"
+else
+  _stamp_gate "serve-frontend-static.mjs missing server.on('upgrade' — alerts will not be realtime"
+fi
+
+if [[ -x "$ROOT/scripts/lib/frontend-dist-stamp.sh" ]] || [[ -f "$ROOT/scripts/lib/frontend-dist-stamp.sh" ]]; then
+  if bash "$ROOT/scripts/lib/frontend-dist-stamp.sh" stale >/dev/null 2>&1; then
+    echo "[INFO] heal: frontend dist stamp stale — ensure-frontend"
+    bash "$ROOT/scripts/ensure-frontend.sh" >/dev/null 2>&1 || true
+    if bash "$ROOT/scripts/lib/frontend-dist-stamp.sh" stale >/dev/null 2>&1; then
+      _stamp_gate "frontend/dist stamp still stale after heal"
+    else
+      ok "frontend/dist stamp current after heal"
+    fi
+  else
+    ok "frontend/dist stamp current"
+  fi
+else
+  warn "frontend-dist-stamp.sh missing"
+fi
+
+_bin="$ROOT/backend/bin/citevision-api"
+_need_go=0
+if [[ ! -x "$_bin" ]]; then
+  _need_go=1
+else
+  _bin_m=$(stat -c %Y "$_bin" 2>/dev/null || echo 0)
+  for _s in compiler.go detect_gate.go sync.go; do
+    _f="$ROOT/backend/internal/frigate/$_s"
+    [[ -f "$_f" ]] || continue
+    _src_m=$(stat -c %Y "$_f" 2>/dev/null || echo 0)
+    if [[ "$_src_m" -gt "$_bin_m" ]]; then
+      _need_go=1
+      break
+    fi
+  done
+fi
+if [[ "$_need_go" -eq 1 ]]; then
+  echo "[INFO] heal: ensure-backend-bin"
+  _before=$(stat -c %Y "$_bin" 2>/dev/null || echo 0)
+  bash "$ROOT/scripts/lib/ensure-backend-bin.sh" >/dev/null 2>&1 || true
+  _after=$(stat -c %Y "$_bin" 2>/dev/null || echo 0)
+  _need_go=0
+  if [[ ! -x "$_bin" ]]; then
+    _need_go=1
+  else
+    _bin_m=$(stat -c %Y "$_bin" 2>/dev/null || echo 0)
+    for _s in compiler.go detect_gate.go sync.go; do
+      _f="$ROOT/backend/internal/frigate/$_s"
+      [[ -f "$_f" ]] || continue
+      _src_m=$(stat -c %Y "$_f" 2>/dev/null || echo 0)
+      if [[ "$_src_m" -gt "$_bin_m" ]]; then
+        _need_go=1
+        break
+      fi
+    done
+  fi
+  if [[ "$_need_go" -eq 1 ]]; then
+    _stamp_gate "citevision-api older than Frigate Go sources after heal"
+  else
+    ok "citevision-api binary current after heal"
+    if [[ "$_after" -gt "$_before" ]] && [[ -f "$ROOT/scripts/_restart_backend.py" ]]; then
+      python3 "$ROOT/scripts/_restart_backend.py" >/dev/null 2>&1 || true
+    fi
+  fi
+else
+  ok "citevision-api binary >= Frigate Go sources"
+fi
+
+_record_on=$(python3 - <<'PY' 2>/dev/null || echo 0)
+import json, urllib.request
+try:
+    with urllib.request.urlopen("http://127.0.0.1:5000/api/config", timeout=8) as r:
+        cfg = json.loads(r.read().decode())
+except Exception:
+    print(-1)
+    raise SystemExit(0)
+cams = cfg.get("cameras") or {}
+on = sum(1 for c in cams.values() if (c.get("record") or {}).get("enabled"))
+glob = 1 if (cfg.get("record") or {}).get("enabled") else 0
+print(on if on > 0 else (1 if glob else (0 if cams else -2)))
+PY
+if [[ "$_record_on" == "-1" ]]; then
+  warn "Frigate config unreachable — skip record.enabled check"
+elif [[ "$_record_on" == "-2" ]]; then
+  ok "Frigate has no cameras — skip record.enabled"
+elif [[ "$_record_on" -gt 0 ]]; then
+  ok "Frigate record.enabled on at least one camera"
+else
+  echo "[INFO] heal: Frigate record.enabled"
+  bash "$ROOT/scripts/lib/heal-frigate-record.sh" >/dev/null 2>&1 || true
+  _record_on2=$(python3 - <<'PY' 2>/dev/null || echo 0)
+import json, urllib.request
+try:
+    with urllib.request.urlopen("http://127.0.0.1:5000/api/config", timeout=8) as r:
+        cfg = json.loads(r.read().decode())
+except Exception:
+    print(0)
+    raise SystemExit(0)
+cams = cfg.get("cameras") or {}
+on = sum(1 for c in cams.values() if (c.get("record") or {}).get("enabled"))
+glob = 1 if (cfg.get("record") or {}).get("enabled") else 0
+print(1 if (on > 0 or glob) else 0)
+PY
+  if [[ "$_record_on2" -gt 0 ]]; then
+    ok "Frigate record.enabled after heal"
+  else
+    _stamp_gate "Frigate record.enabled still false after heal (demo clips will 404)"
+  fi
+fi
+
+_ff=$(curl -sf --max-time 5 "$AI_URL/health" 2>/dev/null \
+  | python3 -c 'import json,sys
+try:
+  d=json.load(sys.stdin)
+  v=str(d.get("ffmpeg_available","")).lower()
+  sys.exit(0 if v in ("true","1","yes") else 1)
+except Exception:
+  sys.exit(2)' 2>/dev/null; echo $?)
+if [[ "$_ff" == "0" ]]; then
+  ok "AI ffmpeg_available=true (stills-mp4)"
+elif command -v ffmpeg >/dev/null 2>&1; then
+  warn "AI /health ffmpeg_available not true but host ffmpeg present"
+else
+  _stamp_gate "AI ffmpeg_available=false — stills-mp4 evidence cannot encode"
+fi
+echo
+
 echo "=== summary FAIL=$FAIL WARN=$WARN ==="
 if (( FAIL > 0 )); then
   echo "RESULT: RED — fix FAIL items before validation"

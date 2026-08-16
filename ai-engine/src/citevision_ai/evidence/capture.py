@@ -26,14 +26,16 @@ def normalize_bbox(bbox: dict[str, Any] | None, frame_w: int, frame_h: int) -> d
     bh = float(bbox.get("height", 0))
     if bw <= 0 or bh <= 0:
         return None
-    if x <= 1 and y <= 1 and bw <= 1 and bh <= 1:
-        return {"x": x, "y": y, "width": bw, "height": bh}
+    # Trust 0-1 values. Never re-divide a truthful box by a hardcoded 1920x1080.
+    if max(x, y, bw, bh) <= 1.5:
+        return {"x": x, "y": y, "width": bw, "height": bh, "norm": True}
     w, h = max(frame_w, 1), max(frame_h, 1)
     return {
         "x": max(0.0, min(1.0, x / w)),
         "y": max(0.0, min(1.0, y / h)),
         "width": max(0.0, min(1.0, bw / w)),
         "height": max(0.0, min(1.0, bh / h)),
+        "norm": True,
     }
 
 
@@ -405,22 +407,12 @@ def capture_images_from_policy(
             continue
 
         if role == "plate" or crop in ("plate_rear", "rear_plate"):
-            zoom_plate = float(spec.get("zoom") or 1.8)
-            padding_plate = float(spec.get("padding_pct") or 6)
-            plate_bbox = bbox_rear_plate_region(norm_bbox) if norm_bbox else None
-            jpeg = encode_subject_jpeg(
-                frame, plate_bbox, quality,
-                padding_pct=padding_plate, zoom=zoom_plate, crop="bbox", fallback_full=False,
-            )
-            if jpeg is None and norm_bbox:
+            padding_plate = float(spec.get("padding_pct") or 8)
+            jpeg = None
+            if norm_bbox:
                 jpeg = encode_subject_jpeg(
                     frame, norm_bbox, quality,
-                    padding_pct=4, zoom=4.0, crop="bbox", fallback_full=False,
-                )
-            if jpeg is None and norm_bbox:
-                jpeg = encode_subject_jpeg(
-                    frame, norm_bbox, quality,
-                    padding_pct=0, zoom=2.5, crop="bbox", fallback_full=True,
+                    padding_pct=padding_plate, zoom=1.0, crop="bbox", fallback_full=False,
                 )
             if jpeg:
                 extras.append(jpeg)

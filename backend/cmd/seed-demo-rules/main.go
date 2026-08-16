@@ -56,6 +56,7 @@ type ruleSpec struct {
 	observation bool
 	obsKind     string
 	evidence    evidenceKind
+	clipSeconds float64 // 0 = kind default (6s road/geometry, 0s cabin)
 }
 
 func demoRuleSpecs() []ruleSpec {
@@ -141,6 +142,7 @@ func demoRuleSpecs() []ruleSpec {
 			withEmail:   true,
 			withClip:    true,
 			evidence:    evidenceRoad,
+			clipSeconds: 10,
 		},
 		{
 			name:        "Démo · Intrusion",
@@ -435,12 +437,12 @@ func buildDefinition(spec ruleSpec, camID uuid.UUID) map[string]interface{} {
 			"enabled": false, "clip_seconds": 0, "images": []interface{}{}, "draw_bbox": false,
 		}
 	} else {
-		def["evidence"] = evidencePolicy(spec.evidence)
+		def["evidence"] = evidencePolicy(spec.evidence, spec.clipSeconds)
 	}
 	return def
 }
 
-func evidencePolicy(kind evidenceKind) map[string]interface{} {
+func evidencePolicy(kind evidenceKind, clipSec float64) map[string]interface{} {
 	scene := map[string]interface{}{"role": "scene", "label": "Vue d'ensemble", "crop": "full"}
 	subject := map[string]interface{}{"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 12, "zoom": 1.0}
 	plate := map[string]interface{}{"role": "plate", "label": "Plaque", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8}
@@ -455,17 +457,23 @@ func evidencePolicy(kind evidenceKind) map[string]interface{} {
 			"fail_closed":  []string{"scene", "subject"},
 		}
 	case evidenceGeometry:
+		if clipSec <= 0 {
+			clipSec = 6
+		}
 		return map[string]interface{}{
 			"enabled":      true,
-			"clip_seconds": 6,
+			"clip_seconds": clipSec,
 			"draw_bbox":    true,
 			"images":       []map[string]interface{}{scene, subject},
 			"fail_closed":  []string{"subject"},
 		}
 	default: // road / plate / speeding / red light
+		if clipSec <= 0 {
+			clipSec = 6
+		}
 		return map[string]interface{}{
 			"enabled":      true,
-			"clip_seconds": 6,
+			"clip_seconds": clipSec,
 			"draw_bbox":    true,
 			"images":       []map[string]interface{}{scene, subject, plate},
 			"fail_closed":  []string{"subject", "plate"},

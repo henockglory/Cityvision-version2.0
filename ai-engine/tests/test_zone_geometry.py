@@ -3,9 +3,13 @@ from __future__ import annotations
 
 from citevision_ai.analytics.zone_geometry import (
     edge_pair_distance_m,
+    edges_crossed_by_segment,
+    is_wrong_way_ordered,
     meters_per_norm_unit,
+    nearest_edge_index,
     path_distance_m,
     resolve_speed_distance_m,
+    segments_intersect,
 )
 from citevision_ai.analytics.zone_speed import ZoneSpeedEngine
 
@@ -32,6 +36,36 @@ def test_nearest_edge_index_corners() -> None:
     scale = meters_per_norm_unit(_rect_poly())
     assert scale is not None
     assert 30 < scale < 40
+
+
+def test_segment_crosses_top_then_bottom_in_trajectory_order() -> None:
+    poly = [
+        {"x": 0.2, "y": 0.3},
+        {"x": 0.8, "y": 0.3},
+        {"x": 0.8, "y": 0.7},
+        {"x": 0.2, "y": 0.7},
+    ]
+    # Bottom (edge 2) then top (edge 0) along an upward jump.
+    crossed = edges_crossed_by_segment(poly, 0.5, 0.75, 0.5, 0.25)
+    assert crossed == [2, 0]
+    assert segments_intersect((0.5, 0.75), (0.5, 0.25), (0.2, 0.7), (0.8, 0.7))
+    assert is_wrong_way_ordered([2, 1, 0], entry_edge_index=0, exit_edge_index=2)
+    assert not is_wrong_way_ordered([0, 1, 2], entry_edge_index=0, exit_edge_index=2)
+    assert not is_wrong_way_ordered([2], entry_edge_index=0, exit_edge_index=2)
+
+
+def test_nearest_edge_if_close_ignores_zone_interior() -> None:
+    from citevision_ai.analytics.zone_geometry import nearest_edge_if_close
+
+    poly = [
+        {"x": 0.2, "y": 0.3},
+        {"x": 0.8, "y": 0.3},
+        {"x": 0.8, "y": 0.7},
+        {"x": 0.2, "y": 0.7},
+    ]
+    assert nearest_edge_if_close(poly, 0.5, 0.5) is None
+    assert nearest_edge_if_close(poly, 0.5, 0.68) == 2
+    assert nearest_edge_if_close(poly, 0.5, 0.32) == 0
 
 
 def test_path_distance_uses_calibration() -> None:

@@ -14,9 +14,16 @@ MIN_DELTA="${WATCH_AI_MIN_FRAMES:-8}"
 WINDOW="${WATCH_AI_WINDOW_SEC:-45}"
 
 frames_count() {
-  curl -sf "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); c=d.get('cameras') or []; print(sum(int(x.get('frames_processed') or 0) for x in c))" 2>/dev/null \
-    || echo 0
+  # Never emit 0 on probe failure — a timeout during /cameras/{id}/stop used to
+  # look like a frozen ingest and restart uvicorn mid 1-hit (FAIL_SLOW).
+  local out
+  out="$(curl -sf --max-time 4 "http://127.0.0.1:${AI_PORT}/cameras" 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); c=d.get('cameras') or []; print(sum(int(x.get('frames_processed') or 0) for x in c))" 2>/dev/null || true)"
+  if [[ -n "$out" && "$out" =~ ^[0-9]+$ ]]; then
+    echo "$out"
+  else
+    echo "NA"
+  fi
 }
 
 ai_stack_cold() {
@@ -61,26 +68,38 @@ heal_ai_stack() {
 }
 
 echo "[watch-ai-ingest] monitoring AI frames every ${INTERVAL}s (min +${MIN_DELTA}/${WINDOW}s) + stack cold heal"
+DOWN_STREAK=0
 
 while true; do
-  if curl -sf "http://127.0.0.1:${AI_PORT}/health" >/dev/null 2>&1; then
+  if curl -sf --max-time 4 "http://127.0.0.1:${AI_PORT}/health" >/dev/null 2>&1; then
+    DOWN_STREAK=0
     if ai_stack_cold; then
       heal_ai_stack
     fi
     f0="$(frames_count)"
     sleep "$WINDOW"
     f1="$(frames_count)"
-    delta=$((f1 - f0))
-    if [[ "$f0" -gt 0 && "$delta" -lt "$MIN_DELTA" ]]; then
-      echo "[watch-ai-ingest] frozen (delta=${delta}) — restarting AI + resync ($(date -Iseconds))"
-      bash "$ROOT/scripts/restart-ai-engine.sh" || true
-      bash "$ROOT/scripts/ensure-demo-pipeline.sh" || true
+    if [[ "$f0" == "NA" || "$f1" == "NA" ]]; then
+      echo "[watch-ai-ingest] skip freeze check (cameras probe NA) ($(date -Iseconds))"
+    else
+      delta=$((f1 - f0))
+      if [[ "$f0" -gt 0 && "$delta" -lt "$MIN_DELTA" ]]; then
+        echo "[watch-ai-ingest] frozen (delta=${delta}) — restarting AI + resync ($(date -Iseconds))"
+        bash "$ROOT/scripts/restart-ai-engine.sh" || true
+        bash "$ROOT/scripts/ensure-demo-pipeline.sh" || true
+      fi
     fi
   else
-    echo "[watch-ai-ingest] AI down on :${AI_PORT} — restarting pipeline ($(date -Iseconds))"
-    bash "$ROOT/scripts/ensure-demo-pipeline.sh" || true
-    if [[ -f "$ROOT/scripts/ensure-ai-stack.sh" ]]; then
-      bash "$ROOT/scripts/ensure-ai-stack.sh" --fix >>"$LOGDIR/watch-ai-ingest.log" 2>&1 || true
+    DOWN_STREAK=$((DOWN_STREAK + 1))
+    echo "[watch-ai-ingest] AI health miss ${DOWN_STREAK}/3 on :${AI_PORT} ($(date -Iseconds))"
+    # One blocked /cameras/stop must not restart uvicorn (1-hit FAIL_SLOW).
+    if [[ "$DOWN_STREAK" -ge 3 ]]; then
+      echo "[watch-ai-ingest] AI down on :${AI_PORT} — restarting pipeline ($(date -Iseconds))"
+      DOWN_STREAK=0
+      bash "$ROOT/scripts/ensure-demo-pipeline.sh" || true
+      if [[ -f "$ROOT/scripts/ensure-ai-stack.sh" ]]; then
+        bash "$ROOT/scripts/ensure-ai-stack.sh" --fix >>"$LOGDIR/watch-ai-ingest.log" 2>&1 || true
+      fi
     fi
   fi
   sleep "$INTERVAL"

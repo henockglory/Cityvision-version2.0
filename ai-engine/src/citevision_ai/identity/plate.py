@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
@@ -11,7 +12,7 @@ import cv2
 import numpy as np
 
 from citevision_ai.anpr.stub import AnprModule, PaddleOcrBackend, PlateResult
-from citevision_ai.evidence.capture import bbox_rear_plate_region, normalize_bbox
+from citevision_ai.evidence.capture import normalize_bbox
 from citevision_ai.utils.paddle_ocr_compat import create_paddle_ocr, parse_ocr_lines, run_ocr
 
 logger = logging.getLogger(__name__)
@@ -23,10 +24,11 @@ PLATE_TRACK_CACHE_SEC = 45.0
 MAX_PLATES_PER_FRAME = 1
 
 
-_OCR_CIRCUIT_BREAKER_THRESHOLD = 3   # consecutive failures/timeouts before throttling OCR
-_OCR_CALL_TIMEOUT_SEC = 3.0          # max seconds per PaddleOCR call (CPU warmup can exceed 1s)
-_OCR_CIRCUIT_COOLDOWN_SEC = 30.0     # after tripping, retry (half-open) instead of disabling forever
+_OCR_CIRCUIT_BREAKER_THRESHOLD = 8
+_OCR_CALL_TIMEOUT_SEC = 20.0
+_OCR_CIRCUIT_COOLDOWN_SEC = 10.0
 _ocr_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paddle-ocr")
+_ocr_busy = threading.Lock()
 
 
 class PaddleOcrPlateBackend(PaddleOcrBackend):
@@ -97,20 +99,30 @@ class PaddleOcrPlateBackend(PaddleOcrBackend):
     def recognize(self, crop: np.ndarray) -> list[PlateResult]:
         if not self.is_loaded or crop.size == 0 or self._circuit_blocked():
             return []
+        if not _ocr_busy.acquire(blocking=False):
+            return []
         try:
             result = self._run_ocr_timed(crop)
             self._consecutive_failures = 0
             plates: list[PlateResult] = []
             for text, conf, box in parse_ocr_lines(result):
                 text = self._normalize(text)
+                if not text:
+                    continue
+                try:
+                    conf_f = float(conf or 0.0)
+                except (TypeError, ValueError):
+                    conf_f = 0.0
+                if conf_f < 0.2:
+                    continue
                 if not box:
+                    plates.append(PlateResult(text=text, confidence=conf_f, bbox=(0, 0, 1, 1)))
                     continue
                 x1 = min(p[0] for p in box)
                 y1 = min(p[1] for p in box)
                 x2 = max(p[0] for p in box)
                 y2 = max(p[1] for p in box)
-                if text and conf > 0.5:
-                    plates.append(PlateResult(text=text, confidence=conf, bbox=(x1, y1, x2, y2)))
+                plates.append(PlateResult(text=text, confidence=conf_f, bbox=(x1, y1, x2, y2)))
             return plates
         except FuturesTimeout:
             self._trip_circuit("timeouts (>%.1fs)" % _OCR_CALL_TIMEOUT_SEC)
@@ -118,11 +130,12 @@ class PaddleOcrPlateBackend(PaddleOcrBackend):
         except Exception:
             self._trip_circuit("consecutive failures")
             return []
+        finally:
+            _ocr_busy.release()
 
     @staticmethod
     def _normalize(text: str) -> str:
-        cleaned = re.sub(r"[^A-Za-z0-9]", "", text.upper())
-        return cleaned if PLATE_RE.match(cleaned) else ""
+        return re.sub(r"[^A-Za-z0-9]", "", (text or "").upper())[:32]
 
 
 class PlateIdentityEngine:
@@ -249,11 +262,10 @@ class PlateIdentityEngine:
             norm = normalize_bbox(b, w, h)
             if not norm:
                 continue
-            rear = bbox_rear_plate_region(norm)
-            x1 = max(0, int(rear["x"] * w))
-            y1 = max(0, int(rear["y"] * h))
-            x2 = min(w, int((rear["x"] + rear["width"]) * w))
-            y2 = min(h, int((rear["y"] + rear["height"]) * h))
+            x1 = max(0, int(norm["x"] * w))
+            y1 = max(0, int(norm["y"] * h))
+            x2 = min(w, int((norm["x"] + norm["width"]) * w))
+            y2 = min(h, int((norm["y"] + norm["height"]) * h))
             if x2 <= x1 or y2 <= y1:
                 continue
             crop = frame[y1:y2, x1:x2]
@@ -264,15 +276,6 @@ class PlateIdentityEngine:
 
             plates = self._backend.recognize(crop)
             ocr_budget -= 1
-            if not plates:
-                x1 = max(0, int(norm["x"] * w))
-                y1 = max(0, int(norm["y"] * h))
-                x2 = min(w, int((norm["x"] + norm["width"]) * w))
-                y2 = min(h, int((norm["y"] + norm["height"]) * h))
-                if x2 > x1 and y2 > y1:
-                    full = frame[y1:y2, x1:x2]
-                    if full.size > 0:
-                        plates = self._backend.recognize(full)
 
             for plate in plates:
                 if not plate.text:
@@ -322,11 +325,10 @@ class PlateIdentityEngine:
             norm = normalize_bbox(b, w, h)
             if not norm:
                 continue
-            rear = bbox_rear_plate_region(norm)
-            x1 = max(0, int(rear["x"] * w))
-            y1 = max(0, int(rear["y"] * h))
-            x2 = min(w, int((rear["x"] + rear["width"]) * w))
-            y2 = min(h, int((rear["y"] + rear["height"]) * h))
+            x1 = max(0, int(norm["x"] * w))
+            y1 = max(0, int(norm["y"] * h))
+            x2 = min(w, int((norm["x"] + norm["width"]) * w))
+            y2 = min(h, int((norm["y"] + norm["height"]) * h))
             if x2 <= x1 or y2 <= y1:
                 continue
             crop = frame[y1:y2, x1:x2]

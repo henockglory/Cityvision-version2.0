@@ -374,6 +374,22 @@ func (c *AIClient) ListRunningCameras(ctx context.Context) (map[string]bool, err
 	return out, nil
 }
 
+// ListRunningAICameras exposes AI client camera list for rule-focus prioritization.
+func (o *Orchestrator) ListRunningAICameras(ctx context.Context) (map[string]bool, error) {
+	if o == nil || o.ai == nil {
+		return nil, fmt.Errorf("ai unavailable")
+	}
+	return o.ai.ListRunningCameras(ctx)
+}
+
+// StopAICamera stops one AI ingest worker (best-effort parasite cleanup).
+func (o *Orchestrator) StopAICamera(ctx context.Context, cameraID string) error {
+	if o == nil || o.ai == nil {
+		return fmt.Errorf("ai unavailable")
+	}
+	return o.ai.StopCamera(ctx, cameraID)
+}
+
 type Orchestrator struct {
 	pool     *pgxpool.Pool
 	ai       *AIClient

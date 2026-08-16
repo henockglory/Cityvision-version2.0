@@ -572,6 +572,44 @@ func (s *Service) activateVideo(ctx context.Context, orgID, videoID uuid.UUID) e
 	return nil
 }
 
+// ActivateDemoForCamera switches active_video to the demo clip bound to cameraID (metadata.demo_video_id).
+func (s *Service) ActivateDemoForCamera(ctx context.Context, orgID, cameraID uuid.UUID) (uuid.UUID, error) {
+	if s == nil || s.cameras == nil {
+		return uuid.Nil, fmt.Errorf("demo service unavailable")
+	}
+	cam, err := s.cameras.Get(ctx, orgID, cameraID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	var meta map[string]interface{}
+	_ = json.Unmarshal(cam.Metadata, &meta)
+	raw, _ := meta["demo_video_id"].(string)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return uuid.Nil, fmt.Errorf("camera has no demo_video_id")
+	}
+	videoID, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if err := s.ensureSettingsRow(ctx, orgID); err != nil {
+		return uuid.Nil, err
+	}
+	// No-op when already on this camera/video — avoids restarting a warm demo
+	// pipeline on every rule enable (was adding 15–30s to first-alert SLO).
+	if st, err := s.GetSettings(ctx, orgID); err == nil && st != nil {
+		if st.ActiveVideoID != nil && *st.ActiveVideoID == videoID {
+			if st.ActiveCameraID != nil && *st.ActiveCameraID == cameraID {
+				return videoID, nil
+			}
+		}
+	}
+	if err := s.activateVideo(ctx, orgID, videoID); err != nil {
+		return uuid.Nil, err
+	}
+	return videoID, nil
+}
+
 func (s *Service) syncDemoVirtualCamera(ctx context.Context, orgID uuid.UUID, v *videoRow) (uuid.UUID, error) {
 	siteID, err := s.defaultSiteID(ctx, orgID)
 	if err != nil {

@@ -195,7 +195,10 @@ export function useAlerts(filters: AlertFilters | string = 'open') {
   const orgId = useOrgId();
   const resolved: AlertFilters = typeof filters === 'string'
     ? (filters === 'all' ? {} : { status: filters })
-    : filters;
+    : { ...filters };
+  if (resolved.includeIncomplete === undefined && resolved.status !== 'archived') {
+    resolved.includeIncomplete = true;
+  }
   const key = JSON.stringify(resolved);
   return useQuery({
     queryKey: [...queryKeys.alerts, key] as const,

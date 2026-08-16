@@ -198,6 +198,26 @@ if ! ensure_frontend_deps "$ROOT"; then
 fi
 _ok "Frontend node_modules ready for WSL/Linux"
 
+_step "Frontend production dist"
+if [[ ! -f "$ROOT/frontend/dist/index.html" ]] \
+  || bash "$ROOT/scripts/lib/frontend-dist-stamp.sh" stale >/dev/null 2>&1; then
+  if (cd "$ROOT/frontend" && NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=2048}" npm run build); then
+    bash "$ROOT/scripts/lib/frontend-dist-stamp.sh" write || true
+    _ok "frontend/dist built"
+  else
+    _warn "npm run build failed — Start/ensure-frontend will retry"
+  fi
+else
+  _ok "frontend/dist stamp current"
+fi
+
+_step "Backend API binary"
+if bash "$ROOT/scripts/lib/ensure-backend-bin.sh"; then
+  _ok "citevision-api binary current"
+else
+  _warn "go build failed — Start/watch-backend will retry"
+fi
+
 # ── Hardware profile generation (avant YOLO pour connaître le bon modèle) ──
 _step "Hardware profile"
 _info "Génération du profil matériel et de generated.env..."

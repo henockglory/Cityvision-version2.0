@@ -693,7 +693,7 @@ def stop_extra_ai_cameras(keep_camera_id: str) -> None:
     ai_port = os.environ.get("AI_ENGINE_PORT", "8001")
     url = f"http://localhost:{ai_port}/cameras"
     try:
-        with urllib.request.urlopen(url, timeout=8) as resp:
+        with urllib.request.urlopen(url, timeout=2) as resp:
             body = json.loads(resp.read().decode())
         for cam in body.get("cameras") or []:
             cid = str(cam.get("camera_id") or "")
@@ -701,7 +701,7 @@ def stop_extra_ai_cameras(keep_camera_id: str) -> None:
                 continue
             stop_url = f"http://localhost:{ai_port}/cameras/{cid}/stop"
             req_obj = urllib.request.Request(stop_url, method="POST")
-            urllib.request.urlopen(req_obj, timeout=10)
+            urllib.request.urlopen(req_obj, timeout=3)
             print(f"  stopped extra AI camera {cid[:8]}")
     except Exception as exc:
         print(f"WARN: stop extra AI cameras: {exc}")

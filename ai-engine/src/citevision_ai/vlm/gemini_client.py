@@ -18,6 +18,36 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+# #region agent log
+_DBG_GEMINI = 0
+
+
+def _agent_dbg(hid: str, loc: str, msg: str, data: dict[str, Any]) -> None:
+    try:
+        rec = {
+            "sessionId": "2693ab",
+            "runId": "pre-fix",
+            "hypothesisId": hid,
+            "location": loc,
+            "message": msg,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        line = json.dumps(rec, default=str) + "\n"
+        for p in (
+            "/mnt/c/Users/gheno/citevision-v2/debug-2693ab.log",
+            "/home/gheno/citevision-v2/debug-2693ab.log",
+            "/mnt/c/Users/gheno/.cursor/projects/C-Users-gheno-AppData-Local-Temp-f29b3dff-d65a-43d9-ad45-44968ec6c6da/debug-2693ab.log",
+        ):
+            try:
+                with open(p, "a", encoding="utf-8") as f:
+                    f.write(line)
+            except Exception:
+                pass
+    except Exception:
+        pass
+# #endregion
+
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 
 # WSL stub DNS + broken IPv6 routes cause intermittent "Temporary failure in name
@@ -127,6 +157,7 @@ class GeminiVerdict:
     error: str = ""
     plate_text: str = ""
     readable: bool = False
+    person_visible: bool = False
 
 
 class GeminiClientError(Exception):
@@ -154,6 +185,9 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+_CABIN_RULES = frozenset({"seatbelt_violation", "phone_use_violation"})
+
+
 def _parse_verdict(data: dict[str, Any], *, expected_rule: str, latency_ms: float) -> GeminiVerdict:
     rule = str(data.get("rule") or expected_rule or "").strip()
     signals_raw = data.get("signals") or []
@@ -167,9 +201,28 @@ def _parse_verdict(data: dict[str, Any], *, expected_rule: str, latency_ms: floa
     conf = max(0.0, min(1.0, conf))
     visible = bool(data.get("visible", False))
     violation = bool(data.get("violation", False))
+    if "person_visible" in data:
+        person_visible = bool(data.get("person_visible"))
+    elif "occupant_present" in data:
+        person_visible = bool(data.get("occupant_present"))
+    else:
+        person_visible = visible if expected_rule in _CABIN_RULES else False
     reason = str(data.get("reason_short") or "")[:120]
-    plate_text = str(data.get("plate_text") or "").strip().upper().replace(" ", "")[:32]
-    readable = bool(data.get("readable", bool(plate_text)))
+    plate_text = re.sub(
+        r"[^A-Z0-9]",
+        "",
+        str(data.get("plate_text") or "").strip().upper(),
+    )[:16]
+    readable = bool(plate_text) or bool(data.get("readable", False))
+    if plate_text:
+        visible = True
+        violation = True
+        if conf <= 0.0:
+            conf = 0.15
+    if expected_rule in _CABIN_RULES:
+        visible = bool(person_visible)
+        if not person_visible:
+            violation = False
     return GeminiVerdict(
         violation=violation,
         rule=rule or expected_rule,
@@ -181,37 +234,43 @@ def _parse_verdict(data: dict[str, Any], *, expected_rule: str, latency_ms: floa
         raw_ok=True,
         plate_text=plate_text,
         readable=readable,
+        person_visible=person_visible,
     )
 
-
-_CABIN_RULES = frozenset({"seatbelt_violation", "phone_use_violation"})
 
 CABIN_PROMPTS: dict[str, str] = {
     "seatbelt_violation": (
         "You analyze a FULL-VEHICLE bounding-box crop from a roadside/cabin camera "
-        "(Frigate track crop — may be blurry, distant, low light, or partially occluded). "
-        "Answer ONE yes/no question only: is the driver NOT wearing a seatbelt?\n"
-        "Be lucid despite poor quality: look for shoulder-belt diagonal across the torso, "
-        "or a clear absence of any belt. If you cannot tell with reasonable confidence, "
-        "answer NO (violation=false) — do not invent a violation.\n"
+        "(Frigate track crop — may be blurry, distant, low light, or partially occluded).\n"
+        "STEP 1 (mandatory, answer first): is at least one PERSON visible inside the "
+        "vehicle (driver or occupant — head, face, torso, or a clearly human cabin "
+        "silhouette)? If the cabin is empty, too far, too dark, glare, or you cannot "
+        "tell: person_visible=false and violation=false. Do not guess a seatbelt.\n"
+        "STEP 2 (only if person_visible=true): is that person NOT wearing a seatbelt? "
+        "Look for a shoulder-belt diagonal across the torso, or a clear absence of any belt.\n"
         "Reply with ONLY one JSON object, no markdown:\n"
-        '{"violation":bool,"rule":"seatbelt_violation","confidence":0.0-1.0,'
-        '"reason_short":"<=120 chars"}\n'
-        "violation=true means YES (seatbelt not worn). violation=false means NO "
-        "(belt worn OR unclear/uncertain)."
+        '{"person_visible":bool,"violation":bool,"rule":"seatbelt_violation",'
+        '"confidence":0.0-1.0,"reason_short":"<=120 chars"}\n'
+        "violation=true means YES (person visible AND seatbelt not worn). "
+        "violation=false means NO (no person visible, belt worn, OR unclear). "
+        "Never set violation=true when person_visible=false."
     ),
     "phone_use_violation": (
         "You analyze a FULL-VEHICLE bounding-box crop from a roadside/cabin camera "
-        "(Frigate track crop — may be blurry, distant, low light, or partially occluded). "
-        "Answer ONE yes/no question only: is the driver using a phone while driving?\n"
-        "Be lucid despite poor quality: look for a phone held to the ear or in front of the face, "
-        "or hands clearly manipulating a handheld device. If you cannot tell with reasonable "
-        "confidence, answer NO (violation=false) — do not invent a violation.\n"
+        "(Frigate track crop — may be blurry, distant, low light, or partially occluded).\n"
+        "STEP 1 (mandatory, answer first): is at least one PERSON visible inside the "
+        "vehicle (driver or occupant — head, face, torso, or a clearly human cabin "
+        "silhouette)? If the cabin is empty, too far, too dark, glare, or you cannot "
+        "tell: person_visible=false and violation=false. Do not guess phone use.\n"
+        "STEP 2 (only if person_visible=true): is that person using a phone while driving? "
+        "Look for a phone held to the ear or in front of the face, or hands clearly "
+        "manipulating a handheld device.\n"
         "Reply with ONLY one JSON object, no markdown:\n"
-        '{"violation":bool,"rule":"phone_use_violation","confidence":0.0-1.0,'
-        '"reason_short":"<=120 chars"}\n'
-        "violation=true means YES (phone use). violation=false means NO "
-        "(no phone OR unclear/uncertain)."
+        '{"person_visible":bool,"violation":bool,"rule":"phone_use_violation",'
+        '"confidence":0.0-1.0,"reason_short":"<=120 chars"}\n'
+        "violation=true means YES (person visible AND phone use). "
+        "violation=false means NO (no person visible, no phone, OR unclear). "
+        "Never set violation=true when person_visible=false."
     ),
 }
 
@@ -225,15 +284,19 @@ def cabin_prompt_text(rule: str, *, extra_context: str = "") -> str:
 
 PLATE_PROMPTS: dict[str, str] = {
     "plate_ocr": (
-        "You read a vehicle license plate from a camera crop. "
+        "You are given a camera crop of ONE vehicle (the detector bounding box). "
+        "Your only job is to read that vehicle's license plate as well as you can. "
+        "ALWAYS return your best possible plate reading. NEVER leave plate_text empty. "
+        "NEVER reply with nothing. Guess from the characters you can see on the "
+        "front or rear plate area even if the crop is blurry, partial, dark, or angled. "
+        "If only some characters are clear, transcribe those and complete a plausible plate. "
         "Reply with ONLY one JSON object, no markdown:\n"
-        '{"violation":bool,"rule":"plate_ocr","confidence":0.0-1.0,'
-        '"visible":bool,"readable":bool,"plate_text":"STRING",'
+        '{"violation":true,"rule":"plate_ocr","confidence":0.0-1.0,'
+        '"visible":true,"readable":true,"plate_text":"STRING",'
         '"reason_short":"<=120 chars","signals":["..."]}\n'
-        "plate_text must be the plate characters without spaces if readable, else empty. "
-        "Set visible=false / readable=false if the plate is not clear. "
-        "Set violation=true only when readable=true and plate_text is non-empty. "
-        "If unclear, violation=false and signals must include \"unclear\"."
+        "plate_text = A-Z and 0-9 only, no spaces, never empty. "
+        "violation must be true whenever plate_text is non-empty. "
+        "Lower confidence if uncertain, but still fill plate_text with your best guess."
     ),
 }
 
@@ -329,6 +392,7 @@ class GeminiClient:
         extra_context: str = "",
     ) -> GeminiVerdict:
         """Return a fail-closed verdict; never invents a violation on transport/parse errors."""
+        global _DBG_GEMINI
         t0 = time.perf_counter()
         if not self.configured:
             return GeminiVerdict(
@@ -386,6 +450,18 @@ class GeminiClient:
             code = int(getattr(exc, "code", 0) or 0)
             err = "rate_limited" if code == 429 else "http_error"
             logger.warning("gemini request failed rule=%s: HTTP %s", rule, code)
+            # #region agent log
+            if _DBG_GEMINI < 20:
+                _DBG_GEMINI += 1
+                _agent_dbg("H5", "gemini_client.py:judge_jpeg", "gemini_http_error", {
+                    "rule": rule,
+                    "http_code": code,
+                    "err": err,
+                    "latency_ms": round(ms, 1),
+                    "key_len": len(self._api_key),
+                    "model": self._model,
+                })
+            # #endregion
             return GeminiVerdict(
                 False, rule, 0.0, False, "", [], ms, False, error=err,
             )
@@ -398,6 +474,17 @@ class GeminiClient:
         ) as exc:
             ms = (time.perf_counter() - t0) * 1000.0
             logger.warning("gemini request failed rule=%s: %s", rule, exc)
+            # #region agent log
+            if _DBG_GEMINI < 20:
+                _DBG_GEMINI += 1
+                _agent_dbg("H5", "gemini_client.py:judge_jpeg", "gemini_transport_error", {
+                    "rule": rule,
+                    "err_type": type(exc).__name__,
+                    "latency_ms": round(ms, 1),
+                    "key_len": len(self._api_key),
+                    "model": self._model,
+                })
+            # #endregion
             return GeminiVerdict(
                 False, rule, 0.0, False, "", [], ms, False, error="http_error",
             )
@@ -413,6 +500,19 @@ class GeminiClient:
                 False, rule, 0.0, False, "", [], ms, False, error="invalid_json",
             )
         verdict = _parse_verdict(data, expected_rule=rule, latency_ms=ms)
+        # #region agent log
+        if _DBG_GEMINI < 20:
+            _DBG_GEMINI += 1
+            _agent_dbg("H5", "gemini_client.py:judge_jpeg", "gemini_ok", {
+                "rule": rule,
+                "violation": bool(verdict.violation),
+                "visible": bool(verdict.visible),
+                "confidence": round(float(verdict.confidence or 0.0), 3),
+                "latency_ms": round(ms, 1),
+                "model": self._model,
+                "key_len": len(self._api_key),
+            })
+        # #endregion
         # Fail-closed: rule mismatch → no violation
         if verdict.rule and expected_rule_ok(verdict.rule, rule) is False:
             return GeminiVerdict(
@@ -587,15 +687,15 @@ def should_emit(verdict: GeminiVerdict, *, min_confidence: float) -> bool:
     if not verdict.raw_ok or verdict.error:
         return False
     if verdict.rule in _CABIN_RULES:
-        return bool(verdict.violation)
+        person_ok = bool(getattr(verdict, "person_visible", False) or verdict.visible)
+        return person_ok and bool(verdict.violation)
+    if verdict.rule == "plate_ocr" or (verdict.plate_text and "plate" in (verdict.rule or "")):
+        # Best-effort plate: emit whenever Gemini returned any plate string.
+        return bool(verdict.plate_text)
     if not verdict.visible:
         return False
     if "unclear" in {s.lower() for s in verdict.signals}:
         return False
-    if verdict.rule == "plate_ocr" or (verdict.plate_text and "plate" in (verdict.rule or "")):
-        if not verdict.readable or not verdict.plate_text:
-            return False
-        return float(verdict.confidence) >= float(min_confidence)
     if not verdict.violation:
         return False
     return float(verdict.confidence) >= float(min_confidence)

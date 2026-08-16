@@ -34,6 +34,9 @@ for rel in \
   scripts/health_check_all.sh \
   scripts/watch-infra-ports.sh \
   scripts/watch-business-readiness.sh \
+  scripts/watch-backend.sh \
+  scripts/validate_demo_1hit_seven_reactive.py \
+  scripts/_p7_reactive.sh \
   scripts/stop-linux.sh \
   shared \
   docs/COMPOSITES-ORCHESTRATION.md \
@@ -53,6 +56,9 @@ for rel in \
   backend/internal/routing \
   backend/internal/auth \
   backend/internal/handler \
+  backend/internal/frigate \
+  backend/internal/demo \
+  backend/internal/ingest \
   backend/cmd/api/main.go
 do
   if [[ -d "$SRC/$rel" ]]; then
@@ -111,6 +117,9 @@ do
     scripts/health_check_all.sh \
     scripts/watch-infra-ports.sh \
     scripts/watch-business-readiness.sh \
+    scripts/watch-backend.sh \
+    scripts/validate_demo_1hit_seven_reactive.py \
+    scripts/_p7_reactive.sh \
     scripts/stop-linux.sh \
     shared \
     docs/COMPOSITES-ORCHESTRATION.md \
@@ -128,6 +137,9 @@ do
     backend/internal/routing \
     backend/internal/auth \
     backend/internal/handler \
+    backend/internal/frigate \
+    backend/internal/demo \
+    backend/internal/ingest \
     backend/cmd/api/main.go
   do
     if [[ -d "$DST/$rel" ]]; then

@@ -66,6 +66,19 @@ _GEOMETRY_POLICY = {
     "fail_closed": ["subject"],
 }
 
+# Plate: longer clip with approach so the car is seen entering the zone.
+_PLATE_POLICY = {
+    "enabled": True,
+    "clip_seconds": 10,
+    "images": [
+        {"role": "scene", "label": "Vue d'ensemble", "crop": "full"},
+        {"role": "subject", "label": "Cible détectée", "crop": "bbox", "padding_pct": 12, "zoom": 1.0},
+        {"role": "plate", "label": "Plaque", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8},
+    ],
+    "min_confidence": 0.0,
+    "fail_closed": ["subject", "plate"],
+}
+
 
 def default_evidence_policy(archetype: str | None = None, event_type: str | None = None) -> dict[str, Any]:
     """Archetype-aware default evidence policy (aligned with orchestration contract)."""
@@ -79,6 +92,8 @@ def default_evidence_policy(archetype: str | None = None, event_type: str | None
         return {**_FACE_POLICY, "images": [dict(x) for x in _FACE_POLICY["images"]]}
     if arch == "cabin" or et in ("seatbelt_violation", "phone_use_violation"):
         return {**_CABIN_POLICY, "images": [dict(x) for x in _CABIN_POLICY["images"]]}
+    if arch == "plate" or "plate" in et:
+        return {**_PLATE_POLICY, "images": [dict(x) for x in _PLATE_POLICY["images"]]}
     if arch == "geometry" and "parking" not in et and "plate" not in et:
         return {**_GEOMETRY_POLICY, "images": [dict(x) for x in _GEOMETRY_POLICY["images"]]}
     return {**_ROAD_POLICY, "images": [dict(x) for x in _ROAD_POLICY["images"]]}
@@ -98,6 +113,10 @@ def sanitize_policy_roles(policy: dict[str, Any] | None, archetype: str | None =
     elif arch == "cabin" or et in ("seatbelt_violation", "phone_use_violation"):
         images = [s for s in images if str(s.get("role") or "").lower() not in ("plate", "reference")]
         pol["clip_seconds"] = float(pol.get("clip_seconds") or 0)
+    elif arch == "plate" or "plate" in et:
+        if not any(str(s.get("role") or "").lower() == "plate" for s in images):
+            images.append({"role": "plate", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8})
+        pol["clip_seconds"] = max(float(pol.get("clip_seconds") or 0), 10.0)
     elif "plate" not in roles and arch in ("plate", "measure"):
         images.append({"role": "plate", "crop": "plate_rear", "padding_pct": 6, "zoom": 1.8})
     pol["images"] = images

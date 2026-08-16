@@ -227,4 +227,72 @@ def test_bridge_wrong_way_reverse_emits():
     bridge._handle_event(exit_bad, {"current_zones": [fz]})
     hits = [e for e in emitted if e["event_type"] == "wrong_way"]
     assert hits, emitted
-    assert hits[0]["metadata"]["detection_method"] == "frigate_wrong_way_edges"
+    assert hits[0]["metadata"]["detection_method"] == "frigate_wrong_way_ordered_edges"
+
+
+def _ww_box(cx: float, cy: float, w: float = 0.08, h: float = 0.12) -> list[float]:
+    """xywh whose centre (wrong-way anchor) is (cx, cy)."""
+    return [cx - w / 2.0, cy - h / 2.0, w, h]
+
+
+def test_bridge_wrong_way_p3p4_before_p1p2_emits():
+    """Demo seed: entry P1-P2 (0), exit P3-P4 (2). Wrong-way = 2 then 0, even with a side edge in between."""
+    emitted: list[dict] = []
+    zone_uuid = "eeeeeeee-bbbb-cccc-dddd-eeeeeeeeeeee"
+    cam_uuid = "d2eb7076-c3b3-40fd-9b2c-0d119bb975c9"
+    poly = [
+        {"x": 0.2, "y": 0.3},
+        {"x": 0.8, "y": 0.3},
+        {"x": 0.8, "y": 0.7},
+        {"x": 0.2, "y": 0.7},
+    ]
+    spatial = {
+        "zones": [
+            {
+                "id": zone_uuid,
+                "zone_id": "WrongWay",
+                "behavior": "wrong_way",
+                "polygon": poly,
+                "behavior_config": {
+                    "entry_edge_index": 0,
+                    "exit_edge_index": 2,
+                    "class_filter": "car",
+                },
+            }
+        ]
+    }
+    bridge = FrigateEventBridge(
+        frigate_url="http://127.0.0.1:5000",
+        mqtt_host="127.0.0.1",
+        mqtt_port=1884,
+        spatial_resolver=lambda _c: spatial,
+        emit_event=lambda e: emitted.append(e),
+        geometry_enabled=True,
+    )
+    fz = f"cv_zone_{zone_uuid}"
+
+    def _evt(eid: str, box: list[float], *, entered: bool = False, leaving: bool = False) -> dict:
+        after: dict = {
+            "id": eid,
+            "camera": f"cv_{cam_uuid}",
+            "label": "car",
+            "current_zones": [] if leaving else [fz],
+            "data": {"box": box},
+        }
+        if entered:
+            after["entered_zones"] = [fz]
+        return after
+
+    # Allowed: P1-P2 then P3-P4.
+    bridge._handle_event(_evt("ww-ok2", _ww_box(0.50, 0.32), entered=True), {})
+    bridge._handle_event(_evt("ww-ok2", _ww_box(0.50, 0.68), leaving=True), {"current_zones": [fz]})
+    assert not any(e["event_type"] == "wrong_way" for e in emitted)
+
+    # Wrong-way: P3-P4, then a side edge, then P1-P2.
+    bridge._handle_event(_evt("ww-bad2", _ww_box(0.50, 0.68), entered=True), {})
+    bridge._handle_event(_evt("ww-bad2", _ww_box(0.78, 0.50)), {"current_zones": [fz]})
+    bridge._handle_event(_evt("ww-bad2", _ww_box(0.50, 0.32)), {"current_zones": [fz]})
+    hits = [e for e in emitted if e["event_type"] == "wrong_way"]
+    assert hits, emitted
+    assert hits[0]["metadata"]["detection_method"] == "frigate_wrong_way_ordered_edges"
+    assert hits[0]["metadata"]["crossed_edge_indexes"][0] == 2
