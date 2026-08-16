@@ -133,14 +133,20 @@ ensure_demo_validation_env() {
   _upsert_env_kv_file "$env_path" FRIGATE_CABIN_SIZE_GATE 0
   _upsert_env_kv_file "$env_path" RED_LIGHT_DEBUG_FORCE_ENQUEUE 0
   _upsert_env_kv_file "$env_path" GEMINI_SHADOW_MODE 0
-  _upsert_env_kv_file "$env_path" FRIGATE_SPEED_EMIT_MODE exit
+  _upsert_env_kv_file "$env_path" FRIGATE_SPEED_EMIT_MODE max_in_zone
+  _upsert_env_kv_file "$env_path" FRIGATE_EVIDENCE_STRICT 1
+  _upsert_env_kv_file "$env_path" DEMO_EVIDENCE_BACKEND strict_frigate
+  # Feu rouge démo: vote local HSV+Frigate (lf_or_g) — l'alerte part même quand
+  # Gemini est injoignable/rate-limited (429), le VLM reste en confirmation.
+  _upsert_env_kv_file "$env_path" RED_LIGHT_VOTE_MODE lf_or_g
+  _upsert_env_kv_file "$env_path" RED_LIGHT_VOTE_SHADOW 0
 
   if [[ -x "$root/scripts/ensure-rules-sync-env.sh" ]]; then
     bash "$root/scripts/ensure-rules-sync-env.sh" --resolve-org 2>/dev/null || true
   fi
   # Restore API key from ~/.citevision_gemini_key.tmp when .env key is empty.
   ensure_gemini_key_env "$root" "$env_path" 2>/dev/null || true
-  echo "[INFO] Demo validation env: Gemini queue=16 timeout=90 ipv4=1 bridges=vlm+speed+geometry" >&2
+  echo "[INFO] Demo validation env: Gemini queue=16 timeout=90 ipv4=1 bridges=vlm+speed+geometry speed=max_in_zone evidence_strict=1" >&2
 }
 
 ensure_frigate_paths_env() {

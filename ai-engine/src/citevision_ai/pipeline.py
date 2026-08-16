@@ -368,7 +368,13 @@ class PipelineService:
         if plate and et in (
             "plate_detected", "plate_ocr", "plate_unknown", "plate_blocked", "plate_allowed",
         ):
-            return should_skip_emit(plate_dedupe_key(camera_id, plate))
+            # Demo hyper-reactive: preflight Frigate warmup must not block the
+            # post-enable alert for 30s (same OKAPI01 / LPR text).
+            import os
+            ttl = 2.5 if str(os.environ.get("DEMO_MODE", "")).strip() in (
+                "1", "true", "TRUE", "yes",
+            ) else 30.0
+            return should_skip_emit(plate_dedupe_key(camera_id, plate), ttl_sec=ttl)
         return False
 
     def _on_vlm_event(self, evt: dict[str, Any]) -> None:
@@ -1517,6 +1523,15 @@ class PipelineService:
         if isinstance(face_crop, (bytes, bytearray, memoryview)) and et in (
             "face_watchlist_match", "face_unknown", "face_detected",
         ):
+            import os as _os
+            if et != "face_watchlist_match" and str(
+                _os.environ.get("DEMO_MODE", "")
+            ).strip().lower() in ("1", "true", "yes"):
+                # Demo hyper-reactive: plain face sightings compose 4-5MB clip
+                # packages each and starve the active rule's pipeline (run12:
+                # Intrusion alert delayed to 33s by back-to-back face evidence).
+                self.mqtt.publish_event(camera_id, evt)
+                return
             crop_bytes = bytes(face_crop)
             ref_bytes = bytes(face_ref) if isinstance(face_ref, (bytes, bytearray, memoryview)) else None
             # Resolve reference from watchlist if emit forgot to attach bytes.

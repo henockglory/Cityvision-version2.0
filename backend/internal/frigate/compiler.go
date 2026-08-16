@@ -72,6 +72,9 @@ type EvidenceAggregate struct {
 	RecordEnabled    bool
 	SnapshotsEnabled bool
 	LPREnabled       bool
+	// DetectEnabled is true when ≥1 enabled rule applies to this camera (incl. observation_mode).
+	// Frigate detect is OFF for cameras without enabled rules so the detector focuses on active work.
+	DetectEnabled bool
 	// TrackPerson forces Frigate objects.track to include person (face watchlist / face rules).
 	TrackPerson bool
 	// TrackObjects merges extra Frigate objects.track labels (object surveillance).
@@ -192,7 +195,8 @@ type CompiledCamera struct {
 func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats, agg EvidenceAggregate, zones []models.Zone) CompiledCamera {
 	fid := CameraID(cam.ID.String())
 	entry := CameraEntry{}
-	entry.Detect.Enabled = true
+	// Focus Frigate detector on cameras that have enabled rules.
+	entry.Detect.Enabled = agg.DetectEnabled
 	entry.Detect.FPS = 10
 	if stats != nil && stats.Width > 0 && stats.Height > 0 {
 		entry.Detect.Width = stats.Width
@@ -214,19 +218,23 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 	} else if cfg.Evidence && cfg.DemoMode {
 		// Demo: snapshots on events only; record follows rule aggregate (event clips).
 		entry.Snapshots.Enabled = agg.SnapshotsEnabled || agg.RecordEnabled
-		// strict_frigate demo must keep record+snapshots even while other demo rules
-		// are toggled off during 1-hit validation — otherwise Frigate stops emitting
-		// clip events and evidence capture fails closed.
-		if strings.EqualFold(strings.TrimSpace(os.Getenv("DEMO_EVIDENCE_BACKEND")), "strict_frigate") {
-			entry.Record.Enabled = true
-			entry.Snapshots.Enabled = true
-		}
 	}
-	// Phase A Tâche 6: demo go2rtc cameras always keep record+snapshots permanent
-	// so toggling rules never drops Frigate media (and avoids rebuild storms).
+	// Demo go2rtc: always keep snapshots; record ONLY when this camera has an
+	// enabled rule (DetectEnabled). Recording all demo cams at once saturates
+	// Frigate's record maintainer → discarded segments → clip.mp4 HTTP 400
+	// ("No recordings found") even when has_clip=true. Clips fall back to go2rtc.
 	if isDemoGo2rtcCamera(cam.Metadata) {
-		entry.Record.Enabled = true
 		entry.Snapshots.Enabled = true
+		if agg.DetectEnabled {
+			entry.Record.Enabled = true
+		} else if strings.EqualFold(strings.TrimSpace(os.Getenv("DEMO_EVIDENCE_STRICT")), "1") ||
+			strings.EqualFold(strings.TrimSpace(os.Getenv("DEMO_EVIDENCE_BACKEND")), "strict_frigate") {
+			entry.Record.Enabled = false
+		}
+		// NOTE: do NOT set enabled:false in config — Frigate refuses MQTT
+		// enabled/set ON for config-disabled cameras ("Camera must be enabled
+		// in the config"). Idle cameras are stopped via MQTT enabled/set OFF
+		// (detect gate), which frees the ffmpeg decode while staying wakeable.
 	}
 	upstream := frigateUpstreamPath(cam.ID.String(), rtspURL, cam.Metadata)
 	roles := []string{"detect"}

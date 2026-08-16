@@ -179,10 +179,13 @@ def list_demo_alert_ids(token: str, org: str) -> set[str]:
     ids: set[str] = set()
     for a in rows:
         meta = _alert_meta(a)
-        if meta.get("demo") is True or str(meta.get("demo", "")).lower() == "true":
-            aid = a.get("id")
-            if aid:
-                ids.add(str(aid))
+        aid = a.get("id")
+        if not aid:
+            continue
+        # Prefer demo-tagged alerts; also accept Démo · rules (meta.demo sometimes missing).
+        name = str(a.get("rule_name") or a.get("title") or meta.get("rule_name") or "")
+        if meta.get("demo") is True or str(meta.get("demo", "")).lower() == "true" or name.startswith("Démo"):
+            ids.add(str(aid))
     return ids
 
 
@@ -345,23 +348,65 @@ def get_active_demo_video(token: str, org: str) -> str | None:
 
 def camera_video_id(token: str, org: str, camera_id: str) -> str | None:
     """Resolve the demo video id backing a demo camera (metadata.demo_video_id)."""
-    try:
-        cams = req("GET", f"{API}/api/v1/orgs/{org}/cameras", token)
-    except Exception:
-        return None
-    if isinstance(cams, dict):
-        cams = cams.get("items", [])
-    for c in cams or []:
-        if str(c.get("id") or c.get("camera_id")) != str(camera_id):
-            continue
-        meta = c.get("metadata") or {}
+    def _from_meta(meta: object) -> str | None:
         if isinstance(meta, str):
             try:
                 meta = json.loads(meta)
             except json.JSONDecodeError:
                 meta = {}
+        if not isinstance(meta, dict):
+            return None
         vid = meta.get("demo_video_id")
-        return str(vid) if vid else None
+        if vid:
+            return str(vid)
+        # Fallback: parse UUID from go2rtc_src demo-{org}-{video} or video_file path.
+        src = str(meta.get("go2rtc_src") or "")
+        if src.startswith("demo-") and "-" in src:
+            # demo-<org8orfull>-<video_uuid>
+            parts = src.split("-")
+            # video uuid is last 5 hyphenated groups typically; try regex
+            import re
+            m = re.search(
+                r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+                src,
+            )
+            if m:
+                # Prefer the last UUID in the string (video id after org id).
+                all_u = re.findall(
+                    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                    src,
+                )
+                if all_u:
+                    return all_u[-1]
+        vf = str(meta.get("video_file") or "")
+        import re
+        all_u = re.findall(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            vf,
+        )
+        if all_u:
+            return all_u[0]
+        return None
+
+    try:
+        cams = req("GET", f"{API}/api/v1/orgs/{org}/cameras", token)
+    except Exception:
+        cams = None
+    if isinstance(cams, dict):
+        cams = cams.get("items", [])
+    for c in cams or []:
+        if str(c.get("id") or c.get("camera_id")) != str(camera_id):
+            continue
+        vid = _from_meta(c.get("metadata") or {})
+        if vid:
+            return vid
+    # Direct get — list payloads sometimes omit metadata under load.
+    try:
+        one = req("GET", f"{API}/api/v1/orgs/{org}/cameras/{camera_id}", token)
+        if isinstance(one, dict):
+            return _from_meta(one.get("metadata") or {})
+    except Exception:
+        pass
     return None
 
 
@@ -496,7 +541,9 @@ def heal_mono_camera_ingest(
 
     root = os.environ.get("PROJECT_ROOT", str(ROOT))
     restart = Path(root) / "scripts" / "restart-ai-engine.sh"
-    if restart.is_file():
+    if str(os.environ.get("SKIP_AI_HEAL_RESTART", "0")).strip().lower() in ("1", "true", "yes"):
+        print("  [heal-ingest] skip last-resort restart (SKIP_AI_HEAL_RESTART)", flush=True)
+    elif restart.is_file():
         print("  [heal-ingest] last resort: restart AI engine", flush=True)
         try:
             subprocess.run(
@@ -1004,13 +1051,29 @@ def ensure_rule_test_ready(
     # 4 — Frigate (heal si besoin ; rebuild seulement si Frigate était vraiment down)
     frigate_url = os.environ.get("FRIGATE_URL", "http://127.0.0.1:5000").rstrip("/")
     frigate_ok, frigate_err = _http_ok(f"{frigate_url}/api/version", timeout=12)
+    # Busy reload can flap /api/version briefly — retry before declaring down.
+    if needs_frigate and not frigate_ok:
+        for _ in range(6):
+            time.sleep(2)
+            frigate_ok, frigate_err = _http_ok(f"{frigate_url}/api/version", timeout=12)
+            if frigate_ok:
+                break
     frigate_was_down = needs_frigate and not frigate_ok
-    if frigate_was_down:
+    skip_rebuild = os.environ.get("FRIGATE_SKIP_PREFLIGHT_REBUILD", "").strip() in ("1", "true", "TRUE", "yes")
+    if frigate_was_down and not skip_rebuild:
         print("  [heal] Frigate API down — repair streams + full rebuild…", flush=True)
         heal_platform_stack(token, org, force_rebuild=True)
         for _ in range(15):
             time.sleep(3)
             frigate_ok, frigate_err = _http_ok(f"{frigate_url}/api/version", timeout=8)
+            if frigate_ok:
+                break
+    elif frigate_was_down and skip_rebuild:
+        print("  [heal] Frigate API flaky — skip rebuild (FRIGATE_SKIP_PREFLIGHT_REBUILD=1)", flush=True)
+        heal_platform_stack(token, org, force_rebuild=False)
+        for _ in range(10):
+            time.sleep(2)
+            frigate_ok, frigate_err = _http_ok(f"{frigate_url}/api/version", timeout=12)
             if frigate_ok:
                 break
     _pf_line("Frigate API /api/version", frigate_ok, frigate_err)
@@ -1063,18 +1126,46 @@ def ensure_rule_test_ready(
         # Threshold uses min_frames (not a lower constant) to ensure zones are
         # already configured before we skip the reset.
         if needs_phone_model or "ceinture" in rule_name.lower():
-            already = camera_processed_frames(camera_id)
-            if already >= min_frames:
+            cabin_local = str(os.environ.get("FRIGATE_CABIN_LOCAL", "1")).strip().lower() in (
+                "1", "true", "yes",
+            )
+            if cabin_local:
                 print(
-                    f"  [heal-ingest] skip reset — already {already} processed frames",
+                    "  [heal-ingest] skip — FRIGATE_CABIN_LOCAL (Frigate MQTT force-emit)",
                     flush=True,
                 )
             else:
-                heal_mono_camera_ingest(camera_id, rule_name=rule_name, needs_phone_model=needs_phone_model)
+                already = camera_processed_frames(camera_id)
+                if already >= min_frames:
+                    print(
+                        f"  [heal-ingest] skip reset — already {already} processed frames",
+                        flush=True,
+                    )
+                else:
+                    heal_mono_camera_ingest(
+                        camera_id, rule_name=rule_name, needs_phone_model=needs_phone_model
+                    )
 
     # 7 — Ingest IA : frames sur la caméra cible
     ingest_ok = False
-    if camera_id:
+    cabin_local = str(os.environ.get("FRIGATE_CABIN_LOCAL", "1")).strip().lower() in (
+        "1", "true", "yes",
+    )
+    skip_ai_ingest = cabin_local and (
+        needs_phone_model or "ceinture" in rule_name.lower()
+    )
+    if camera_id and skip_ai_ingest:
+        _pf_line(
+            f"Ingest IA ≥{min_frames} frames",
+            True,
+            f"skipped FRIGATE_CABIN_LOCAL cam={camera_id[:8]}",
+        )
+        ingest_ok = True
+        if needs_frigate and ring_warmup_sec > 0:
+            warm = min(6, int(ring_warmup_sec))
+            print(f"  [ring-warmup] {warm}s (cabin-local shortened)…", flush=True)
+            time.sleep(warm)
+    elif camera_id:
         ingest_ok = wait_ai_camera_frames(camera_id, min_frames, timeout_sec=ready_sec)
         _pf_line(
             f"Ingest IA ≥{min_frames} frames",
@@ -1113,7 +1204,10 @@ def ensure_rule_test_ready(
     # Cabin cameras need more settle time: the YOLO tracker needs ~30s of stable
     # person tracks before the heuristic/secondary model reliably fires events.
     if needs_phone_model or "ceinture" in rule_name.lower():
-        settle = int(os.environ.get("DEMO_SETTLE_SEC_CABIN", str(max(settle, 45))))
+        if cabin_local:
+            settle = int(os.environ.get("DEMO_SETTLE_SEC_CABIN", "5"))
+        else:
+            settle = int(os.environ.get("DEMO_SETTLE_SEC_CABIN", str(max(settle, 45))))
     print(f"  [settle] {settle}s stabilisation pipeline…", flush=True)
     time.sleep(settle)
 
@@ -1131,8 +1225,12 @@ def ensure_rule_test_ready(
 
 def disable_all(token: str, org: str, rules: list[dict]) -> None:
     for r in rules:
-        if str(r.get("name", "")).startswith("Démo"):
-            set_rule(token, org, r["id"], False)
+        if not str(r.get("name", "")).startswith("Démo"):
+            continue
+        if not r.get("is_enabled"):
+            continue
+        set_rule(token, org, r["id"], False)
+        r["is_enabled"] = False
 
 
 def wait_active_rules(n: int, sec: int = 120) -> None:

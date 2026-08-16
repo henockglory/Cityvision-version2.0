@@ -295,8 +295,11 @@ for _ in 1 2 3; do
     -H "X-Internal-Key: $KEY" && break
   sleep 3
 done || true
-curl -sf -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/internal/ingest/frigate/rebuild" \
-  -H "X-Internal-Key: $KEY" || true
+# Bound rebuild: unbounded curl hangs Start at [5/10] after repair-streams JSON.
+if ! curl -sf --max-time 90 -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/internal/ingest/frigate/rebuild" \
+  -H "X-Internal-Key: $KEY"; then
+  echo "[WARN] frigate/rebuild timed out or failed — continuing (wait/recreate below)"
+fi
 
 if ! wait_http_ok "http://127.0.0.1:5000/api/version" 90; then
   echo "[WARN] Frigate down - recreate"
@@ -312,6 +315,33 @@ if ! curl -sf --max-time 3 "http://127.0.0.1:1984/api" >/dev/null 2>&1; then
   heal_go2rtc || true
 fi
 echo "[OK] Frigate $(curl -sf http://127.0.0.1:5000/api/version 2>/dev/null || echo up)"
+
+# Purge Frigate cache segments from deleted cameras: one ghost segment makes
+# the record maintainer KeyError every cycle → NO recordings persisted for ANY
+# camera → event clip.mp4 400 "No recordings found" (seen 2 days on cv_7f4d59f2).
+docker exec citevision-v2-frigate bash -c '
+  cd /tmp/cache 2>/dev/null || exit 0
+  for f in cv_*.mp4; do
+    [[ -e "$f" ]] || break
+    cam="${f%@*}"
+    grep -q "  $cam:" /config/config.y*ml 2>/dev/null || { rm -f "$f"; echo "[heal] purged ghost cache $f"; }
+  done
+' 2>/dev/null || true
+
+# Clear sticky MQTT detect/set retained ghosts. publish_state=None keeps the
+# compiler config defaults (detect ON only where a rule is enabled) — do NOT
+# force ON everywhere, that pins Frigate CPU on all demo cams at once.
+if [[ -f "$ROOT/scripts/lib/frigate_detect_gate.py" ]]; then
+  python3 - <<PY 2>/dev/null || true
+import sys
+sys.path.insert(0, "$ROOT/scripts/lib")
+try:
+    import frigate_detect_gate as g
+    print("[INFO] frigate detect gate clear:", g.clear_retained_detect(publish_state=None))
+except Exception as e:
+    print("[WARN] frigate detect gate clear:", e)
+PY
+fi
 
 # Ingest / demo pipeline + business readiness (spatial AI / rules / Frigate zones / go2rtc).
 echo "=== [6/10] demo pipeline + business readiness ==="

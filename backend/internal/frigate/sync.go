@@ -96,10 +96,26 @@ func (s *SyncService) NeedsFaceRecognition(ctx context.Context) bool {
 	return false
 }
 
-// RebuildAll regenerates config for every active camera (no host/metadata policy exclusions).
-// is_active=false cameras stay out (user-disabled, not denylisted). Compile failures are logged
-// and persisted on the camera as frigate_error; other cameras still sync.
+// RebuildAll regenerates config for every active camera and reloads Frigate.
 func (s *SyncService) RebuildAll(ctx context.Context) error {
+	return s.rebuildAll(ctx, true)
+}
+
+// RebuildAllHot persists YAML; in demo mode it is a no-op.
+// Live detect focus is MQTT (FocusDetectForCamera). Compiling all cameras on every
+// rule/video switch exhausts the DB pool and makes /health/ready flap 503.
+func (s *SyncService) RebuildAllHot(ctx context.Context) error {
+	if s.cfg.DemoMode {
+		s.log.Info("frigate rebuild hot skipped in demo (MQTT detect focus only)")
+		return nil
+	}
+	return s.rebuildAll(ctx, true)
+}
+
+// rebuildAll writes frigate.generated.yml. When reload is false, MQTT detect focus
+// remains authoritative (demo hyper-reactive path) — Frigate reload mid-SLO stalls
+// the detector for tens of seconds.
+func (s *SyncService) rebuildAll(ctx context.Context, reload bool) error {
 	if !s.Enabled() {
 		return nil
 	}
@@ -152,6 +168,12 @@ func (s *SyncService) RebuildAll(ctx context.Context) error {
 		s.lastError = err.Error()
 		return err
 	}
+	if !reload {
+		s.lastSync = time.Now().UTC()
+		s.lastError = ""
+		s.log.Info("frigate config written (reload skipped)", "cameras", len(compiled), "compile_fails", compileFails)
+		return nil
+	}
 	if err := s.client.Reload(ctx); err != nil {
 		s.lastError = err.Error()
 		s.log.Warn("frigate reload failed", "error", err)
@@ -184,7 +206,7 @@ func (s *SyncService) SyncCamera(ctx context.Context, orgID, cameraID uuid.UUID)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := s.RebuildAll(ctx); err != nil {
+		if err := s.RebuildAllHot(ctx); err != nil {
 			s.log.Warn("frigate sync after camera change", "camera", cameraID, "error", err)
 		}
 	}()
@@ -197,7 +219,7 @@ func (s *SyncService) SyncAfterSpatialChange(ctx context.Context, orgID uuid.UUI
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		_ = s.RebuildAll(ctx)
+		_ = s.RebuildAllHot(ctx)
 	}()
 }
 
@@ -208,8 +230,141 @@ func (s *SyncService) SyncAfterRuleChange(ctx context.Context, orgID uuid.UUID) 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		_ = s.RebuildAll(ctx)
+		if err := s.RebuildAllHot(ctx); err != nil {
+			s.log.Warn("frigate sync after rule change", "error", err)
+		}
+		// Demo focus: power cameras strictly from enabled rules — a disabled
+		// rule must free its camera's ffmpeg decode for the active one.
+		s.AlignCameraPower(ctx, orgID)
 	}()
+}
+
+// AlignCameraPower publishes MQTT enabled+detect per camera from enabled rules:
+// cameras serving ≥1 enabled rule are woken, all others fully stopped. Decoding
+// every demo stream at once pinned Frigate at ~676% CPU and starved detection.
+func (s *SyncService) AlignCameraPower(ctx context.Context, orgID uuid.UUID) {
+	if s == nil || s.pool == nil {
+		return
+	}
+	rows, err := s.pool.Query(ctx, `SELECT definition FROM rules WHERE org_id = $1 AND is_enabled = TRUE`, orgID)
+	if err != nil {
+		return
+	}
+	active := map[string]bool{}
+	for rows.Next() {
+		var defRaw []byte
+		if rows.Scan(&defRaw) != nil {
+			continue
+		}
+		if camID, ok := CameraIDFromRuleDefinition(defRaw); ok {
+			active[camID.String()] = true
+		}
+	}
+	rows.Close()
+	var on, off []string
+	for _, id := range s.listActiveCameraIDs(ctx, orgID) {
+		if active[id.String()] {
+			on = append(on, id.String())
+		} else {
+			off = append(off, id.String())
+		}
+	}
+	gate := NewDetectGate(s.log)
+	if err := gate.AlignPower(on, off); err != nil {
+		s.log.Warn("frigate camera power align failed", "error", err)
+	}
+}
+
+// FocusDetectForCamera MQTT-boosts detect on keepCamera (others OFF, retain=false).
+// YAML detect/record sync is left to SyncAfterRuleChange — doing RebuildAll here
+// (especially with an 8s delay) saturates the Frigate mutex and makes /health/ready
+// flap during demo 1-hit validation.
+func (s *SyncService) FocusDetectForCamera(ctx context.Context, orgID, keepCameraID uuid.UUID) {
+	if s == nil {
+		return
+	}
+	go func() {
+		bg, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		others := s.listActiveCameraIDs(bg, orgID)
+		gate := NewDetectGate(s.log)
+		ids := make([]string, 0, len(others))
+		for _, id := range others {
+			ids = append(ids, id.String())
+		}
+		if err := gate.BoostKeepCamera(keepCameraID.String(), ids); err != nil {
+			s.log.Warn("frigate detect boost failed", "camera", keepCameraID, "error", err)
+		}
+	}()
+}
+
+// ClearRetainedDetectGhosts clears sticky MQTT detect/set retained OFF from older runs.
+func (s *SyncService) ClearRetainedDetectGhosts(ctx context.Context) {
+	if s == nil || s.pool == nil {
+		return
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id FROM cameras WHERE is_active = true`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id uuid.UUID
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id.String())
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	gate := NewDetectGate(s.log)
+	if err := gate.ClearRetainedDetect(ids); err != nil {
+		s.log.Warn("clear retained detect failed", "error", err)
+	}
+}
+
+func (s *SyncService) listActiveCameraIDs(ctx context.Context, orgID uuid.UUID) []uuid.UUID {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM cameras WHERE org_id = $1 AND is_active = true`, orgID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if rows.Scan(&id) == nil {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// CameraIDFromRuleDefinition extracts bindings.camera_id / camera_id from a rule definition.
+func CameraIDFromRuleDefinition(def json.RawMessage) (uuid.UUID, bool) {
+	if len(def) == 0 {
+		return uuid.Nil, false
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(def, &m); err != nil || m == nil {
+		return uuid.Nil, false
+	}
+	raw := ""
+	if bindings, ok := m["bindings"].(map[string]interface{}); ok {
+		raw, _ = bindings["camera_id"].(string)
+	}
+	if raw == "" {
+		raw, _ = m["camera_id"].(string)
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
 }
 
 func (s *SyncService) Status(ctx context.Context) map[string]interface{} {
@@ -329,32 +484,45 @@ func probeStreamStats(ctx context.Context, rtspURL string) *camera.StreamStats {
 	return stats
 }
 
-// CompileEvidenceAggregate derives Frigate record/snapshots/lpr from active alert rules.
+// CompileEvidenceAggregate derives Frigate record/snapshots/lpr from alert rules.
+// DetectEnabled follows currently enabled rules only.
+// In FRIGATE_DEMO_MODE, LPR/record/snapshots/track capabilities also come from
+// disabled rules on the camera so a later enable can hot-path via MQTT detect
+// without requiring a Frigate reload to turn LPR/zones on.
 func CompileEvidenceAggregate(ctx context.Context, pool *pgxpool.Pool, orgID, cameraID uuid.UUID) EvidenceAggregate {
 	var agg EvidenceAggregate
 	camStr := cameraID.String()
-	rows, err := pool.Query(ctx, `
-		SELECT definition FROM rules WHERE org_id = $1 AND is_enabled = TRUE`, orgID)
+	demoCaps := ConfigFromEnv().DemoMode
+	q := `SELECT definition, is_enabled FROM rules WHERE org_id = $1`
+	if !demoCaps {
+		q = `SELECT definition, TRUE FROM rules WHERE org_id = $1 AND is_enabled = TRUE`
+	}
+	rows, err := pool.Query(ctx, q, orgID)
 	if err != nil {
 		return agg
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var defRaw []byte
-		if err := rows.Scan(&defRaw); err != nil {
+		var enabled bool
+		if err := rows.Scan(&defRaw, &enabled); err != nil {
 			continue
 		}
 		var def map[string]interface{}
 		if err := json.Unmarshal(defRaw, &def); err != nil {
 			continue
 		}
+		if !ingest.RuleAppliesToCamera(def, camStr) {
+			continue
+		}
+		// Any enabled rule on this camera needs Frigate detect (incl. observation/count).
+		if enabled {
+			agg.DetectEnabled = true
+		}
 		if bindings, ok := def["bindings"].(map[string]interface{}); ok {
 			if v, ok := bindings["observation_mode"].(bool); ok && v {
 				continue
 			}
-		}
-		if !ingest.RuleAppliesToCamera(def, camStr) {
-			continue
 		}
 		// Face watchlist / face identity rules require Frigate person tracking.
 		rawLower := strings.ToLower(string(defRaw))
@@ -380,7 +548,7 @@ func CompileEvidenceAggregate(ctx context.Context, pool *pgxpool.Pool, orgID, ca
 			continue
 		}
 		ev := mergeEvidencePolicy(def)
-		if enabled, _ := ev["enabled"].(bool); !enabled {
+		if en, _ := ev["enabled"].(bool); !en {
 			continue
 		}
 		clipSec := 0.0

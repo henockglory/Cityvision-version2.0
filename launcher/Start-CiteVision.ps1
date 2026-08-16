@@ -106,6 +106,7 @@ copy_one scripts/lib/start-full-stack.sh
 copy_one scripts/lib/business-readiness.sh
 copy_one scripts/lib/env-utils.sh
 copy_one scripts/lib/service-heal.sh
+copy_one scripts/lib/frigate_detect_gate.py
 copy_one scripts/lib/probe-gemini.sh
 copy_one scripts/lib/set-gemini-key.sh
 copy_one scripts/ensure-demo-pipeline.sh
@@ -113,6 +114,7 @@ copy_one scripts/ensure-ai-stack.sh
 copy_one scripts/ensure-frontend.sh
 copy_one scripts/serve-frontend-static.mjs
 copy_one scripts/watch-frontend.sh
+copy_one scripts/watch-backend.sh
 copy_one scripts/lib/platform-models-ok.py
 copy_one frontend/vite.config.ts
 copy_one scripts/health_check_all.sh
@@ -125,6 +127,14 @@ copy_one scripts/_start-rules-engine.sh
 copy_one scripts/watch-api.sh
 copy_one scripts/watch-ai.sh
 copy_one scripts/watch-rules.sh
+copy_one scripts/validate_demo_1hit_seven_reactive.py
+copy_one scripts/validate_demo_five_rules.py
+copy_one scripts/_p7_reactive.sh
+# Hyper-reactive demo pipeline (Frigate focus + fast evidence + lf_or_g feu)
+copy_one ai-engine/src/citevision_ai/frigate_bridge/bridge.py
+copy_one ai-engine/src/citevision_ai/pipeline.py
+copy_one ai-engine/src/citevision_ai/evidence/frigate_track_evidence.py
+copy_one ai-engine/src/citevision_ai/road_enforcement/red_light_vote.py
 copy_one scripts/lib/compose-gpu.sh
 copy_one infra/docker-compose.nvidia.yml
 copy_one infra/frigate.base.yaml
