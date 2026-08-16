@@ -135,6 +135,9 @@ copy_one ai-engine/src/citevision_ai/frigate_bridge/bridge.py
 copy_one ai-engine/src/citevision_ai/pipeline.py
 copy_one ai-engine/src/citevision_ai/evidence/frigate_track_evidence.py
 copy_one ai-engine/src/citevision_ai/road_enforcement/red_light_vote.py
+copy_one backend/internal/frigate/detect_gate.go
+copy_one backend/internal/frigate/sync.go
+copy_one backend/internal/frigate/compiler.go
 copy_one scripts/lib/compose-gpu.sh
 copy_one infra/docker-compose.nvidia.yml
 copy_one infra/frigate.base.yaml

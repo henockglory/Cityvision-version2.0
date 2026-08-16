@@ -133,9 +133,12 @@ ensure_demo_validation_env() {
   _upsert_env_kv_file "$env_path" FRIGATE_CABIN_SIZE_GATE 0
   _upsert_env_kv_file "$env_path" RED_LIGHT_DEBUG_FORCE_ENQUEUE 0
   _upsert_env_kv_file "$env_path" GEMINI_SHADOW_MODE 0
+  _upsert_env_kv_file "$env_path" DEMO_MODE 1
   _upsert_env_kv_file "$env_path" FRIGATE_SPEED_EMIT_MODE max_in_zone
   _upsert_env_kv_file "$env_path" FRIGATE_EVIDENCE_STRICT 1
   _upsert_env_kv_file "$env_path" DEMO_EVIDENCE_BACKEND strict_frigate
+  _upsert_env_kv_file "$env_path" FRIGATE_CABIN_LOCAL 1
+  _upsert_env_kv_file "$env_path" FRIGATE_PLATE_LOCAL 1
   # Feu rouge démo: vote local HSV+Frigate (lf_or_g) — l'alerte part même quand
   # Gemini est injoignable/rate-limited (429), le VLM reste en confirmation.
   _upsert_env_kv_file "$env_path" RED_LIGHT_VOTE_MODE lf_or_g
