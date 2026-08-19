@@ -4,16 +4,31 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/citevision/citevision-v2/backend/internal/demo"
 	"github.com/citevision/citevision-v2/backend/internal/frigate"
 	"github.com/citevision/citevision-v2/backend/internal/ingest"
 )
+
+const probeBudget = 2 * time.Second
+
+// probeHTTP is a short-timeout client so one hung Frigate/MinIO/go2rtc probe
+// cannot pin /health/platform at the handler deadline (12s) and flap the UI.
+var probeHTTP = &http.Client{
+	Timeout: probeBudget,
+	Transport: &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: 800 * time.Millisecond}).DialContext,
+		ResponseHeaderTimeout: probeBudget,
+		DisableKeepAlives:     true,
+	},
+}
 
 // PlatformDeps aggregates probes for unified platform health.
 type PlatformDeps struct {
@@ -40,7 +55,7 @@ type PlatformHealth struct {
 // PlatformHandler returns GET /api/v1/system/health aggregator.
 func PlatformHandler(deps PlatformDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
 		ph := CollectPlatformHealth(ctx, deps)
@@ -63,41 +78,66 @@ func CollectPlatformHealth(ctx context.Context, deps PlatformDeps) PlatformHealt
 	var issues []string
 	criticalDown := 0
 	degraded := 0
-
-	// Backend liveness
-	comps["backend"] = ComponentStatus{Status: "ok"}
-
-	// Postgres + Redis
-	if deps.Checker != nil {
-		if err := deps.Checker.PingPostgres(ctx); err != nil {
-			comps["postgres"] = ComponentStatus{Status: "down", Detail: map[string]interface{}{"error": err.Error()}}
-			issues = append(issues, "postgres down")
-			criticalDown++
-		} else {
-			comps["postgres"] = ComponentStatus{Status: "ok"}
+	var mu sync.Mutex
+	set := func(name string, cs ComponentStatus, issue string, crit, deg bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		comps[name] = cs
+		if issue != "" {
+			issues = append(issues, issue)
 		}
-		if err := deps.Checker.PingRedis(ctx); err != nil {
-			comps["redis"] = ComponentStatus{Status: "down", Detail: map[string]interface{}{"error": err.Error()}}
-			issues = append(issues, "redis down")
+		if crit {
 			criticalDown++
-		} else {
-			comps["redis"] = ComponentStatus{Status: "ok"}
+		}
+		if deg {
+			degraded++
 		}
 	}
 
-	// AI engine
+	comps["backend"] = ComponentStatus{Status: "ok"}
+
+	var wg sync.WaitGroup
+	run := func(fn func(context.Context)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pctx, cancel := context.WithTimeout(ctx, probeBudget)
+			defer cancel()
+			fn(pctx)
+		}()
+	}
+
+	if deps.Checker != nil {
+		run(func(pctx context.Context) {
+			if err := deps.Checker.PingPostgres(pctx); err != nil {
+				set("postgres", ComponentStatus{Status: "down", Detail: map[string]interface{}{"error": err.Error()}}, "postgres down", true, false)
+			} else {
+				set("postgres", ComponentStatus{Status: "ok"}, "", false, false)
+			}
+		})
+		run(func(pctx context.Context) {
+			if err := deps.Checker.PingRedis(pctx); err != nil {
+				set("redis", ComponentStatus{Status: "down", Detail: map[string]interface{}{"error": err.Error()}}, "redis down", true, false)
+			} else {
+				set("redis", ComponentStatus{Status: "ok"}, "", false, false)
+			}
+		})
+	}
+
 	if deps.AI != nil {
-		h, err := deps.AI.FetchHealth(ctx)
-		if err != nil {
-			comps["ai_engine"] = ComponentStatus{Status: "down", Detail: map[string]interface{}{"error": err.Error()}}
-			issues = append(issues, "ai_engine unreachable")
-			criticalDown++
-		} else {
+		run(func(pctx context.Context) {
+			h, err := deps.AI.FetchHealth(pctx)
+			if err != nil {
+				set("ai_engine", ComponentStatus{Status: "down", Detail: map[string]interface{}{"error": err.Error()}}, "ai_engine unreachable", true, false)
+				return
+			}
 			st := "ok"
+			issue := ""
+			deg := false
 			if h["models_all_ok"] != "true" && h["models_all_ok"] != "True" {
 				st = "degraded"
-				issues = append(issues, "ai models not all ok")
-				degraded++
+				issue = "ai models not all ok"
+				deg = true
 			}
 			detail := map[string]interface{}{}
 			for _, k := range []string{"yolo_loaded", "plate_loaded", "face_loaded", "driver_phone_model_loaded", "seatbelt_model_loaded", "models_all_ok", "registry_version"} {
@@ -105,26 +145,27 @@ func CollectPlatformHealth(ctx context.Context, deps PlatformDeps) PlatformHealt
 					detail[k] = v
 				}
 			}
-			comps["ai_engine"] = ComponentStatus{Status: st, Detail: detail}
-		}
+			set("ai_engine", ComponentStatus{Status: st, Detail: detail}, issue, false, deg)
+		})
 	}
 
-	// Rules engine
-	rulesURL := envStr("RULES_ENGINE_URL", "http://127.0.0.1:8010")
-	if st, detail, err := probeJSON(ctx, rulesURL+"/health"); err != nil {
-		comps["rules_engine"] = ComponentStatus{Status: "down", Detail: map[string]interface{}{"error": err.Error()}}
-		issues = append(issues, "rules_engine unreachable")
-		criticalDown++
-	} else {
+	run(func(pctx context.Context) {
+		rulesURL := envStr("RULES_ENGINE_URL", "http://127.0.0.1:8010")
+		st, detail, err := probeJSON(pctx, rulesURL+"/health")
+		if err != nil {
+			set("rules_engine", ComponentStatus{Status: "down", Detail: map[string]interface{}{"error": err.Error()}}, "rules_engine unreachable", true, false)
+			return
+		}
 		status := "ok"
+		issue := ""
+		deg := false
 		if ar, ok := detail["active_rules"]; ok {
 			if n, _ := toInt(ar); n == 0 {
 				status = "degraded"
-				issues = append(issues, "rules_engine active_rules=0")
-				degraded++
+				issue = "rules_engine active_rules=0"
+				deg = true
 			}
 		}
-		// MQTT zombie: HTTP up but bus deaf (watch-rules-engine restarts on this).
 		mqttStaleSec := 120
 		if v := envStr("RULES_MQTT_STALE_SEC", ""); v != "" {
 			if n, ok := toInt(v); ok && n > 0 {
@@ -148,52 +189,51 @@ func CollectPlatformHealth(ctx context.Context, deps PlatformDeps) PlatformHealt
 		}
 		if !connected || (ageSec >= 0 && ageSec > mqttStaleSec) {
 			status = "degraded"
-			issues = append(issues, "rules_engine mqtt_stale")
-			degraded++
+			issue = "rules_engine mqtt_stale"
+			deg = true
 		}
-		comps["rules_engine"] = ComponentStatus{Status: status, Detail: st}
-	}
+		set("rules_engine", ComponentStatus{Status: status, Detail: st}, issue, false, deg)
+	})
 
-	// Frigate
-	if deps.Frigate != nil && deps.Frigate.Enabled() {
-		fs := deps.Frigate.Status(ctx)
+	run(func(pctx context.Context) {
+		if deps.Frigate == nil || !deps.Frigate.Enabled() {
+			set("frigate", ComponentStatus{Status: "ok", Detail: map[string]interface{}{"enabled": false}}, "", false, false)
+			return
+		}
+		fs := deps.Frigate.Status(pctx)
 		st := "ok"
+		issue := ""
+		deg := false
 		if reach, _ := fs["reachable"].(bool); !reach {
 			st = "degraded"
-			issues = append(issues, "frigate unreachable")
-			degraded++
+			issue = "frigate unreachable"
+			deg = true
 		}
-		if age, ok := deps.Frigate.YoungestEventAgeSec(ctx); ok && age > 25 {
-			st = "degraded"
-			fs["youngest_event_age_sec"] = age
-			issues = append(issues, "frigate events stale")
-			degraded++
+		// Do not call YoungestEventAgeSec here: it walks cameras via Frigate HTTP
+		// and turns a hung detector into a 12s /health/platform stall.
+		set("frigate", ComponentStatus{Status: st, Detail: fs}, issue, false, deg)
+	})
+
+	run(func(pctx context.Context) {
+		minioURL := envStr("MINIO_ENDPOINT", "http://127.0.0.1:9003")
+		if err := probeHead(pctx, minioURL+"/minio/health/live"); err != nil {
+			set("minio", ComponentStatus{Status: "degraded", Detail: map[string]interface{}{"error": err.Error()}}, "minio degraded", false, true)
+		} else {
+			set("minio", ComponentStatus{Status: "ok"}, "", false, false)
 		}
-		comps["frigate"] = ComponentStatus{Status: st, Detail: fs}
-	} else {
-		comps["frigate"] = ComponentStatus{Status: "ok", Detail: map[string]interface{}{"enabled": false}}
-	}
+	})
 
-	// MinIO
-	minioURL := envStr("MINIO_ENDPOINT", "http://127.0.0.1:9003")
-	if err := probeHead(ctx, minioURL+"/minio/health/live"); err != nil {
-		comps["minio"] = ComponentStatus{Status: "degraded", Detail: map[string]interface{}{"error": err.Error()}}
-		issues = append(issues, "minio degraded")
-		degraded++
-	} else {
-		comps["minio"] = ComponentStatus{Status: "ok"}
-	}
+	run(func(pctx context.Context) {
+		go2URL := envStr("GO2RTC_URL", "http://127.0.0.1:1984")
+		if _, detail, err := probeJSON(pctx, go2URL+"/api"); err != nil {
+			set("go2rtc", ComponentStatus{Status: "degraded", Detail: map[string]interface{}{"error": err.Error()}}, "", false, true)
+		} else {
+			set("go2rtc", ComponentStatus{Status: "ok", Detail: detail}, "", false, false)
+		}
+	})
 
-	// go2rtc
-	go2URL := envStr("GO2RTC_URL", "http://127.0.0.1:1984")
-	if _, detail, err := probeJSON(ctx, go2URL+"/api"); err != nil {
-		comps["go2rtc"] = ComponentStatus{Status: "degraded", Detail: map[string]interface{}{"error": err.Error()}}
-		degraded++
-	} else {
-		comps["go2rtc"] = ComponentStatus{Status: "ok", Detail: detail}
-	}
+	wg.Wait()
 
-	// Disk usage (WSL paths when available)
 	diskDetail := diskUsageSummary()
 	if pct, ok := diskDetail["used_percent"].(float64); ok && pct > 80 {
 		comps["disk"] = ComponentStatus{Status: "degraded", Detail: diskDetail}
@@ -203,7 +243,6 @@ func CollectPlatformHealth(ctx context.Context, deps PlatformDeps) PlatformHealt
 		comps["disk"] = ComponentStatus{Status: "ok", Detail: diskDetail}
 	}
 
-	// Retention stats
 	retDetail := map[string]interface{}{
 		"demo_retention_minutes": demo.RetentionMinutes,
 		"max_demo_events":        demo.MaxDemoEventsTotal,
@@ -232,7 +271,7 @@ func probeJSON(ctx context.Context, url string) (map[string]interface{}, map[str
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := probeHTTP.Do(req)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -254,11 +293,11 @@ func probeHead(ctx context.Context, url string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := probeHTTP.Do(req)
 	if err != nil {
 		// MinIO live endpoint may not support HEAD — try GET
 		req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		resp2, err2 := http.DefaultClient.Do(req2)
+		resp2, err2 := probeHTTP.Do(req2)
 		if err2 != nil {
 			return err
 		}

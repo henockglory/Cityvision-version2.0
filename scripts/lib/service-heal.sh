@@ -127,8 +127,27 @@ heal_frigate_host() {
     return 0
   fi
 
-  # Container Up but API not ready yet → wait only (TensorRT / onnx).
+  # Hung API on a long-running container is not a TensorRT cold start.
+  # Waiting 90s left nginx 504 /auth wedged until a manual docker restart.
+  local up_sec=0
   if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$name"; then
+    up_sec="$(docker inspect -f '{{.State.StartedAt}}' "$name" 2>/dev/null | python3 -c '
+import sys, datetime
+raw = (sys.stdin.read() or "").strip()
+if not raw:
+    print(0)
+    raise SystemExit
+try:
+    ts = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    print(max(0, int((now - ts).total_seconds())))
+except Exception:
+    print(0)
+' 2>/dev/null || echo 0)"
+  fi
+  if [[ "${up_sec:-0}" =~ ^[0-9]+$ ]] && (( up_sec > 180 )); then
+    echo "[INFO] Frigate API down after ${up_sec}s uptime — skip boot wait, recreate hung container"
+  elif docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$name"; then
     echo "[INFO] Frigate container up — waiting API up to ${wait_sec}s (no restart)"
     for i in $(seq 1 "$wait_sec"); do
       if frigate_api_ok "$url"; then

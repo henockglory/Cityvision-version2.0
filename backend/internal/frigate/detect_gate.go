@@ -10,8 +10,8 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-// DetectGate publishes temporary Frigate detect/set MQTT commands (retain=false).
-// Used as a hot-path when a rule is enabled so the detector focuses before YAML reload finishes.
+// DetectGate publishes Frigate detect/set + enabled/set MQTT commands (retain=true
+// so a Frigate reload cannot revive idle demo cameras from YAML detect.enabled).
 type DetectGate struct {
 	Broker string
 	log    *slog.Logger
@@ -74,7 +74,7 @@ func publishDetect(cli mqtt.Client, frigateCamID string, on bool, retain bool) e
 	return publishCameraState(cli, frigateCamID, "detect", on, retain)
 }
 
-// BoostKeepCamera turns detect OFF on otherCams and ON on keepCameraID (retain=false).
+// BoostKeepCamera turns detect OFF on otherCams and ON on keepCameraID (retain=true).
 func (g *DetectGate) BoostKeepCamera(keepCameraID string, otherCameraIDs []string) error {
 	keepCameraID = strings.TrimSpace(keepCameraID)
 	if keepCameraID == "" {
@@ -96,19 +96,19 @@ func (g *DetectGate) BoostKeepCamera(keepCameraID string, otherCameraIDs []strin
 		if other == keep {
 			continue
 		}
-		if err := publishDetect(cli, other, false, false); err != nil {
+		if err := publishDetect(cli, other, false, true); err != nil {
 			g.log.Warn("detect gate off failed", "camera", other, "error", err)
 		}
 		// Fully disable the camera: detect OFF alone keeps ffmpeg decoding
 		// (12 demo cams pinned Frigate at ~676% CPU, starving the active rule).
-		if err := publishCameraState(cli, other, "enabled", false, false); err != nil {
+		if err := publishCameraState(cli, other, "enabled", false, true); err != nil {
 			g.log.Warn("camera disable failed", "camera", other, "error", err)
 		}
 	}
-	if err := publishCameraState(cli, keep, "enabled", true, false); err != nil {
+	if err := publishCameraState(cli, keep, "enabled", true, true); err != nil {
 		g.log.Warn("camera enable failed", "camera", keep, "error", err)
 	}
-	if err := publishDetect(cli, keep, true, false); err != nil {
+	if err := publishDetect(cli, keep, true, true); err != nil {
 		return err
 	}
 	g.log.Info("frigate detect boost", "keep", keep, "others_off", len(otherCameraIDs))
@@ -128,16 +128,16 @@ func (g *DetectGate) AlignPower(onCameraIDs, offCameraIDs []string) error {
 		if cid == "" {
 			continue
 		}
-		_ = publishDetect(cli, cid, false, false)
-		_ = publishCameraState(cli, cid, "enabled", false, false)
+		_ = publishDetect(cli, cid, false, true)
+		_ = publishCameraState(cli, cid, "enabled", false, true)
 	}
 	for _, cid := range onCameraIDs {
 		cid = strings.TrimSpace(cid)
 		if cid == "" {
 			continue
 		}
-		_ = publishCameraState(cli, cid, "enabled", true, false)
-		_ = publishDetect(cli, cid, true, false)
+		_ = publishCameraState(cli, cid, "enabled", true, true)
+		_ = publishDetect(cli, cid, true, true)
 	}
 	g.log.Info("frigate camera power align", "on", len(onCameraIDs), "off", len(offCameraIDs))
 	return nil

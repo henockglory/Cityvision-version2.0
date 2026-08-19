@@ -23,10 +23,7 @@ demo_stack_ok() {
 }
 
 platform_proxy_ok() {
-  curl -sf --max-time 8 "http://127.0.0.1:5174/health/platform" 2>/dev/null \
-    | python3 -c 'import json,sys
-d=json.load(sys.stdin)
-sys.exit(0 if isinstance(d, dict) and "components" in d else 1)' 2>/dev/null
+  curl -sf --max-time 3 "http://127.0.0.1:5174/health" >/dev/null 2>&1
 }
 
 dist_stale() {

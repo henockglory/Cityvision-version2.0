@@ -228,6 +228,10 @@ func UpsertCamera(cam *models.Camera, rtspURL string, stats *camera.StreamStats,
 		// clips of the same moment as snapshot.jpg. Idle cameras are stopped
 		// via MQTT enabled/set OFF (detect gate) and do not record.
 		entry.Record.Enabled = true
+		// Same for detect: Frigate ignores MQTT detect/set ON when YAML has
+		// detect.enabled: false (no detector process). Keep detect on in YAML
+		// so enabling a rule can wake the camera via MQTT without a reload.
+		entry.Detect.Enabled = true
 		// NOTE: do NOT set enabled:false in config — Frigate refuses MQTT
 		// enabled/set ON for config-disabled cameras ("Camera must be enabled
 		// in the config"). Idle cameras are stopped via MQTT enabled/set OFF

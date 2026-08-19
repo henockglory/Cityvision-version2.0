@@ -8,6 +8,7 @@ SRCS=(
   "$ROOT/backend/internal/frigate/compiler.go"
   "$ROOT/backend/internal/frigate/detect_gate.go"
   "$ROOT/backend/internal/frigate/sync.go"
+  "$ROOT/backend/internal/health/platform.go"
   "$ROOT/backend/cmd/api/main.go"
 )
 

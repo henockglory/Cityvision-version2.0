@@ -10,6 +10,7 @@ SRCS=(
   "$ROOT/frontend/src/hooks/useAlertWebSocket.ts"
   "$ROOT/frontend/src/hooks/api/queries.ts"
   "$ROOT/frontend/src/pages/Alerts.tsx"
+  "$ROOT/frontend/src/components/StackHealthGate.tsx"
   "$ROOT/scripts/serve-frontend-static.mjs"
   "$ROOT/frontend/index.html"
 )

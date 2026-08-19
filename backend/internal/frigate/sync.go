@@ -102,7 +102,8 @@ func (s *SyncService) RebuildAll(ctx context.Context) error {
 }
 
 // RebuildAllHot persists YAML; in demo mode it is a no-op.
-// Live detect focus is MQTT (FocusDetectForCamera). Compiling all cameras on every
+// Demo YAML keeps detect.enabled true on go2rtc cameras; live focus is MQTT
+// (FocusDetectForCamera / AlignCameraPower). Compiling all cameras on every
 // rule/video switch exhausts the DB pool and makes /health/ready flap 503.
 func (s *SyncService) RebuildAllHot(ctx context.Context) error {
 	if s.cfg.DemoMode {
@@ -163,6 +164,7 @@ func (s *SyncService) rebuildAll(ctx context.Context, reload bool) error {
 		if errors.Is(err, errConfigUnchanged) {
 			s.lastError = ""
 			s.log.Info("frigate config unchanged — skip reload", "cameras", len(compiled))
+			s.alignDemoPower(ctx, compiled)
 			return nil
 		}
 		s.lastError = err.Error()
@@ -172,6 +174,7 @@ func (s *SyncService) rebuildAll(ctx context.Context, reload bool) error {
 		s.lastSync = time.Now().UTC()
 		s.lastError = ""
 		s.log.Info("frigate config written (reload skipped)", "cameras", len(compiled), "compile_fails", compileFails)
+		s.alignDemoPower(ctx, compiled)
 		return nil
 	}
 	if err := s.client.Reload(ctx); err != nil {
@@ -182,7 +185,42 @@ func (s *SyncService) rebuildAll(ctx context.Context, reload bool) error {
 	s.lastSync = time.Now().UTC()
 	s.lastError = ""
 	s.log.Info("frigate config rebuilt", "cameras", len(compiled), "compile_fails", compileFails)
+	s.scheduleDemoPowerAlign(compiled)
 	return nil
+}
+
+// scheduleDemoPowerAlign MQTT-focuses enabled-rule cameras after a reload.
+// Frigate resets MQTT to YAML on reload, so a delayed second pass is required.
+func (s *SyncService) scheduleDemoPowerAlign(compiled []CompiledCamera) {
+	s.alignDemoPower(context.Background(), compiled)
+	copied := append([]CompiledCamera(nil), compiled...)
+	go func() {
+		time.Sleep(8 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		s.alignDemoPower(ctx, copied)
+	}()
+}
+
+// alignDemoPower MQTT-wakes cameras that serve an enabled rule and stops the rest.
+// Demo YAML keeps detect.enabled true so MQTT detect/set ON actually starts a detector;
+// without this align, a reload would decode every looping demo stream at once.
+func (s *SyncService) alignDemoPower(ctx context.Context, compiled []CompiledCamera) {
+	if s == nil || !s.cfg.DemoMode {
+		return
+	}
+	seen := map[uuid.UUID]struct{}{}
+	for _, cc := range compiled {
+		orgID, err := uuid.Parse(cc.OrgID)
+		if err != nil {
+			continue
+		}
+		if _, ok := seen[orgID]; ok {
+			continue
+		}
+		seen[orgID] = struct{}{}
+		s.AlignCameraPower(ctx, orgID)
+	}
 }
 
 func (s *SyncService) compileCamera(ctx context.Context, cam *models.Camera) (CompiledCamera, error) {

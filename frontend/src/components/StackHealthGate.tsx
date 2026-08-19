@@ -44,15 +44,26 @@ export default function StackHealthGate({ children }: { children: React.ReactNod
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | undefined;
+    let inFlight = false;
+    let failStreak = 0;
 
     const poll = () => {
-      void fetch('/health/platform')
+      if (inFlight) return;
+      inFlight = true;
+      const ac = new AbortController();
+      const abortTimer = setTimeout(() => ac.abort(), 6000);
+      void fetch('/health/platform', { signal: ac.signal })
         .then(async (r) => {
+          const j = (await r.json().catch(() => null)) as PlatformHealth | null;
+          // JSON with components = proxy reached the API (even 503 degraded/down).
+          if (j && j.components) return j;
           if (!r.ok) throw new Error(`http ${r.status}`);
-          return r.json() as Promise<PlatformHealth>;
+          if (!j) throw new Error('empty');
+          return j;
         })
         .then((j) => {
           if (cancelled) return;
+          failStreak = 0;
           setPlatform(j);
           setFetchFailed(false);
           if (modelsOk(j)) {
@@ -62,8 +73,16 @@ export default function StackHealthGate({ children }: { children: React.ReactNod
         })
         .catch(() => {
           if (cancelled) return;
-          setFetchFailed(true);
-          setPlatform(null);
+          failStreak += 1;
+          // One blip (watchdog restart, 12s stall) must not flash the banner.
+          if (failStreak >= 2) {
+            setFetchFailed(true);
+            setPlatform(null);
+          }
+        })
+        .finally(() => {
+          clearTimeout(abortTimer);
+          inFlight = false;
         });
     };
 

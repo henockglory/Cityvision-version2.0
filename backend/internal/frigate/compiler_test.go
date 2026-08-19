@@ -309,13 +309,13 @@ func TestUpsertCameraStrictFrigateForcesRecord(t *testing.T) {
 	if !cc.Entry.Detect.Enabled {
 		t.Fatal("detect should follow DetectEnabled=true")
 	}
-	// YAML record stays on; idle cameras are MQTT-stopped (detect gate).
+	// YAML record+detect stay on; idle cameras are MQTT-stopped (detect gate).
 	ccOff := UpsertCamera(cam, "rtsp://127.0.0.1/stream", nil, EvidenceAggregate{}, nil)
 	if !ccOff.Entry.Record.Enabled {
 		t.Fatal("demo go2rtc YAML record must stay on so MQTT-woken cams can seal clips")
 	}
-	if ccOff.Entry.Detect.Enabled {
-		t.Fatal("detect should follow DetectEnabled=false")
+	if !ccOff.Entry.Detect.Enabled {
+		t.Fatal("demo go2rtc YAML detect must stay on so MQTT detect/set ON can wake the detector")
 	}
 }
 
